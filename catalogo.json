@@ -1,0 +1,950 @@
+[
+  {
+    "categoria": "ROSTRO",
+    "nombre": "Higiene basica",
+    "precio": 23500,
+    "es_producto": false
+  },
+  {
+    "categoria": "ROSTRO",
+    "nombre": "Limpieza profunda",
+    "precio": 38400,
+    "es_producto": false
+  },
+  {
+    "categoria": "ROSTRO",
+    "nombre": "Radio frecuencia / Punta de diamante / Alta frecuencia",
+    "precio": 46500,
+    "es_producto": false
+  },
+  {
+    "categoria": "ROSTRO",
+    "nombre": "Peeling",
+    "precio": 50000,
+    "es_producto": false
+  },
+  {
+    "categoria": "ROSTRO",
+    "nombre": "Limpieza profunda + Aparatologia",
+    "precio": 48000,
+    "es_producto": false
+  },
+  {
+    "categoria": "ROSTRO",
+    "nombre": "Dermaplaning",
+    "precio": 50000,
+    "es_producto": false
+  },
+  {
+    "categoria": "ROSTRO",
+    "nombre": "Dermapen",
+    "precio": 58000,
+    "es_producto": false
+  },
+  {
+    "categoria": "ROSTRO",
+    "nombre": "Hidralips",
+    "precio": 36000,
+    "es_producto": false
+  },
+  {
+    "categoria": "CEJAS",
+    "nombre": "Perfilado basico (botox + tinte)",
+    "precio": 23000,
+    "es_producto": false
+  },
+  {
+    "categoria": "CEJAS",
+    "nombre": "Perfilado profundo (laminado, tinte y nutricion)",
+    "precio": 26500,
+    "es_producto": false
+  },
+  {
+    "categoria": "CEJAS",
+    "nombre": "Perfilado: laminado + thenna",
+    "precio": 30000,
+    "es_producto": false
+  },
+  {
+    "categoria": "UNAS",
+    "nombre": "Semi manos",
+    "precio": 23000,
+    "es_producto": false
+  },
+  {
+    "categoria": "UNAS",
+    "nombre": "Kapping",
+    "precio": 26000,
+    "es_producto": false
+  },
+  {
+    "categoria": "UNAS",
+    "nombre": "Retirado",
+    "precio": 8500,
+    "es_producto": false
+  },
+  {
+    "categoria": "UNAS",
+    "nombre": "Unas / Soft gel",
+    "precio": 26500,
+    "es_producto": false
+  },
+  {
+    "categoria": "UNAS",
+    "nombre": "Semi pies",
+    "precio": 23000,
+    "es_producto": false
+  },
+  {
+    "categoria": "MAQUILLAJE",
+    "nombre": "Social",
+    "precio": 65000,
+    "es_producto": false
+  },
+  {
+    "categoria": "MAQUILLAJE",
+    "nombre": "Novias",
+    "precio": 75000,
+    "es_producto": false
+  },
+  {
+    "categoria": "MAQUILLAJE",
+    "nombre": "Prueba",
+    "precio": 40000,
+    "es_producto": false
+  },
+  {
+    "categoria": "PESTANAS",
+    "nombre": "Lifting c/nutri + tinte",
+    "precio": 27500,
+    "es_producto": false
+  },
+  {
+    "categoria": "Productos",
+    "nombre": "Brillo de argan",
+    "precio": 13500,
+    "es_producto": true
+  },
+  {
+    "categoria": "Productos",
+    "nombre": "Crema p/peinar argan",
+    "precio": 6500,
+    "es_producto": true
+  },
+  {
+    "categoria": "Productos",
+    "nombre": "Crema p/peinar multi",
+    "precio": 6500,
+    "es_producto": true
+  },
+  {
+    "categoria": "Productos",
+    "nombre": "Mascara Keratina",
+    "precio": 5500,
+    "es_producto": true
+  },
+  {
+    "categoria": "Productos",
+    "nombre": "Reparador instantaneo",
+    "precio": 10000,
+    "es_producto": true
+  },
+  {
+    "categoria": "Productos",
+    "nombre": "Brillo en aerosol",
+    "precio": 9000,
+    "es_producto": true
+  },
+  {
+    "categoria": "Productos",
+    "nombre": "Protector termico",
+    "precio": 13500,
+    "es_producto": true
+  },
+  {
+    "categoria": "Productos",
+    "nombre": "Shampoo de leche x500ml",
+    "precio": 9000,
+    "es_producto": true
+  },
+  {
+    "categoria": "Productos",
+    "nombre": "Shampoo de leche x1L",
+    "precio": 13500,
+    "es_producto": true
+  },
+  {
+    "categoria": "Productos",
+    "nombre": "Shampoo neutro x500ml",
+    "precio": 6500,
+    "es_producto": true
+  },
+  {
+    "categoria": "Productos",
+    "nombre": "Shampoo neutro 1L",
+    "precio": 11000,
+    "es_producto": true
+  },
+  {
+    "categoria": "Productos",
+    "nombre": "Shampoo Cano",
+    "precio": 14500,
+    "es_producto": true
+  },
+  {
+    "categoria": "Productos",
+    "nombre": "Mousse",
+    "precio": 9000,
+    "es_producto": true
+  },
+  {
+    "categoria": "Productos",
+    "nombre": "Shampoo matizador 500ml",
+    "precio": 10000,
+    "es_producto": true
+  },
+  {
+    "categoria": "Productos",
+    "nombre": "Spray",
+    "precio": 7000,
+    "es_producto": true
+  },
+  {
+    "categoria": "Productos",
+    "nombre": "Gel",
+    "precio": 6500,
+    "es_producto": true
+  },
+  {
+    "categoria": "Productos",
+    "nombre": "Cerra",
+    "precio": 7000,
+    "es_producto": true
+  },
+  {
+    "categoria": "Productos",
+    "nombre": "Gorrita para bano",
+    "precio": 4000,
+    "es_producto": true
+  },
+  {
+    "categoria": "Productos",
+    "nombre": "Polvo texturizante",
+    "precio": 11000,
+    "es_producto": true
+  },
+  {
+    "categoria": "Productos",
+    "nombre": "Cera Mate Wax Fidelite",
+    "precio": 13500,
+    "es_producto": true
+  },
+  {
+    "categoria": "Productos",
+    "nombre": "Perfume VS",
+    "precio": 39000,
+    "es_producto": true
+  },
+  {
+    "categoria": "Productos",
+    "nombre": "Shampoo caviar Fidelite",
+    "precio": 6500,
+    "es_producto": true
+  },
+  {
+    "categoria": "Productos",
+    "nombre": "Shampoo Fidelite c/keratina",
+    "precio": 4500,
+    "es_producto": true
+  },
+  {
+    "categoria": "Productos",
+    "nombre": "Cera mate navajas opcion",
+    "precio": 11000,
+    "es_producto": true
+  },
+  {
+    "categoria": "Productos",
+    "nombre": "Shampoo matizador x130cc",
+    "precio": 4500,
+    "es_producto": true
+  },
+  {
+    "categoria": "Productos",
+    "nombre": "Ampollas",
+    "precio": 3500,
+    "es_producto": true
+  },
+  {
+    "categoria": "Productos",
+    "nombre": "Keratina x1kg",
+    "precio": 13500,
+    "es_producto": true
+  },
+  {
+    "categoria": "CORTES DE PELO",
+    "nombre": "Corte salon hombre",
+    "precio": 12000,
+    "es_producto": false
+  },
+  {
+    "categoria": "CORTES DE PELO",
+    "nombre": "Flequillo",
+    "precio": 6000,
+    "es_producto": false
+  },
+  {
+    "categoria": "CORTES DE PELO",
+    "nombre": "Corte autor unisex",
+    "precio": 14000,
+    "es_producto": false
+  },
+  {
+    "categoria": "CORTES DE PELO",
+    "nombre": "Corte en seco",
+    "precio": 17500,
+    "es_producto": false
+  },
+  {
+    "categoria": "CORTES DE PELO",
+    "nombre": "Corte + barba",
+    "precio": 12000,
+    "es_producto": false
+  },
+  {
+    "categoria": "CORTES DE PELO",
+    "nombre": "Corte jubilados (martes)",
+    "precio": 11000,
+    "es_producto": false
+  },
+  {
+    "categoria": "CORTES DE PELO",
+    "nombre": "Pelada de bebes",
+    "precio": 8000,
+    "es_producto": false
+  },
+  {
+    "categoria": "CORTES DE PELO",
+    "nombre": "Lavado",
+    "precio": 7000,
+    "es_producto": false
+  },
+  {
+    "categoria": "CORTES DE PELO",
+    "nombre": "Planchita (S)",
+    "precio": 18000,
+    "es_producto": false
+  },
+  {
+    "categoria": "CORTES DE PELO",
+    "nombre": "Planchita (M)",
+    "precio": 20000,
+    "es_producto": false
+  },
+  {
+    "categoria": "CORTES DE PELO",
+    "nombre": "Planchita (L)",
+    "precio": 23000,
+    "es_producto": false
+  },
+  {
+    "categoria": "CORTES DE PELO",
+    "nombre": "Planchita (XL)",
+    "precio": 25000,
+    "es_producto": false
+  },
+  {
+    "categoria": "CORTES DE PELO",
+    "nombre": "Semirecogido (S)",
+    "precio": 35000,
+    "es_producto": false
+  },
+  {
+    "categoria": "CORTES DE PELO",
+    "nombre": "Semirecogido (M)",
+    "precio": 40000,
+    "es_producto": false
+  },
+  {
+    "categoria": "CORTES DE PELO",
+    "nombre": "Semirecogido (L)",
+    "precio": 45000,
+    "es_producto": false
+  },
+  {
+    "categoria": "CORTES DE PELO",
+    "nombre": "Semirecogido (XL)",
+    "precio": 50000,
+    "es_producto": false
+  },
+  {
+    "categoria": "CORTES DE PELO",
+    "nombre": "Recogido (S)",
+    "precio": 40000,
+    "es_producto": false
+  },
+  {
+    "categoria": "CORTES DE PELO",
+    "nombre": "Recogido (M)",
+    "precio": 45000,
+    "es_producto": false
+  },
+  {
+    "categoria": "CORTES DE PELO",
+    "nombre": "Recogido (L)",
+    "precio": 50000,
+    "es_producto": false
+  },
+  {
+    "categoria": "CORTES DE PELO",
+    "nombre": "Recogido (XL)",
+    "precio": 55000,
+    "es_producto": false
+  },
+  {
+    "categoria": "CORTES DE PELO",
+    "nombre": "Planchita + bucles (S)",
+    "precio": 35000,
+    "es_producto": false
+  },
+  {
+    "categoria": "CORTES DE PELO",
+    "nombre": "Planchita + bucles (M)",
+    "precio": 40000,
+    "es_producto": false
+  },
+  {
+    "categoria": "CORTES DE PELO",
+    "nombre": "Planchita + bucles (L)",
+    "precio": 45000,
+    "es_producto": false
+  },
+  {
+    "categoria": "CORTES DE PELO",
+    "nombre": "Planchita + bucles (XL)",
+    "precio": 50000,
+    "es_producto": false
+  },
+  {
+    "categoria": "PERMANENTES",
+    "nombre": "Bases permanentes (S)",
+    "precio": 65000,
+    "es_producto": false
+  },
+  {
+    "categoria": "PERMANENTES",
+    "nombre": "Bases permanentes (M)",
+    "precio": 85000,
+    "es_producto": false
+  },
+  {
+    "categoria": "PERMANENTES",
+    "nombre": "Bases permanentes (L)",
+    "precio": 105000,
+    "es_producto": false
+  },
+  {
+    "categoria": "PERMANENTES",
+    "nombre": "Bases permanentes (XL)",
+    "precio": 140000,
+    "es_producto": false
+  },
+  {
+    "categoria": "PERMANENTES",
+    "nombre": "Bucles permanentes (S)",
+    "precio": 80000,
+    "es_producto": false
+  },
+  {
+    "categoria": "PERMANENTES",
+    "nombre": "Bucles permanentes (M)",
+    "precio": 100000,
+    "es_producto": false
+  },
+  {
+    "categoria": "PERMANENTES",
+    "nombre": "Bucles permanentes (L)",
+    "precio": 120000,
+    "es_producto": false
+  },
+  {
+    "categoria": "PERMANENTES",
+    "nombre": "Bucles permanentes (XL)",
+    "precio": 160000,
+    "es_producto": false
+  },
+  {
+    "categoria": "TRATAMIENTOS",
+    "nombre": "Shock (S)",
+    "precio": 20000,
+    "es_producto": false
+  },
+  {
+    "categoria": "TRATAMIENTOS",
+    "nombre": "Shock (M)",
+    "precio": 30000,
+    "es_producto": false
+  },
+  {
+    "categoria": "TRATAMIENTOS",
+    "nombre": "Shock (L)",
+    "precio": 40000,
+    "es_producto": false
+  },
+  {
+    "categoria": "TRATAMIENTOS",
+    "nombre": "Shock (XL)",
+    "precio": 50000,
+    "es_producto": false
+  },
+  {
+    "categoria": "TRATAMIENTOS",
+    "nombre": "Botox (S)",
+    "precio": 20000,
+    "es_producto": false
+  },
+  {
+    "categoria": "TRATAMIENTOS",
+    "nombre": "Botox (M)",
+    "precio": 30000,
+    "es_producto": false
+  },
+  {
+    "categoria": "TRATAMIENTOS",
+    "nombre": "Botox (L)",
+    "precio": 40000,
+    "es_producto": false
+  },
+  {
+    "categoria": "TRATAMIENTOS",
+    "nombre": "Botox (XL)",
+    "precio": 50000,
+    "es_producto": false
+  },
+  {
+    "categoria": "TRATAMIENTOS",
+    "nombre": "3E (S)",
+    "precio": 20000,
+    "es_producto": false
+  },
+  {
+    "categoria": "TRATAMIENTOS",
+    "nombre": "3E (M)",
+    "precio": 30000,
+    "es_producto": false
+  },
+  {
+    "categoria": "TRATAMIENTOS",
+    "nombre": "3E (L)",
+    "precio": 40000,
+    "es_producto": false
+  },
+  {
+    "categoria": "TRATAMIENTOS",
+    "nombre": "3E (XL)",
+    "precio": 50000,
+    "es_producto": false
+  },
+  {
+    "categoria": "TRATAMIENTOS",
+    "nombre": "3E x cantidad (S)",
+    "precio": 25000,
+    "es_producto": false
+  },
+  {
+    "categoria": "TRATAMIENTOS",
+    "nombre": "3E x cantidad (M)",
+    "precio": 35000,
+    "es_producto": false
+  },
+  {
+    "categoria": "TRATAMIENTOS",
+    "nombre": "3E x cantidad (L)",
+    "precio": 45000,
+    "es_producto": false
+  },
+  {
+    "categoria": "TRATAMIENTOS",
+    "nombre": "3E x cantidad (XL)",
+    "precio": 55000,
+    "es_producto": false
+  },
+  {
+    "categoria": "TRATAMIENTOS",
+    "nombre": "Ampollas (S)",
+    "precio": 16000,
+    "es_producto": false
+  },
+  {
+    "categoria": "TRATAMIENTOS",
+    "nombre": "Ampollas (M)",
+    "precio": 20000,
+    "es_producto": false
+  },
+  {
+    "categoria": "TRATAMIENTOS",
+    "nombre": "Ampollas (L)",
+    "precio": 25000,
+    "es_producto": false
+  },
+  {
+    "categoria": "TRATAMIENTOS",
+    "nombre": "Ampollas (XL)",
+    "precio": 30000,
+    "es_producto": false
+  },
+  {
+    "categoria": "TRATAMIENTOS",
+    "nombre": "Encerado (S)",
+    "precio": 16000,
+    "es_producto": false
+  },
+  {
+    "categoria": "TRATAMIENTOS",
+    "nombre": "Encerado (M)",
+    "precio": 20000,
+    "es_producto": false
+  },
+  {
+    "categoria": "TRATAMIENTOS",
+    "nombre": "Encerado (L)",
+    "precio": 25000,
+    "es_producto": false
+  },
+  {
+    "categoria": "TRATAMIENTOS",
+    "nombre": "Encerado (XL)",
+    "precio": 30000,
+    "es_producto": false
+  },
+  {
+    "categoria": "TRATAMIENTOS",
+    "nombre": "Alisado vincha (S)",
+    "precio": 25000,
+    "es_producto": false
+  },
+  {
+    "categoria": "TRATAMIENTOS",
+    "nombre": "Alisado vincha (M)",
+    "precio": 30000,
+    "es_producto": false
+  },
+  {
+    "categoria": "TRATAMIENTOS",
+    "nombre": "Alisado flequillo",
+    "precio": 20000,
+    "es_producto": false
+  },
+  {
+    "categoria": "COLOR",
+    "nombre": "Rojos y negros (S)",
+    "precio": 45000,
+    "es_producto": false
+  },
+  {
+    "categoria": "COLOR",
+    "nombre": "Rojos y negros (M)",
+    "precio": 49000,
+    "es_producto": false
+  },
+  {
+    "categoria": "COLOR",
+    "nombre": "Rojos y negros (L)",
+    "precio": 61000,
+    "es_producto": false
+  },
+  {
+    "categoria": "COLOR",
+    "nombre": "Rojos y negros (XL)",
+    "precio": 71000,
+    "es_producto": false
+  },
+  {
+    "categoria": "COLOR",
+    "nombre": "Mantenimiento de color",
+    "precio": 40000,
+    "es_producto": false
+  },
+  {
+    "categoria": "COLOR",
+    "nombre": "Bano de luz 10gr/cm",
+    "precio": 25000,
+    "es_producto": false
+  },
+  {
+    "categoria": "COLOR",
+    "nombre": "Pre-pig.",
+    "precio": 25000,
+    "es_producto": false
+  },
+  {
+    "categoria": "COLOR",
+    "nombre": "Aplicacion de color",
+    "precio": 25000,
+    "es_producto": false
+  },
+  {
+    "categoria": "REFLEJOS / ILUMINACION",
+    "nombre": "Claritos (S)",
+    "precio": 75000,
+    "es_producto": false
+  },
+  {
+    "categoria": "REFLEJOS / ILUMINACION",
+    "nombre": "Claritos (M)",
+    "precio": 95000,
+    "es_producto": false
+  },
+  {
+    "categoria": "REFLEJOS / ILUMINACION",
+    "nombre": "Claritos (L)",
+    "precio": 120000,
+    "es_producto": false
+  },
+  {
+    "categoria": "REFLEJOS / ILUMINACION",
+    "nombre": "Claritos (XL)",
+    "precio": 140000,
+    "es_producto": false
+  },
+  {
+    "categoria": "REFLEJOS / ILUMINACION",
+    "nombre": "Claritos (Mayor XL)",
+    "precio": 160000,
+    "es_producto": false
+  },
+  {
+    "categoria": "REFLEJOS / ILUMINACION",
+    "nombre": "Mechas c/papel (S)",
+    "precio": 6000,
+    "es_producto": false
+  },
+  {
+    "categoria": "REFLEJOS / ILUMINACION",
+    "nombre": "Mechas c/papel (M)",
+    "precio": 6500,
+    "es_producto": false
+  },
+  {
+    "categoria": "REFLEJOS / ILUMINACION",
+    "nombre": "Mechas c/papel (L)",
+    "precio": 7000,
+    "es_producto": false
+  },
+  {
+    "categoria": "REFLEJOS / ILUMINACION",
+    "nombre": "Mechas c/papel (XL)",
+    "precio": 7500,
+    "es_producto": false
+  },
+  {
+    "categoria": "REFLEJOS / ILUMINACION",
+    "nombre": "Mechas c/papel (Mayor XL)",
+    "precio": 8000,
+    "es_producto": false
+  },
+  {
+    "categoria": "REFLEJOS / ILUMINACION",
+    "nombre": "Mechas rojas (S)",
+    "precio": 6500,
+    "es_producto": false
+  },
+  {
+    "categoria": "REFLEJOS / ILUMINACION",
+    "nombre": "Mechas rojas (M)",
+    "precio": 7000,
+    "es_producto": false
+  },
+  {
+    "categoria": "REFLEJOS / ILUMINACION",
+    "nombre": "Mechas rojas (L)",
+    "precio": 7500,
+    "es_producto": false
+  },
+  {
+    "categoria": "REFLEJOS / ILUMINACION",
+    "nombre": "Mechas rojas (XL)",
+    "precio": 8000,
+    "es_producto": false
+  },
+  {
+    "categoria": "REFLEJOS / ILUMINACION",
+    "nombre": "Mechas rojas (Mayor XL)",
+    "precio": 8500,
+    "es_producto": false
+  },
+  {
+    "categoria": "REFLEJOS / ILUMINACION",
+    "nombre": "Oscuritos c/gorra (S)",
+    "precio": 50000,
+    "es_producto": false
+  },
+  {
+    "categoria": "REFLEJOS / ILUMINACION",
+    "nombre": "Oscuritos c/gorra (M)",
+    "precio": 55000,
+    "es_producto": false
+  },
+  {
+    "categoria": "REFLEJOS / ILUMINACION",
+    "nombre": "Oscuritos c/gorra (L)",
+    "precio": 60000,
+    "es_producto": false
+  },
+  {
+    "categoria": "REFLEJOS / ILUMINACION",
+    "nombre": "Oscuritos c/gorra (XL)",
+    "precio": 65000,
+    "es_producto": false
+  },
+  {
+    "categoria": "REFLEJOS / ILUMINACION",
+    "nombre": "Oscuritos c/gorra (Mayor XL)",
+    "precio": 70000,
+    "es_producto": false
+  },
+  {
+    "categoria": "REFLEJOS / ILUMINACION",
+    "nombre": "Oscuritos c/papel (S)",
+    "precio": 4500,
+    "es_producto": false
+  },
+  {
+    "categoria": "REFLEJOS / ILUMINACION",
+    "nombre": "Oscuritos c/papel (M)",
+    "precio": 5000,
+    "es_producto": false
+  },
+  {
+    "categoria": "REFLEJOS / ILUMINACION",
+    "nombre": "Oscuritos c/papel (L)",
+    "precio": 5500,
+    "es_producto": false
+  },
+  {
+    "categoria": "REFLEJOS / ILUMINACION",
+    "nombre": "1 deco + bano de luz (S)",
+    "precio": 55000,
+    "es_producto": false
+  },
+  {
+    "categoria": "REFLEJOS / ILUMINACION",
+    "nombre": "1 deco + bano de luz (M)",
+    "precio": 60000,
+    "es_producto": false
+  },
+  {
+    "categoria": "REFLEJOS / ILUMINACION",
+    "nombre": "1 deco + bano de luz (L)",
+    "precio": 70000,
+    "es_producto": false
+  },
+  {
+    "categoria": "REFLEJOS / ILUMINACION",
+    "nombre": "1 deco + bano de luz (XL)",
+    "precio": 90000,
+    "es_producto": false
+  },
+  {
+    "categoria": "REFLEJOS / ILUMINACION",
+    "nombre": "1 deco + bano de luz (Mayor XL)",
+    "precio": 120000,
+    "es_producto": false
+  },
+  {
+    "categoria": "REFLEJOS / ILUMINACION",
+    "nombre": "2 deco + bano de luz (S)",
+    "precio": 65000,
+    "es_producto": false
+  },
+  {
+    "categoria": "REFLEJOS / ILUMINACION",
+    "nombre": "2 deco + bano de luz (M)",
+    "precio": 75000,
+    "es_producto": false
+  },
+  {
+    "categoria": "REFLEJOS / ILUMINACION",
+    "nombre": "2 deco + bano de luz (L)",
+    "precio": 90000,
+    "es_producto": false
+  },
+  {
+    "categoria": "REFLEJOS / ILUMINACION",
+    "nombre": "2 deco + bano de luz (XL)",
+    "precio": 110000,
+    "es_producto": false
+  },
+  {
+    "categoria": "REFLEJOS / ILUMINACION",
+    "nombre": "2 deco + bano de luz (Mayor XL)",
+    "precio": 140000,
+    "es_producto": false
+  },
+  {
+    "categoria": "REFLEJOS / ILUMINACION",
+    "nombre": "3 deco + bano de luz (S)",
+    "precio": 75000,
+    "es_producto": false
+  },
+  {
+    "categoria": "REFLEJOS / ILUMINACION",
+    "nombre": "3 deco + bano de luz (M)",
+    "precio": 85000,
+    "es_producto": false
+  },
+  {
+    "categoria": "REFLEJOS / ILUMINACION",
+    "nombre": "3 deco + bano de luz (L)",
+    "precio": 90000,
+    "es_producto": false
+  },
+  {
+    "categoria": "REFLEJOS / ILUMINACION",
+    "nombre": "3 deco + bano de luz (XL)",
+    "precio": 110000,
+    "es_producto": false
+  },
+  {
+    "categoria": "REFLEJOS / ILUMINACION",
+    "nombre": "3 deco + bano de luz (Mayor XL)",
+    "precio": 150000,
+    "es_producto": false
+  },
+  {
+    "categoria": "EXTENCIONES",
+    "nombre": "Ext x unidad",
+    "precio": 4000,
+    "es_producto": false
+  },
+  {
+    "categoria": "EXTENCIONES",
+    "nombre": "Ext x 30u",
+    "precio": 120000,
+    "es_producto": false
+  },
+  {
+    "categoria": "EXTENCIONES",
+    "nombre": "Cortinas 1/2mts",
+    "precio": 160000,
+    "es_producto": false
+  },
+  {
+    "categoria": "EXTENCIONES",
+    "nombre": "Contuning 12-13",
+    "precio": 140000,
+    "es_producto": false
+  },
+  {
+    "categoria": "EXTENCIONES",
+    "nombre": "Balayage 14",
+    "precio": 180000,
+    "es_producto": false
+  },
+  {
+    "categoria": "EXTENCIONES",
+    "nombre": "Balayage 16",
+    "precio": 200000,
+    "es_producto": false
+  }
+]

@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="es"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#2F4858"><title>Ingresar — Peluquería</title>
+<style>
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
+       background:#2F4858;display:flex;align-items:center;justify-content:center;min-height:100vh;}
+  .box{background:#fff;border-radius:18px;padding:30px;width:300px;box-shadow:0 8px 30px rgba(0,0,0,.25);}
+  h1{font-size:20px;margin:0 0 4px;color:#2F4858;text-align:center;}
+  p{margin:0 0 20px;text-align:center;color:#888;font-size:13px;}
+  label{font-size:13px;color:#666;}
+  input{width:100%;padding:11px;margin:6px 0 14px;border:1px solid #e2ddd3;border-radius:10px;font-size:15px;box-sizing:border-box;}
+  button{width:100%;background:#2e7d4f;color:#fff;border:none;border-radius:10px;padding:13px;font-size:16px;font-weight:700;cursor:pointer;}
+  .err{color:#c0392b;font-size:13px;text-align:center;margin-top:10px;min-height:18px;}
+</style></head><body>
+<div class="box">
+  <h1>💈 Salón Ivana </h1>
+  <p>Ingresá para continuar</p>
+  <label>Usuario</label><input id="u" autocomplete="username">
+  <label>Contraseña</label><input id="p" type="password" autocomplete="current-password">
+  <button id="btn">Ingresar</button>
+  <div class="err" id="err"></div>
+</div>
+<script>
+async function entrar(){
+  const u=document.getElementById("u").value.trim(), p=document.getElementById("p").value;
+  document.getElementById("err").textContent="";
+  try{
+    const r=await fetch("/api/login",{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({usuario:u,password:p})});
+    if(!r.ok){document.getElementById("err").textContent="Usuario o contraseña incorrectos";return;}
+    const d=await r.json();
+    localStorage.setItem("pelu_token",d.token);
+    localStorage.setItem("pelu_rol",d.rol);
+    localStorage.setItem("pelu_user",d.usuario);
+    location.href="/";
+  }catch(e){document.getElementById("err").textContent="No se pudo conectar";}
+}
+document.getElementById("btn").onclick=entrar;
+document.getElementById("p").addEventListener("keydown",e=>{if(e.key==="Enter")entrar();});
+</script>
+</body></html>

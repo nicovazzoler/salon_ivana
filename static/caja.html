@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#2F4858">
+<title>Caja — Cierres y arqueo</title>
+<style>
+  :root{--tinta:#2F4858;--tinta2:#3d5a6c;--crema:#f7f5f0;--linea:#e2ddd3;--ok:#2e7d4f;--rojo:#c0392b;--texto:#2b2b28;}
+  *{box-sizing:border-box;}
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;background:var(--crema);color:var(--texto);}
+  header{background:var(--tinta);color:#fff;padding:20px 30px;font-size:26px;font-weight:800;display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap;position:sticky;top:0;z-index:5;}
+  header .tit{display:flex;align-items:center;gap:10px;}
+  nav.menu{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;}
+  nav.menu a{color:#fff;text-decoration:none;font-size:14px;font-weight:600;background:rgba(255,255,255,.15);padding:9px 13px;border-radius:10px;}
+  nav.menu a.actual{background:rgba(255,255,255,.32);}
+  .wrap{max-width:1100px;margin:0 auto;padding:18px;}
+  .card{background:#fff;border:1px solid var(--linea);border-radius:14px;padding:18px;margin-bottom:20px;}
+  .card h2{margin:0 0 14px;font-size:18px;color:var(--tinta);}
+  label{font-size:13px;color:#6b6b63;display:block;margin-bottom:4px;}
+  input,select{font-size:15px;padding:9px 10px;border:1px solid var(--linea);border-radius:9px;font-family:inherit;width:100%;}
+  button{font-family:inherit;cursor:pointer;border:none;border-radius:9px;padding:10px 16px;font-size:14px;font-weight:600;}
+  .b-ok{background:var(--ok);color:#fff;} .b-out{background:#fff;border:1px solid var(--linea);}
+  .nums{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:14px;}
+  .num{background:var(--crema);border-radius:12px;padding:14px;text-align:center;}
+  .num .lbl{font-size:12px;color:#6b6b63;} .num .val{font-size:22px;font-weight:800;margin-top:4px;}
+  .num.ing .val{color:var(--ok);} .num.egr .val{color:var(--rojo);} .num.net .val{color:var(--tinta);}
+  .desg{display:flex;gap:20px;flex-wrap:wrap;font-size:14px;color:#555;}
+  .desg div{flex:1;min-width:200px;}
+  .desg b{color:var(--tinta);}
+  .fila{display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;}
+  .fila > div{flex:1;min-width:110px;}
+  table{width:100%;border-collapse:collapse;font-size:14px;}
+  th,td{padding:8px 6px;border-bottom:1px solid var(--linea);text-align:right;}
+  th:first-child,td:first-child{text-align:left;}
+  th{color:var(--tinta);font-size:12px;text-transform:uppercase;letter-spacing:.03em;}
+  .neto-pos{color:var(--ok);font-weight:700;} .neto-neg{color:var(--rojo);font-weight:700;}
+  .toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--ok);color:#fff;padding:12px 20px;border-radius:12px;font-weight:700;opacity:0;pointer-events:none;transition:opacity .25s;}
+  .toast.show{opacity:1;}
+  .money{font-variant-numeric:tabular-nums;}
+</style>
+</head>
+<body>
+<header>
+  <span class="tit">💰 Caja</span>
+  <nav class="menu">
+    <a href="/">Facturación</a>
+    <a href="/caja" class="actual">Caja</a>
+    <a href="/inventario" data-rol="dueno">Inventario</a>
+    <a href="/reportes" data-rol="dueno">Reportes</a>
+    <a href="/admin" data-rol="dueno">Admin</a>
+    <a href="#" onclick="logout();return false;">Salir</a>
+  </nav>
+</header>
+<div class="wrap">
+
+  <div class="card">
+    <h2>Cierre del día</h2>
+    <div class="fila" style="margin-bottom:14px;">
+      <div style="max-width:200px;"><label>Fecha</label><input type="date" id="fecha"></div>
+    </div>
+    <div class="nums">
+      <div class="num ing"><div class="lbl">Ingresos</div><div class="val money" id="ing">$0</div></div>
+      <div class="num egr"><div class="lbl">Egresos</div><div class="val money" id="egr">$0</div></div>
+      <div class="num net"><div class="lbl">Neto</div><div class="val money" id="net">$0</div></div>
+      <div class="num"><div class="lbl">Ventas</div><div class="val" id="cant">0</div></div>
+    </div>
+    <div class="desg">
+      <div><b>Ingresos por forma de pago</b><div id="porPago"></div></div>
+      <div><b>Egresos por tipo</b><div id="porTipo"></div></div>
+    </div>
+    <div id="detalle" style="margin-top:16px;"></div>
+  </div>
+
+  <div class="card">
+    <h2>💵 Arqueo de caja (efectivo del día)</h2>
+    <div class="fila" id="fondoEdit" style="margin-bottom:14px;">
+      <div style="max-width:220px;"><label>Fondo inicial del día</label><input id="fondo" type="number"></div>
+      <button class="b-out" id="btnFondo">Guardar fondo</button>
+    </div>
+    <table style="max-width:420px;">
+      <tbody>
+        <tr><td>Fondo inicial</td><td class="money" id="aqFondo">$0</td></tr>
+        <tr><td>+ Ventas en efectivo</td><td class="money" id="aqVentas">$0</td></tr>
+        <tr><td>− Egresos en efectivo</td><td class="money" id="aqEgresos">$0</td></tr>
+        <tr style="border-top:2px solid var(--tinta);"><td><b>= Debería haber en caja</b></td><td class="money" id="aqEsperado" style="font-weight:800;color:var(--ok);font-size:18px;">$0</td></tr>
+      </tbody>
+    </table>
+    <p style="color:#9a9a92;font-size:13px;margin-top:8px;">Es lo que tendría que haber en efectivo al cerrar. El fondo es por día: si no lo cambiás, se arrastra el último que pusiste.</p>
+  </div>
+
+</div>
+<div class="toast" id="toast"></div>
+
+<script src="/static/auth.js"></script>
+<script>
+requireLogin(); pintarNav();
+const $=s=>document.querySelector(s);
+if(getRol()!=="dueno"){ const fe=document.getElementById("fondoEdit"); if(fe) fe.style.display="none"; }
+const money=n=>"$"+(n||0).toLocaleString("es-AR");
+function toast(m){const t=$("#toast");t.textContent=m;t.classList.add("show");setTimeout(()=>t.classList.remove("show"),2200);}
+
+const hoyISO=new Date().toLocaleDateString("en-CA"); // YYYY-MM-DD local
+$("#fecha").value=hoyISO;
+
+async function cargarDia(){
+  const f=$("#fecha").value;
+  const d=await (await authFetch("/api/caja/dia?fecha="+f)).json();
+  $("#ing").textContent=money(d.ingresos);
+  $("#egr").textContent=money(d.egresos);
+  $("#net").textContent=money(d.neto);
+  $("#cant").textContent=d.ventas;
+  $("#porPago").innerHTML=Object.keys(d.ingresos_por_pago).length
+    ? Object.entries(d.ingresos_por_pago).map(([k,v])=>`${k}: ${money(v)}`).join("<br>") : '<span style="color:#aaa">—</span>';
+  $("#porTipo").innerHTML=Object.keys(d.egresos_por_tipo).length
+    ? Object.entries(d.egresos_por_tipo).map(([k,v])=>`${k}: ${money(v)}`).join("<br>") : '<span style="color:#aaa">—</span>';
+
+  // detalle de cada venta y egreso del dia (editable por el dueño)
+  const ei = "padding:6px;border:1px solid var(--linea);border-radius:7px;font-size:13px;box-sizing:border-box;width:100%;";
+  const bsv = "background:var(--tinta);color:#fff;border:none;border-radius:7px;padding:6px 9px;font-size:12px;font-weight:600;cursor:pointer;";
+  const bdl = "background:#fff;border:1px solid #c0392b;color:#c0392b;border-radius:7px;padding:6px 9px;font-size:12px;font-weight:600;cursor:pointer;";
+  let html = "";
+  if(d.ventas_detalle && d.ventas_detalle.length){
+    html += '<b style="color:var(--tinta);">Ventas del día</b><table style="margin-top:6px;"><thead><tr><th>Hora</th><th>Detalle</th><th>Pago</th><th>Total</th><th></th></tr></thead><tbody>';
+    d.ventas_detalle.forEach(v=>{
+      const items=v.lineas.map(l=>`${l.cantidad}× ${l.nombre}`).join(", ");
+      const al=v.alias?` (${v.alias})`:"";
+      html+=`<tr><td>${v.hora}</td><td>${items}</td><td>${v.forma_pago}${al}</td><td class="money">${money(v.total)}</td>
+             <td><button style="${bdl}" onclick="anularVentaCaja(${v.id})">Anular</button></td></tr>`;
+    });
+    html += '</tbody></table>';
+  }
+  if(d.egresos_detalle && d.egresos_detalle.length){
+    html += '<b style="color:var(--tinta);display:block;margin-top:14px;">Egresos del día</b><table style="margin-top:6px;"><thead><tr><th>Hora</th><th>Tipo</th><th>Concepto</th><th>Monto</th><th></th></tr></thead><tbody>';
+    d.egresos_detalle.forEach(e=>{
+      html+=`<tr><td>${e.hora}</td>
+        <td><input id="ec_tipo_${e.id}" value="${e.tipo||''}" style="${ei}"></td>
+        <td><input id="ec_conc_${e.id}" value="${e.concepto||''}" style="${ei}"></td>
+        <td><input id="ec_monto_${e.id}" type="number" value="${e.monto}" style="${ei}max-width:95px;"></td>
+        <td style="white-space:nowrap;"><button style="${bsv}" onclick="guardarEgresoCaja(${e.id})">✓</button>
+            <button style="${bdl}" onclick="anularEgresoCaja(${e.id})">×</button></td></tr>`;
+    });
+    html += '</tbody></table>';
+  }
+  if(!html) html = '<span style="color:#aaa">Sin movimientos en esta fecha.</span>';
+  $("#detalle").innerHTML = html;
+
+  // arqueo de efectivo
+  $("#fondo").value = d.fondo;
+  $("#aqFondo").textContent = money(d.fondo);
+  $("#aqVentas").textContent = money(d.efectivo_ventas);
+  $("#aqEgresos").textContent = money(d.efectivo_egresos);
+  $("#aqEsperado").textContent = money(d.efectivo_esperado);
+}
+$("#fecha").onchange=cargarDia;
+
+$("#btnFondo").onclick=async()=>{
+  await authFetch("/api/config/fondo-caja",{method:"PUT",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({valor:parseInt($("#fondo").value)||0, fecha:$("#fecha").value})});
+  toast("Fondo guardado para "+$("#fecha").value); cargarDia();
+};
+
+async function anularVentaCaja(id){
+  if(!confirm("¿Anular esta venta? Se borra del registro y se devuelve el stock."))return;
+  const r=await authFetch("/api/ventas/"+id,{method:"DELETE"});
+  if(!r.ok){toast("No se pudo");return;}
+  toast("Venta anulada"); cargarDia();
+}
+async function guardarEgresoCaja(id){
+  await authFetch("/api/egresos/"+id,{method:"PUT",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({tipo:document.getElementById("ec_tipo_"+id).value,
+                         concepto:document.getElementById("ec_conc_"+id).value,
+                         monto:parseInt(document.getElementById("ec_monto_"+id).value)||0})});
+  toast("Egreso actualizado"); cargarDia();
+}
+async function anularEgresoCaja(id){
+  if(!confirm("¿Anular este egreso?"))return;
+  await authFetch("/api/egresos/"+id,{method:"DELETE"});
+  toast("Egreso anulado"); cargarDia();
+}
+
+cargarDia();
+</script>
+</body>
+</html>

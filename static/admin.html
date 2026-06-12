@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#2F4858">
+<title>Administración — Peluquería</title>
+<style>
+  :root{--tinta:#2F4858;--tinta2:#3d5a6c;--crema:#f7f5f0;--linea:#e2ddd3;--ok:#2e7d4f;--rojo:#c0392b;--texto:#2b2b28;}
+  *{box-sizing:border-box;}
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;background:var(--crema);color:var(--texto);}
+  header{background:var(--tinta);color:#fff;padding:20px 30px;font-size:26px;font-weight:800;display:flex;justify-content:space-between;align-items:center;position:sticky;top:0;z-index:5;}
+  header a{color:#fff;text-decoration:none;font-size:14px;font-weight:500;background:rgba(255,255,255,.15);padding:8px 14px;border-radius:10px;}
+  .wrap{max-width:1100px;margin:0 auto;padding:18px;}
+  .card{background:#fff;border:1px solid var(--linea);border-radius:14px;padding:18px;margin-bottom:20px;}
+  .card h2{margin:0 0 14px;font-size:17px;color:var(--tinta);}
+  label{font-size:13px;color:#6b6b63;display:block;margin-bottom:4px;}
+  input,select{font-size:15px;padding:9px 10px;border:1px solid var(--linea);border-radius:9px;font-family:inherit;width:100%;}
+  .fila{display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;margin-bottom:10px;}
+  .fila > div{flex:1;min-width:90px;}
+  button{font-family:inherit;cursor:pointer;border:none;border-radius:9px;padding:9px 14px;font-size:14px;font-weight:600;}
+  .b-ok{background:var(--ok);color:#fff;}
+  .b-tinta{background:var(--tinta);color:#fff;}
+  .b-out{background:#fff;border:1px solid var(--linea);color:var(--texto);}
+  .b-del{background:#fff;border:1px solid var(--rojo);color:var(--rojo);}
+  .item-row{display:flex;gap:8px;align-items:center;padding:8px 0;border-bottom:1px solid var(--linea);}
+  .item-row .n{flex:2;} .item-row .p{flex:1;max-width:120px;}
+  .muted{color:#9a9a92;font-size:13px;}
+  .toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--ok);color:#fff;padding:12px 20px;border-radius:12px;font-weight:700;opacity:0;pointer-events:none;transition:opacity .25s;}
+  .toast.show{opacity:1;}
+  .tag{font-size:11px;background:#eef3f1;color:var(--ok);padding:2px 8px;border-radius:20px;}
+  hr{border:none;border-top:1px solid var(--linea);margin:16px 0;}
+</style>
+</head>
+<body>
+<header>
+  <span>⚙️ Administracion</span>
+  <span style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;"><a href="/" style="color:#fff;text-decoration:none;font-size:13px;background:rgba(255,255,255,.15);padding:7px 10px;border-radius:9px;">Facturación</a><a href="/caja" style="color:#fff;text-decoration:none;font-size:13px;background:rgba(255,255,255,.15);padding:7px 10px;border-radius:9px;">Caja</a><a href="/inventario" data-rol="dueno" style="color:#fff;text-decoration:none;font-size:13px;background:rgba(255,255,255,.15);padding:7px 10px;border-radius:9px;">Inventario</a><a href="/reportes" data-rol="dueno" style="color:#fff;text-decoration:none;font-size:13px;background:rgba(255,255,255,.15);padding:7px 10px;border-radius:9px;">Reportes</a><a href="/admin" data-rol="dueno" style="color:#fff;text-decoration:none;font-size:13px;background:rgba(255,255,255,.15);padding:7px 10px;border-radius:9px;">Admin</a><a href="#" onclick="logout();return false;" style="color:#fff;text-decoration:none;font-size:13px;background:rgba(255,255,255,.15);padding:7px 10px;border-radius:9px;">Salir</a></span>
+</header>
+<div class="wrap">
+
+  <div class="card">
+    <h2>Servicios y productos</h2>
+    <div style="margin-bottom:12px;">
+      <input id="buscarItem" placeholder="🔎 Buscar por nombre (en todas las categorías)..." style="width:100%;">
+    </div>
+    <div class="fila">
+      <div>
+        <label>Categoría</label>
+        <select id="selCat"></select>
+      </div>
+      <button class="b-out" id="btnRenombrar">Renombrar categoría</button>
+    </div>
+    <div id="listaItems"></div>
+    <hr>
+    <h2 style="font-size:15px;">Agregar nuevo ítem</h2>
+    <div class="fila">
+      <div><label>Categoría</label><input id="nCat" list="cats" placeholder="existente o nueva"></div>
+      <div><label>Nombre</label><input id="nNom" placeholder="Ej: Corte nuevo"></div>
+      <div><label>Precio</label><input id="nPre" type="number" placeholder="0"></div>
+      <div style="flex:0;min-width:auto;display:flex;align-items:center;gap:6px;padding-bottom:9px;">
+        <input type="checkbox" id="nProd" style="width:auto;"><label style="margin:0;">Es producto</label>
+      </div>
+      <button class="b-ok" id="btnAgregar">Agregar</button>
+    </div>
+    <datalist id="cats"></datalist>
+  </div>
+
+  <div class="card">
+    <h2>Formas de pago</h2>
+    <div id="listaFormas"></div>
+    <hr>
+    <div class="fila">
+      <div><label>Nueva forma de pago</label><input id="nForma" placeholder="Ej: Cuenta DNI"></div>
+      <button class="b-ok" id="btnForma">Agregar</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Extra por dificultad</h2>
+    <div class="fila">
+      <div style="max-width:200px;"><label>Monto que se suma al marcar "Dif"</label><input id="extra" type="number"></div>
+      <button class="b-ok" id="btnExtra">Guardar</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Tipos de egreso</h2>
+    <div id="listaTipos"></div>
+    <hr>
+    <div class="fila">
+      <div><label>Nuevo tipo de egreso</label><input id="nTipo" placeholder="Ej: Alquiler"></div>
+      <button class="b-ok" id="btnTipo">Agregar</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Usuarios y contraseñas</h2>
+    <div id="listaUsuarios"></div>
+    <hr>
+    <h2 style="font-size:15px;">Crear usuario</h2>
+    <div class="fila">
+      <div><label>Usuario</label><input id="uNom" placeholder="Ej: maria"></div>
+      <div><label>Contraseña</label><input id="uPass" type="text" placeholder="clave inicial"></div>
+      <div style="flex:0;min-width:120px;"><label>Rol</label>
+        <select id="uRol"><option value="empleado">Empleado</option><option value="dueno">Dueño</option></select></div>
+      <button class="b-ok" id="btnUsuario">Crear</button>
+    </div>
+    <hr>
+    <h2 style="font-size:15px;">Cambiar mi contraseña</h2>
+    <div class="fila">
+      <div style="max-width:240px;"><label>Nueva contraseña</label><input id="miPass" type="text"></div>
+      <button class="b-tinta" id="btnMiPass">Cambiar</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Alias de transferencia</h2>
+    <p class="muted">Las cuentas que aparecen como opción al cobrar por transferencia.</p>
+    <div id="listaAlias"></div>
+    <hr>
+    <div class="fila">
+      <div><label>Nuevo alias</label><input id="nAlias" placeholder="Ej: pelu.mp"></div>
+      <button class="b-ok" id="btnAlias">Agregar</button>
+    </div>
+  </div>
+
+</div>
+<div class="toast" id="toast"></div>
+
+<script src="/static/auth.js"></script>
+<script>
+requireDueno(); pintarNav();
+const $=s=>document.querySelector(s);
+let catActual=null;
+let ITEMS_ALL=[];
+
+function toast(m){const t=$("#toast");t.textContent=m;t.classList.add("show");setTimeout(()=>t.classList.remove("show"),2200);}
+
+async function cargarCats(){
+  const cats=await (await authFetch("/api/categorias")).json();
+  $("#selCat").innerHTML=cats.map(c=>`<option>${c}</option>`).join("");
+  $("#cats").innerHTML=cats.map(c=>`<option value="${c}">`).join("");
+  catActual=$("#selCat").value;
+  ITEMS_ALL=await (await authFetch("/api/items/all")).json();
+  if($("#buscarItem").value.trim()) filtrarItems(); else cargarItems();
+}
+$("#selCat").onchange=()=>{catActual=$("#selCat").value;$("#buscarItem").value="";cargarItems();};
+$("#buscarItem").oninput=filtrarItems;
+
+function filtrarItems(){
+  const q=$("#buscarItem").value.trim().toLowerCase();
+  if(!q){ cargarItems(); return; }
+  const f=ITEMS_ALL.filter(i=>i.nombre.toLowerCase().includes(q));
+  renderItems(f, true);
+}
+
+async function cargarItems(){
+  const items=await (await authFetch("/api/items?categoria="+encodeURIComponent(catActual))).json();
+  renderItems(items, false);
+}
+
+function renderItems(items, mostrarCat){
+  const cont=$("#listaItems");
+  if(items.length===0){cont.innerHTML='<p class="muted">Sin ítems para mostrar.</p>';return;}
+  cont.innerHTML="";
+  items.forEach(it=>{
+    const row=document.createElement("div");row.className="item-row";
+    const cat = mostrarCat ? `<span class="tag" style="background:var(--crema);color:#777;">${it.categoria}</span>` : "";
+    row.innerHTML=`
+      <input class="n" value="${it.nombre.replace(/"/g,'&quot;')}">
+      <input class="p" type="number" value="${it.precio}">
+      ${cat}${it.es_producto?'<span class="tag">prod</span>':''}
+      <button class="b-tinta guardar">Guardar</button>
+      <button class="b-del borrar">Eliminar</button>`;
+    row.querySelector(".guardar").onclick=async()=>{
+      await authFetch(`/api/items/${it.id}`,{method:"PUT",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({nombre:row.querySelector(".n").value,precio:parseInt(row.querySelector(".p").value)})});
+      toast("Guardado"); ITEMS_ALL=await (await authFetch("/api/items/all")).json();
+    };
+    row.querySelector(".borrar").onclick=async()=>{
+      if(!confirm(`¿Eliminar "${it.nombre}"?`))return;
+      await authFetch(`/api/items/${it.id}`,{method:"DELETE"});
+      toast("Eliminado"); ITEMS_ALL=await (await authFetch("/api/items/all")).json();
+      filtrarItems();
+    };
+    cont.appendChild(row);
+  });
+}
+
+$("#btnAgregar").onclick=async()=>{
+  const cat=$("#nCat").value.trim(),nom=$("#nNom").value.trim(),pre=parseInt($("#nPre").value);
+  if(!cat||!nom||!pre){toast("Completá categoría, nombre y precio");return;}
+  await authFetch("/api/items",{method:"POST",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({categoria:cat,nombre:nom,precio:pre,es_producto:$("#nProd").checked})});
+  $("#nNom").value="";$("#nPre").value="";$("#nProd").checked=false;
+  toast("Ítem agregado");await cargarCats();
+};
+
+$("#btnRenombrar").onclick=async()=>{
+  const nuevo=prompt(`Renombrar la categoría "${catActual}" a:`,catActual);
+  if(!nuevo||nuevo.trim()===catActual)return;
+  await authFetch("/api/categorias",{method:"PUT",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({viejo:catActual,nuevo:nuevo.trim()})});
+  toast("Categoría renombrada");await cargarCats();
+};
+
+async function cargarFormas(){
+  const formas=await (await authFetch("/api/formas")).json();
+  const cont=$("#listaFormas");cont.innerHTML="";
+  formas.forEach(f=>{
+    const row=document.createElement("div");row.className="item-row";
+    row.innerHTML=`<span class="n">${f.nombre}</span><button class="b-del">Eliminar</button>`;
+    row.querySelector("button").onclick=async()=>{
+      await authFetch(`/api/formas/${f.id}`,{method:"DELETE"});toast("Eliminada");cargarFormas();
+    };
+    cont.appendChild(row);
+  });
+}
+$("#btnForma").onclick=async()=>{
+  const n=$("#nForma").value.trim();if(!n){return;}
+  await authFetch("/api/formas",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({nombre:n})});
+  $("#nForma").value="";toast("Forma agregada");cargarFormas();
+};
+
+// --- Extra por dificultad ---
+async function cargarExtra(){
+  const cfg=await (await authFetch("/api/config")).json();
+  $("#extra").value=cfg.extra_dificultad;
+}
+$("#btnExtra").onclick=async()=>{
+  await authFetch("/api/config/extra-dificultad",{method:"PUT",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({valor:parseInt($("#extra").value)||0})});
+  toast("Extra actualizado");
+};
+
+// --- Tipos de egreso ---
+async function cargarTipos(){
+  const tipos=await (await authFetch("/api/tipos-egreso")).json();
+  const cont=$("#listaTipos");cont.innerHTML="";
+  tipos.forEach(t=>{
+    const row=document.createElement("div");row.className="item-row";
+    row.innerHTML=`<span class="n">${t.nombre}</span><button class="b-del">Eliminar</button>`;
+    row.querySelector("button").onclick=async()=>{await authFetch(`/api/tipos-egreso/${t.id}`,{method:"DELETE"});toast("Eliminado");cargarTipos();};
+    cont.appendChild(row);
+  });
+}
+$("#btnTipo").onclick=async()=>{
+  const n=$("#nTipo").value.trim();if(!n)return;
+  await authFetch("/api/tipos-egreso",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({nombre:n})});
+  $("#nTipo").value="";toast("Tipo agregado");cargarTipos();
+};
+
+// --- Usuarios ---
+async function cargarUsuarios(){
+  const us=await (await authFetch("/api/usuarios")).json();
+  const cont=$("#listaUsuarios");cont.innerHTML="";
+  us.forEach(u=>{
+    const row=document.createElement("div");row.className="item-row";
+    row.innerHTML=`
+      <input class="uNombre" value="${u.usuario}" style="flex:1.4;">
+      <select class="uRolEd" style="max-width:120px;">
+        <option value="empleado"${u.rol==="empleado"?" selected":""}>Empleado</option>
+        <option value="dueno"${u.rol==="dueno"?" selected":""}>Dueño</option>
+      </select>
+      <input class="uClave" type="text" placeholder="nueva clave (opcional)" style="max-width:150px;">
+      <button class="b-tinta guardarU">Guardar</button>
+      <button class="b-del borrarU">Eliminar</button>`;
+    row.querySelector(".guardarU").onclick=async()=>{
+      const cambios={usuario:row.querySelector(".uNombre").value.trim(), rol:row.querySelector(".uRolEd").value};
+      const cl=row.querySelector(".uClave").value;
+      if(cl) cambios.password=cl;
+      const r=await authFetch(`/api/usuarios/${u.id}`,{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify(cambios)});
+      if(!r.ok){const e=await r.json();toast(e.detail||"No se pudo");return;}
+      toast("Usuario actualizado");cargarUsuarios();
+    };
+    row.querySelector(".borrarU").onclick=async()=>{
+      if(!confirm(`¿Eliminar al usuario "${u.usuario}"?`))return;
+      const r=await authFetch(`/api/usuarios/${u.id}`,{method:"DELETE"});
+      if(!r.ok){const e=await r.json();toast(e.detail||"No se pudo");return;}
+      toast("Eliminado");cargarUsuarios();
+    };
+    cont.appendChild(row);
+  });
+}
+$("#btnUsuario").onclick=async()=>{
+  const u=$("#uNom").value.trim(),p=$("#uPass").value;
+  if(!u||!p){toast("Completá usuario y contraseña");return;}
+  const r=await authFetch("/api/usuarios",{method:"POST",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({usuario:u,password:p,rol:$("#uRol").value})});
+  if(!r.ok){const e=await r.json();toast(e.detail||"No se pudo");return;}
+  $("#uNom").value="";$("#uPass").value="";toast("Usuario creado");cargarUsuarios();
+};
+$("#btnMiPass").onclick=async()=>{
+  const p=$("#miPass").value;if(!p){toast("Escribí la nueva contraseña");return;}
+  await authFetch("/api/usuarios/password",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify({nueva:p})});
+  $("#miPass").value="";toast("Contraseña cambiada");
+};
+
+// --- Alias de transferencia ---
+async function cargarAlias(){
+  const al=await (await authFetch("/api/alias")).json();
+  const cont=$("#listaAlias");cont.innerHTML="";
+  if(al.length===0){cont.innerHTML='<p class="muted">Sin alias cargados.</p>';}
+  al.forEach(a=>{
+    const row=document.createElement("div");row.className="item-row";
+    row.innerHTML=`<span class="n">${a.nombre}</span><button class="b-del">Eliminar</button>`;
+    row.querySelector("button").onclick=async()=>{await authFetch(`/api/alias/${a.id}`,{method:"DELETE"});toast("Eliminado");cargarAlias();};
+    cont.appendChild(row);
+  });
+}
+$("#btnAlias").onclick=async()=>{
+  const n=$("#nAlias").value.trim();if(!n)return;
+  await authFetch("/api/alias",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({nombre:n})});
+  $("#nAlias").value="";toast("Alias agregado");cargarAlias();
+};
+
+cargarCats();cargarFormas();cargarExtra();cargarTipos();cargarUsuarios();cargarAlias();
+</script>
+</body>
+</html>
