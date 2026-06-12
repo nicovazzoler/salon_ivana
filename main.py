@@ -311,7 +311,10 @@ def crear_venta(venta: VentaIn, _ = Depends(usuario_actual), db: Session = Depen
     for ln in venta.lineas:
         item = db.get(models.Item, ln.item_id)
         if not item: raise HTTPException(404, f"Item {ln.item_id} no existe")
-        sub = item.precio * ln.cantidad + (extra if ln.dificultad else 0)
+        base = item.precio * ln.cantidad
+        if venta.forma_pago == "Efectivo":
+            base = round(base * 0.9)
+        sub = base + (extra if ln.dificultad else 0)
         total += sub
         db.add(models.VentaLinea(venta_id=v.id, item_id=item.id, nombre=item.nombre,
                                  cantidad=ln.cantidad, precio_unit=item.precio,

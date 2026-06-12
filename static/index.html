@@ -326,13 +326,21 @@ function agregar(it){
   mostrarToast(it.nombre+" agregado");
 }
 
+function calcSub(l){
+  let base = l.precio * l.cantidad;
+  if (formaPago === "Efectivo"){
+    base = Math.round(base * 0.90);
+  }
+  return base + (l.dificultad?extraDif:0)
+}
+
 function renderTicket(){
   const cont = $("#lineas"); cont.innerHTML = "";
   if(ticket.length===0){
     cont.innerHTML = '<div class="vacio">Tocá un servicio o producto<br>para empezar la venta</div>';
   }
   ticket.forEach((l,i)=>{
-    const sub = l.precio*l.cantidad + (l.dificultad?extraDif:0);
+    const sub = calcSub(l);
     const row = document.createElement("div");
     row.className = "linea";
     row.innerHTML = `
@@ -348,7 +356,7 @@ function renderTicket(){
     row.querySelector(".quitar").onclick= ()=>{ ticket.splice(i,1); renderTicket(); };
     cont.appendChild(row);
   });
-  const total = ticket.reduce((a,l)=>a + l.precio*l.cantidad + (l.dificultad?extraDif:0), 0);
+  const total = ticket.reduce((a,l)=>a + calcSub(l), 0);
   $("#total").textContent = fmt(total);
   $("#confirmar").disabled = (ticket.length===0 || !formaPago);
 }
