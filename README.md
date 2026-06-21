@@ -32,7 +32,7 @@ ABM de productos, categorías, precios, formas de pago y recargos, sin necesidad
 
 ## 💡 El problema que resuelve
 
-El comercio llevaba las ventas, los gastos y el cierre de caja de forma manual, sin un registro confiable ni forma de ver qué se vendía más ni cuánto entraba por día. Pelu App centraliza todo eso: cobra, registra egresos, cierra la caja con arqueo de efectivo y muestra la evolución del negocio en gráficos, en una sola herramienta pensada para el día a día del local.
+El comercio llevaba las ventas, los gastos y el cierre de caja de forma manual, sin un registro confiable ni forma de ver qué se vendía más ni cuánto entraba por día. Este sistema de gestión centraliza todo eso: cobra, registra egresos, cierra la caja con arqueo de efectivo y muestra la evolución del negocio en gráficos, en una sola herramienta pensada para el día a día del local.
 
 ---
 
@@ -53,7 +53,7 @@ El comercio llevaba las ventas, los gastos y el cierre de caja de forma manual, 
 |---|---|
 | **Backend** | Python · FastAPI · SQLAlchemy (ORM) · Pydantic · Uvicorn (ASGI) |
 | **Base de datos** | SQLite (desarrollo) · PostgreSQL (producción) |
-| **Frontend** | HTML · CSS · JavaScript *vanilla* (sin frameworks) · Chart.js |
+| **Frontend** | HTML · CSS · JavaScript (sin frameworks) · Chart.js |
 | **Autenticación** | Tokens firmados con HMAC (stateless) · hashing de contraseñas con PBKDF2 + salt |
 | **Despliegue** | Procfile (Railway / Render) · variables de entorno para configuración |
 
@@ -154,4 +154,4 @@ Funcionalidades en evaluación / desarrollo:
 
 ## 👤 Sobre el proyecto y mi rol
 
-Identifiqué la necesidad de un comercio real y diseñé el sistema de punta a punta: el **modelo de datos**, la **lógica de negocio** (facturación, arqueo de caja, reportes, control de roles) y la **arquitectura cliente-servidor**. Me ocupo de su mantenimiento y evolución, entendiendo, depurando y extendiendo el código a medida que el negocio lo necesita.
+Identifiqué la necesidad del comercio de mi amigo y diseñé el sistema: el **modelo de datos**, la **lógica de negocio** (facturación, arqueo de caja, reportes, control de roles) y la **arquitectura cliente-servidor**. Me ocupo de su mantenimiento y evolución, entendiendo, depurando y extendiendo el código a medida que el negocio lo necesita.
