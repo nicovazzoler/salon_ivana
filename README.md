@@ -1,4 +1,4 @@
-# Pelu App — Sistema de gestión para comercios
+# App para peluquería — Sistema de gestión para comercios
 
 Aplicación web full-stack para la gestión diaria de un comercio: facturación, caja, inventario, reportes y administración, con control de acceso por roles. Pensada y construida para uso real en un negocio.
 
