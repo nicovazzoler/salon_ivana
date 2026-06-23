@@ -101,6 +101,14 @@ uvicorn main:app --reload --port 8000
 
 # 4. Abrir en el navegador
 #    http://127.0.0.1:8000/login
+
+### Usuarios iniciales
+
+| Usuario | Contraseña | Rol |
+|---|---|---|
+| `dueno` | `dueno1234` | Acceso total |
+| `empleado` | `empleado1234` | Solo facturación |
+
 ```
 
 Para acceder desde otro dispositivo en la misma red (ej: una tablet), levantar con `--host 0.0.0.0` y entrar a `http://[IP-de-la-PC]:8000`.
