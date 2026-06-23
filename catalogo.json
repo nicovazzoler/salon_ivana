@@ -1,7 +1,7 @@
 [
   {
     "categoria": "ROSTRO",
-    "nombre": "Higiene basica",
+    "nombre": "Higiene básica",
     "precio": 23500,
     "es_producto": false
   },
@@ -25,7 +25,7 @@
   },
   {
     "categoria": "ROSTRO",
-    "nombre": "Limpieza profunda + Aparatologia",
+    "nombre": "Limpieza profunda + Aparatología",
     "precio": 48000,
     "es_producto": false
   },
@@ -49,13 +49,13 @@
   },
   {
     "categoria": "CEJAS",
-    "nombre": "Perfilado basico (botox + tinte)",
+    "nombre": "Perfilado básico (botox + tinte)",
     "precio": 23000,
     "es_producto": false
   },
   {
     "categoria": "CEJAS",
-    "nombre": "Perfilado profundo (laminado, tinte y nutricion)",
+    "nombre": "Perfilado profundo (laminado, tinte y nutrición)",
     "precio": 26500,
     "es_producto": false
   },
@@ -66,31 +66,31 @@
     "es_producto": false
   },
   {
-    "categoria": "UNAS",
+    "categoria": "UÑAS",
     "nombre": "Semi manos",
     "precio": 23000,
     "es_producto": false
   },
   {
-    "categoria": "UNAS",
+    "categoria": "UÑAS",
     "nombre": "Kapping",
     "precio": 26000,
     "es_producto": false
   },
   {
-    "categoria": "UNAS",
+    "categoria": "UÑAS",
     "nombre": "Retirado",
     "precio": 8500,
     "es_producto": false
   },
   {
-    "categoria": "UNAS",
-    "nombre": "Unas / Soft gel",
+    "categoria": "UÑAS",
+    "nombre": "UÑAS / Soft gel",
     "precio": 26500,
     "es_producto": false
   },
   {
-    "categoria": "UNAS",
+    "categoria": "UÑAS",
     "nombre": "Semi pies",
     "precio": 23000,
     "es_producto": false
@@ -114,20 +114,20 @@
     "es_producto": false
   },
   {
-    "categoria": "PESTANAS",
+    "categoria": "PESTAÑAS",
     "nombre": "Lifting c/nutri + tinte",
     "precio": 27500,
     "es_producto": false
   },
   {
     "categoria": "Productos",
-    "nombre": "Brillo de argan",
+    "nombre": "Brillo de argán",
     "precio": 13500,
     "es_producto": true
   },
   {
     "categoria": "Productos",
-    "nombre": "Crema p/peinar argan",
+    "nombre": "Crema p/peinar argán",
     "precio": 6500,
     "es_producto": true
   },
@@ -139,7 +139,7 @@
   },
   {
     "categoria": "Productos",
-    "nombre": "Mascara Keratina",
+    "nombre": "Máscara Keratina",
     "precio": 5500,
     "es_producto": true
   },
@@ -217,13 +217,13 @@
   },
   {
     "categoria": "Productos",
-    "nombre": "Cerra",
+    "nombre": "Cera",
     "precio": 7000,
     "es_producto": true
   },
   {
     "categoria": "Productos",
-    "nombre": "Gorrita para bano",
+    "nombre": "Gorrita para baño",
     "precio": 4000,
     "es_producto": true
   },
@@ -283,7 +283,7 @@
   },
   {
     "categoria": "CORTES DE PELO",
-    "nombre": "Corte salon hombre",
+    "nombre": "Corte salón hombre",
     "precio": 12000,
     "es_producto": false
   },
@@ -667,7 +667,7 @@
   },
   {
     "categoria": "COLOR",
-    "nombre": "Bano de luz 10gr/cm",
+    "nombre": "baño de luz 10gr/cm",
     "precio": 25000,
     "es_producto": false
   },
@@ -684,265 +684,265 @@
     "es_producto": false
   },
   {
-    "categoria": "REFLEJOS / ILUMINACION",
+    "categoria": "REFLEJOS / ILUMINACIÓN",
     "nombre": "Claritos (S)",
     "precio": 75000,
     "es_producto": false
   },
   {
-    "categoria": "REFLEJOS / ILUMINACION",
+    "categoria": "REFLEJOS / ILUMINACIÓN",
     "nombre": "Claritos (M)",
     "precio": 95000,
     "es_producto": false
   },
   {
-    "categoria": "REFLEJOS / ILUMINACION",
+    "categoria": "REFLEJOS / ILUMINACIÓN",
     "nombre": "Claritos (L)",
     "precio": 120000,
     "es_producto": false
   },
   {
-    "categoria": "REFLEJOS / ILUMINACION",
+    "categoria": "REFLEJOS / ILUMINACIÓN",
     "nombre": "Claritos (XL)",
     "precio": 140000,
     "es_producto": false
   },
   {
-    "categoria": "REFLEJOS / ILUMINACION",
+    "categoria": "REFLEJOS / ILUMINACIÓN",
     "nombre": "Claritos (Mayor XL)",
     "precio": 160000,
     "es_producto": false
   },
   {
-    "categoria": "REFLEJOS / ILUMINACION",
+    "categoria": "REFLEJOS / ILUMINACIÓN",
     "nombre": "Mechas c/papel (S)",
     "precio": 6000,
     "es_producto": false
   },
   {
-    "categoria": "REFLEJOS / ILUMINACION",
+    "categoria": "REFLEJOS / ILUMINACIÓN",
     "nombre": "Mechas c/papel (M)",
     "precio": 6500,
     "es_producto": false
   },
   {
-    "categoria": "REFLEJOS / ILUMINACION",
+    "categoria": "REFLEJOS / ILUMINACIÓN",
     "nombre": "Mechas c/papel (L)",
     "precio": 7000,
     "es_producto": false
   },
   {
-    "categoria": "REFLEJOS / ILUMINACION",
+    "categoria": "REFLEJOS / ILUMINACIÓN",
     "nombre": "Mechas c/papel (XL)",
     "precio": 7500,
     "es_producto": false
   },
   {
-    "categoria": "REFLEJOS / ILUMINACION",
+    "categoria": "REFLEJOS / ILUMINACIÓN",
     "nombre": "Mechas c/papel (Mayor XL)",
     "precio": 8000,
     "es_producto": false
   },
   {
-    "categoria": "REFLEJOS / ILUMINACION",
+    "categoria": "REFLEJOS / ILUMINACIÓN",
     "nombre": "Mechas rojas (S)",
     "precio": 6500,
     "es_producto": false
   },
   {
-    "categoria": "REFLEJOS / ILUMINACION",
+    "categoria": "REFLEJOS / ILUMINACIÓN",
     "nombre": "Mechas rojas (M)",
     "precio": 7000,
     "es_producto": false
   },
   {
-    "categoria": "REFLEJOS / ILUMINACION",
+    "categoria": "REFLEJOS / ILUMINACIÓN",
     "nombre": "Mechas rojas (L)",
     "precio": 7500,
     "es_producto": false
   },
   {
-    "categoria": "REFLEJOS / ILUMINACION",
+    "categoria": "REFLEJOS / ILUMINACIÓN",
     "nombre": "Mechas rojas (XL)",
     "precio": 8000,
     "es_producto": false
   },
   {
-    "categoria": "REFLEJOS / ILUMINACION",
+    "categoria": "REFLEJOS / ILUMINACIÓN",
     "nombre": "Mechas rojas (Mayor XL)",
     "precio": 8500,
     "es_producto": false
   },
   {
-    "categoria": "REFLEJOS / ILUMINACION",
+    "categoria": "REFLEJOS / ILUMINACIÓN",
     "nombre": "Oscuritos c/gorra (S)",
     "precio": 50000,
     "es_producto": false
   },
   {
-    "categoria": "REFLEJOS / ILUMINACION",
+    "categoria": "REFLEJOS / ILUMINACIÓN",
     "nombre": "Oscuritos c/gorra (M)",
     "precio": 55000,
     "es_producto": false
   },
   {
-    "categoria": "REFLEJOS / ILUMINACION",
+    "categoria": "REFLEJOS / ILUMINACIÓN",
     "nombre": "Oscuritos c/gorra (L)",
     "precio": 60000,
     "es_producto": false
   },
   {
-    "categoria": "REFLEJOS / ILUMINACION",
+    "categoria": "REFLEJOS / ILUMINACIÓN",
     "nombre": "Oscuritos c/gorra (XL)",
     "precio": 65000,
     "es_producto": false
   },
   {
-    "categoria": "REFLEJOS / ILUMINACION",
+    "categoria": "REFLEJOS / ILUMINACIÓN",
     "nombre": "Oscuritos c/gorra (Mayor XL)",
     "precio": 70000,
     "es_producto": false
   },
   {
-    "categoria": "REFLEJOS / ILUMINACION",
+    "categoria": "REFLEJOS / ILUMINACIÓN",
     "nombre": "Oscuritos c/papel (S)",
     "precio": 4500,
     "es_producto": false
   },
   {
-    "categoria": "REFLEJOS / ILUMINACION",
+    "categoria": "REFLEJOS / ILUMINACIÓN",
     "nombre": "Oscuritos c/papel (M)",
     "precio": 5000,
     "es_producto": false
   },
   {
-    "categoria": "REFLEJOS / ILUMINACION",
+    "categoria": "REFLEJOS / ILUMINACIÓN",
     "nombre": "Oscuritos c/papel (L)",
     "precio": 5500,
     "es_producto": false
   },
   {
-    "categoria": "REFLEJOS / ILUMINACION",
-    "nombre": "1 deco + bano de luz (S)",
+    "categoria": "REFLEJOS / ILUMINACIÓN",
+    "nombre": "1 deco + baño de luz (S)",
     "precio": 55000,
     "es_producto": false
   },
   {
-    "categoria": "REFLEJOS / ILUMINACION",
-    "nombre": "1 deco + bano de luz (M)",
+    "categoria": "REFLEJOS / ILUMINACIÓN",
+    "nombre": "1 deco + baño de luz (M)",
     "precio": 60000,
     "es_producto": false
   },
   {
-    "categoria": "REFLEJOS / ILUMINACION",
-    "nombre": "1 deco + bano de luz (L)",
+    "categoria": "REFLEJOS / ILUMINACIÓN",
+    "nombre": "1 deco + baño de luz (L)",
     "precio": 70000,
     "es_producto": false
   },
   {
-    "categoria": "REFLEJOS / ILUMINACION",
-    "nombre": "1 deco + bano de luz (XL)",
+    "categoria": "REFLEJOS / ILUMINACIÓN",
+    "nombre": "1 deco + baño de luz (XL)",
     "precio": 90000,
     "es_producto": false
   },
   {
-    "categoria": "REFLEJOS / ILUMINACION",
-    "nombre": "1 deco + bano de luz (Mayor XL)",
+    "categoria": "REFLEJOS / ILUMINACIÓN",
+    "nombre": "1 deco + baño de luz (Mayor XL)",
     "precio": 120000,
     "es_producto": false
   },
   {
-    "categoria": "REFLEJOS / ILUMINACION",
-    "nombre": "2 deco + bano de luz (S)",
+    "categoria": "REFLEJOS / ILUMINACIÓN",
+    "nombre": "2 deco + baño de luz (S)",
     "precio": 65000,
     "es_producto": false
   },
   {
-    "categoria": "REFLEJOS / ILUMINACION",
-    "nombre": "2 deco + bano de luz (M)",
+    "categoria": "REFLEJOS / ILUMINACIÓN",
+    "nombre": "2 deco + baño de luz (M)",
     "precio": 75000,
     "es_producto": false
   },
   {
-    "categoria": "REFLEJOS / ILUMINACION",
-    "nombre": "2 deco + bano de luz (L)",
+    "categoria": "REFLEJOS / ILUMINACIÓN",
+    "nombre": "2 deco + baño de luz (L)",
     "precio": 90000,
     "es_producto": false
   },
   {
-    "categoria": "REFLEJOS / ILUMINACION",
-    "nombre": "2 deco + bano de luz (XL)",
+    "categoria": "REFLEJOS / ILUMINACIÓN",
+    "nombre": "2 deco + baño de luz (XL)",
     "precio": 110000,
     "es_producto": false
   },
   {
-    "categoria": "REFLEJOS / ILUMINACION",
-    "nombre": "2 deco + bano de luz (Mayor XL)",
+    "categoria": "REFLEJOS / ILUMINACIÓN",
+    "nombre": "2 deco + baño de luz (Mayor XL)",
     "precio": 140000,
     "es_producto": false
   },
   {
-    "categoria": "REFLEJOS / ILUMINACION",
-    "nombre": "3 deco + bano de luz (S)",
+    "categoria": "REFLEJOS / ILUMINACIÓN",
+    "nombre": "3 deco + baño de luz (S)",
     "precio": 75000,
     "es_producto": false
   },
   {
-    "categoria": "REFLEJOS / ILUMINACION",
-    "nombre": "3 deco + bano de luz (M)",
+    "categoria": "REFLEJOS / ILUMINACIÓN",
+    "nombre": "3 deco + baño de luz (M)",
     "precio": 85000,
     "es_producto": false
   },
   {
-    "categoria": "REFLEJOS / ILUMINACION",
-    "nombre": "3 deco + bano de luz (L)",
+    "categoria": "REFLEJOS / ILUMINACIÓN",
+    "nombre": "3 deco + baño de luz (L)",
     "precio": 90000,
     "es_producto": false
   },
   {
-    "categoria": "REFLEJOS / ILUMINACION",
-    "nombre": "3 deco + bano de luz (XL)",
+    "categoria": "REFLEJOS / ILUMINACIÓN",
+    "nombre": "3 deco + baño de luz (XL)",
     "precio": 110000,
     "es_producto": false
   },
   {
-    "categoria": "REFLEJOS / ILUMINACION",
-    "nombre": "3 deco + bano de luz (Mayor XL)",
+    "categoria": "REFLEJOS / ILUMINACIÓN",
+    "nombre": "3 deco + baño de luz (Mayor XL)",
     "precio": 150000,
     "es_producto": false
   },
   {
-    "categoria": "EXTENCIONES",
+    "categoria": "EXTENSIONES",
     "nombre": "Ext x unidad",
     "precio": 4000,
     "es_producto": false
   },
   {
-    "categoria": "EXTENCIONES",
+    "categoria": "EXTENSIONES",
     "nombre": "Ext x 30u",
     "precio": 120000,
     "es_producto": false
   },
   {
-    "categoria": "EXTENCIONES",
+    "categoria": "EXTENSIONES",
     "nombre": "Cortinas 1/2mts",
     "precio": 160000,
     "es_producto": false
   },
   {
-    "categoria": "EXTENCIONES",
+    "categoria": "EXTENSIONES",
     "nombre": "Contuning 12-13",
     "precio": 140000,
     "es_producto": false
   },
   {
-    "categoria": "EXTENCIONES",
+    "categoria": "EXTENSIONES",
     "nombre": "Balayage 14",
     "precio": 180000,
     "es_producto": false
   },
   {
-    "categoria": "EXTENCIONES",
+    "categoria": "EXTENSIONES",
     "nombre": "Balayage 16",
     "precio": 200000,
     "es_producto": false

@@ -1,11 +1,12 @@
 from fastapi import FastAPI, Depends, HTTPException, Header
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import text, inspect
 from pydantic import BaseModel
 from datetime import datetime, date, timedelta
-import os, bisect
+from openpyxl import Workbook
+import os, bisect, io
 
 from database import get_db, engine, Base
 import models
@@ -501,6 +502,45 @@ def rep_categoria(dias: int = 30, desde: str | None = None, hasta: str | None = 
         agg[cat] = agg.get(cat, 0) + (l.subtotal or 0)
     return sorted([{"categoria": k, "total": v} for k, v in agg.items()], key=lambda x: x["total"], reverse=True)
 
+@app.get("/api/reportes/excel")
+def reportes_excel(dias: int = 30, desde: str | None = None, hasta: str | None = None,
+                   _ = Depends(solo_dueno), db: Session = Depends(get_db)):
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Movimientos"
+    
+    # encabezados
+    ws.append(["Fecha", "Hora", "Tipo", "Detalle", "Forma de pago", "Monto"])
+
+    # traigo los movimientos reales reusando la misma lógica que el registro de pantalla
+    ini, fin = _resolver_ventana(dias, desde, hasta, db)
+    ventas = db.query(models.Venta).filter(models.Venta.fecha >= ini, models.Venta.fecha < fin).all()
+    egresos = db.query(models.Egreso).filter(models.Egreso.fecha >= ini, models.Egreso.fecha < fin).all()
+
+    movimientos = []
+    for v in ventas:
+        detalle = ", ".join(f"{l.cantidad}x {l.nombre}" for l in v.lineas)
+        movimientos.append((v.fecha, "Venta", detalle, v.forma_pago or "", v.total or 0))
+    for e in egresos:
+        detalle = f"{e.tipo or ''} - {e.concepto or ''}".strip(" -")
+        movimientos.append((e.fecha, "Egreso", detalle, e.forma_pago or "", -(e.monto or 0)))
+
+    # ordeno por fecha
+    movimientos.sort(key=lambda m: m[0])
+
+    # escribo cada fila
+    for fecha, tipo, detalle, pago, monto in movimientos:
+        ws.append([fecha.strftime("%d/%m/%Y"), fecha.strftime("%H:%M"), tipo, detalle, pago, monto])
+
+    buffer = io.BytesIO()
+    wb.save(buffer)
+    buffer.seek(0)
+
+    return StreamingResponse(
+        buffer,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": "attachment; filename=reportes.xlsx"})
+
 # ---------- series temporales (para gráficos de línea) ----------
 def _resolver_ventana(dias, desde, hasta, db):
     """Devuelve (ini, fin) concretos (datetime) para filtrar y bucketizar."""
@@ -622,6 +662,8 @@ def registro_movimientos(desde: str | None = None, hasta: str | None = None,
     movs.sort(key=lambda m: m["_orden"], reverse=True)
     for m in movs: del m["_orden"]
     return movs[:1000]
+
+
 
 
 # ---------- frontend ----------

@@ -100,6 +100,7 @@
     <h2>Registro de movimientos (ventas y egresos)</h2>
     <div class="periodo">
       <button data-d="0" class="on">Todo (desde el origen)</button>
+      <button id="wkexcel">Descargar excel</button> <!-- linea 250 -->
       <span class="rango"><input type="date" class="desde"> a <input type="date" class="hasta"><button class="aplicar">Aplicar</button></span>
     </div>
     <div id="reg"></div>
@@ -242,10 +243,33 @@ async function loadReg(s){
   $("#reg").innerHTML=h;
 }
 
+async function descargarExcel(){
+  // 1. armo el período igual que los otros reportes (reuso el estado sG del registro)
+  const q = (sG.desde || sG.hasta) ? `desde=${sG.desde}&hasta=${sG.hasta}` : `dias=${sG.dias}`;
+
+  // 2. pido el archivo al backend CON el carnet (por eso authFetch, no fetch pelado)
+  const r = await authFetch("/api/reportes/excel?" + q);
+  if(!r.ok){ alert("No se pudo generar el Excel"); return; }
+
+  // 3. recibo los bytes del archivo (no es texto: es un "blob")
+  const blob = await r.blob();
+
+  // 4. el truco: fabrico un link invisible que apunta a esos bytes y lo "clickeo" por código
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "reportes.xlsx";   // el nombre con el que se baja
+  a.click();
+
+  // 5. limpio el link temporal
+  URL.revokeObjectURL(url);
+}
+
 const sR=wirePeriodo("#cResumen", loadResumen);
 const sT=wireAnalytics("#cTop", loadTop);
 const sC=wireAnalytics("#cCat", loadCat);
 const sG=wirePeriodo("#cReg", loadReg); sG.dias=0;
+$("#wkexcel").onclick = descargarExcel;
 
 loadResumen(sR); loadTop(sT); loadCat(sC); loadReg(sG);
 </script>
