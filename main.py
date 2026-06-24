@@ -664,7 +664,72 @@ def registro_movimientos(desde: str | None = None, hasta: str | None = None,
     return movs[:1000]
 
 
+# ---------- backup completo (solo dueño) ----------
+@app.get("/api/backup")
+def backup_completo(_ = Depends(solo_dueno), db: Session = Depends(get_db)):
+    """Descarga un JSON con TODAS las tablas para backup offline."""
+    import json as _json
 
+    data = {
+        "fecha_backup": datetime.now().isoformat(),
+        "items": [
+            {"id": i.id, "categoria": i.categoria, "nombre": i.nombre, "precio": i.precio,
+             "es_producto": i.es_producto, "stock_actual": i.stock_actual,
+             "stock_minimo": i.stock_minimo, "activo": i.activo}
+            for i in db.query(models.Item).all()
+        ],
+        "ventas": [
+            {"id": v.id, "fecha": v.fecha.isoformat(), "forma_pago": v.forma_pago,
+             "alias": v.alias, "total": v.total,
+             "lineas": [
+                 {"id": l.id, "item_id": l.item_id, "nombre": l.nombre,
+                  "cantidad": l.cantidad, "precio_unit": l.precio_unit,
+                  "dificultad": l.dificultad, "subtotal": l.subtotal}
+                 for l in v.lineas
+             ]}
+            for v in db.query(models.Venta).order_by(models.Venta.fecha).all()
+        ],
+        "egresos": [
+            {"id": e.id, "fecha": e.fecha.isoformat(), "tipo": e.tipo,
+             "concepto": e.concepto, "monto": e.monto,
+             "forma_pago": e.forma_pago, "notas": e.notas}
+            for e in db.query(models.Egreso).order_by(models.Egreso.fecha).all()
+        ],
+        "formas_pago": [
+            {"id": f.id, "nombre": f.nombre, "activo": f.activo}
+            for f in db.query(models.FormaPago).all()
+        ],
+        "tipos_egreso": [
+            {"id": t.id, "nombre": t.nombre, "activo": t.activo}
+            for t in db.query(models.TipoEgreso).all()
+        ],
+        "usuarios": [
+            {"id": u.id, "usuario": u.usuario, "rol": u.rol,
+             "salt": u.salt, "hash": u.hash}
+            for u in db.query(models.Usuario).all()
+        ],
+        "config": [
+            {"clave": c.clave, "valor": c.valor}
+            for c in db.query(models.Config).all()
+        ],
+        "fondo_caja": [
+            {"fecha": f.fecha, "monto": f.monto}
+            for f in db.query(models.FondoCaja).all()
+        ],
+        "alias": [
+            {"id": a.id, "nombre": a.nombre, "activo": a.activo}
+            for a in db.query(models.Alias).all()
+        ],
+    }
+
+    contenido = _json.dumps(data, ensure_ascii=False, indent=2)
+    buffer = io.BytesIO(contenido.encode("utf-8"))
+    nombre = f"backup_pelu_{datetime.now().strftime('%Y%m%d_%H%M')}.json"
+
+    return StreamingResponse(
+        buffer,
+        media_type="application/json",
+        headers={"Content-Disposition": f"attachment; filename={nombre}"})
 
 # ---------- frontend ----------
 if os.path.isdir("static"):
