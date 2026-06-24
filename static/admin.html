@@ -126,6 +126,11 @@
   </div>
 
 </div>
+<div class="card" style="border-left:4px solid var(--tinta);">
+    <h2>💾 Backup completo</h2>
+    <p class="muted">Descarga un archivo JSON con todos los datos de la app: catálogo, ventas, egresos, usuarios, configuración. Guardalo en un lugar seguro por si algún día necesitás recuperar datos.</p>
+    <button class="b-tinta" id="btnBackup">Descargar backup</button>
+</div>
 <div class="toast" id="toast"></div>
 
 <script src="/static/auth.js"></script>
@@ -314,7 +319,24 @@ $("#btnAlias").onclick=async()=>{
   await authFetch("/api/alias",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({nombre:n})});
   $("#nAlias").value="";toast("Alias agregado");cargarAlias();
 };
-
+// --- Backup completo ---
+$("#btnBackup").onclick=async()=>{
+  $("#btnBackup").textContent="Descargando...";
+  $("#btnBackup").disabled=true;
+  try{
+    const r=await authFetch("/api/backup");
+    if(!r.ok){toast("Error al generar backup");return;}
+    const blob=await r.blob();
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement("a");
+    a.href=url;
+    a.download=`backup_pelu_${new Date().toISOString().slice(0,10)}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast("Backup descargado ✓");
+  }catch(e){toast("Error: "+e.message);}
+  finally{$("#btnBackup").textContent="Descargar backup";$("#btnBackup").disabled=false;}
+};
 cargarCats();cargarFormas();cargarExtra();cargarTipos();cargarUsuarios();cargarAlias();
 </script>
 </body>
