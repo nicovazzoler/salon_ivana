@@ -72,6 +72,13 @@ class FondoIn(BaseModel):
     valor: int; fecha: str | None = None
 class NombreIn(BaseModel):
     nombre: str
+class TurnoIn(BaseModel):
+    fecha: str | None = None
+    hora: str
+    cliente: str
+    servicio: str
+    peluquero: str | None = None
+    notas: str | None = None
 
 # ---------- auth ----------
 def usuario_actual(authorization: str = Header(default="")):
@@ -664,6 +671,49 @@ def registro_movimientos(desde: str | None = None, hasta: str | None = None,
     return movs[:1000]
 
 
+# ---------- agenda de turnos ----------
+@app.get("/api/turnos")
+def listar_turnos(fecha: str | None = None, _ = Depends(usuario_actual), db: Session = Depends(get_db)):
+    if not fecha:
+        fecha = datetime.now().strftime("%Y-%m-%d")
+    turnos = db.query(models.Turno).filter(models.Turno.fecha == fecha).all()
+    turnos.sort(key=lambda t: t.hora)
+    return [{"id": t.id, "fecha": t.fecha, "hora": t.hora, "cliente": t.cliente,
+             "servicio": t.servicio, "peluquero": t.peluquero, "notas": t.notas,
+             "activo": t.activo} for t in turnos]
+
+@app.post("/api/turnos")
+def crear_turno(turno: TurnoIn, _ = Depends(usuario_actual), db: Session = Depends(get_db)):
+    fecha = turno.fecha or datetime.now().strftime("%Y-%m-%d")
+    nuevo = models.Turno(fecha=fecha, hora=turno.hora, cliente=turno.cliente,
+                         servicio=turno.servicio, peluquero=turno.peluquero, notas=turno.notas)
+    db.add(nuevo)
+    db.commit()
+    db.refresh(nuevo)
+    return {"id": nuevo.id, "ok": True}
+
+@app.put("/api/turnos/{turno_id}")
+def editar_turno(turno_id: int, datos: TurnoIn, _ = Depends(usuario_actual), db: Session = Depends(get_db)):
+    turno = db.get(models.Turno, turno_id)
+    if not turno:
+        raise HTTPException(404, "Turno no encontrado")
+    turno.hora = datos.hora
+    turno.cliente = datos.cliente
+    turno.servicio = datos.servicio
+    turno.peluquero = datos.peluquero
+    turno.notas = datos.notas
+    db.commit()
+    return {"ok": True}
+
+@app.delete("/api/turnos/{turno_id}")
+def cancelar_turno(turno_id: int, _ = Depends(usuario_actual), db: Session = Depends(get_db)):
+    turno = db.get(models.Turno, turno_id)
+    if not turno:
+        raise HTTPException(404, "Turno no encontrado")
+    turno.activo = False
+    db.commit()
+    return {"ok": True}
+
 # ---------- backup completo (solo dueño) ----------
 @app.get("/api/backup")
 def backup_completo(_ = Depends(solo_dueno), db: Session = Depends(get_db)):
@@ -720,6 +770,12 @@ def backup_completo(_ = Depends(solo_dueno), db: Session = Depends(get_db)):
             {"id": a.id, "nombre": a.nombre, "activo": a.activo}
             for a in db.query(models.Alias).all()
         ],
+        "turnos": [
+            {"id": t.id, "fecha": t.fecha, "hora": t.hora, "cliente": t.cliente,
+             "servicio": t.servicio, "peluquero": t.peluquero, "notas": t.notas,
+             "activo": t.activo}
+            for t in db.query(models.Turno).order_by(models.Turno.fecha, models.Turno.hora).all()
+        ],
     }
 
     contenido = _json.dumps(data, ensure_ascii=False, indent=2)
@@ -737,6 +793,8 @@ if os.path.isdir("static"):
     def p_login(): return FileResponse("static/login.html")
     @app.get("/")
     def p_root(): return FileResponse("static/index.html")
+    @app.get("/agenda")
+    def p_agenda(): return FileResponse("static/agenda.html")
     @app.get("/admin")
     def p_admin(): return FileResponse("static/admin.html")
     @app.get("/caja")
