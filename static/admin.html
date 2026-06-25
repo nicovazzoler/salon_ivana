@@ -36,7 +36,15 @@
 <body>
 <header>
   <span>⚙️ Administracion</span>
-  <span style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;"><a href="/" style="color:#fff;text-decoration:none;font-size:13px;background:rgba(255,255,255,.15);padding:7px 10px;border-radius:9px;"> Facturación</a><a href="/agenda" style="color:#fff;text-decoration:none;font-size:13px;background:rgba(255,255,255,.15);padding:7px 10px;border-radius:9px;">Agenda</a><a href="/caja" style="color:#fff;text-decoration:none;font-size:13px;background:rgba(255,255,255,.15);padding:7px 10px;border-radius:9px;">Caja</a><a href="/inventario" data-rol="dueno" style="color:#fff;text-decoration:none;font-size:13px;background:rgba(255,255,255,.15);padding:7px 10px;border-radius:9px;">Inventario</a><a href="/reportes" data-rol="dueno" style="color:#fff;text-decoration:none;font-size:13px;background:rgba(255,255,255,.15);padding:7px 10px;border-radius:9px;">Reportes</a><a href="/admin" data-rol="dueno" style="color:#fff;text-decoration:none;font-size:13px;background:rgba(255,255,255,.15);padding:7px 10px;border-radius:9px;">Admin</a><a href="#" onclick="logout();return false;" style="color:#fff;text-decoration:none;font-size:13px;background:rgba(255,255,255,.15);padding:7px 10px;border-radius:9px;">Salir</a></span>
+<nav class="menu">
+  <a href="/">Facturación</a>
+  <a href="/agenda">Agenda</a>
+  <a href="/caja">Caja</a>
+  <a href="/inventario" data-rol="dueno">Inventario</a>
+  <a href="/reportes" data-rol="dueno">Reportes</a>
+  <a href="/admin" data-rol="dueno">Admin</a>
+  <a href="#" onclick="logout();return false;">Salir</a>
+</nav>
 </header>
 <div class="wrap">
 
