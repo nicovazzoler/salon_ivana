@@ -84,3 +84,15 @@ class Alias(Base):
     id = Column(Integer, primary_key=True)
     nombre = Column(String, unique=True, nullable=False)
     activo = Column(Boolean, default=True)
+
+class Turno(Base):
+    """Turnos / citas agendadas."""
+    __tablename__ = "turnos"
+    id = Column(Integer, primary_key=True)
+    fecha = Column(String, nullable=False, index=True)   # 'YYYY-MM-DD'
+    hora = Column(String, nullable=False)                 # 'HH:MM'
+    cliente = Column(String, nullable=False)
+    servicio = Column(String, nullable=False)
+    peluquero = Column(String)                            # opcional
+    notas = Column(String)                                # opcional
+    activo = Column(Boolean, default=True)
