@@ -4,104 +4,164 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <meta name="theme-color" content="#1f1f1f">
-<title>Facturación — Peluquería</title>
+<title>Facturación — Salón Ivana</title>
 <style>
-  :root{
-    --tinta:#2F4858; --tinta2:#3d5a6c; --crema:#f7f5f0; --linea:#e2ddd3;
-    --ok:#2e7d4f; --okbg:#e6f4ec; --alerta:#9c3d00; --texto:#2b2b28;
-  }
   *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
   body{margin:0; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
        background:var(--crema); color:var(--texto);}
-  /* ---- encabezado grande (punto 2) ---- */
-  header{background:var(--tinta); color:#fff; padding:20px 30px; font-size:26px; font-weight:800;
+
+  /* ---- header ---- */
+  header{background:var(--tinta); color:var(--oro-claro); padding:14px 24px; font-size:18px; font-weight:500;
          position:sticky; top:0; z-index:10; display:flex; justify-content:space-between; align-items:center;
-         gap:14px; flex-wrap:wrap;}
-  header .tit{display:flex; align-items:center; gap:10px; letter-spacing:.01em;}
-  nav.menu{display:flex; gap:8px; flex-wrap:wrap; justify-content:flex-end;}
-  nav.menu a{color:#fff; text-decoration:none; font-size:14px; font-weight:600;
-             background:rgba(255,255,255,.15); padding:9px 13px; border-radius:10px;}
-  nav.menu a.actual{background:rgba(255,255,255,.32);}
+         gap:12px; flex-wrap:wrap;}
+  nav.menu{display:flex; gap:6px; flex-wrap:wrap; justify-content:flex-end;}
+  nav.menu a{color:rgba(255,255,255,.6); text-decoration:none; font-size:12px; font-weight:500;
+             background:rgba(255,255,255,.08); padding:6px 10px; border-radius:8px;}
+  nav.menu a.actual{background:var(--oro); color:#1a1a1a;}
+
+  /* ---- layout ---- */
   .container{max-width:1280px; margin:0 auto;}
-  .layout{display:flex; gap:18px; padding:18px; align-items:flex-start;}
-  .catalogo{flex:1 1 60%;}
-  .ticket{flex:1 1 38%; position:sticky; top:88px; background:#fff; border:1px solid var(--linea);
-          border-radius:14px; padding:16px; min-height:200px;}
-  /* buscador (punto 1a) */
+  .layout{display:flex; gap:20px; padding:20px; align-items:flex-start;}
+  .catalogo{flex:1 1 60%; min-width:0;}
+  .ticket{flex:0 0 300px; position:sticky; top:58px;
+          background:var(--tinta); border:1px solid rgba(201,168,76,.25);
+          border-radius:14px; padding:16px; min-height:200px;
+          display:flex; flex-direction:column;}
+
+  /* ---- buscador ---- */
   .buscador{position:relative; margin-bottom:14px;}
-  .buscador input{width:100%; padding:13px 14px 13px 40px; border:1px solid var(--linea);
-                  border-radius:12px; font-size:16px; font-family:inherit; background:#fff;}
-  .buscador .lupa{position:absolute; left:13px; top:50%; transform:translateY(-50%); font-size:16px; opacity:.6;}
+  .buscador input{width:100%; padding:10px 14px 10px 38px; border:1px solid var(--linea);
+                  border-radius:10px; font-size:14px; font-family:inherit;
+                  background:var(--superficie); color:var(--texto);}
+  .buscador input::placeholder{color:#777;}
+  .buscador .lupa{position:absolute; left:12px; top:50%; transform:translateY(-50%); font-size:14px; opacity:.5;}
+
+  /* ---- category pills ---- */
+  .cat-pills{display:flex; gap:6px; flex-wrap:wrap; margin-bottom:16px;}
+  .cat-pill{padding:6px 14px; border-radius:20px; font-size:13px; cursor:pointer; border:1px solid transparent;
+            background:rgba(255,255,255,.06); color:#aaa; transition:all .15s;}
+  .cat-pill.on{background:rgba(201,168,76,.15); color:var(--oro); border-color:rgba(201,168,76,.3);}
+  .cat-pill:hover{border-color:rgba(201,168,76,.2);}
+
+  /* ---- section label ---- */
+  .section-label{font-size:11px; text-transform:uppercase; letter-spacing:1.5px; color:#888; margin-bottom:10px;}
   .barra{display:flex; align-items:center; gap:10px; margin-bottom:12px;}
-  .volver{background:#fff; border:1px solid var(--linea); border-radius:10px; padding:9px 15px;
-          font-size:15px; cursor:pointer;}
-  .titulo-cat{font-size:18px; font-weight:700; color:var(--tinta);}
-  .grid{display:grid; grid-template-columns:repeat(auto-fill,minmax(160px,1fr)); gap:10px;}
-  .btn-item{background:#fff; border:1px solid var(--linea); border-radius:14px; padding:16px 13px;
-            text-align:left; cursor:pointer; transition:transform .05s, box-shadow .1s; min-height:80px;
-            display:flex; flex-direction:column; justify-content:space-between;}
-  .btn-item:active{transform:scale(.97); box-shadow:0 2px 8px rgba(0,0,0,.08);}
-  .btn-item .n{font-size:15px; font-weight:600; line-height:1.2;}
-  .btn-item .p{font-size:14px; color:var(--tinta2); margin-top:8px; font-weight:700;}
-  .btn-item .cat-mini{font-size:11px; color:#9a9a92; margin-top:4px;}
-  .btn-item.cat{background:var(--tinta); color:#fff; align-items:center; justify-content:center; text-align:center;}
-  .btn-item.cat .n{font-size:16px;}
-  /* botón de grupo (con subcategorías) */
-  .btn-item.grupo{border:1px solid var(--tinta); background:#fff;}
-  .btn-item.grupo .n{color:var(--tinta);}
-  .btn-item.grupo .hint{font-size:12px; color:#8a8a82; margin-top:8px; font-weight:600;}
-  .btn-item.grupo .chev{float:right; color:var(--tinta2);}
-  /* botón de variante (S/M/L/XL) */
-  .btn-item.var{align-items:center; text-align:center;}
-  .btn-item.var .v{font-size:20px; font-weight:800; color:var(--tinta);}
-  .tag{display:inline-block; font-size:11px; background:var(--okbg); color:var(--ok);
-       padding:1px 7px; border-radius:20px; margin-top:6px; width:fit-content;}
-  .ticket h2{margin:0 0 10px; font-size:18px; color:var(--tinta);}
-  .linea{display:flex; align-items:center; gap:8px; padding:8px 0; border-bottom:1px solid var(--linea);}
-  .linea .info{flex:1; font-size:14px;}
-  .linea .info small{color:#8a8a82;}
-  .qty{display:flex; align-items:center; gap:6px;}
-  .qty button{width:30px; height:30px; border-radius:8px; border:1px solid var(--linea);
-              background:#fff; font-size:18px; cursor:pointer; line-height:1;}
-  .dif{font-size:11px; border:1px solid var(--linea); border-radius:8px; padding:4px 6px; cursor:pointer; background:#fff;}
+  .volver{background:var(--superficie); border:1px solid var(--linea); border-radius:8px; padding:6px 12px;
+          font-size:13px; cursor:pointer; color:var(--texto); font-family:inherit;}
+  .titulo-cat{font-size:15px; font-weight:500; color:var(--oro-claro);}
+
+  /* ---- items grid ---- */
+  .grid{display:grid; grid-template-columns:1fr 1fr; gap:8px;}
+  .btn-item{background:rgba(255,255,255,.04); border:1px solid var(--linea); border-radius:10px;
+            padding:10px 12px; text-align:left; cursor:pointer; transition:border-color .15s;
+            display:flex; justify-content:space-between; align-items:center;}
+  .btn-item:hover,.btn-item:active{border-color:var(--oro);}
+  .btn-item .n{font-size:13px; color:var(--texto); line-height:1.3;}
+  .btn-item .p{font-size:13px; color:var(--oro); font-weight:500; white-space:nowrap; margin-left:8px;}
+  .btn-item .cat-mini{font-size:11px; color:#888; display:block; margin-top:2px;}
+  .btn-item.cat{background:rgba(201,168,76,.15); border-color:rgba(201,168,76,.3);
+                justify-content:center; text-align:center; padding:14px 13px;
+                flex-direction:column; align-items:center;}
+  .btn-item.cat .n{font-size:14px; color:var(--oro);}
+  .btn-item.grupo{background:rgba(201,168,76,.08); border-color:rgba(201,168,76,.25);}
+  .btn-item.grupo .n{color:var(--oro-claro);}
+  .btn-item.grupo .hint{font-size:11px; color:#888; margin-top:4px;}
+  .btn-item.grupo .chev{color:var(--oro); margin-left:4px;}
+  .btn-item.var{flex-direction:column; align-items:center; text-align:center; padding:14px;}
+  .btn-item.var .v{font-size:18px; font-weight:600; color:var(--oro-claro);}
+
+  .tag{display:inline-block; font-size:10px; background:var(--okbg); color:var(--oro);
+       padding:1px 7px; border-radius:20px; margin-left:6px;}
+
+  /* ---- ticket ---- */
+  .ticket h2{margin:0 0 10px; font-size:15px; font-weight:500; color:var(--oro-claro);
+             display:flex; justify-content:space-between; align-items:center;}
+  .ticket h2 .cnt{font-size:12px; color:#888; font-weight:400;}
+  .linea{display:flex; align-items:center; gap:8px; padding:8px 0; border-bottom:1px solid rgba(255,255,255,.06);}
+  .linea .info{flex:1; font-size:13px; color:#ccc;}
+  .linea .info small{color:#888;}
+  .qty{display:flex; align-items:center; gap:5px;}
+  .qty button{width:26px; height:26px; border-radius:6px; border:1px solid var(--linea);
+              background:var(--crema); font-size:16px; cursor:pointer; line-height:1; color:var(--texto);}
+  .qty span{font-size:13px; min-width:16px; text-align:center;}
+  .dif{font-size:10px; border:1px solid var(--linea); border-radius:6px; padding:3px 5px;
+       cursor:pointer; background:var(--crema); color:#aaa;}
   .dif.on{background:var(--alerta); color:#fff; border-color:var(--alerta);}
-  .quitar{background:none; border:none; color:#c0392b; font-size:18px; cursor:pointer; padding:0 4px;}
-  .vacio{color:#9a9a92; font-size:14px; text-align:center; padding:30px 0;}
-  .total{display:flex; justify-content:space-between; font-size:22px; font-weight:800;
-         color:var(--tinta); margin:12px 0;}
-  .pagos{display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:12px;}
-  .pago{border:1px solid var(--linea); background:#fff; border-radius:10px; padding:10px; font-size:14px; cursor:pointer;}
-  .pago.on{background:var(--tinta); color:#fff; border-color:var(--tinta);}
-  .confirmar{width:100%; background:var(--ok); color:#fff; border:none; border-radius:12px;
-             padding:16px; font-size:17px; font-weight:700; cursor:pointer;}
-  .confirmar:disabled{background:#b9c2bd; cursor:not-allowed;}
-  /* ---- paneles con encabezado plegable (punto 1c) ---- */
-  .panel{background:#fff; border:1px solid var(--linea); border-radius:14px; margin-top:16px; overflow:hidden;}
-  .panel-head{display:flex; align-items:center; justify-content:space-between; gap:10px;
-              padding:15px 18px; font-size:17px; font-weight:700; color:var(--tinta);}
-  .panel-head.egr{color:var(--alerta);}
-  .panel-body{padding:0 18px 18px;}
-  .sub-head{display:flex; align-items:center; justify-content:space-between; cursor:pointer;
-            padding:10px 0 6px; font-size:14px; font-weight:600; color:#6b6b63;
-            border-top:1px solid var(--linea); margin-top:12px;}
-  .chev{transition:transform .15s; font-size:13px;}
-  .chev.cerrado{transform:rotate(-90deg);}
+  .quitar{background:none; border:none; color:var(--rojo); font-size:16px; cursor:pointer; padding:0 3px;}
+  .vacio{color:#888; font-size:13px; text-align:center; padding:24px 0;}
+  .total{display:flex; justify-content:space-between; font-size:20px; font-weight:500;
+         color:var(--oro); margin:12px 0; align-items:baseline;}
+  .total .lbl{font-size:13px; color:#888;}
+
+  /* ---- pagos ---- */
+  .pagos{display:flex; flex-wrap:wrap; gap:6px; margin-bottom:12px;}
+  .pago{border:1px solid var(--linea); background:rgba(255,255,255,.06); border-radius:8px;
+        padding:6px 12px; font-size:12px; cursor:pointer; color:#aaa; font-family:inherit;}
+  .pago.on{background:rgba(201,168,76,.15); color:var(--oro); border-color:rgba(201,168,76,.3);}
+  .confirmar{width:100%; background:var(--oro); color:#1a1a1a; border:none; border-radius:10px;
+             padding:12px; font-size:15px; font-weight:500; cursor:pointer; margin-top:auto; font-family:inherit;}
+  .confirmar:disabled{background:#555; color:#888; cursor:not-allowed;}
+
+  /* ---- ventas de hoy (bajo el catálogo) ---- */
+  .ventas-hoy{margin-top:20px; padding:16px 0 0; border-top:1px solid rgba(255,255,255,.06);}
+  .ventas-hoy-head{display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; cursor:pointer;}
+  .ventas-hoy-head .titulo{font-size:13px; color:#888;}
+  .ventas-hoy-head .chev{font-size:12px; color:#666; transition:transform .15s;}
+  .ventas-hoy-head .chev.cerrado{transform:rotate(-90deg);}
+  .venta-row{display:flex; align-items:center; gap:10px; padding:7px 0; font-size:13px;
+             border-bottom:1px solid rgba(255,255,255,.04);}
+  .venta-row .hora{color:#666; min-width:38px;}
+  .venta-row .detalle{color:#aaa; flex:1;}
+  .venta-row .detalle b{color:var(--texto); font-weight:500;}
+  .venta-row .monto{color:var(--texto); font-weight:500;}
+  .venta-row .anular{color:var(--rojo); font-size:11px; cursor:pointer; background:none; border:none;
+                     font-family:inherit; padding:4px 6px;}
+
+  /* ---- egreso section ---- */
+  .egreso-section{padding:0 20px 20px; border-top:1px solid rgba(255,255,255,.06); margin-top:4px;}
+  .egreso-title{font-size:14px; font-weight:500; color:var(--alerta); padding:16px 0 12px;}
+  .egreso-form{display:flex; gap:8px; flex-wrap:wrap; align-items:flex-end;}
+  .egreso-form .campo{flex:1; min-width:120px;}
+  .egreso-form .campo label{display:block; font-size:11px; color:#777; margin-bottom:4px;}
+  .egreso-form .campo input,
+  .egreso-form .campo select{width:100%; padding:8px 10px; border:1px solid var(--linea); border-radius:8px;
+                              background:var(--superficie); color:var(--texto); font-size:13px; font-family:inherit;}
+  .egreso-form .campo input::placeholder{color:#666;}
+  .egreso-btn{padding:8px 16px; border-radius:8px; background:rgba(192,120,90,.2); color:var(--alerta);
+              border:1px solid rgba(192,120,90,.3); font-size:13px; font-weight:500; cursor:pointer;
+              font-family:inherit; white-space:nowrap; height:36px;}
+  .egreso-hist{margin-top:12px;}
+  .egreso-head{display:flex; justify-content:space-between; align-items:center; cursor:pointer;
+               padding:8px 0; font-size:12px; color:#666;}
+  .egreso-head .chev{transition:transform .15s;}
+  .egreso-head .chev.cerrado{transform:rotate(-90deg);}
+  .egreso-row{display:flex; gap:6px; align-items:center; padding:6px 0; flex-wrap:wrap;
+              border-bottom:1px solid rgba(255,255,255,.04);}
+  .egreso-row input{padding:6px 8px; border:1px solid var(--linea); border-radius:6px; font-size:12px;
+                    background:var(--crema); color:var(--texto); font-family:inherit;}
+  .egreso-row .e-guardar{background:var(--oro); color:#1a1a1a; border:none; border-radius:6px;
+                         padding:6px 10px; font-size:11px; font-weight:600; cursor:pointer;}
+  .egreso-row .e-anular{background:transparent; border:1px solid var(--rojo); color:var(--rojo);
+                        border-radius:6px; padding:6px 10px; font-size:11px; font-weight:600; cursor:pointer;}
+
   .colapsable.oculto{display:none;}
-  .clic{cursor:pointer;}
-  .campo label{font-size:13px; color:#6b6b63; display:block; margin-bottom:4px;}
-  .campo input,.campo select{width:100%; padding:10px; border:1px solid var(--linea);
-                             border-radius:9px; font-size:15px; box-sizing:border-box; font-family:inherit;}
-  .toast{position:fixed; bottom:20px; left:50%; transform:translateX(-50%); background:var(--ok); color:#fff;
-         padding:14px 22px; border-radius:12px; font-weight:700; box-shadow:0 4px 16px rgba(0,0,0,.2);
-         opacity:0; pointer-events:none; transition:opacity .25s;}
+  .toast{position:fixed; bottom:20px; left:50%; transform:translateX(-50%); background:var(--oro); color:#1a1a1a;
+         padding:12px 20px; border-radius:10px; font-weight:600; box-shadow:0 4px 16px rgba(0,0,0,.3);
+         opacity:0; pointer-events:none; transition:opacity .25s; font-size:14px;}
   .toast.show{opacity:1;}
-  @media(max-width:760px){ .layout{flex-direction:column;} .ticket{position:static; width:100%;} }
+
+  @media(max-width:760px){
+    .layout{flex-direction:column;}
+    .ticket{position:static; width:100%; flex:none;}
+    .grid{grid-template-columns:1fr;}
+    .egreso-form{flex-direction:column;}
+  }
 </style>
 <link rel="stylesheet" href="/static/theme.css">
 </head>
 <body>
 <header>
-  <span class="tit">💈 Facturación</span>
+  <span>Salón Ivana</span>
   <nav class="menu">
     <a href="/" class="actual">Facturación</a>
     <a href="/caja">Caja</a>
@@ -117,60 +177,59 @@
   <div class="catalogo">
     <div class="buscador">
       <span class="lupa">🔎</span>
-      <input id="buscar" placeholder="Buscar servicio o producto por nombre...">
+      <input id="buscar" placeholder="Buscar servicio o producto...">
     </div>
-    <div class="barra">
-      <button class="volver" id="volver" style="display:none;">← Volver</button>
-      <span class="titulo-cat" id="tituloCat">Elegí una categoría</span>
+    <div id="catPills" class="cat-pills"></div>
+    <div class="barra" id="barraNav" style="display:none;">
+      <button class="volver" id="volver">← Volver</button>
+      <span class="titulo-cat" id="tituloCat"></span>
     </div>
     <div class="grid" id="grid"></div>
+
+    <!-- Ventas de hoy -->
+    <div class="ventas-hoy" id="ventasSection">
+      <div class="ventas-hoy-head" id="toggleVentas">
+        <span class="titulo" id="ventasTitulo">Ventas de hoy</span>
+        <span class="chev" id="chevVen">▾</span>
+      </div>
+      <div id="ventasLista" class="colapsable"></div>
+    </div>
   </div>
 
   <div class="ticket">
-    <h2>🧾 Ticket</h2>
+    <h2>Ticket <span class="cnt" id="ticketCnt"></span></h2>
     <div id="lineas"></div>
-    <div class="total"><span>Total</span><span id="total">$0</span></div>
+    <div class="total"><span class="lbl">Total</span><span id="total">$0</span></div>
+    <div style="font-size:11px;color:#888;margin-bottom:6px;">Forma de pago</div>
     <div class="pagos" id="pagos"></div>
-    <div id="aliasBox" style="display:none;margin-bottom:12px;">
-      <label style="font-size:13px;color:#6b6b63;">Alias / cuenta (opcional)</label>
-      <input id="aliasInput" list="aliasList" placeholder="¿A qué cuenta entró?" style="width:100%;padding:9px;border:1px solid var(--linea);border-radius:9px;font-size:15px;box-sizing:border-box;">
+    <div id="aliasBox" style="display:none;margin-bottom:10px;">
+      <label style="font-size:11px;color:#777;margin-bottom:4px;display:block;">Alias / cuenta</label>
+      <input id="aliasInput" list="aliasList" placeholder="¿A qué cuenta entró?"
+             style="width:100%;padding:8px;border:1px solid var(--linea);border-radius:8px;font-size:13px;
+                    background:var(--crema);color:var(--texto);font-family:inherit;">
       <datalist id="aliasList"></datalist>
     </div>
     <button class="confirmar" id="confirmar" disabled>Confirmar venta</button>
   </div>
 </div>
 
-<!-- ===== Egreso: SIEMPRE visible; sólo el historial se minimiza (punto 1c) ===== -->
-<div style="padding:0 18px;">
-  <div class="panel">
-    <div class="panel-head egr">💸 Registrar salida de plata (egreso)</div>
-    <div class="panel-body">
-      <div style="display:flex;flex-direction:column;gap:10px;">
-        <div class="campo"><label>Tipo</label>
-          <input id="egTipo" list="egTipos" placeholder="Elegí uno o escribí uno nuevo">
-          <datalist id="egTipos"></datalist></div>
-        <div class="campo"><label>Proveedor / Concepto</label><input id="egConcepto"></div>
-        <div class="campo"><label>Monto</label><input id="egMonto" type="number" placeholder="0"></div>
-        <div class="campo"><label>Forma de pago</label><select id="egPago"></select></div>
-        <button id="btnGuardarEgreso" style="background:var(--ok);color:#fff;border:none;border-radius:10px;padding:13px;font-size:15px;font-weight:700;cursor:pointer;">Registrar egreso</button>
-      </div>
-      <div class="sub-head" id="toggleEgresosHoy">
-        <span>Historial de egresos de hoy</span><span class="chev" id="chevEgr">▾</span>
-      </div>
-      <div id="egresosHoy" class="colapsable"></div>
-    </div>
+<!-- Egresos -->
+<div class="egreso-section">
+  <div class="egreso-title">↓ Registrar egreso</div>
+  <div class="egreso-form">
+    <div class="campo"><label>Tipo</label>
+      <input id="egTipo" list="egTipos" placeholder="Proveedor, retiro...">
+      <datalist id="egTipos"></datalist></div>
+    <div class="campo"><label>Concepto</label><input id="egConcepto" placeholder="Detalle"></div>
+    <div class="campo" style="max-width:110px;"><label>Monto</label><input id="egMonto" type="number" placeholder="0"></div>
+    <div class="campo" style="max-width:150px;"><label>Forma de pago</label><select id="egPago"></select></div>
+    <button class="egreso-btn" id="btnGuardarEgreso">Registrar</button>
   </div>
-</div>
-
-<!-- ===== Ventas: encabezado plegable (punto 1c) ===== -->
-<div style="padding:0 18px 30px;">
-  <div class="panel">
-    <div class="panel-head clic" id="toggleVentas">
-      <span>📋 Ventas de hoy</span><span class="chev" id="chevVen">▾</span>
+  <div class="egreso-hist">
+    <div class="egreso-head" id="toggleEgresosHoy">
+      <span>Egresos de hoy</span><span class="chev" id="chevEgr">▾</span>
     </div>
-    <div class="panel-body colapsable" id="ventasWrap">
-      <div id="ventasLista"></div>
-    </div>
+    <div id="egresosHoy" class="colapsable"></div>
   </div>
 </div>
 </div>
@@ -185,8 +244,8 @@ let ticket = [];
 let formaPago = null;
 let extraDif = 20000;
 let egTiposCache = [];
-let CATALOGO = [];          // todos los ítems activos
-let vista = "cats";         // cats | items | grupo | buscar
+let CATALOGO = [];
+let vista = "cats";
 let catActual = null;
 let grupoActual = null;
 
@@ -225,25 +284,31 @@ function categorias(){
 
 function renderCategorias(){
   vista="cats"; catActual=null; grupoActual=null;
-  $("#volver").style.display = "none";
-  $("#tituloCat").textContent = "Elegí una categoría";
-  const g = $("#grid"); g.innerHTML = "";
+  $("#barraNav").style.display = "none";
+  const pills = $("#catPills"); pills.innerHTML = "";
+  pills.style.display = "flex";
   categorias().forEach(c=>{
     const b = document.createElement("button");
-    b.className = "btn-item cat";
-    b.innerHTML = `<span class="n">${c}</span>`;
+    b.className = "cat-pill";
+    b.textContent = c;
     b.onclick = ()=>abrirCategoria(c);
-    g.appendChild(b);
+    pills.appendChild(b);
+  });
+  $("#grid").innerHTML = '<div class="vacio" style="grid-column:1/-1;">Elegí una categoría para ver los servicios</div>';
+}
+
+function activarPill(cat){
+  document.querySelectorAll(".cat-pill").forEach(p=>{
+    p.classList.toggle("on", p.textContent===cat);
   });
 }
 
 function abrirCategoria(cat){
   vista="items"; catActual=cat; grupoActual=null;
-  $("#volver").style.display="block";
-  $("#volver").textContent="← Categorías";
-  $("#tituloCat").textContent=cat;
+  activarPill(cat);
+  $("#catPills").style.display = "flex";
+  $("#barraNav").style.display = "none";
   const items = CATALOGO.filter(i=>i.categoria===cat);
-  // agrupar por nombre base
   const grupos = new Map();
   items.forEach(it=>{
     const {base, variante} = parseNombre(it.nombre);
@@ -253,20 +318,18 @@ function abrirCategoria(cat){
   const g = $("#grid"); g.innerHTML = "";
   [...grupos.entries()].forEach(([base, arr])=>{
     if(arr.length===1){
-      // ítem suelto (sin subcategorías): se agrega directo
       const it = arr[0].it;
       const b = document.createElement("button"); b.className="btn-item";
-      b.innerHTML = `<span class="n">${it.nombre}</span>
-        <span class="p">${fmt(it.precio)}</span>
-        ${it.es_producto?'<span class="tag">producto</span>':''}`;
+      b.innerHTML = `<span class="n">${it.nombre}${it.es_producto?'<span class="tag">prod</span>':''}</span>
+        <span class="p">${fmt(it.precio)}</span>`;
       b.onclick = ()=>agregar(it);
       g.appendChild(b);
     } else {
-      // grupo con subcategorías (talles / variantes): abre el submenú
       const labels = arr.map(a=>a.variante).filter(Boolean).sort((a,b)=>ordenVar(a)-ordenVar(b));
       const b = document.createElement("button"); b.className="btn-item grupo";
-      b.innerHTML = `<span class="n">${base} <span class="chev">›</span></span>
-        <span class="hint">${labels.join(" · ")||"varias opciones"}</span>`;
+      b.innerHTML = `<span><span class="n">${base} <span class="chev">›</span></span>
+        <span class="hint">${labels.join(" · ")||"varias opciones"}</span></span>
+        <span class="p">${fmt(arr[0].it.precio)}+</span>`;
       b.onclick = ()=>abrirGrupo(base, arr);
       g.appendChild(b);
     }
@@ -275,9 +338,10 @@ function abrirCategoria(cat){
 
 function abrirGrupo(base, arr){
   vista="grupo"; grupoActual=base;
-  $("#volver").style.display="block";
-  $("#volver").textContent="← "+catActual;
-  $("#tituloCat").textContent = `${catActual} · ${base}`;
+  $("#catPills").style.display = "none";
+  $("#barraNav").style.display = "flex";
+  $("#volver").textContent = "← "+catActual;
+  $("#tituloCat").textContent = base;
   const ordenado = [...arr].sort((a,b)=>ordenVar(a.variante)-ordenVar(b.variante));
   const g = $("#grid"); g.innerHTML="";
   ordenado.forEach(({variante, it})=>{
@@ -291,17 +355,17 @@ function abrirGrupo(base, arr){
 
 function buscar(q){
   vista="buscar";
-  $("#volver").style.display="block";
-  $("#volver").textContent="← Categorías";
+  $("#catPills").style.display = "none";
+  $("#barraNav").style.display = "flex";
+  $("#volver").textContent = "← Categorías";
   $("#tituloCat").textContent = `Resultados de "${q}"`;
   const res = CATALOGO.filter(i=>i.nombre.toLowerCase().includes(q.toLowerCase()));
   const g = $("#grid"); g.innerHTML="";
-  if(res.length===0){ g.innerHTML='<p class="vacio">Nada coincide con la búsqueda.</p>'; return; }
+  if(res.length===0){ g.innerHTML='<p class="vacio" style="grid-column:1/-1;">Nada coincide con la búsqueda.</p>'; return; }
   res.forEach(it=>{
     const b = document.createElement("button"); b.className="btn-item";
-    b.innerHTML = `<span class="n">${it.nombre}</span>
-      <span class="p">${fmt(it.precio)}</span>
-      <span class="cat-mini">${it.categoria}</span>`;
+    b.innerHTML = `<span class="n">${it.nombre}<span class="cat-mini">${it.categoria}</span></span>
+      <span class="p">${fmt(it.precio)}</span>`;
     b.onclick = ()=>agregar(it);
     g.appendChild(b);
   });
@@ -337,6 +401,7 @@ function calcSub(l){
 
 function renderTicket(){
   const cont = $("#lineas"); cont.innerHTML = "";
+  $("#ticketCnt").textContent = ticket.length ? ticket.length+" ítem"+(ticket.length>1?"s":"") : "";
   if(ticket.length===0){
     cont.innerHTML = '<div class="vacio">Tocá un servicio o producto<br>para empezar la venta</div>';
   }
@@ -359,6 +424,8 @@ function renderTicket(){
   });
   const total = ticket.reduce((a,l)=>a + calcSub(l), 0);
   $("#total").textContent = fmt(total);
+  const label = formaPago === "Efectivo" ? `Confirmar venta — ${fmt(total)}` : "Confirmar venta";
+  $("#confirmar").textContent = label;
   $("#confirmar").disabled = (ticket.length===0 || !formaPago);
 }
 
@@ -404,7 +471,8 @@ $("#toggleEgresosHoy").onclick = ()=>{
   $("#chevEgr").classList.toggle("cerrado");
 };
 $("#toggleVentas").onclick = ()=>{
-  $("#ventasWrap").classList.toggle("oculto");
+  const wrap = $("#ventasLista");
+  wrap.classList.toggle("oculto");
   $("#chevVen").classList.toggle("cerrado");
 };
 
@@ -429,25 +497,24 @@ $("#btnGuardarEgreso").onclick = async ()=>{
 async function cargarEgresosHoy(){
   const es = await (await authFetch("/api/egresos/dia")).json();
   const cont = $("#egresosHoy");
-  if(es.length === 0){ cont.innerHTML = '<div style="color:#9a9a92;font-size:13px;padding:6px 0;">Sin egresos hoy.</div>'; return; }
+  if(es.length === 0){ cont.innerHTML = '<div style="color:#888;font-size:12px;padding:6px 0;">Sin egresos hoy.</div>'; return; }
   cont.innerHTML = "";
-  const inp = "padding:7px;border:1px solid var(--linea);border-radius:8px;font-size:13px;box-sizing:border-box;";
   es.forEach(e=>{
     const row = document.createElement("div");
-    row.style = "display:flex;gap:6px;align-items:center;margin-bottom:6px;flex-wrap:wrap;padding-top:6px;";
+    row.className = "egreso-row";
     row.innerHTML = `
-      <input class="eHTipo" value="${e.tipo||''}" style="${inp}flex:1;min-width:90px;">
-      <input class="eHConc" value="${e.concepto||''}" placeholder="concepto" style="${inp}flex:1.2;min-width:90px;">
-      <input class="eHMonto" type="number" value="${e.monto}" style="${inp}width:90px;">
-      <button class="eHGuardar" style="background:var(--tinta);color:#fff;border:none;border-radius:8px;padding:7px 10px;font-size:12px;font-weight:600;cursor:pointer;">✓</button>
-      <button class="eHAnular" style="background:#fff;border:1px solid #c0392b;color:#c0392b;border-radius:8px;padding:7px 10px;font-size:12px;font-weight:600;cursor:pointer;">×</button>`;
-    row.querySelector(".eHGuardar").onclick = async ()=>{
+      <input class="eHTipo" value="${e.tipo||''}" style="flex:1;min-width:80px;">
+      <input class="eHConc" value="${e.concepto||''}" placeholder="concepto" style="flex:1.2;min-width:80px;">
+      <input class="eHMonto" type="number" value="${e.monto}" style="width:80px;">
+      <button class="e-guardar">✓</button>
+      <button class="e-anular">×</button>`;
+    row.querySelector(".e-guardar").onclick = async ()=>{
       await authFetch(`/api/egresos/${e.id}`, {method:"PUT", headers:{"Content-Type":"application/json"},
         body:JSON.stringify({tipo:row.querySelector(".eHTipo").value, concepto:row.querySelector(".eHConc").value,
                              monto:parseInt(row.querySelector(".eHMonto").value)||0})});
       mostrarToast("Egreso actualizado"); cargarEgresosHoy();
     };
-    row.querySelector(".eHAnular").onclick = async ()=>{
+    row.querySelector(".e-anular").onclick = async ()=>{
       if(!confirm("¿Anular este egreso?")) return;
       await authFetch(`/api/egresos/${e.id}`, {method:"DELETE"});
       mostrarToast("Egreso anulado"); cargarEgresosHoy();
@@ -460,19 +527,24 @@ async function cargarEgresosHoy(){
 async function cargarVentasDia(){
   const vs = await (await authFetch("/api/ventas/dia")).json();
   const cont = $("#ventasLista");
-  if(vs.length === 0){ cont.innerHTML = '<div style="color:#9a9a92;padding:10px 0;">Todavía no hay ventas hoy.</div>'; return; }
+  const totalVentas = vs.reduce((a,v)=>a+v.total, 0);
+  $("#ventasTitulo").textContent = vs.length
+    ? `Ventas de hoy — ${vs.length} venta${vs.length>1?'s':''}, ${fmt(totalVentas)} total`
+    : "Ventas de hoy";
+  if(vs.length === 0){ cont.innerHTML = '<div style="color:#888;padding:8px 0;font-size:13px;">Todavía no hay ventas hoy.</div>'; return; }
   cont.innerHTML = "";
   vs.forEach(v=>{
     const items = v.lineas.map(l=>`${l.cantidad}× ${l.nombre}`).join(", ");
     const al = v.alias ? ` · ${v.alias}` : "";
     const row = document.createElement("div");
-    row.style = "display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--linea);font-size:14px;";
-    row.innerHTML = `<div style="flex:1;">
-        <b>#${v.id}</b> · ${v.hora} · ${fmt(v.total)} · ${v.forma_pago}${al}
-        <br><small style="color:#777;">${items}</small></div>
-      <button class="anular" style="background:#fff;border:1px solid #c0392b;color:#c0392b;border-radius:8px;padding:7px 12px;font-weight:600;cursor:pointer;">Anular</button>`;
+    row.className = "venta-row";
+    row.innerHTML = `
+      <span class="hora">${v.hora}</span>
+      <span class="detalle"><b>#${v.id}</b> ${items} · ${v.forma_pago}${al}</span>
+      <span class="monto">${fmt(v.total)}</span>
+      <button class="anular">anular</button>`;
     row.querySelector(".anular").onclick = async ()=>{
-      if(!confirm(`¿Anular la venta #${v.id}? Esto la borra del registro de hoy.`)) return;
+      if(!confirm(`¿Anular la venta #${v.id}?`)) return;
       const r = await authFetch(`/api/ventas/${v.id}`, {method:"DELETE"});
       if(!r.ok){ mostrarToast("No se pudo anular"); return; }
       mostrarToast("Venta anulada");
