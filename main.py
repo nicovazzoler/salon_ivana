@@ -808,7 +808,7 @@ def backup_completo(_ = Depends(solo_dueno), db: Session = Depends(get_db)):
         ],
         "ventas": [
             {"id": v.id, "fecha": v.fecha.isoformat(), "forma_pago": v.forma_pago,
-             "alias": v.alias, "total": v.total,
+             "alias": v.alias, "cliente": v.cliente, "peluquero": v.peluquero, "total": v.total,
              "lineas": [
                  {"id": l.id, "item_id": l.item_id, "nombre": l.nombre,
                   "cantidad": l.cantidad, "precio_unit": l.precio_unit,
