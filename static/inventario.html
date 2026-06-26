@@ -38,6 +38,10 @@
 <div class="wrap"><div class="card">
   <p class="ok">Cargá el stock contado en "Stock actual", o usá "Entrada" para sumar lo que llegó sin calcular el total. Cuando el stock llega o baja del mínimo aparece <span class="badge">REPONER</span>. El stock baja solo con cada venta.</p>
   <input class="buscar" id="buscar" placeholder="🔎 Buscar producto por nombre..." style="margin:8px 0 14px;">
+  <div style="margin-bottom:14px;display:flex;gap:8px;align-items:center;">
+    <button id="btnHist" style="font-size:13px;">📋 Ver historial de movimientos</button>
+  </div>
+  <div id="historial" style="display:none;margin-bottom:16px;max-height:300px;overflow-y:auto;"></div>
   <table><thead><tr><th>Producto</th><th>Stock actual</th><th>Mínimo</th><th>Entrada (+)</th><th>Estado</th><th></th></tr></thead>
   <tbody id="cuerpo"></tbody></table>
 </div></div>
@@ -86,6 +90,35 @@ function render(){
     tb.appendChild(tr);
   });
 }
+let histAbierto = false;
+$("#btnHist").onclick = async ()=>{
+  histAbierto = !histAbierto;
+  const cont = $("#historial");
+  if(!histAbierto){ cont.style.display="none"; $("#btnHist").textContent="📋 Ver historial de movimientos"; return; }
+  cont.style.display="block";
+  $("#btnHist").textContent="📋 Ocultar historial";
+  const movs = await (await authFetch("/api/inventario/historial")).json();
+  if(movs.length===0){ cont.innerHTML='<div style="color:#888;font-size:13px;padding:10px;">Sin movimientos registrados.</div>'; return; }
+  let h='<table><thead><tr><th>Fecha</th><th>Producto</th><th>Tipo</th><th>Cambio</th><th>Stock</th><th>Motivo</th><th>Usuario</th></tr></thead><tbody>';
+  movs.forEach(m=>{
+    const prod = PRODS.find(p=>p.id===m.item_id);
+    const nombre = prod ? prod.nombre : "ID "+m.item_id;
+    const fecha = m.fecha.replace("T"," ").slice(0,16);
+    const color = m.cambio > 0 ? "#c9a84c" : "#c0392b";
+    const signo = m.cambio > 0 ? "+" : "";
+    h+=`<tr>
+      <td>${fecha}</td>
+      <td>${nombre}</td>
+      <td>${m.tipo}</td>
+      <td style="color:${color};font-weight:600;">${signo}${m.cambio}</td>
+      <td>${m.antes} → ${m.despues}</td>
+      <td>${m.motivo||''}</td>
+      <td>${m.usuario||''}</td>
+    </tr>`;
+  });
+  h+='</tbody></table>';
+  cont.innerHTML=h;
+};
 cargar();
 </script>
 </body></html>
