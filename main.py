@@ -27,6 +27,12 @@ def migrar():
     if "alias" not in vcols:
         with engine.begin() as con:
             con.execute(text("ALTER TABLE ventas ADD COLUMN alias VARCHAR"))
+    if "cliente" not in vcols:
+        with engine.begin() as con:
+            con.execute(text("ALTER TABLE ventas ADD COLUMN cliente VARCHAR"))
+    if "peluquero" not in vcols:
+        with engine.begin() as con:
+            con.execute(text("ALTER TABLE ventas ADD COLUMN peluquero VARCHAR"))
 migrar()
 
 # Auto-siembra al iniciar (idempotente): crea catalogo y usuarios si la base esta vacia
@@ -40,9 +46,9 @@ app = FastAPI(title="Pelu App")
 
 # ---------- esquemas ----------
 class LineaIn(BaseModel):
-    item_id: int; cantidad: int = 1; dificultad: bool = False
+    item_id: int; cantidad: int = 1; dificultad: bool = False; precio_custom: int | None = None
 class VentaIn(BaseModel):
-    forma_pago: str; alias: str | None = None; lineas: list[LineaIn]
+    forma_pago: str; alias: str | None = None; cliente: str | None = None; peluquero: str | None = None; lineas: list[LineaIn]
 class ItemIn(BaseModel):
     categoria: str; nombre: str; precio: int; es_producto: bool = False
 class ItemEdit(BaseModel):
@@ -309,25 +315,34 @@ def borrar_forma(forma_id: int, _ = Depends(solo_dueno), db: Session = Depends(g
     if not f: raise HTTPException(404, "Forma no existe")
     f.activo = False; db.commit(); return {"ok": True}
 
+# ---------- log de stock ----------
+def log_stock(db, item, tipo, cambio, motivo, usuario="sistema"):
+    antes = item.stock_actual or 0
+    db.add(models.MovimientoStock(
+        item_id=item.id, tipo=tipo, antes=antes,
+        despues=antes + cambio, cambio=cambio,
+        motivo=motivo, usuario=usuario))
 # ---------- ventas (cualquier usuario logueado) ----------
-@app.post("/api/ventas")
-def crear_venta(venta: VentaIn, _ = Depends(usuario_actual), db: Session = Depends(get_db)):
+@app.post("/api/ventas")    
+def crear_venta(venta: VentaIn, user = Depends(usuario_actual), db: Session = Depends(get_db)):
     if not venta.lineas: raise HTTPException(400, "La venta no tiene lineas")
-    v = models.Venta(forma_pago=venta.forma_pago, alias=venta.alias, fecha=datetime.now())
+    v = models.Venta(forma_pago=venta.forma_pago, alias=venta.alias, cliente=venta.cliente, peluquero=venta.peluquero)
     db.add(v); db.flush(); total = 0
     extra = get_extra(db)
     for ln in venta.lineas:
         item = db.get(models.Item, ln.item_id)
         if not item: raise HTTPException(404, f"Item {ln.item_id} no existe")
-        base = item.precio * ln.cantidad
+        precio = ln.precio_custom if ln.precio_custom else item.precio
+        base = precio * ln.cantidad
         if venta.forma_pago == "Efectivo":
             base = round(base * 0.9)
         sub = base + (extra if ln.dificultad else 0)
         total += sub
         db.add(models.VentaLinea(venta_id=v.id, item_id=item.id, nombre=item.nombre,
-                                 cantidad=ln.cantidad, precio_unit=item.precio,
+                                 cantidad=ln.cantidad, precio_unit=precio,
                                  dificultad=ln.dificultad, subtotal=sub))
         if item.es_producto and item.stock_actual is not None:
+            log_stock(db, item, "venta", -ln.cantidad, f"Venta #{v.id}", user.get("usuario","?"))
             item.stock_actual -= ln.cantidad
     v.total = total; db.commit(); db.refresh(v)
     return {"id": v.id, "total": v.total, "fecha": v.fecha.isoformat()}
@@ -335,7 +350,10 @@ def crear_venta(venta: VentaIn, _ = Depends(usuario_actual), db: Session = Depen
 def _venta_detalle(v):
     return {"id": v.id, "hora": v.fecha.strftime("%H:%M"), "total": v.total,
             "forma_pago": v.forma_pago, "alias": v.alias,
-            "lineas": [{"nombre": l.nombre, "cantidad": l.cantidad, "subtotal": l.subtotal} for l in v.lineas]}
+            "cliente": v.cliente, "peluquero": v.peluquero,
+            "lineas": [{"item_id": l.item_id, "nombre": l.nombre, "cantidad": l.cantidad,
+                        "precio_unit": l.precio_unit, "dificultad": l.dificultad,
+                        "subtotal": l.subtotal} for l in v.lineas]}
 
 @app.get("/api/ventas/dia")
 def ventas_dia(_ = Depends(usuario_actual), db: Session = Depends(get_db)):
@@ -354,9 +372,55 @@ def anular_venta(venta_id: int, user = Depends(usuario_actual), db: Session = De
         if l.item_id:
             it = db.get(models.Item, l.item_id)
             if it and it.es_producto and it.stock_actual is not None:
+                log_stock(db, it, "anulacion", l.cantidad, f"Anulación venta #{venta_id}", user.get("usuario","?"))
                 it.stock_actual += l.cantidad
     db.delete(v); db.commit()
     return {"ok": True}
+
+@app.put("/api/ventas/{venta_id}")
+def editar_venta(venta_id: int, venta: VentaIn, user = Depends(usuario_actual), db: Session = Depends(get_db)):
+    v = db.get(models.Venta, venta_id)
+    if not v:
+        raise HTTPException(404, "Venta no existe")
+    if not _puede_modificar(user, v.fecha):
+        raise HTTPException(403, "Solo el dueño puede editar ventas de otros días")
+    extra = int(db.query(models.Config).filter(models.Config.clave=="extra_dificultad").first().valor or 0)
+    # 1) devolver stock de las líneas viejas
+    for l in v.lineas:
+        if l.item_id:
+            it = db.get(models.Item, l.item_id)
+            if it and it.es_producto and it.stock_actual is not None:
+                log_stock(db, it, "anulacion", l.cantidad, f"Edición venta #{venta_id} (revert)", user.get("usuario","?"))
+                it.stock_actual += l.cantidad
+    # 2) borrar líneas viejas
+    for l in v.lineas:
+        db.delete(l)
+    db.flush()
+    # 3) crear líneas nuevas
+    total = 0
+    for ln in venta.lineas:
+        item = db.get(models.Item, ln.item_id)
+        if not item: continue
+        precio = ln.precio_custom if ln.precio_custom else item.precio
+        base = precio * ln.cantidad
+        if venta.forma_pago == "Efectivo":
+            base = round(base * 0.9)
+        sub = base + (extra if ln.dificultad else 0)
+        total += sub
+        db.add(models.VentaLinea(venta_id=v.id, item_id=item.id, nombre=item.nombre,
+                                 cantidad=ln.cantidad, precio_unit=precio,
+                                 dificultad=ln.dificultad, subtotal=sub))
+        if item.es_producto and item.stock_actual is not None:
+            log_stock(db, item, "venta", -ln.cantidad, f"Edición venta #{venta_id}", user.get("usuario","?"))
+            item.stock_actual -= ln.cantidad
+    # 4) actualizar cabecera
+    v.total = total
+    v.forma_pago = venta.forma_pago
+    v.alias = venta.alias
+    v.cliente = venta.cliente
+    v.peluquero = venta.peluquero
+    db.commit()
+    return {"id": v.id, "total": v.total}
 
 # ---------- egresos ----------
 @app.post("/api/egresos")
@@ -452,11 +516,25 @@ def inventario(_ = Depends(solo_dueno), db: Session = Depends(get_db)):
     return sorted(out, key=lambda x: x["nombre"])
 
 @app.put("/api/inventario/{item_id}")
-def set_stock(item_id: int, s: StockIn, _ = Depends(solo_dueno), db: Session = Depends(get_db)):
+def set_stock(item_id: int, s: StockIn, user = Depends(solo_dueno), db: Session = Depends(get_db)):
     item = db.get(models.Item, item_id)
     if not item or not item.es_producto: raise HTTPException(404, "Producto no existe")
-    item.stock_actual = s.stock_actual; item.stock_minimo = s.stock_minimo
+    viejo = item.stock_actual or 0
+    nuevo = s.stock_actual
+    if viejo != nuevo:
+        log_stock(db, item, "manual", nuevo - viejo, f"Ajuste: {viejo} → {nuevo}", user.get("usuario","?"))
+    item.stock_actual = nuevo; item.stock_minimo = s.stock_minimo
     db.commit(); return {"ok": True}
+
+@app.get("/api/inventario/historial")
+def historial_stock(item_id: int | None = None, _ = Depends(solo_dueno), db: Session = Depends(get_db)):
+    q = db.query(models.MovimientoStock).order_by(models.MovimientoStock.fecha.desc())
+    if item_id:
+        q = q.filter(models.MovimientoStock.item_id == item_id)
+    movs = q.limit(200).all()
+    return [{"id": m.id, "item_id": m.item_id, "fecha": m.fecha.isoformat(),
+             "tipo": m.tipo, "antes": m.antes, "despues": m.despues,
+             "cambio": m.cambio, "motivo": m.motivo, "usuario": m.usuario} for m in movs]
 
 # ---------- reportes (solo dueño) ----------
 def _ventana(dias: int, desde: str | None, hasta: str | None):
@@ -775,6 +853,12 @@ def backup_completo(_ = Depends(solo_dueno), db: Session = Depends(get_db)):
              "servicio": t.servicio, "peluquero": t.peluquero, "notas": t.notas,
              "activo": t.activo}
             for t in db.query(models.Turno).order_by(models.Turno.fecha, models.Turno.hora).all()
+        ],
+        "movimientos_stock": [
+            {"id": m.id, "item_id": m.item_id, "fecha": m.fecha.isoformat(),
+             "tipo": m.tipo, "antes": m.antes, "despues": m.despues,
+             "cambio": m.cambio, "motivo": m.motivo, "usuario": m.usuario}
+            for m in db.query(models.MovimientoStock).order_by(models.MovimientoStock.fecha).all()
         ],
     }
 
