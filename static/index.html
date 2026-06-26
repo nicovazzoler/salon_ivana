@@ -107,11 +107,13 @@
   .total .lbl{font-size:13px; color:#888;}
 
   /* ---- cliente / peluquero ---- */
-  .ticket-fields{display:flex; flex-direction:column; gap:6px; margin-bottom:10px;}
-  .ticket-fields input{padding:7px 10px; border:1px solid var(--linea); border-radius:8px;
-                        background:var(--crema); color:var(--texto); font-size:12px; font-family:inherit;}
-  .ticket-fields input::placeholder{color:#666;}
-  .ticket-fields label{font-size:10px; color:#777; margin-bottom:1px;}
+.ticket-fields{display:flex; flex-direction:column; gap:6px; margin-bottom:10px;}
+.ticket-fields > div{width:100%;}
+.ticket-fields label{display:block; font-size:10px; color:#777; margin-bottom:2px;}
+.ticket-fields input{width:100%; padding:7px 10px; border:1px solid var(--linea); border-radius:8px;
+                      background:var(--crema); color:var(--texto); font-size:12px; font-family:inherit;
+                      box-sizing:border-box;}
+.ticket-fields input::placeholder{color:#666;}
 
   /* ---- pagos ---- */
   .pagos{display:flex; flex-wrap:wrap; gap:6px; margin-bottom:12px;}
@@ -230,12 +232,12 @@
 
     <div class="ticket-fields">
       <div>
-        <label>Cliente (opcional)</label>
+        <label>Cliente: </label>
         <input id="fCliente" placeholder="Nombre del cliente">
       </div>
       <div>
-        <label>Peluquero/a (opcional)</label>
-        <input id="fPeluquero" placeholder="">
+        <label>Peluquero/a: </label>
+        <input id="fPeluquero" placeholder="Nombre del peluquero">
       </div>
     </div>
 
