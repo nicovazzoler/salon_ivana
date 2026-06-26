@@ -6,6 +6,11 @@
 <meta name="theme-color" content="#1f1f1f">
 <title>Facturación — Salón Ivana</title>
 <style>
+  :root{
+    --tinta:#1f1f1f; --tinta2:#2b2b2b; --crema:#2b2b2b; --linea:#3a3a3a;
+    --ok:#c9a84c; --okbg:rgba(201,168,76,.12); --alerta:#c0785a; --rojo:#c0392b;
+    --texto:#e0dcd4; --oro:#c9a84c; --oro-claro:#e8d5a3; --superficie:#363636;
+  }
   *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
   body{margin:0; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
        background:var(--crema); color:var(--texto);}
@@ -23,7 +28,7 @@
   .container{max-width:1280px; margin:0 auto;}
   .layout{display:flex; gap:20px; padding:20px; align-items:flex-start;}
   .catalogo{flex:1 1 60%; min-width:0;}
-  .ticket{flex:0 0 300px; position:sticky; top:58px;
+  .ticket{flex:0 0 320px; position:sticky; top:58px;
           background:var(--tinta); border:1px solid rgba(201,168,76,.25);
           border-radius:14px; padding:16px; min-height:200px;
           display:flex; flex-direction:column;}
@@ -77,13 +82,21 @@
   .ticket h2{margin:0 0 10px; font-size:15px; font-weight:500; color:var(--oro-claro);
              display:flex; justify-content:space-between; align-items:center;}
   .ticket h2 .cnt{font-size:12px; color:#888; font-weight:400;}
+  .edit-banner{background:rgba(201,168,76,.1); border:1px solid rgba(201,168,76,.3); border-radius:8px;
+               padding:8px 10px; margin-bottom:10px; display:flex; justify-content:space-between; align-items:center;
+               font-size:12px; color:var(--oro);}
+  .edit-banner button{background:none; border:1px solid var(--rojo); color:var(--rojo); border-radius:6px;
+                      padding:4px 10px; font-size:11px; cursor:pointer; font-family:inherit;}
   .linea{display:flex; align-items:center; gap:8px; padding:8px 0; border-bottom:1px solid rgba(255,255,255,.06);}
   .linea .info{flex:1; font-size:13px; color:#ccc;}
   .linea .info small{color:#888;}
+  .precio-input{width:70px; padding:3px 6px; border:1px solid var(--linea); border-radius:6px;
+                background:var(--crema); color:var(--oro); font-size:12px; font-family:inherit;
+                text-align:right; font-weight:500;}
+  .precio-input:focus{border-color:var(--oro); outline:none;}
   .qty{display:flex; align-items:center; gap:5px;}
   .qty button{width:26px; height:26px; border-radius:6px; border:1px solid var(--linea);
               background:var(--crema); font-size:16px; cursor:pointer; line-height:1; color:var(--texto);}
-  .qty span{font-size:13px; min-width:16px; text-align:center;}
   .dif{font-size:10px; border:1px solid var(--linea); border-radius:6px; padding:3px 5px;
        cursor:pointer; background:var(--crema); color:#aaa;}
   .dif.on{background:var(--alerta); color:#fff; border-color:var(--alerta);}
@@ -92,6 +105,13 @@
   .total{display:flex; justify-content:space-between; font-size:20px; font-weight:500;
          color:var(--oro); margin:12px 0; align-items:baseline;}
   .total .lbl{font-size:13px; color:#888;}
+
+  /* ---- cliente / peluquero ---- */
+  .ticket-fields{display:flex; flex-direction:column; gap:6px; margin-bottom:10px;}
+  .ticket-fields input{padding:7px 10px; border:1px solid var(--linea); border-radius:8px;
+                        background:var(--crema); color:var(--texto); font-size:12px; font-family:inherit;}
+  .ticket-fields input::placeholder{color:#666;}
+  .ticket-fields label{font-size:10px; color:#777; margin-bottom:1px;}
 
   /* ---- pagos ---- */
   .pagos{display:flex; flex-wrap:wrap; gap:6px; margin-bottom:12px;}
@@ -102,20 +122,23 @@
              padding:12px; font-size:15px; font-weight:500; cursor:pointer; margin-top:auto; font-family:inherit;}
   .confirmar:disabled{background:#555; color:#888; cursor:not-allowed;}
 
-  /* ---- ventas de hoy (bajo el catálogo) ---- */
+  /* ---- ventas de hoy ---- */
   .ventas-hoy{margin-top:20px; padding:16px 0 0; border-top:1px solid rgba(255,255,255,.06);}
   .ventas-hoy-head{display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; cursor:pointer;}
   .ventas-hoy-head .titulo{font-size:13px; color:#888;}
   .ventas-hoy-head .chev{font-size:12px; color:#666; transition:transform .15s;}
   .ventas-hoy-head .chev.cerrado{transform:rotate(-90deg);}
-  .venta-row{display:flex; align-items:center; gap:10px; padding:7px 0; font-size:13px;
+  .venta-row{display:flex; align-items:center; gap:8px; padding:7px 0; font-size:13px;
              border-bottom:1px solid rgba(255,255,255,.04);}
   .venta-row .hora{color:#666; min-width:38px;}
   .venta-row .detalle{color:#aaa; flex:1;}
   .venta-row .detalle b{color:var(--texto); font-weight:500;}
   .venta-row .monto{color:var(--texto); font-weight:500;}
-  .venta-row .anular{color:var(--rojo); font-size:11px; cursor:pointer; background:none; border:none;
-                     font-family:inherit; padding:4px 6px;}
+  .venta-row .acciones{display:flex; gap:4px;}
+  .venta-row .acciones button{font-size:11px; cursor:pointer; background:none; border:none;
+                               font-family:inherit; padding:4px 6px;}
+  .venta-row .editar{color:var(--oro);}
+  .venta-row .anular{color:var(--rojo);}
 
   /* ---- egreso section ---- */
   .egreso-section{padding:0 20px 20px; border-top:1px solid rgba(255,255,255,.06); margin-top:4px;}
@@ -187,7 +210,6 @@
     </div>
     <div class="grid" id="grid"></div>
 
-    <!-- Ventas de hoy -->
     <div class="ventas-hoy" id="ventasSection">
       <div class="ventas-hoy-head" id="toggleVentas">
         <span class="titulo" id="ventasTitulo">Ventas de hoy</span>
@@ -199,8 +221,24 @@
 
   <div class="ticket">
     <h2>Ticket <span class="cnt" id="ticketCnt"></span></h2>
+    <div id="editBanner" style="display:none;" class="edit-banner">
+      <span>Editando venta #<span id="editId"></span></span>
+      <button id="cancelEdit">Cancelar</button>
+    </div>
     <div id="lineas"></div>
     <div class="total"><span class="lbl">Total</span><span id="total">$0</span></div>
+
+    <div class="ticket-fields">
+      <div>
+        <label>Cliente (opcional)</label>
+        <input id="fCliente" placeholder="Nombre del cliente">
+      </div>
+      <div>
+        <label>Peluquero/a (opcional)</label>
+        <input id="fPeluquero" placeholder="">
+      </div>
+    </div>
+
     <div style="font-size:11px;color:#888;margin-bottom:6px;">Forma de pago</div>
     <div class="pagos" id="pagos"></div>
     <div id="aliasBox" style="display:none;margin-bottom:10px;">
@@ -214,7 +252,6 @@
   </div>
 </div>
 
-<!-- Egresos -->
 <div class="egreso-section">
   <div class="egreso-title">↓ Registrar egreso</div>
   <div class="egreso-form">
@@ -249,6 +286,7 @@ let CATALOGO = [];
 let vista = "cats";
 let catActual = null;
 let grupoActual = null;
+let editandoVentaId = null;
 
 const $ = s => document.querySelector(s);
 const fmt = n => "$"+(n||0).toLocaleString("es-AR");
@@ -385,9 +423,10 @@ $("#volver").onclick = ()=>{
 };
 
 function agregar(it){
-  const ex = ticket.find(l=>l.item_id===it.id);
+  const ex = ticket.find(l=>l.item_id===it.id && !l.precioEditado);
   if(ex){ ex.cantidad++; }
-  else{ ticket.push({item_id:it.id, nombre:it.nombre, precio:it.precio, cantidad:1, dificultad:false}); }
+  else{ ticket.push({item_id:it.id, nombre:it.nombre, precio:it.precio, precioCatalogo:it.precio,
+                      cantidad:1, dificultad:false, precioEditado:false}); }
   renderTicket();
   mostrarToast(it.nombre+" agregado");
 }
@@ -403,6 +442,15 @@ function calcSub(l){
 function renderTicket(){
   const cont = $("#lineas"); cont.innerHTML = "";
   $("#ticketCnt").textContent = ticket.length ? ticket.length+" ítem"+(ticket.length>1?"s":"") : "";
+
+  // edit mode banner
+  if(editandoVentaId){
+    $("#editBanner").style.display = "flex";
+    $("#editId").textContent = editandoVentaId;
+  } else {
+    $("#editBanner").style.display = "none";
+  }
+
   if(ticket.length===0){
     cont.innerHTML = '<div class="vacio">Tocá un servicio o producto<br>para empezar la venta</div>';
   }
@@ -411,12 +459,22 @@ function renderTicket(){
     const row = document.createElement("div");
     row.className = "linea";
     row.innerHTML = `
-      <div class="info">${l.nombre}<br><small>${fmt(sub)}</small></div>
+      <div class="info">${l.nombre}
+        ${l.precioEditado ? '<small style="color:var(--alerta);"> (editado)</small>' : ''}
+        <br><small>${fmt(sub)}</small>
+      </div>
+      <input type="number" class="precio-input" value="${l.precio}" title="Precio unitario">
       <button class="dif ${l.dificultad?'on':''}" title="Trabajo con dificultad">Dif</button>
       <div class="qty">
         <button class="menos">−</button><span>${l.cantidad}</span><button class="mas">+</button>
       </div>
       <button class="quitar">×</button>`;
+    row.querySelector(".precio-input").onchange = (e)=>{
+      const nuevo = parseInt(e.target.value) || 0;
+      l.precio = nuevo;
+      l.precioEditado = (nuevo !== l.precioCatalogo);
+      renderTicket();
+    };
     row.querySelector(".mas").onclick   = ()=>{ l.cantidad++; renderTicket(); };
     row.querySelector(".menos").onclick = ()=>{ l.cantidad--; if(l.cantidad<=0) ticket.splice(i,1); renderTicket(); };
     row.querySelector(".dif").onclick   = ()=>{ l.dificultad=!l.dificultad; renderTicket(); };
@@ -425,7 +483,8 @@ function renderTicket(){
   });
   const total = ticket.reduce((a,l)=>a + calcSub(l), 0);
   $("#total").textContent = fmt(total);
-  const label = formaPago === "Efectivo" ? `Confirmar venta — ${fmt(total)}` : "Confirmar venta";
+  const prefix = editandoVentaId ? "Guardar cambios" : "Confirmar venta";
+  const label = formaPago === "Efectivo" ? `${prefix} — ${fmt(total)}` : prefix;
   $("#confirmar").textContent = label;
   $("#confirmar").disabled = (ticket.length===0 || !formaPago);
 }
@@ -443,23 +502,75 @@ function renderPagos(formas){
   });
 }
 
+function limpiarTicket(){
+  ticket = []; formaPago = null; editandoVentaId = null;
+  document.querySelectorAll(".pago").forEach(x=>x.classList.remove("on"));
+  $("#aliasInput").value=""; $("#aliasBox").style.display="none";
+  $("#fCliente").value=""; $("#fPeluquero").value="";
+  renderTicket();
+}
+
 $("#confirmar").onclick = async ()=>{
-  const body = {forma_pago:formaPago,
-                alias: (formaPago==="Transferencia") ? ($("#aliasInput").value.trim() || null) : null,
-                lineas:ticket.map(l=>({item_id:l.item_id, cantidad:l.cantidad, dificultad:l.dificultad}))};
+  const body = {
+    forma_pago: formaPago,
+    alias: (formaPago==="Transferencia") ? ($("#aliasInput").value.trim() || null) : null,
+    cliente: $("#fCliente").value.trim() || null,
+    peluquero: $("#fPeluquero").value.trim() || null,
+    lineas: ticket.map(l=>({
+      item_id: l.item_id,
+      cantidad: l.cantidad,
+      dificultad: l.dificultad,
+      precio_custom: l.precioEditado ? l.precio : null
+    }))
+  };
   $("#confirmar").disabled = true;
   try{
-    const r = await authFetch(API+"/api/ventas", {method:"POST",
-      headers:{"Content-Type":"application/json"}, body:JSON.stringify(body)});
+    let r;
+    if(editandoVentaId){
+      r = await authFetch(API+`/api/ventas/${editandoVentaId}`, {method:"PUT",
+        headers:{"Content-Type":"application/json"}, body:JSON.stringify(body)});
+    } else {
+      r = await authFetch(API+"/api/ventas", {method:"POST",
+        headers:{"Content-Type":"application/json"}, body:JSON.stringify(body)});
+    }
     if(!r.ok) throw new Error();
     const data = await r.json();
-    mostrarToast(`Venta #${data.id} guardada · ${fmt(data.total)}`);
-    ticket = []; formaPago = null;
-    document.querySelectorAll(".pago").forEach(x=>x.classList.remove("on"));
-    $("#aliasInput").value=""; $("#aliasBox").style.display="none";
-    renderTicket(); cargarVentasDia();
-  }catch(e){ alert("No se pudo guardar la venta. Reintentá."); $("#confirmar").disabled=false; }
+    const msg = editandoVentaId
+      ? `Venta #${editandoVentaId} actualizada · ${fmt(data.total)}`
+      : `Venta #${data.id} guardada · ${fmt(data.total)}`;
+    mostrarToast(msg);
+    limpiarTicket();
+    cargarVentasDia();
+  }catch(e){ alert("No se pudo guardar. Reintentá."); $("#confirmar").disabled=false; }
 };
+
+$("#cancelEdit").onclick = limpiarTicket;
+
+function editarVenta(v){
+  editandoVentaId = v.id;
+  ticket = v.lineas.map(l=>{
+    const catItem = CATALOGO.find(c=>c.id===l.item_id);
+    const precioCat = catItem ? catItem.precio : l.precio_unit;
+    return {
+      item_id: l.item_id, nombre: l.nombre, precio: l.precio_unit,
+      precioCatalogo: precioCat, cantidad: l.cantidad,
+      dificultad: l.dificultad || false,
+      precioEditado: (l.precio_unit !== precioCat)
+    };
+  });
+  formaPago = v.forma_pago;
+  document.querySelectorAll(".pago").forEach(b=>{
+    b.classList.toggle("on", b.textContent === v.forma_pago);
+  });
+  $("#fCliente").value = v.cliente || "";
+  $("#fPeluquero").value = v.peluquero || "";
+  if(v.forma_pago === "Transferencia"){
+    $("#aliasBox").style.display = "block";
+    $("#aliasInput").value = v.alias || "";
+  }
+  renderTicket();
+  window.scrollTo({top:0, behavior:'smooth'});
+}
 
 function mostrarToast(msg){
   const t = $("#toast"); t.textContent = msg; t.classList.add("show");
@@ -537,13 +648,18 @@ async function cargarVentasDia(){
   vs.forEach(v=>{
     const items = v.lineas.map(l=>`${l.cantidad}× ${l.nombre}`).join(", ");
     const al = v.alias ? ` · ${v.alias}` : "";
+    const cl = v.cliente ? ` · ${v.cliente}` : "";
     const row = document.createElement("div");
     row.className = "venta-row";
     row.innerHTML = `
       <span class="hora">${v.hora}</span>
-      <span class="detalle"><b>#${v.id}</b> ${items} · ${v.forma_pago}${al}</span>
+      <span class="detalle"><b>#${v.id}</b> ${items} · ${v.forma_pago}${al}${cl}</span>
       <span class="monto">${fmt(v.total)}</span>
-      <button class="anular">anular</button>`;
+      <span class="acciones">
+        <button class="editar">editar</button>
+        <button class="anular">anular</button>
+      </span>`;
+    row.querySelector(".editar").onclick = ()=> editarVenta(v);
     row.querySelector(".anular").onclick = async ()=>{
       if(!confirm(`¿Anular la venta #${v.id}?`)) return;
       const r = await authFetch(`/api/ventas/${v.id}`, {method:"DELETE"});
