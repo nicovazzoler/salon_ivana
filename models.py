@@ -22,6 +22,8 @@ class Venta(Base):
     fecha = Column(DateTime, default=datetime.now)
     forma_pago = Column(String)
     alias = Column(String)        # alias de transferencia (opcional)
+    cliente = Column(String)      # nombre del cliente (opcional)
+    peluquero = Column(String)    # quién atendió (opcional)
     total = Column(Integer, default=0)
     lineas = relationship("VentaLinea", back_populates="venta", cascade="all, delete-orphan")
 
@@ -96,3 +98,16 @@ class Turno(Base):
     peluquero = Column(String)                            # opcional
     notas = Column(String)                                # opcional
     activo = Column(Boolean, default=True)
+
+class MovimientoStock(Base):
+    """Log de cada cambio de stock."""
+    __tablename__ = "movimientos_stock"
+    id = Column(Integer, primary_key=True)
+    item_id = Column(Integer, ForeignKey("items.id"), nullable=False)
+    fecha = Column(DateTime, default=datetime.now)
+    tipo = Column(String, nullable=False)
+    antes = Column(Integer)
+    despues = Column(Integer)
+    cambio = Column(Integer)
+    motivo = Column(String)
+    usuario = Column(String)
