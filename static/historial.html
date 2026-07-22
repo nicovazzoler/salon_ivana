@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="es"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#1f1f1f"><title>Historial — Peluquería</title>
+<style>
+  :root{--tinta:#2F4858;--crema:#f7f5f0;--linea:#e2ddd3;--ok:#2e7d4f;--rojo:#c0392b;--oro:#c9a84c;}
+  *{box-sizing:border-box;}
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;background:var(--crema);color:#bbb;}
+  .wrap{max-width:800px;margin:0 auto;padding:18px;}
+  .seg{display:flex;gap:8px;margin-bottom:16px;}
+  .seg button{flex:1;background:#222020;border:1px solid var(--linea);color:#999;border-radius:8px;padding:10px;font-weight:600;cursor:pointer;}
+  .seg button.on{background:#c9a84c;color:#1f1f1f;border-color:#c9a84c;}
+  .comp{background:#3d3c38;border:1px solid var(--linea);border-radius:12px;padding:14px;margin-bottom:10px;color:#c9a84c;}
+  .comp-head{display:flex;justify-content:space-between;align-items:center;cursor:pointer;}
+  .comp-head .num{font-weight:700;}
+  .comp-head .sub{font-size:13px;color:#fbfffe;margin-top:3px;}
+  .badge{font-size:11px;font-weight:700;padding:3px 10px;border-radius:6px;white-space:nowrap;}
+  .badge{text-transform:capitalize;}
+  .badge.pendiente{background:#4a2c2c;color:#e8a3a3;}
+  .badge.parcial{background:#4a3a24;color:#e0b878;}
+  .badge.pagado{background:#26402c;color:#8fcb9b;}
+  .badge.presupuesto{background:#2c3a4a;color:#9fc0e0;}
+  .detalle-box{display:none;margin-top:10px;padding-top:10px;border-top:1px dashed var(--linea);}
+  .fila{display:flex;justify-content:space-between;gap:8px;font-size:14px;margin:4px 0;}
+  .muted{color:#9a9a92;font-size:14px;}
+  .toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--ok);color:#fff;padding:12px 20px;border-radius:12px;font-weight:700;opacity:0;pointer-events:none;transition:opacity .25s;}
+  .toast.show{opacity:1;}
+</style><link rel="stylesheet" href="/static/theme.css"></head><body>
+<header>
+  <span>📜 Historial</span>
+  <nav class="menu">
+    <a href="/facturar">Facturar</a>
+    <a href="/clientes">Clientes</a>
+    <a href="/historial">Historial</a>
+    <a href="#" onclick="logout();return false;">Salir</a>
+  </nav>
+</header>
+<div class="wrap">
+  <div class="seg">
+    <button id="tabTicket" class="on">Tickets</button>
+    <button id="tabPresu">Presupuestos</button>
+  </div>
+  <div id="lista"></div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script src="/static/auth.js"></script>
+<script>
+requireLogin(); pintarNav();
+const $=s=>document.querySelector(s);
+const fmt=n=>"$"+(n||0).toLocaleString("es-AR");
+let tipo="ticket";
+
+function toast(m){const t=$("#toast");t.textContent=m;t.classList.add("show");setTimeout(()=>t.classList.remove("show"),2200);}
+function numComp(t,n){ return (t==="ticket"?"A-":"P-")+String(n).padStart(5,"0"); }
+
+async function cargar(){
+  const comps=await (await authFetch("/api/comprobantes?tipo="+tipo)).json();
+  const cont=$("#lista"); cont.innerHTML="";
+  if(comps.length===0){ cont.innerHTML='<p class="muted">No hay '+(tipo==="ticket"?"tickets":"presupuestos")+' todavía.</p>'; return; }
+  comps.forEach(comp=>{
+    const div=document.createElement("div"); div.className="comp";
+    const fecha=new Date(comp.fecha).toLocaleDateString("es-AR");
+    const quien=comp.cliente_nombre||"Mostrador";
+    const pendiente = (comp.tipo==="ticket" && comp.saldo>0)
+      ? ` · <span style="color:#e0b878;">Pendiente ${fmt(comp.saldo)}</span>`
+      : "";
+    const formas = { efectivo:"Efectivo", transfer:"Transferencia", mixto:"Mixto", cuenta:"A cuenta" };
+    const formaTxt = comp.forma_pago;
+    div.innerHTML=`
+      <div class="comp-head">
+        <div>
+          <div class="num">${numComp(comp.tipo,comp.numero)}</div>
+          <div class="sub">${fecha} · ${quien} · ${formaTxt} · ${fmt(comp.ingresado + comp.saldo)}</div>
+        </div>
+        <span class="badge ${comp.estado}">${comp.estado}</span>
+      </div>
+      <div class="detalle-box"></div>
+      ${comp.tipo==="presupuesto"
+        ? (comp.convertido_a
+            ? `<div class="muted" style="margin-top:8px;">Convertido → A-${String(comp.convertido_a).padStart(5,"0")}</div>`
+            : `<button class="btnConv" style="margin-top:8px;background:#c9a84c;color:#1f1f1f;font-family:Georgia,serif;font-weight:600;">Convertir a ticket</button>`)
+        : ""}`;
+    const head=div.querySelector(".comp-head");
+    const box=div.querySelector(".detalle-box");
+    head.onclick=async()=>{
+      if(box.style.display==="block"){ box.style.display="none"; return; }
+      const d=await (await authFetch("/api/comprobantes/"+comp.id)).json();
+      const lineas=d.lineas.map(l=>
+        `<div class="fila"><span>${l.cantidad}× ${l.nombre}${l.dificultad?' (dif)':''}</span><span>${fmt(l.precio_unit*l.cantidad)}</span></div>`
+      ).join("");
+
+      // Descuento en efectivo: la diferencia entre listas (solo si el comprobante es efectivo)
+      const pctEf = d.desc_efectivo>0 ? Math.round(d.desc_efectivo / d.total_transfer * 100) : 0;
+      const filaDescEf=d.desc_efectivo>0
+        ? `<div class="fila" style="color:#c0785a;"><span>Descuento ${pctEf}%</span><span>−${fmt(d.desc_efectivo)}</span></div>` : "";
+
+      // Subtotal: solo tiene sentido mostrarlo si hubo descuento efectivo (sino es igual al de arriba)
+      const filaSubtotal=d.desc_efectivo>0
+        ? `<div class="fila" style="border-top:1px solid var(--linea);padding-top:6px;"><span>Subtotal</span><span>${fmt(d.subtotal)}</span></div>` : "";
+
+      // Descuento de listado (jubilado)
+      const filaDescJub=d.desc_jubilado>0
+        ? `<div class="fila" style="color:#c0785a;"><span>${d.descuento_nombre||'Descuento'} ${d.descuento_pct}%</span><span>−${fmt(d.desc_jubilado)}</span></div>` : "";
+
+      const extra=d.extra_dificultad>0
+        ? `<div class="fila" style="color:#c0785a;"><span>Extra dificultad</span><span>+${fmt(d.extra_dificultad)}</span></div>` : "";
+
+      const pagos=d.pagos.length
+        ? d.pagos.map(p=>{const f=new Date(p.fecha).toLocaleDateString("es-AR");
+            return `<div class="fila" style="color:#555;"><span>✓ ${f} · ${p.forma_pago}${p.alias?' ('+p.alias+')':''}</span><span>${fmt(p.monto)}</span></div>`;
+          }).join("")
+        : (d.tipo==="ticket"?'<div class="muted">Sin pagos.</div>':'');
+
+      box.innerHTML=`<div style="font-weight:700;margin-bottom:6px;">Detalle</div>
+        ${lineas}${extra}${filaDescEf}${filaSubtotal}${filaDescJub}
+        <div class="fila" style="font-weight:700;border-top:1px solid var(--linea);margin-top:6px;padding-top:6px;"><span>Total</span><span>${fmt(d.total_final)}</span></div>
+        ${d.tipo==="ticket"?`<div style="font-weight:700;margin:10px 0 6px;">Pagos</div>${pagos}`:''}`;
+      box.style.display="block";
+    };
+    if(comp.tipo==="presupuesto" && !comp.convertido_a){
+      div.querySelector(".btnConv").onclick=async(e)=>{
+        e.stopPropagation();
+        if(!confirm("¿Convertir este presupuesto en ticket? Se crea un ticket nuevo con los mismos ítems.")) return;
+        const r=await authFetch("/api/comprobantes/"+comp.id+"/convertir",{method:"POST"});
+        if(!r.ok){ const er=await r.json(); toast(er.detail||"No se pudo"); return; }
+        const d=await r.json();
+        toast("Convertido a A-"+String(d.numero).padStart(5,"0"));
+        cargar();
+      };
+    }
+    cont.appendChild(div);
+  });
+}
+
+$("#tabTicket").onclick=()=>{ tipo="ticket"; $("#tabTicket").classList.add("on"); $("#tabPresu").classList.remove("on"); cargar(); };
+$("#tabPresu").onclick=()=>{ tipo="presupuesto"; $("#tabPresu").classList.add("on"); $("#tabTicket").classList.remove("on"); cargar(); };
+
+cargar();
+</script>
+</body></html>

@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="es"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#1f1f1f"><title>Cuenta del cliente — Peluquería</title>
+<style>
+  :root{--tinta:#2F4858;--crema:#f7f5f0;--linea:#e2ddd3;--ok:#2e7d4f;--rojo:#c0392b;--oro:#c9a84c;}
+  *{box-sizing:border-box;}
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;background:var(--crema);color:#2b2b28;}
+  .wrap{max-width:800px;margin:0 auto;padding:18px;}
+  .card{background:#fff;border:1px solid var(--linea);border-radius:14px;padding:18px;margin-bottom:16px;}
+  input,select{padding:9px;border:1px solid var(--linea);border-radius:8px;font-size:15px;font-family:Georgia,'Times New Roman',serif;}
+  button{font-family:inherit;cursor:pointer;border:none;border-radius:8px;padding:9px 14px;font-size:14px;font-weight:600;background:var(--tinta);color:#fff;}
+  .cli-head{display:flex;align-items:center;gap:14px;}
+  .cli-head .av{width:48px;height:48px;border-radius:50%;background:#eee4c6;color:#9a7d2c;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:16px;}
+  .saldo-box{text-align:right;margin-left:auto;}
+  .saldo-box .lbl{font-size:12px;color:#888;}
+  .saldo-box .val{font-size:26px;font-weight:800;}
+  .comp{border:1px solid var(--linea);border-radius:12px;padding:14px;margin-bottom:10px;}
+  .comp-head{display:flex;justify-content:space-between;align-items:center;}
+  .comp-head .num{font-weight:700;}
+  .badge{font-size:11px;font-weight:700;padding:3px 10px;border-radius:6px;}
+  .badge.pendiente{background:#fdeaea;color:var(--rojo);}
+  .badge.parcial{background:#fff3e0;color:#c0785a;}
+  .badge.pagado{background:#e7f5ec;color:var(--ok);}
+  .comp-sub{font-size:13px;color:#777;margin-top:6px;}
+  .abonar-box{margin-top:10px;padding-top:10px;border-top:1px dashed var(--linea);display:none;}
+  .acciones{margin-top:14px;padding-top:12px;border-top:1px dashed var(--linea);}
+  .editar-box{margin-top:12px;padding-top:12px;border-top:1px dashed var(--linea);display:none;}
+  .grid-campos{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:10px;margin-bottom:12px;}
+  .campo{display:flex;flex-direction:column;gap:4px;}
+  .campo label{font-size:12px;color:#888;font-weight:600;}
+  .campo.ancho{grid-column:1 / -1;}
+  .fila{display:flex;gap:8px;align-items:center;flex-wrap:wrap;}
+  .muted{color:#9a9a92;font-size:14px;}
+  .toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--ok);color:#fff;padding:12px 20px;border-radius:12px;font-weight:700;opacity:0;pointer-events:none;transition:opacity .25s;}
+  .toast.show{opacity:1;}
+</style><link rel="stylesheet" href="/static/theme.css"></head><body>
+<header>
+  <span>📋 Cuenta del cliente</span>
+  <nav class="menu">
+    <a href="/clientes">← Clientes</a>
+    <a href="/facturar">Facturar</a>
+    <a href="#" onclick="logout();return false;">Salir</a>
+  </nav>
+</header>
+<div class="wrap">
+  <div class="card" id="cabecera"></div>
+  <div id="turno"></div>
+  <div id="lista"></div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script src="/static/auth.js"></script>
+<script>
+requireLogin(); pintarNav();
+const $=s=>document.querySelector(s);
+const fmt=n=>"$"+(n||0).toLocaleString("es-AR");
+const id=new URLSearchParams(location.search).get("id");
+let FORMAS=[], ALIAS=[];
+
+function toast(m){const t=$("#toast");t.textContent=m;t.classList.add("show");setTimeout(()=>t.classList.remove("show"),2200);}
+function numTicket(n){ return "A-"+String(n).padStart(5,"0"); }
+function parseISO2(s){ const [y,m,d]=s.split("-").map(Number); return new Date(y,m-1,d); }
+
+async function cargar(){
+  if(!id){ $("#cabecera").innerHTML='<p class="muted">Falta el cliente.</p>'; return; }
+  const cfg=await (await authFetch("/api/config")).json();
+  FORMAS=cfg.formas_pago||[]; ALIAS=cfg.alias||[];
+  const resp=await authFetch("/api/clientes/"+id+"/cuenta");
+  if(!resp.ok){
+    $("#cabecera").innerHTML='<p class="muted">No se pudo cargar el cliente. Puede que haya sido eliminado. <a href="/clientes">Volver a clientes</a>.</p>';
+    return;
+  }
+  const data=await resp.json();
+  const c=data.cliente;
+  const inicial=c.nombre.trim()[0]?.toUpperCase()||"?";
+  $("#cabecera").innerHTML=`
+    <div class="cli-head">
+      <div class="av">${inicial}</div>
+      <div>
+        <div style="font-size:18px;font-weight:700;">${c.nombre}</div>
+        <div class="muted">${[c.telefono, c.alias].filter(Boolean).join(" · ") || "—"}</div>
+        <div class="muted">${[c.dni && "DNI "+c.dni, c.direccion].filter(Boolean).join(" · ") || "—"}</div>
+      </div>
+      <div class="saldo-box">
+        <div class="lbl">Saldo adeudado</div>
+        <div class="val" style="color:${data.saldo_total>0?'var(--rojo)':'var(--ok)'};">${fmt(data.saldo_total)}</div>
+        <button style="margin-top:8px;background:var(--ok);" onclick="location.href='/facturar?cliente=${encodeURIComponent(c.nombre)}'">+ Facturar</button>
+      </div>
+    </div>
+    <div class="fila acciones">
+      <button class="b-out" id="btnEditar">✏️ Editar datos</button>
+      ${getRol()==="dueno" ? '<button class="b-del" id="btnEliminar">🗑️ Eliminar</button>' : ''}
+    </div>
+    <div class="editar-box" id="editarBox">
+      <div class="grid-campos">
+        <div class="campo"><label>Nombre</label><input id="eNombre"></div>
+        <div class="campo"><label>Teléfono</label><input id="eTelefono"></div>
+        <div class="campo"><label>Alias</label><input id="eAlias"></div>
+        <div class="campo"><label>DNI</label><input id="eDni"></div>
+        <div class="campo ancho"><label>Dirección</label><input id="eDireccion"></div>
+        <div class="campo ancho"><label>Notas</label><input id="eNotas"></div>
+      </div>
+      <div class="fila">
+        <button class="b-ok" id="btnGuardar">Guardar cambios</button>
+        <button class="b-out" id="btnCancelar">Cancelar</button>
+      </div>
+    </div>`;
+
+  const editBox=$("#editarBox");
+  function llenarForm(){
+    $("#eNombre").value    = c.nombre    || "";
+    $("#eTelefono").value  = c.telefono  || "";
+    $("#eAlias").value     = c.alias     || "";
+    $("#eDni").value       = c.dni       || "";
+    $("#eDireccion").value = c.direccion || "";
+    $("#eNotas").value     = c.notas     || "";
+  }
+  $("#btnEditar").onclick=()=>{
+    if(editBox.style.display==="block"){ editBox.style.display="none"; return; }
+    llenarForm();
+    editBox.style.display="block";
+  };
+  $("#btnCancelar").onclick=()=>{ editBox.style.display="none"; };
+  $("#btnGuardar").onclick=async()=>{
+    const nombre=$("#eNombre").value.trim();
+    if(!nombre){ toast("El nombre no puede quedar vacío"); return; }
+    const body={
+      nombre,
+      telefono:  $("#eTelefono").value.trim(),
+      alias:     $("#eAlias").value.trim(),
+      dni:       $("#eDni").value.trim(),
+      direccion: $("#eDireccion").value.trim(),
+      notas:     $("#eNotas").value.trim()
+    };
+    const btn=$("#btnGuardar"); btn.disabled=true;
+    const r=await authFetch("/api/clientes/"+id,{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+    btn.disabled=false;
+    if(!r.ok){ const e=await r.json(); toast(e.detail||"No se pudo guardar"); return; }
+    toast("Datos actualizados");
+    cargar();
+  };
+  
+if($("#btnEliminar")) $("#btnEliminar").onclick=async()=>{
+    if(data.saldo_total<=0){
+      if(!confirm(`¿Eliminar a ${c.nombre}?\n\nSus tickets quedan en el historial.`)) return;
+    }
+    const btn=$("#btnEliminar"); btn.disabled=true;
+    const r=await authFetch("/api/clientes/"+id,{method:"DELETE"});
+    if(!r.ok){ btn.disabled=false; const e=await r.json(); toast(e.detail||"No se pudo eliminar"); return; }
+    location.href="/clientes";
+  };
+    // próximo turno
+  $("#turno").innerHTML="";
+  try{
+    const pt=await (await authFetch("/api/clientes/"+id+"/proximo-turno")).json();
+    if(pt.turno){
+      const f=parseISO2(pt.turno.fecha);
+      const cuando = pt.turno.es_hoy ? "Hoy" : f.toLocaleDateString("es-AR",{weekday:"long",day:"numeric",month:"long"});
+      const box=document.createElement("div"); box.className="card";
+      box.style.cssText="background:#2c3a4a;color:#dbe7f2;border:none;";
+      box.innerHTML=`📅 <b>Próximo turno:</b> ${cuando} ${pt.turno.hora} · ${pt.turno.servicio}`;
+      $("#turno").appendChild(box);
+    }
+  }catch(e){}
+
+  const cont=$("#lista"); cont.innerHTML="";
+  if(data.comprobantes.length===0){ cont.innerHTML='<p class="muted">Este cliente no tiene tickets todavía.</p>'; return; }
+  data.comprobantes.forEach(comp=>{
+    const div=document.createElement("div"); div.className="comp card";
+    const fecha=new Date(comp.fecha).toLocaleDateString("es-AR");
+    div.innerHTML=`
+      <div class="comp-head">
+        <span class="num">${numTicket(comp.numero)} · ${fecha}</span>
+        <span class="badge ${comp.estado}">${comp.estado}</span>
+      </div>
+      <div class="comp-sub">Total ${fmt(comp.total_final)} · Pagado ${fmt(comp.pagado)} · Saldo <b>${fmt(comp.saldo)}</b></div>
+      <button class="btnDetalle" style="margin-top:8px;background:#fff;border:1px solid var(--linea);color:var(--tinta);">Ver detalle</button>
+      <div class="detalle-box" style="display:none;margin-top:10px;padding-top:10px;border-top:1px dashed var(--linea);"></div>
+      ${comp.saldo>0?`<button class="btnAbrir" style="margin-top:10px;">Abonar</button>
+      <div class="abonar-box">
+        <div class="fila">
+          <select class="aForma">${FORMAS.map(f=>`<option>${f}</option>`).join("")}</select>
+          <input class="aMonto" type="number" value="${comp.saldo}" style="width:110px;">
+          <button class="aOk" style="background:var(--ok);">Registrar</button>
+        </div>
+        <div class="fila aAliasBox" style="display:none;margin-top:8px;">
+          <label class="muted">Alias:</label>
+          <input class="aAlias" list="aliasDL" placeholder="¿A qué cuenta?" style="flex:1;">
+        </div>
+      </div>`:''}`;
+    if(comp.saldo>0){
+      const box=div.querySelector(".abonar-box");
+      div.querySelector(".btnAbrir").onclick=()=>{ box.style.display = box.style.display==="block"?"none":"block"; };
+      const forma=div.querySelector(".aForma");
+      forma.onchange=()=>{ div.querySelector(".aAliasBox").style.display = forma.value==="Transferencia"?"flex":"none"; };
+      div.querySelector(".aOk").onclick=async()=>{
+        const saldado=parseInt(div.querySelector(".aMonto").value)||0;
+        if(saldado<=0){ toast("Monto inválido"); return; }
+        const body={ monto:saldado, saldado, forma_pago:forma.value,   // 1:1
+          alias: forma.value==="Transferencia" ? (div.querySelector(".aAlias").value.trim()||null) : null };
+        const r=await authFetch("/api/comprobantes/"+comp.id+"/pagos",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+        if(!r.ok){ const e=await r.json(); toast(e.detail||"No se pudo"); return; }
+        toast("Abono registrado"); cargar();
+      };
+    }
+
+    const btnDet=div.querySelector(".btnDetalle");
+    const boxDet=div.querySelector(".detalle-box");
+    btnDet.onclick=async()=>{
+      if(boxDet.style.display==="block"){ boxDet.style.display="none"; return; }
+      const d=await (await authFetch("/api/comprobantes/"+comp.id)).json();
+      const lineas=d.lineas.map(l=>`<div class="fila" style="justify-content:space-between;"><span>${l.cantidad}× ${l.nombre}${l.dificultad?' (dif)':''}</span><span>${fmt(l.precio_unit*l.cantidad)}</span></div>`).join("");
+      const extra = d.extra_dificultad>0 ? `<div class="fila" style="justify-content:space-between;color:#c0785a;"><span>Extra dificultad</span><span>+${fmt(d.extra_dificultad)}</span></div>` : "";
+
+      const pctEf = d.desc_efectivo>0 ? Math.round(d.desc_efectivo / d.total_transfer * 100) : 0;
+      const filaDescEf = d.desc_efectivo>0 ? `<div class="fila" style="justify-content:space-between;color:#c0785a;"><span>Descuento ${pctEf}%</span><span>−${fmt(d.desc_efectivo)}</span></div>` : "";
+      const filaSubtotal = d.desc_efectivo>0 ? `<div class="fila" style="justify-content:space-between;border-top:1px solid var(--linea);padding-top:6px;"><span>Subtotal</span><span>${fmt(d.subtotal)}</span></div>` : "";
+      const filaDescJub = d.desc_jubilado>0 ? `<div class="fila" style="justify-content:space-between;color:#c0785a;"><span>${d.descuento_nombre||'Descuento'} ${d.descuento_pct}%</span><span>−${fmt(d.desc_jubilado)}</span></div>` : "";
+
+      const pagos = d.pagos.length
+        ? d.pagos.map(p=>{ const f=new Date(p.fecha).toLocaleDateString("es-AR"); return `<div class="fila" style="justify-content:space-between;color:#555;"><span>✓ ${f} · ${p.forma_pago}${p.alias?' ('+p.alias+')':''}</span><span>${fmt(p.monto)}</span></div>`; }).join("")
+        : '<div class="muted">Sin pagos todavía.</div>';
+      boxDet.innerHTML=`
+        <div style="font-weight:700;margin-bottom:6px;">Detalle</div>
+        ${lineas}${extra}${filaDescEf}${filaSubtotal}${filaDescJub}
+        <div class="fila" style="justify-content:space-between;font-weight:700;border-top:1px solid var(--linea);margin-top:6px;padding-top:6px;"><span>Total</span><span>${fmt(d.total_final)}</span></div>
+        <div style="font-weight:700;margin:10px 0 6px;">Pagos</div>
+        ${pagos}`;
+      boxDet.style.display="block";
+    };
+    
+    cont.appendChild(div);
+  });
+}
+
+const dl=document.createElement("datalist"); dl.id="aliasDL"; document.body.appendChild(dl);
+cargar().then(()=>{ dl.innerHTML=ALIAS.map(a=>`<option value="${a}">`).join(""); });
+</script>
+</body></html>

@@ -10,6 +10,7 @@ class Item(Base):
     categoria = Column(String, nullable=False, index=True)
     nombre = Column(String, nullable=False)
     precio = Column(Integer, nullable=False)
+    precio_transfer = Column(Integer, default=0)   # calculado: efectivo redondeado a transferencia
     es_producto = Column(Boolean, default=False)
     stock_actual = Column(Integer, default=0)   # solo aplica a productos
     stock_minimo = Column(Integer, default=0)
@@ -87,12 +88,25 @@ class Alias(Base):
     nombre = Column(String, unique=True, nullable=False)
     activo = Column(Boolean, default=True)
 
+class Cliente(Base):
+    __tablename__ = "clientes"
+    id = Column(Integer, primary_key=True)
+    nombre = Column(String, nullable=False, index=True)
+    telefono = Column(String)              
+    alias = Column(String)                 
+    notas = Column(String)
+    direccion = Column(String)
+    dni = Column(String)                 
+    activo = Column(Boolean, default=True)
+    creado = Column(DateTime, default=datetime.now)
+
 class Turno(Base):
     """Turnos / citas agendadas."""
     __tablename__ = "turnos"
     id = Column(Integer, primary_key=True)
     fecha = Column(String, nullable=False, index=True)   # 'YYYY-MM-DD'
     hora = Column(String, nullable=False)                 # 'HH:MM'
+    cliente_id = Column(Integer, ForeignKey("clientes.id"))   # opcional: vínculo al cliente registrado
     cliente = Column(String, nullable=False)
     servicio = Column(String, nullable=False)
     peluquero = Column(String)                            # opcional
@@ -111,3 +125,59 @@ class MovimientoStock(Base):
     cambio = Column(Integer)
     motivo = Column(String)
     usuario = Column(String)
+
+class Comprobante(Base):
+    """Ticket o presupuesto. El campo 'tipo' los diferencia."""
+    __tablename__ = "comprobantes"
+    id = Column(Integer, primary_key=True)
+    tipo = Column(String, nullable=False)        # "ticket" o "presupuesto"
+    numero = Column(Integer, nullable=False)      
+    fecha = Column(DateTime, default=datetime.now)
+    cliente_id = Column(Integer, ForeignKey("clientes.id"))  # opcional (puede ser None: mostrador)
+    cliente_nombre = Column(String)               # snapshot del nombre al momento
+    peluquero = Column(String)                    
+    total_lista = Column(Integer, default=0)    # total a precio de lista (sin descuento)
+    extra_dificultad = Column(Integer, default=0)   # total del extra por dificultad (snapshot)
+    descuento_pct = Column(Integer, default=0)       # % de descuento aplicado al comprobante
+    descuento_nombre = Column(String)                # snapshot del nombre del descuento
+    forma_pago = Column(String)                      # snapshot de la forma de pago
+    mostrar_motivo = Column(Boolean, default=False)  # si se imprime el motivo
+    convertido_de = Column(Integer, ForeignKey("comprobantes.id"))  # si vino de un presupuesto
+    activo = Column(Boolean, default=True)
+    cliente = relationship("Cliente")
+    lineas = relationship("ComprobanteLinea", back_populates="comprobante", cascade="all, delete-orphan")
+
+class ComprobanteLinea(Base):
+    __tablename__ = "comprobante_lineas"
+    id = Column(Integer, primary_key=True)
+    comprobante_id = Column(Integer, ForeignKey("comprobantes.id"), nullable=False)
+    item_id = Column(Integer, ForeignKey("items.id"))
+    nombre = Column(String)            # snapshot del nombre
+    cantidad = Column(Integer, default=1)
+    precio_unit = Column(Integer)      # snapshot del precio transferencia (precio de referencia)
+    precio_efectivo = Column(Integer)  # snapshot del precio efectivo de catálogo (para el descuento)
+    dificultad = Column(Boolean, default=False)
+    subtotal = Column(Integer)
+    comprobante = relationship("Comprobante", back_populates="lineas")
+
+class Pago(Base):
+    """Un abono a un comprobante. Un comprobante puede tener varios (cuotas)."""
+    __tablename__ = "pagos"
+    id = Column(Integer, primary_key=True)
+    comprobante_id = Column(Integer, ForeignKey("comprobantes.id"), nullable=False)
+    fecha = Column(DateTime, default=datetime.now)
+    monto = Column(Integer, nullable=False)      # lo que entró (a la caja)
+    saldado = Column(Integer)                     # deuda (a precio transferencia) que cubre este pago
+    forma_pago = Column(String)
+    alias = Column(String)                       # si fue transferencia (opcional)
+    desc_aplicado = Column(Integer, default=0)   # descuento en pesos de este abono (saldado - monto)
+    comprobante = relationship("Comprobante")
+
+class Descuento(Base):
+    """Catálogo de descuentos configurables."""
+    __tablename__ = "descuentos"
+    id = Column(Integer, primary_key=True)
+    nombre = Column(String, nullable=False)            # "Efectivo", "Jubilado", etc.
+    porcentaje = Column(Integer, nullable=False)        # 10, 15, 20...
+    mostrar_motivo = Column(Boolean, default=False)     # default de si se imprime el motivo
+    activo = Column(Boolean, default=True)

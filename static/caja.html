@@ -9,11 +9,7 @@
   :root{--tinta:#2F4858;--tinta2:#3d5a6c;--crema:#f7f5f0;--linea:#e2ddd3;--ok:#2e7d4f;--rojo:#c0392b;--texto:#2b2b28;}
   *{box-sizing:border-box;}
   body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;background:var(--crema);color:var(--texto);}
-  header{background:var(--tinta);color:#fff;padding:20px 30px;font-size:26px;font-weight:800;display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap;position:sticky;top:0;z-index:5;}
   header .tit{display:flex;align-items:center;gap:10px;}
-  nav.menu{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;}
-  nav.menu a{color:#fff;text-decoration:none;font-size:14px;font-weight:600;background:rgba(255,255,255,.15);padding:9px 13px;border-radius:10px;}
-  nav.menu a.actual{background:rgba(255,255,255,.32);}
   .wrap{max-width:1100px;margin:0 auto;padding:18px;}
   .card{background:#fff;border:1px solid var(--linea);border-radius:14px;padding:18px;margin-bottom:20px;}
   .card h2{margin:0 0 14px;font-size:18px;color:var(--tinta);}
@@ -123,12 +119,11 @@ async function cargarDia(){
   const bdl = "background:#fff;border:1px solid #c0392b;color:#c0392b;border-radius:7px;padding:6px 9px;font-size:12px;font-weight:600;cursor:pointer;";
   let html = "";
   if(d.ventas_detalle && d.ventas_detalle.length){
-    html += '<b style="color:var(--tinta);">Ventas del día</b><table style="margin-top:6px;"><thead><tr><th>Hora</th><th>Detalle</th><th>Pago</th><th>Total</th><th></th></tr></thead><tbody>';
+    html += '<b style="color:var(--tinta);">Cobros del día</b><table style="margin-top:6px;"><thead><tr><th>Hora</th><th>Comprobante</th><th>Pago</th><th>Monto</th><th></th></tr></thead><tbody>';
     d.ventas_detalle.forEach(v=>{
-      const items=v.lineas.map(l=>`${l.cantidad}× ${l.nombre}`).join(", ");
       const al=v.alias?` (${v.alias})`:"";
-      html+=`<tr><td>${v.hora}</td><td>${items}</td><td>${v.forma_pago}${al}</td><td class="money">${money(v.total)}</td>
-             <td><button style="${bdl}" onclick="anularVentaCaja(${v.id})">Anular</button></td></tr>`;
+      html+=`<tr><td>${v.hora}</td><td>${v.ref||'—'}</td><td>${v.forma_pago}${al}</td><td class="money">${money(v.total)}</td>
+             <td><button style="${bdl}" onclick="anularPagoCaja(${v.id})">Anular</button></td></tr>`;
     });
     html += '</tbody></table>';
   }
@@ -162,11 +157,11 @@ $("#btnFondo").onclick=async()=>{
   toast("Fondo guardado para "+$("#fecha").value); cargarDia();
 };
 
-async function anularVentaCaja(id){
-  if(!confirm("¿Anular esta venta? Se borra del registro y se devuelve el stock."))return;
-  const r=await authFetch("/api/ventas/"+id,{method:"DELETE"});
+async function anularPagoCaja(id){
+  if(!confirm("¿Anular este cobro? El comprobante vuelve a quedar con saldo pendiente."))return;
+  const r=await authFetch("/api/pagos/"+id,{method:"DELETE"});
   if(!r.ok){toast("No se pudo");return;}
-  toast("Venta anulada"); cargarDia();
+  toast("Cobro anulado"); cargarDia();
 }
 async function guardarEgresoCaja(id){
   await authFetch("/api/egresos/"+id,{method:"PUT",headers:{"Content-Type":"application/json"},

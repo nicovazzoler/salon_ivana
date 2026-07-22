@@ -6,24 +6,20 @@
   :root{--tinta:#2F4858;--tinta2:#3d5a6c;--crema:#f7f5f0;--linea:#e2ddd3;--ok:#2e7d4f;--rojo:#c0392b;}
   *{box-sizing:border-box;}
   body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;background:var(--crema);color:#2b2b28;}
-  header{background:var(--tinta);color:#fff;padding:20px 30px;font-size:26px;font-weight:800;display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap;position:sticky;top:0;z-index:5;}
   header .tit{display:flex;align-items:center;gap:10px;}
-  nav.menu{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;}
-  nav.menu a{color:#fff;text-decoration:none;font-size:14px;font-weight:600;background:rgba(255,255,255,.15);padding:9px 13px;border-radius:10px;}
-  nav.menu a.actual{background:rgba(255,255,255,.32);}
   .wrap{max-width:1100px;margin:0 auto;padding:18px;}
   .card{background:#fff;border:1px solid var(--linea);border-radius:14px;padding:18px;margin-bottom:18px;}
   .card h2{margin:0 0 12px;font-size:18px;color:var(--tinta);}
-  .periodo{display:flex;gap:6px;margin-bottom:10px;align-items:center;flex-wrap:wrap;}
+  .periodo{display:flex;gap:6px;align-items:center;flex-wrap:wrap;}
   .periodo button[data-d]{padding:6px 12px;border:1px solid var(--linea);border-radius:9px;background:#fff;cursor:pointer;font-weight:600;font-size:13px;}
   .periodo button[data-d].on{background:var(--tinta);color:#fff;border-color:var(--tinta);}
   .rango{display:flex;gap:5px;align-items:center;font-size:13px;color:#777;margin-left:6px;flex-wrap:wrap;}
   .rango input{padding:6px;border:1px solid var(--linea);border-radius:8px;font-size:13px;}
   .rango .aplicar{padding:6px 12px;border:none;border-radius:8px;background:var(--ok);color:#fff;cursor:pointer;font-weight:600;font-size:13px;}
   .controles{display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin-bottom:12px;padding-top:10px;border-top:1px dashed var(--linea);}
-  .metricas{display:flex;gap:0;border:1px solid var(--linea);border-radius:9px;overflow:hidden;}
-  .metricas button{padding:7px 14px;border:none;background:#fff;cursor:pointer;font-weight:600;font-size:13px;color:var(--tinta);}
-  .metricas button.on{background:var(--tinta);color:#fff;}
+  .segmentado{display:flex;gap:0;border:1px solid var(--linea);border-radius:9px;overflow:hidden;}
+  .segmentado button{padding:7px 14px;border:none;background:#fff;cursor:pointer;font-weight:600;font-size:13px;color:var(--tinta);}
+  .segmentado button.on{background:var(--tinta);color:#fff;}
   .topn{font-size:13px;color:#555;font-weight:600;display:flex;align-items:center;gap:6px;}
   .topn input{width:64px;padding:7px;border:1px solid var(--linea);border-radius:8px;font-size:14px;text-align:center;}
   .chartbox{position:relative;height:300px;}
@@ -31,6 +27,17 @@
   .num{background:var(--crema);border-radius:12px;padding:14px;text-align:center;}
   .num .lbl{font-size:12px;color:#6b6b63;}
   .num .val{font-size:20px;font-weight:800;margin-top:4px;color:var(--tinta);}
+  .desg{display:flex;gap:20px;flex-wrap:wrap;font-size:14px;color:#555;}
+  .desg div{flex:1;min-width:200px;}
+  .desg b{color:var(--tinta);}
+  .barra-excel{margin-bottom:12px;}
+  .rank{margin-top:16px;}
+  .rank-row{display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid var(--linea);cursor:pointer;text-decoration:none;color:inherit;}
+  .rank-row:hover{background:rgba(201,168,76,.06);}
+  .rank-nombre{flex:0 0 34%;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .rank-bar-wrap{flex:1;background:#2b2b2b;border-radius:6px;height:22px;overflow:hidden;display:block;}
+  .rank-bar{display:block;height:100%;background:#c9a84c;border-radius:6px;min-width:2px;}
+  .rank-monto{flex:0 0 auto;font-size:14px;font-weight:700;min-width:80px;text-align:right;}
   table{width:100%;border-collapse:collapse;font-size:13px;}
   th,td{padding:7px 6px;border-bottom:1px solid var(--linea);text-align:left;}
   th{color:var(--tinta);font-size:11px;text-transform:uppercase;}
@@ -51,59 +58,49 @@
 </header>
 <div class="wrap">
 
+  <!-- FILTRO GLOBAL: manda sobre resumen, gráfico y registro (la deuda NO depende del período) -->
+  <div class="card" id="cFiltro">
+    <div class="periodo">
+      <button data-d="1">Hoy</button><button data-d="7">7d</button><button data-d="30" class="on">30d</button>
+      <button data-d="90">90d</button><button data-d="0">Todo</button>
+      <span class="rango"><input type="date" class="desde"> a <input type="date" class="hasta"><button class="aplicar">Aplicar</button></span>
+    </div>
+  </div>
+
   <div class="card" id="cResumen">
     <h2>Resumen</h2>
-    <div class="periodo">
-      <button data-d="7">7d</button><button data-d="30" class="on">30d</button>
-      <button data-d="90">90d</button><button data-d="0">Todo</button>
-      <span class="rango"><input type="date" class="desde"> a <input type="date" class="hasta"><button class="aplicar">Aplicar</button></span>
-    </div>
     <div class="nums" id="resumen"></div>
+    <div class="desg" style="margin-top:14px;">
+      <div>Ingresos por forma de pago<br><b id="porPago">—</b></div>
+    </div>
   </div>
 
-  <div class="card" id="cTop">
-    <h2>Más vendidos — evolución</h2>
-    <div class="periodo">
-      <button data-d="7">7d</button><button data-d="30" class="on">30d</button>
-      <button data-d="90">90d</button><button data-d="0">Todo</button>
-      <span class="rango"><input type="date" class="desde"> a <input type="date" class="hasta"><button class="aplicar">Aplicar</button></span>
-    </div>
-    <div class="controles">
-      <div class="metricas">
-        <button data-m="ingreso" class="on">Por ingreso</button>
-        <button data-m="cantidad">Por cantidad</button>
+  <div class="card" id="cGrafico">
+    <h2>Cantidad de ventas por producto / categoría</h2>
+    <div class="controles" style="border-top:none;padding-top:0;">
+      <div class="segmentado">
+        <button data-v="items" class="on">Productos</button>
+        <button data-v="categorias">Categorías</button>
       </div>
-      <label class="topn">Top <input type="number" class="lim" value="3" min="1" max="15"> ítems</label>
+      <label class="topn">Top <input type="number" class="lim" value="3" min="1" max="15"></label>
     </div>
     <div class="chartbox"><canvas class="chart"></canvas></div>
     <div class="sindatos muted" style="display:none;text-align:center;padding:20px;">Sin datos en el período.</div>
   </div>
 
-  <div class="card" id="cCat">
-    <h2>Ingresos por categoría — evolución</h2>
-    <div class="periodo">
-      <button data-d="7">7d</button><button data-d="30" class="on">30d</button>
-      <button data-d="90">90d</button><button data-d="0">Todo</button>
-      <span class="rango"><input type="date" class="desde"> a <input type="date" class="hasta"><button class="aplicar">Aplicar</button></span>
+  <div class="card" id="cDeuda">
+    <h2>Cuenta corriente</h2>
+    <div class="nums">
+      <div class="num"><div class="lbl">Deudas de clientes hasta el día de la fecha: </div><div class="val" id="deudaTotal">—</div></div>
+      <div class="num"><div class="lbl">Clientes con saldo: </div><div class="val" id="deudaTickets">—</div></div>
     </div>
-    <div class="controles">
-      <div class="metricas">
-        <button data-m="ingreso" class="on">Por ingreso</button>
-        <button data-m="cantidad">Por cantidad</button>
-      </div>
-      <label class="topn">Top <input type="number" class="lim" value="3" min="1" max="15"> categorías</label>
-    </div>
-    <div class="chartbox"><canvas class="chart"></canvas></div>
-    <div class="sindatos muted" style="display:none;text-align:center;padding:20px;">Sin datos en el período.</div>
+    <div class="rank" id="rankDeuda"></div>
+    <button id="verTodos" style="display:none;margin-top:10px;background:#2b2b2b;border:1px solid #3a3a3a;color:#e0dcd4;">Ver todos</button>
   </div>
 
   <div class="card" id="cReg">
-    <h2>Registro de movimientos (ventas y egresos)</h2>
-    <div class="periodo">
-      <button data-d="0" class="on">Todo (desde el origen)</button>
-      <button id="wkexcel">Descargar excel</button> <!-- linea 250 -->
-      <span class="rango"><input type="date" class="desde"> a <input type="date" class="hasta"><button class="aplicar">Aplicar</button></span>
-    </div>
+    <h2>Registro de movimientos (ingresos y egresos)</h2>
+    <div class="barra-excel"><button id="wkexcel">Descargar excel</button></div>
     <div id="reg"></div>
   </div>
 
@@ -117,63 +114,19 @@ const money=n=>"$"+(n||0).toLocaleString("es-AR");
 const fmtNum=n=>(n||0).toLocaleString("es-AR");
 const PALETA=["#c9a84c","#e8d5a3","#c0785a","#8b6914","#d4a843","#a0855b","#e6c97a","#b89a3e",
               "#dbb96e","#9c7530","#c4a24d","#7a6021","#f0d68a","#b08d35","#d9b84b"];
-function fmtMetric(v, metrica){ return metrica==="cantidad" ? fmtNum(v) : money(v); }
+
+// ---- ESTADO ÚNICO DE LA PÁGINA ----
+// dias/desde/hasta -> los manda el filtro global (afectan a todo)
+// vista/limite     -> solo del gráfico
+const state={dias:30, desde:"", hasta:"", vista:"items", limite:3};
 
 function qbase(s){ return (s.desde||s.hasta) ? `desde=${s.desde}&hasta=${s.hasta}` : `dias=${s.dias}`; }
 
-function wirePeriodo(rootSel, loader){
-  const root=$(rootSel); const state={dias:30, desde:"", hasta:""};
-  root.querySelectorAll("button[data-d]").forEach(b=>{
-    b.onclick=()=>{
-      root.querySelectorAll("button[data-d]").forEach(x=>x.classList.remove("on"));
-      b.classList.add("on");
-      state.dias=parseInt(b.dataset.d); state.desde=""; state.hasta="";
-      root.querySelector(".desde").value=""; root.querySelector(".hasta").value="";
-      loader(state);
-    };
-  });
-  root.querySelector(".aplicar").onclick=()=>{
-    state.desde=root.querySelector(".desde").value;
-    state.hasta=root.querySelector(".hasta").value;
-    if(state.desde || state.hasta) root.querySelectorAll("button[data-d]").forEach(x=>x.classList.remove("on"));
-    loader(state);
-  };
-  return state;
-}
-
-// igual que wirePeriodo pero suma toggle de métrica y top-N (para los gráficos)
-function wireAnalytics(rootSel, loader){
-  const root=$(rootSel);
-  const state={dias:30, desde:"", hasta:"", metrica:"ingreso", limite:3};
-  root.querySelectorAll("button[data-d]").forEach(b=>{
-    b.onclick=()=>{
-      root.querySelectorAll("button[data-d]").forEach(x=>x.classList.remove("on"));
-      b.classList.add("on");
-      state.dias=parseInt(b.dataset.d); state.desde=""; state.hasta="";
-      root.querySelector(".desde").value=""; root.querySelector(".hasta").value="";
-      loader(state);
-    };
-  });
-  root.querySelector(".aplicar").onclick=()=>{
-    state.desde=root.querySelector(".desde").value;
-    state.hasta=root.querySelector(".hasta").value;
-    if(state.desde || state.hasta) root.querySelectorAll("button[data-d]").forEach(x=>x.classList.remove("on"));
-    loader(state);
-  };
-  root.querySelectorAll(".metricas button[data-m]").forEach(b=>{
-    b.onclick=()=>{
-      root.querySelectorAll(".metricas button[data-m]").forEach(x=>x.classList.remove("on"));
-      b.classList.add("on");
-      state.metrica=b.dataset.m;
-      loader(state);
-    };
-  });
-  const lim=root.querySelector(".lim");
-  lim.onchange=()=>{
-    let v=parseInt(lim.value)||3; v=Math.max(1,Math.min(15,v)); lim.value=v;
-    state.limite=v; loader(state);
-  };
-  return state;
+function recargarTodo(){
+  loadResumen(state);
+  loadGrafico(state);
+  loadReg(state);
+  // loadDeuda() NO va acá: la deuda es una foto de hoy, no depende del período
 }
 
 function dibujarLinea(rootSel, data){
@@ -201,9 +154,9 @@ function dibujarLinea(rootSel, data){
       interaction:{mode:"index", intersect:false},
       plugins:{
         legend:{position:"bottom", labels:{boxWidth:12, font:{size:11}}},
-        tooltip:{callbacks:{label:(c)=> `${c.dataset.label}: ${fmtMetric(c.parsed.y, data.metrica)}`}}
+        tooltip:{callbacks:{label:(c)=> `${c.dataset.label}: ${fmtNum(c.parsed.y)}`}}
       },
-      scales:{ y:{beginAtZero:true, ticks:{callback:(v)=>fmtMetric(v, data.metrica)}} }
+      scales:{ y:{beginAtZero:true, ticks:{callback:(v)=>fmtNum(v)}} }
     }
   });
 }
@@ -214,39 +167,114 @@ async function loadResumen(s){
     <div class="num"><div class="lbl">Ingresos</div><div class="val">${money(r.ingresos)}</div></div>
     <div class="num"><div class="lbl">Egresos</div><div class="val">${money(r.egresos)}</div></div>
     <div class="num"><div class="lbl">Neto</div><div class="val">${money(r.neto)}</div></div>
-    <div class="num"><div class="lbl">Ventas</div><div class="val">${r.ventas}</div></div>
-    <div class="num"><div class="lbl">Ticket prom.</div><div class="val">${money(r.ticket_promedio)}</div></div>`;
+    <div class="num"><div class="lbl">Ventas</div><div class="val">${r.ventas}</div></div>`;
+  const fp = r.ingresos_por_pago || {};
+  const pct = v => {
+    if(!r.ingresos) return "0%";
+    const p = v*100/r.ingresos;
+    if(p > 0 && p < 1)    return "<1%";    // existe, pero es menos de 1
+    if(p > 99 && p < 100) return ">99%";   // casi todo, pero no todo
+    return Math.round(p)+"%";
+  };
+  $("#porPago").innerHTML = Object.keys(fp).length
+    ? Object.entries(fp).sort((a,b)=>b[1]-a[1])
+        .map(([k,v])=>`${k}: ${money(v)} (${pct(v)})`).join("<br>")
+    : "—";
 }
-async function loadTop(s){
-  const q=`${qbase(s)}&metrica=${s.metrica}&limite=${s.limite}`;
-  const data=await (await authFetch("/api/reportes/serie-items?"+q)).json();
-  dibujarLinea("#cTop", data);
+
+async function loadGrafico(s){
+  const q=`${qbase(s)}&limite=${s.limite}`;
+  const url = s.vista==="items" ? "/api/reportes/serie-items" : "/api/reportes/serie-categorias";
+  const data=await (await authFetch(url+"?"+q)).json();
+  dibujarLinea("#cGrafico", data);
 }
-async function loadCat(s){
-  const q=`${qbase(s)}&metrica=${s.metrica}&limite=${s.limite}`;
-  const data=await (await authFetch("/api/reportes/serie-categorias?"+q)).json();
-  dibujarLinea("#cCat", data);
-}
+
 async function loadReg(s){
-  const q = (s.desde||s.hasta) ? `desde=${s.desde}&hasta=${s.hasta}` : "";
-  const movs=await (await authFetch("/api/registro?"+q)).json();
+  const movs=await (await authFetch("/api/registro?"+qbase(s))).json();
   if(movs.length===0){ $("#reg").innerHTML='<p class="muted">Sin movimientos en el período.</p>'; return; }
-  let h='<table><thead><tr><th>Fecha</th><th>Hora</th><th>Tipo</th><th>Detalle</th><th>Pago</th><th class="money">Monto</th></tr></thead><tbody>';
+  let h='<table><thead><tr><th>Fecha</th><th>Hora</th><th>Tipo</th><th>Comprobante</th><th>Cliente</th><th>Detalle</th><th>Pago</th><th class="money">Monto</th></tr></thead><tbody>';
   movs.forEach(m=>{
-    const esV = m.clase==="venta";
-    const etiqueta = esV ? '<span style="color:var(--ok);font-weight:700;">Venta</span>'
+    const esI = m.clase==="ingreso";
+    const etiqueta = esI ? '<span style="color:var(--ok);font-weight:700;">Ingreso</span>'
                          : '<span style="color:var(--rojo);font-weight:700;">Egreso</span>';
-    const monto = (esV?"+":"−")+money(m.monto).slice(1);
-    h+=`<tr><td>${m.fecha}</td><td>${m.hora}</td><td>${etiqueta}</td><td>${m.detalle}</td><td>${m.forma_pago}</td>
-        <td class="money" style="color:${esV?'var(--ok)':'var(--rojo)'};">${monto}</td></tr>`;
+    const monto = (esI?"+":"−")+money(m.monto).slice(1);
+    h+=`<tr><td>${m.fecha}</td><td>${m.hora}</td><td>${etiqueta}</td><td>${m.comprobante}</td>
+        <td>${m.cliente}</td><td>${m.detalle}</td><td>${m.forma_pago}</td>
+        <td class="money" style="color:${esI?'var(--ok)':'var(--rojo)'};">${monto}</td></tr>`;
   });
   h+=`</tbody></table><p class="muted" style="margin-top:8px;">${movs.length} movimiento(s)${movs.length>=1000?' — mostrando los 1000 más recientes':''}.</p>`;
   $("#reg").innerHTML=h;
 }
 
+let DEUDORES=[];   // lo llena loadDeuda, lo usa el ranking
+let mostrarTodos=false;
+
+async function loadDeuda(){
+  // dos llamadas en paralelo: las deudas (id + saldo) y los clientes (id -> nombre)
+  const [deudas, clientes] = await Promise.all([
+    authFetch("/api/clientes/deudas").then(r=>r.json()),
+    authFetch("/api/clientes").then(r=>r.json())
+    
+  ]);
+
+  // diccionario id -> nombre, para no recorrer el array de clientes por cada deuda
+  const nombrePorId = {};
+  clientes.forEach(c => { nombrePorId[c.id] = c.nombre; });
+
+  // pegar el nombre a cada deuda y ordenar de mayor a menor
+  DEUDORES = deudas
+    .map(d => ({ id:d.cliente_id, saldo:d.saldo, nombre: nombrePorId[d.cliente_id] || "(cliente eliminado)" }))
+    .sort((a,b) => b.saldo - a.saldo);
+
+  // los dos números de arriba salen de la misma lista: una sola fuente
+  const total = DEUDORES.reduce((sum,d) => sum + d.saldo, 0);
+  $("#deudaTotal").textContent = money(total);
+  $("#deudaTickets").textContent = DEUDORES.length;
+  pintarRanking();
+}
+
+function pintarRanking(){
+  const cont = $("#rankDeuda");
+
+  if(DEUDORES.length === 0){
+    cont.innerHTML = '<p class="muted" style="margin-top:12px;">Nadie debe nada. 🎉</p>';
+    return;
+  const btn = $("#verTodos");
+  if(DEUDORES.length > 10){
+    btn.style.display = "block";
+    btn.textContent = mostrarTodos ? `Ver menos` : `Ver todos (${DEUDORES.length})`;
+    btn.onclick = ()=>{ mostrarTodos = !mostrarTodos; pintarRanking(); };
+  } else {
+    btn.style.display = "none";
+  }
+  }
+
+  const top = mostrarTodos ? DEUDORES : DEUDORES.slice(0, 10);
+  const max = DEUDORES[0].saldo;   // el más grande: la barra llena. DEUDORES ya viene ordenado
+
+  cont.innerHTML = top.map(d => {
+    const pct = Math.round(d.saldo / max * 100);
+    return `
+      <a class="rank-row" href="/cuenta?id=${d.id}">
+        <span class="rank-nombre">${d.nombre}</span>
+        <span class="rank-bar-wrap"><span class="rank-bar" style="width:${pct}%;"></span></span>
+        <span class="rank-monto">${money(d.saldo)}</span>
+      </a>`;
+  }).join("");
+
+  const btn = $("#verTodos");
+  if(DEUDORES.length > 10){
+    btn.style.display = "block";
+    btn.textContent = mostrarTodos ? `Ver menos` : `Ver todos (${DEUDORES.length})`;
+    btn.onclick = ()=>{ mostrarTodos = !mostrarTodos; pintarRanking(); };
+  } else {
+    btn.style.display = "none";
+  }
+}
+
 async function descargarExcel(){
-  // 1. armo el período igual que los otros reportes (reuso el estado sG del registro)
-  const q = (sG.desde || sG.hasta) ? `desde=${sG.desde}&hasta=${sG.hasta}` : `dias=${sG.dias}`;
+  // 1. mismo período que el filtro global
+  const q = qbase(state);
 
   // 2. pido el archivo al backend CON el carnet (por eso authFetch, no fetch pelado)
   const r = await authFetch("/api/reportes/excel?" + q);
@@ -266,12 +294,49 @@ async function descargarExcel(){
   URL.revokeObjectURL(url);
 }
 
-const sR=wirePeriodo("#cResumen", loadResumen);
-const sT=wireAnalytics("#cTop", loadTop);
-const sC=wireAnalytics("#cCat", loadCat);
-const sG=wirePeriodo("#cReg", loadReg); sG.dias=0;
+// ---- CABLEADO ----
+
+// Filtro global: cambia el período y recarga las tres cards
+(function(){
+  const root=$("#cFiltro");
+  root.querySelectorAll("button[data-d]").forEach(b=>{
+    b.onclick=()=>{
+      root.querySelectorAll("button[data-d]").forEach(x=>x.classList.remove("on"));
+      b.classList.add("on");
+      state.dias=parseInt(b.dataset.d); state.desde=""; state.hasta="";
+      root.querySelector(".desde").value=""; root.querySelector(".hasta").value="";
+      recargarTodo();
+    };
+  });
+  root.querySelector(".aplicar").onclick=()=>{
+    state.desde=root.querySelector(".desde").value;
+    state.hasta=root.querySelector(".hasta").value;
+    if(state.desde||state.hasta) root.querySelectorAll("button[data-d]").forEach(x=>x.classList.remove("on"));
+    recargarTodo();
+  };
+})();
+
+// Controles del gráfico: solo recargan el gráfico
+(function(){
+  const root=$("#cGrafico");
+  root.querySelectorAll(".segmentado button[data-v]").forEach(b=>{
+    b.onclick=()=>{
+      root.querySelectorAll(".segmentado button[data-v]").forEach(x=>x.classList.remove("on"));
+      b.classList.add("on");
+      state.vista=b.dataset.v;
+      loadGrafico(state);
+    };
+  });
+  const lim=root.querySelector(".lim");
+  lim.onchange=()=>{
+    let v=parseInt(lim.value)||3; v=Math.max(1,Math.min(15,v)); lim.value=v;
+    state.limite=v; loadGrafico(state);
+  };
+})();
+
 $("#wkexcel").onclick = descargarExcel;
 
-loadResumen(sR); loadTop(sT); loadCat(sC); loadReg(sG);
+recargarTodo();
+loadDeuda();
 </script>
 </body></html>

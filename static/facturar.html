@@ -1,0 +1,816 @@
+<!DOCTYPE html>
+<html lang="es"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#1f1f1f"><title>Facturar — Peluquería</title>
+<style>
+  :root{--tinta:#2F4858;--crema:#f7f5f0;--linea:#e2ddd3;--ok:#2e7d4f;--rojo:#c0392b;--oro:#c9a84c;}
+  *{box-sizing:border-box;}
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;background:var(--crema);color:#2b2b28;}
+  .wrap{max-width:1100px;margin:0 auto;padding:18px;display:flex;gap:18px;flex-wrap:wrap;align-items:flex-start;}
+  .col{flex:1;min-width:300px;}
+  .card{background:#fff;border:1px solid var(--linea);border-radius:14px;padding:18px;margin-bottom:16px;}
+  input,select{padding:9px;border:1px solid var(--linea);border-radius:8px;font-size:15px;font-family:Georgia,'Times New Roman',serif;}
+  button{font-family:inherit;cursor:pointer;border:none;border-radius:8px;padding:9px 14px;font-size:14px;font-weight:600;background:var(--tinta);color:#fff;}
+  .grid-items{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px;margin-top:12px;}
+  .btn-item{display:flex;flex-direction:column;align-items:flex-start;gap:4px;padding:10px 12px;border-radius:10px;border:1px solid var(--linea);background:#fff;cursor:pointer;text-align:left;}
+  .btn-item .n{font-size:14px;font-weight:500;}
+  .btn-item .p{font-size:13px;font-weight:700;color:var(--ok);}
+  .seg{display:flex;gap:8px;margin-bottom:14px;}
+  .seg button{flex:1;background:#222020;border:1px solid var(--linea);color:#777;}
+  .seg button.on{background:#c9a84c;color:#1f1f1f;border-color:#c9a84c;}
+  .linea{display:flex;gap:8px;align-items:center;padding:8px 0;border-bottom:1px solid var(--linea);}
+  .linea .n{flex:1;font-size:14px;}
+  .linea .pin{width:80px;}
+  .dif{background:#fff;border:1px solid var(--linea);color:#999;padding:6px 8px;}
+  .dif.on{background:#c0785a;color:#fff;border-color:#c0785a;}
+  .qty{display:flex;align-items:center;gap:6px;}
+  .qty button{background:#eee;color:#333;padding:4px 9px;}
+  .quitar{background:#fff;color:var(--rojo);border:1px solid var(--linea);padding:6px 9px;}
+  .fila{display:flex;gap:8px;align-items:center;margin-bottom:10px;}
+  .fila label{font-size:13px;color:#666;min-width:80px;}
+  .tot-row{display:flex;justify-content:space-between;font-size:14px;margin:5px 0;}
+  .tot-extra{color:#c0785a;}
+  .tot-desc{color:#c0785a;}
+  .tot-final{font-size:20px;font-weight:700;color:var(--tinta);border-top:1px solid var(--linea);padding-top:8px;margin-top:8px;}
+  .muted{color:#9a9a92;font-size:13px;}
+  .crear{width:100%;background:var(--ok);font-size:16px;padding:13px;margin-top:12px;}
+  .crear:disabled{opacity:.5;cursor:not-allowed;}
+  .crear-sec{flex:1;background:#fff;border:1px solid var(--linea);color:var(--tinta);font-size:13px;padding:10px;}
+  .crear-sec:disabled{opacity:.5;cursor:not-allowed;}
+  .toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--ok);color:#fff;padding:12px 20px;border-radius:12px;font-weight:700;opacity:0;pointer-events:none;transition:opacity .25s;}
+  .toast.show{opacity:1;}
+  .cat-pill{background:#222020;border:1px solid var(--linea);color:#bbb;border-radius:20px;padding:6px 14px;font-size:13px;cursor:pointer;}
+  .cat-pill.on{background:#c9a84c;color:#1f1f1f;border-color:#c9a84c;font-weight:600;}
+  .btn-item .precios{text-align:right;}
+  .btn-item .p-tr{font-size:14px;color:var(--ok);font-weight:600;}
+  .btn-item .p-ef{font-size:11px;color:#999;}
+  .btn-item.grupo{background:rgba(201,168,76,.08);}
+  .btn-item.grupo .hint{font-size:11px;color:#888;margin-top:2px;display:block;}
+</style><link rel="stylesheet" href="/static/theme.css"></head><body>
+<header>
+  <span>🧾 Facturar</span>
+  <nav class="menu"></nav>
+</header>
+<div class="wrap">
+
+  <div class="col">
+    <div class="card">
+      <input id="buscar" placeholder="🔎 Buscar servicio o producto..." style="width:100%;margin-bottom:12px;">
+      <div id="catPills" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px;"></div>
+      <div id="barraNav" style="display:none;align-items:center;gap:10px;margin-bottom:12px;">
+        <button id="volver" style="font-size:13px;">← Volver</button>
+        <span id="tituloCat" style="font-weight:600;color:var(--tinta);"></span>
+      </div>
+      <div class="grid-items" id="items"></div>
+    </div>
+  </div>
+
+  <div class="col">
+    <div class="card">
+      <div class="seg">
+        <button id="btnTicket" class="on">Ticket</button>
+        <button id="btnPresu">Presupuesto</button>
+      </div>
+      <div class="fila" style="margin-top:8px;">
+        <label>Forma de pago:</label>
+        <select id="formaPago" style="flex:1;">
+          <option value="efectivo">Efectivo</option>
+          <option value="transfer">Transferencia</option>
+          <option value="mixto">Pago mixto</option>
+          <option value="cuenta">A cuenta</option>
+        </select>
+      </div>
+      <div class="fila" id="aliasBox" style="display:none;">
+        <label>Alias:</label>
+        <input id="aliasTransfer" list="aliasList" placeholder="¿A qué cuenta se transfiere?" style="flex:1;">
+      </div>
+
+      <div class="fila">
+        <label>Cliente: <span style="color:var(--rojo);">*</span></label>
+          <div style="position:relative;flex:1;">
+          <input id="cliente" autocomplete="off" placeholder="Nombre del cliente (obligatorio)" style="width:100%;">
+          <div id="cliDrop" style="display:none;position:absolute;left:0;right:0;top:100%;z-index:20;background:#2b2a27;border:1px solid var(--linea);border-radius:8px;max-height:220px;overflow:auto;"></div>
+        </div>
+      </div>
+      <div class="fila">
+        <label>Peluquero:</label>
+        <input id="peluquero" placeholder="(opcional)" style="flex:1;">
+      </div>
+
+      <div id="lineas"></div>
+
+      <div class="fila" style="margin-top:14px;">
+        <label>Descuento:</label>
+        <select id="descuento" style="flex:1;"></select>
+      </div>
+      <div class="fila">
+      </div>
+
+      <div class="tot-row"><span>Subtotal</span><span id="subtotal">$0</span></div>
+      <div class="tot-row tot-extra" id="rowExtra" style="display:none;"><span>Extra dificultad</span><span id="extraMonto">$0</span></div>
+      <div class="tot-row tot-desc" id="rowDescEfvo" style="display:none;"><span id="descEfvoLabel">Descuento</span><span id="descEfvoMonto">$0</span></div>
+      <div class="tot-row" id="rowSubEfvo" style="display:none;"><span>Subtotal </span><span id="subEfvoMonto">$0</span></div>
+      <div class="tot-row tot-desc" id="rowDescCat" style="display:none;"><span id="descCatLabel">Descuento</span><span id="descCatMonto">$0</span></div>
+      <div class="tot-row tot-final"><span>Total</span><span id="total">$0</span></div>
+
+      <div id="botsTicket">
+        <button class="crear" id="cobrarTodo" disabled>Cobrar todo</button>
+        <div style="display:flex;gap:8px;margin-top:8px;">
+          <button class="crear-sec" id="cobrarParte" disabled>Cobrar una parte</button>
+          <button class="crear-sec" id="dejarCuenta" disabled>Dejar a cuenta</button>
+        </div>
+        <button class="crear" id="cobrarMixto" disabled style="display:none;">Cobrar (pago mixto)</button>
+      </div>
+      <button class="crear" id="crearPresu" disabled style="display:none;">Crear presupuesto</button>
+
+      <div id="panelCobro" style="display:none;border-top:1px solid var(--linea);margin-top:14px;padding-top:14px;">
+        <div style="font-weight:700;color:var(--tinta);margin-bottom:4px;" id="cobroTitulo">Cobrar</div>
+        <div class="tot-row"><span>Total</span><span id="cobroTotal">$0</span></div>
+        <div class="tot-row" style="font-weight:700;"><span>Saldo</span><span id="cobroSaldo">$0</span></div>
+        <div id="cobroAbonos" style="margin:8px 0;"></div>
+        <div class="fila" style="margin-top:10px;">
+          <select id="cobroForma" style="flex:1;"></select>
+          <input id="cobroMonto" type="number" placeholder="Cuánto saldar" style="width:110px;">
+        </div>
+        <div class="fila" id="cobroAliasBox" style="display:none;">
+          <label>Alias:</label>
+          <input id="cobroAlias" list="aliasList" placeholder="¿A qué cuenta?" style="flex:1;">
+          <datalist id="aliasList"></datalist>
+        </div>
+        <button id="cobroRegistrar" style="width:100%;background:var(--ok);">Registrar pago</button>
+        <button id="cobroCerrar" style="width:100%;background:#fff;border:1px solid var(--linea);color:#777;margin-top:8px;">Listo (dejar saldo pendiente)</button>
+      </div>
+      <div id="panelMixto" style="display:none;border-top:1px solid var(--linea);margin-top:14px;padding-top:14px;">
+        <div style="font-weight:700;color:var(--tinta);margin-bottom:8px;">Pago mixto</div>
+
+        <div class="tot-row"><span>Deuda (transfer)</span><span id="mxDeuda">$0</span></div>
+        <div id="mxAviso" style="color:var(--mal,#c0392b);font-size:13px;margin-top:4px;display:none;"></div>
+        <div class="fila" style="margin-top:10px;">
+          <label>Transferencia:</label>
+          <input id="mxTransfer" type="number" placeholder="Cuánto va por transfer" style="flex:1;">
+        </div>
+        <div class="fila" id="mxAliasBox" style="display:none;">
+          <label>Alias:</label>
+          <input id="mxAlias" list="aliasList" placeholder="¿A qué cuenta?" style="flex:1;">
+        </div>
+
+        <label style="display:flex;gap:8px;align-items:center;margin:10px 0;">
+          <input type="checkbox" id="mxConfirmar" style="width:auto;">
+          Calcular parte en efectivo
+        </label>
+
+        <div id="mxResumen" style="display:none;">
+          <div class="tot-row"><span>Transferencia</span><span id="mxMonTransfer">$0</span></div>
+          <div class="tot-row"><span>Efectivo (transfer)</span><span id="mxMonEfvoBruto">$0</span></div>
+          <div class="tot-row tot-desc"><span>Descuento (10%)</span><span id="mxDesc">$0</span></div>
+          <div class="tot-row" style="font-weight:600;"><span>Total efectivo</span><span id="mxEfvoReal">$0</span></div>
+          <div class="tot-row tot-final"><span>Total a cobrar</span><span id="mxTotal">$0</span></div>
+        </div>
+
+        <button class="crear" id="mxRegistrar" disabled style="margin-top:10px;">Registrar pago mixto</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="col" style="flex:1 1 100%;">
+    <div class="card">
+      <div style="font-weight:700;color:#c0785a;margin-bottom:12px;">↓ Registrar egreso</div>
+      <div class="fila" style="flex-wrap:wrap;align-items:flex-end;">
+        <div style="display:flex;flex-direction:column;gap:4px;">
+          <label style="font-size:12px;color:#666;">Tipo</label>
+          <input id="egTipo" list="egTipos" placeholder="Proveedor, retiro...">
+          <datalist id="egTipos"></datalist>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:4px;flex:1;">
+          <label style="font-size:12px;color:#666;">Concepto</label>
+          <input id="egConcepto" placeholder="Detalle" style="width:100%;">
+        </div>
+        <div style="display:flex;flex-direction:column;gap:4px;">
+          <label style="font-size:12px;color:#666;">Monto</label>
+          <input id="egMonto" type="number" placeholder="0" style="width:110px;">
+        </div>
+        <div style="display:flex;flex-direction:column;gap:4px;">
+          <label style="font-size:12px;color:#666;">Forma de pago</label>
+          <select id="egPago"></select>
+        </div>
+        <button id="btnGuardarEgreso">Registrar</button>
+      </div>
+      <div style="margin-top:14px;">
+        <div id="toggleEgresosHoy" style="cursor:pointer;font-size:13px;color:#888;margin-bottom:8px;">Egresos de hoy ▾</div>
+        <div id="egresosHoy"></div>
+      </div>
+    </div>
+  </div>
+
+</div>
+<div class="toast" id="toast"></div>
+
+<script src="/static/auth.js"></script>
+<script>
+requireLogin(); pintarNav();
+const $=s=>document.querySelector(s);
+const fmt=n=>"$"+(n||0).toLocaleString("es-AR");
+let CATALOGO=[], DESCUENTOS=[], CLIENTES=[], ticket=[], extraDif=0;
+let tipo="ticket", descPct=0, descNombre=null, formaPago="efectivo";
+let totalActual=0;
+let mxDeudaActual=0;
+let vista="cats", catActual=null, grupoActual=null;
+const ORDEN_VAR=["S","M","L","XL","Mayor XL"];
+const ordenVar=v=>{const i=ORDEN_VAR.indexOf(v);return i<0?99:i;};
+function parseNombre(nombre){
+  const m=nombre.match(/^(.*?)\s*\(([^)]+)\)\s*$/);
+  return m?{base:m[1].trim(),variante:m[2].trim()}:{base:nombre.trim(),variante:null};
+}
+
+function toast(m){const t=$("#toast");t.textContent=m;t.classList.add("show");setTimeout(()=>t.classList.remove("show"),2200);}
+
+$("#btnGuardarEgreso").onclick=async()=>{
+  const tipo=$("#egTipo").value.trim();
+  const monto=parseInt($("#egMonto").value);
+  if(!tipo || !monto){ toast("Completá tipo y monto"); return; }
+  await authFetch("/api/tipos-egreso",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({nombre:tipo})});
+  await authFetch("/api/egresos",{method:"POST",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({tipo, concepto:$("#egConcepto").value, monto, forma_pago:$("#egPago").value})});
+  $("#egTipo").value=""; $("#egConcepto").value=""; $("#egMonto").value="";
+  toast("Egreso registrado"); cargarEgresosHoy();
+};
+
+async function cargarEgresosHoy(){
+  const es=await (await authFetch("/api/egresos/dia")).json();
+  const cont=$("#egresosHoy");
+  if(es.length===0){ cont.innerHTML='<div class="muted">Sin egresos hoy.</div>'; return; }
+  cont.innerHTML="";
+  es.forEach(e=>{
+    const row=document.createElement("div"); row.className="linea";
+    row.innerHTML=`
+      <span class="n">${e.hora} · ${e.tipo}${e.concepto?' · '+e.concepto:''} · ${e.forma_pago||''}</span>
+      <span style="min-width:70px;text-align:right;color:var(--rojo);">−${fmt(e.monto)}</span>
+      <button class="quitar">×</button>`;
+    row.querySelector(".quitar").onclick=async()=>{
+      if(!confirm("¿Anular este egreso?"))return;
+      const r=await authFetch("/api/egresos/"+e.id,{method:"DELETE"});
+      if(!r.ok){ toast("No se pudo"); return; }
+      toast("Egreso anulado"); cargarEgresosHoy();
+    };
+    cont.appendChild(row);
+  });
+}
+
+$("#toggleEgresosHoy").onclick=()=>{
+  const el=$("#egresosHoy");
+  el.style.display = el.style.display==="none" ? "block" : "none";
+};
+
+async function init(){
+  const cfg=await (await authFetch("/api/config")).json();
+  extraDif=cfg.extra_dificultad||0;
+  CATALOGO=await (await authFetch("/api/catalogo")).json();
+  CLIENTES=await (await authFetch("/api/clientes")).json();
+  $("#cobroForma").innerHTML=(cfg.formas_pago||[]).map(f=>`<option>${f}</option>`).join("");
+  $("#egPago").innerHTML=(cfg.formas_pago||[]).map(f=>`<option>${f}</option>`).join("");
+  $("#egTipos").innerHTML=(cfg.tipos_egreso||[]).map(t=>`<option value="${t}">`).join("");
+  $("#aliasList").innerHTML=(cfg.alias||[]).map(a=>`<option value="${a}">`).join("");
+  DESCUENTOS=await (await authFetch("/api/descuentos")).json();
+  $("#descuento").innerHTML='<option value="">Sin descuento</option>'+
+    DESCUENTOS.map((d,i)=>`<option value="${i}">${d.nombre} ${d.porcentaje}%</option>`).join("");
+  renderCategorias(); restaurarBorrador(); renderTicket(); mostrarBotones(); cargarEgresosHoy();
+  const cliParam=new URLSearchParams(location.search).get("cliente");
+  if(cliParam){ $("#cliente").value=cliParam; }
+}
+
+function precioBtn(it){
+  return `<span class="precios"><span class="p-tr">transf ${fmt(it.precio_transfer)}</span><br><span class="p-ef">c/desc ${fmt(it.precio)}</span></span>`;
+}
+function categorias(){
+  const set=[], vistos=new Set();
+  CATALOGO.forEach(it=>{ if(!vistos.has(it.categoria)){vistos.add(it.categoria);set.push(it.categoria);} });
+  return set.sort((a,b)=>a.localeCompare(b,'es'));
+}
+function renderCategorias(){
+  vista="cats"; catActual=null; grupoActual=null;
+  $("#barraNav").style.display="none";
+  const pills=$("#catPills"); pills.style.display="flex"; pills.innerHTML="";
+  categorias().forEach(c=>{
+    const b=document.createElement("button"); b.className="cat-pill"; b.textContent=c;
+    b.onclick=()=>abrirCategoria(c); pills.appendChild(b);
+  });
+  $("#items").innerHTML='<p class="muted" style="grid-column:1/-1;">Elegí una categoría.</p>';
+}
+function abrirCategoria(cat){
+  vista="items"; catActual=cat; grupoActual=null;
+  $("#catPills").querySelectorAll(".cat-pill").forEach(p=>p.classList.toggle("on",p.textContent===cat));
+  $("#catPills").style.display="flex"; $("#barraNav").style.display="none";
+  const items=CATALOGO.filter(i=>i.categoria===cat);
+  const grupos=new Map();
+  items.forEach(it=>{ const{base,variante}=parseNombre(it.nombre);
+    if(!grupos.has(base))grupos.set(base,[]); grupos.get(base).push({variante,it}); });
+  const g=$("#items"); g.innerHTML="";
+  [...grupos.entries()].forEach(([base,arr])=>{
+    if(arr.length===1){
+      const it=arr[0].it; const b=document.createElement("button"); b.className="btn-item";
+      b.innerHTML=`<span class="n">${it.nombre}</span>${precioBtn(it)}`;
+      b.onclick=()=>agregar(it); g.appendChild(b);
+    } else {
+      const labels=arr.map(a=>a.variante).filter(Boolean).sort((a,b)=>ordenVar(a)-ordenVar(b));
+      const b=document.createElement("button"); b.className="btn-item grupo";
+      b.innerHTML=`<span class="n">${base}&nbsp;›<span class="hint">${labels.join(" · ")||"opciones"}</span></span>${precioBtn(arr[0].it)}`;
+      b.onclick=()=>abrirGrupo(base,arr); g.appendChild(b);
+    }
+  });
+}
+function abrirGrupo(base,arr){
+  vista="grupo"; grupoActual=base;
+  $("#catPills").style.display="none"; $("#barraNav").style.display="flex";
+  $("#volver").textContent="← "+catActual; $("#tituloCat").textContent=base;
+  const ordenado=[...arr].sort((a,b)=>ordenVar(a.variante)-ordenVar(b.variante));
+  const g=$("#items"); g.innerHTML="";
+  ordenado.forEach(({variante,it})=>{
+    const b=document.createElement("button"); b.className="btn-item";
+    b.innerHTML=`<span class="n">${variante||it.nombre}</span>${precioBtn(it)}`;
+    b.onclick=()=>agregar(it); g.appendChild(b);
+  });
+}
+function buscar(q){
+  vista="buscar";
+  $("#catPills").style.display="none"; $("#barraNav").style.display="flex";
+  $("#volver").textContent="← Categorías"; $("#tituloCat").textContent=`"${q}"`;
+  const res=CATALOGO.filter(i=>i.nombre.toLowerCase().includes(q.toLowerCase()));
+  const g=$("#items"); g.innerHTML="";
+  if(res.length===0){ g.innerHTML='<p class="muted">Nada coincide.</p>'; return; }
+  res.forEach(it=>{
+    const b=document.createElement("button"); b.className="btn-item";
+    b.innerHTML=`<span class="n">${it.nombre}</span>${precioBtn(it)}`;
+    b.onclick=()=>agregar(it); g.appendChild(b);
+  });
+}
+
+$("#buscar").oninput=e=>{ const q=e.target.value.trim(); if(q.length===0){renderCategorias();return;} buscar(q); };
+$("#volver").onclick=()=>{ $("#buscar").value=""; if(vista==="grupo"){abrirCategoria(catActual);} else {renderCategorias();} };
+
+function agregar(it){
+  const ex=ticket.find(l=>l.item_id===it.id && !l.precioEditado);
+  if(ex){ ex.cantidad++; } else {
+    ticket.push({item_id:it.id, nombre:it.nombre, precio:it.precio, precioTransfer:it.precio_transfer,
+                 precioCatalogo:it.precio, cantidad:1, dificultad:false, precioEditado:false});
+  }
+  renderTicket();
+}
+
+function renderTicket(){
+  const esEf = formaPago==="efectivo";
+  const cont=$("#lineas"); cont.innerHTML="";
+  if(ticket.length===0){ cont.innerHTML='<p class="muted">Tocá un servicio para empezar.</p>'; }
+  ticket.forEach((l,i)=>{
+    const row=document.createElement("div"); row.className="linea";
+    row.innerHTML=`
+      <span class="n">${l.nombre}</span>
+      <span style="min-width:110px;text-align:right;">${fmt(l.precioTransfer)} <span style="color:#999;font-size:11px;">(c/desc ${fmt(l.precio)} )</span></span>
+      <button class="dif ${l.dificultad?'on':''}">Dif</button>
+      <div class="qty"><button class="menos">−</button><span>${l.cantidad}</span><button class="mas">+</button></div>
+      <button class="quitar">×</button>`;
+    row.querySelector(".dif").onclick=()=>{ l.dificultad=!l.dificultad; renderTicket(); };
+    row.querySelector(".mas").onclick=()=>{ l.cantidad++; renderTicket(); };
+    row.querySelector(".menos").onclick=()=>{ l.cantidad--; if(l.cantidad<=0) ticket.splice(i,1); renderTicket(); };
+    row.querySelector(".quitar").onclick=()=>{ ticket.splice(i,1); renderTicket(); };
+    cont.appendChild(row);
+  });
+  // --- subtotales base ---
+  const totalEf = ticket.reduce((a,l)=>a+l.precio*l.cantidad,0);          // a precio efectivo
+  const totalTr = ticket.reduce((a,l)=>a+l.precioTransfer*l.cantidad,0);  // a precio transfer
+  const extra   = ticket.reduce((a,l)=>a+(l.dificultad?extraDif:0),0);    // extra dificultad
+  const subTr = totalTr + extra;   // subtotal transfer (el que se ve siempre)
+  const subEf = totalEf + extra;   // subtotal efectivo
+
+  // subtotal + extra
+  $("#subtotal").textContent = fmt(subTr);
+  $("#rowExtra").style.display = extra>0 ? "flex" : "none";
+  if(extra>0) $("#extraMonto").textContent = "+"+fmt(extra);
+
+  // descuento efectivo = diferencia de las 2 listas, solo si la forma es efectivo
+  const descEfvo = subTr - subEf;
+  const pctEfvo = subTr>0 ? (descEfvo/subTr*100) : 0;
+  $("#rowDescEfvo").style.display = (esEf && ticket.length>0) ? "flex" : "none";
+  $("#descEfvoLabel").textContent = `Descuento (${pctEfvo.toFixed(2)}%)`;
+  $("#descEfvoMonto").textContent = "−"+fmt(descEfvo);
+
+  // base sobre la que corre el descuento de catálogo (efectivo o transfer según la forma)
+  const baseCat = esEf ? subEf : subTr;
+
+  // la fila "subtotal efectivo" solo tiene sentido si además hay descuento de catálogo
+  const hayDescCat = descPct > 0;
+  $("#rowSubEfvo").style.display = (esEf && hayDescCat) ? "flex" : "none";
+  $("#subEfvoMonto").textContent = fmt(subEf);
+
+  // descuento de catálogo (jubilado, promo, etc.) con su motivo como etiqueta
+  const descCat = hayDescCat ? Math.round(baseCat * descPct / 100) : 0;
+  $("#rowDescCat").style.display = hayDescCat ? "flex" : "none";
+  $("#descCatLabel").textContent = descNombre || "Descuento";
+  $("#descCatMonto").textContent = "−"+fmt(descCat);
+
+  // total
+  const total = baseCat - descCat;
+  $("#total").textContent = fmt(total);
+  totalActual = total;          
+
+  const vacio = ticket.length===0;
+  actualizarAcciones();
+  $("#cobrarTodo").textContent = vacio ? "Cobrar todo" : "Cobrar todo "+fmt(total);
+  guardarBorrador();
+  
+}
+
+// ---- Borrador del ticket: sobrevive al cambiar de pantalla ----
+const BORRADOR_KEY = "ticketBorrador";
+
+function guardarBorrador(){
+  localStorage.setItem(BORRADOR_KEY, JSON.stringify({
+    guardado: Date.now(),
+    ticket,
+    cliente: $("#cliente").value,
+    clienteIdSel,
+    peluquero: $("#peluquero").value,
+    descPct, descNombre,
+    descuentoSel: $("#descuento").value,   // el índice elegido en el select de descuento
+    formaPago
+  }));
+}
+
+function restaurarBorrador(){
+  const raw = localStorage.getItem(BORRADOR_KEY);
+  if(!raw) return;
+  try{
+    const d = JSON.parse(raw);
+    if(Date.now() - (d.guardado||0) > 12*3600*1000){ localStorage.removeItem(BORRADOR_KEY); return; }  // más de 12hs: lo descartamos
+    if(!d.ticket || d.ticket.length === 0) return;   // nada útil que restaurar
+    ticket = d.ticket;
+    $("#cliente").value = d.cliente || "";
+    clienteIdSel = d.clienteIdSel ?? null;
+    $("#peluquero").value = d.peluquero || "";
+    descPct = d.descPct || 0;
+    descNombre = d.descNombre || null;
+    $("#descuento").value = d.descuentoSel || "";
+    formaPago = d.formaPago || "efectivo";
+    $("#fpEfectivo").classList.toggle("on", formaPago==="efectivo");   // reflejar la forma en las pills
+    $("#fpTransfer").classList.toggle("on", formaPago==="transfer");
+  }catch(e){ localStorage.removeItem(BORRADOR_KEY); }
+}
+
+function disableBotones(v){
+  ["cobrarTodo","cobrarParte","dejarCuenta","cobrarMixto","crearPresu"].forEach(id=>{
+    const b = $("#"+id); if(b) b.disabled = v;
+  });
+}
+
+function bloquearControles(v){
+  ["formaPago","btnTicket","btnPresu","cliente","peluquero","descuento"].forEach(id=>{
+    const el = $("#"+id); if(el) el.disabled = v;
+  });
+}
+
+function mostrarBotones(){
+  const esT = tipo==="ticket";
+  $("#botsTicket").style.display = esT ? "block" : "none";
+  $("#crearPresu").style.display = esT ? "none" : "block";
+
+  // En presupuesto, el selector de forma solo ofrece Efectivo / Transferencia
+  $("#formaPago").querySelector('option[value="mixto"]').style.display  = esT ? "block" : "none";
+  $("#formaPago").querySelector('option[value="cuenta"]').style.display = esT ? "block" : "none";
+
+  // Si venías en mixto/cuenta y pasás a presupuesto, lo reseteamos a efectivo
+  if(!esT && (formaPago==="mixto" || formaPago==="cuenta")){
+    formaPago = "efectivo";
+    $("#formaPago").value = "efectivo";
+    $("#aliasBox").style.display = "none";
+  }
+  renderTicket();   // repinta con la forma correcta
+}
+
+function actualizarAcciones(){
+  const listo    = ticketListo();
+  if(tipo === "presupuesto"){
+    $("#crearPresu").disabled = !listo;   // el presupuesto solo necesita ítems + cliente
+    return;
+  }
+  const esMixto  = formaPago === "mixto";
+  const esCuenta = formaPago === "cuenta";
+
+  // Qué botones se ven según la forma de pago
+  $("#cobrarTodo").style.display  = (esMixto || esCuenta) ? "none" : "block";
+  $("#cobrarParte").style.display = (esMixto || esCuenta) ? "none" : "block";
+  $("#dejarCuenta").style.display = esMixto ? "none" : "block";
+  $("#cobrarMixto").style.display = esMixto ? "block" : "none";
+
+  const enProgreso = !!compActual;
+  ["cobrarTodo","cobrarParte","dejarCuenta","cobrarMixto"].forEach(id=>{
+    const b = $("#"+id); if(b) b.disabled = !listo || enProgreso;
+  });
+  bloquearControles(enProgreso);
+}
+
+// El ticket está "listo" para cobrar si tiene al menos un ítem y un cliente cargado.
+function ticketListo(){
+  return ticket.length > 0 && $("#cliente").value.trim() !== "";
+}
+
+$("#cliente").oninput = actualizarAcciones;
+$("#btnTicket").onclick=()=>{ tipo="ticket"; $("#btnTicket").classList.add("on"); $("#btnPresu").classList.remove("on"); mostrarBotones(); };
+$("#btnPresu").onclick=()=>{ tipo="presupuesto"; $("#btnPresu").classList.add("on"); $("#btnTicket").classList.remove("on"); mostrarBotones(); };
+$("#formaPago").onchange = e => {
+  formaPago = e.target.value;
+  $("#aliasBox").style.display = (formaPago === "transfer") ? "flex" : "none";
+  renderTicket();
+};
+$("#cobrarMixto").onclick=()=>{
+  if(!ticketListo()) return;
+  abrirMixto();
+};
+
+
+$("#descuento").onchange=e=>{
+  const v=e.target.value;
+  if(v===""){ descPct=0; descNombre=null; }
+  else { const d=DESCUENTOS[parseInt(v)]; descPct=d.porcentaje; descNombre=d.nombre; }
+  renderTicket();
+};
+
+let compActual=null;
+
+// Valida el cliente (obligatorio) y crea el comprobante. Devuelve el objeto creado o null.
+async function crearComprobante(){
+  const nom=$("#cliente").value.trim();
+  if(!nom){ toast("Falta el nombre del cliente"); $("#cliente").focus(); return null; }
+ let cliId = clienteIdSel;                     // lo que elegiste del dropdown (o null)
+
+  // Si no elegiste del dropdown, resolvemos por nombre: match exacto, o crear con confirmación.
+  if(!cliId){
+    const match = CLIENTES.find(c=>c.nombre.toLowerCase()===nom.toLowerCase());
+    if(match){
+      cliId = match.id;
+    } else {
+      if(!confirm(`"${nom}" no está en tu lista de clientes. ¿Crearlo como cliente nuevo?`)){
+        toast("Revisá el nombre del cliente");
+        return null;
+      }
+      const rc=await authFetch("/api/clientes",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({nombre:nom})});
+      if(!rc.ok){ toast("No se pudo crear el cliente"); return null; }
+      const nuevo=await rc.json();
+      cliId = nuevo.id;
+      CLIENTES.push({id:nuevo.id, nombre:nom});
+    }
+  }
+  const body={
+    tipo,
+    cliente_id: cliId,
+    cliente_nombre: null,
+    peluquero: $("#peluquero").value.trim() || null,
+    forma_pago: formaPago,
+    descuento_pct: descPct,
+    descuento_nombre: descNombre,
+    mostrar_motivo: true,
+    lineas: ticket.map(l=>({item_id:l.item_id, cantidad:l.cantidad, dificultad:l.dificultad,
+                            precio_custom: l.precioEditado ? l.precio : null}))
+  };
+  const r=await authFetch("/api/comprobantes",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+  if(!r.ok){ toast("No se pudo crear"); return null; }
+  const d=await r.json();
+  const pref = d.tipo==="ticket" ? "A-" : "P-";
+  toast(`${d.tipo} ${pref}${String(d.numero).padStart(5,"0")} creado`);
+  return d;
+}
+
+
+// ---- Buscador de clientes (dropdown propio; guarda el id elegido) ----
+let clienteIdSel = null;                        // id del cliente elegido, o null si el nombre es nuevo
+const cliInput = $("#cliente"), cliDrop = $("#cliDrop");
+let cliTimer;
+
+cliInput.addEventListener("input", ()=>{
+  clienteIdSel = null;                          // al tipear se invalida cualquier selección previa
+  const term = cliInput.value.trim();
+  clearTimeout(cliTimer);
+  if(!term){ cliDrop.style.display="none"; return; }
+  cliTimer = setTimeout(async ()=>{             // debounce: espera 200ms a que dejes de tipear
+    const res = await (await authFetch("/api/clientes?q="+encodeURIComponent(term))).json();
+    if(!res.length){ cliDrop.style.display="none"; return; }
+    cliDrop.innerHTML = res.slice(0,8).map(c=>
+      `<div class="cli-opt" data-id="${c.id}" data-nom="${c.nombre.replace(/"/g,'&quot;')}"
+            style="padding:9px 12px;cursor:pointer;border-bottom:1px solid var(--linea);color:#e9e4d6;">
+         <b>${c.nombre}</b> <span class="muted">#${c.id}${c.telefono? ' · '+c.telefono : ''}</span>
+       </div>`).join("");
+    cliDrop.style.display="block";
+  }, 200);
+});
+
+cliDrop.addEventListener("click", e=>{          // elegir una opción → guarda el id
+  const opt = e.target.closest(".cli-opt"); if(!opt) return;
+  clienteIdSel = parseInt(opt.dataset.id);
+  cliInput.value = opt.dataset.nom;
+  cliDrop.style.display = "none";
+});
+
+document.addEventListener("click", e=>{         // cerrar si clickeás afuera
+  if(!cliInput.contains(e.target) && !cliDrop.contains(e.target)) cliDrop.style.display="none";
+});
+
+$("#cobrarTodo").onclick=async()=>{
+  disableBotones(true);
+  const d=await crearComprobante();
+  if(!d){ renderTicket(); return; }
+  const c=await (await authFetch("/api/comprobantes/"+d.id)).json();
+
+  const forma = formaPago==="efectivo" ? "Efectivo" : "Transferencia";
+  const monto = c.saldo;            // el total ya trae el descuento: se salda 1:1
+
+  const r=await authFetch("/api/comprobantes/"+d.id+"/pagos",{method:"POST",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({monto, saldado:monto, forma_pago:forma, alias:null})});
+  if(r.ok){ toast("Cobrado ✓"); } else { toast("Se creó, pero el cobro falló — cobralo desde la cuenta"); }
+  limpiar();
+};
+
+// Cobrar una parte: NO crea nada todavía; el comprobante se crea en el primer pago.
+$("#cobrarParte").onclick=async()=>{
+  disableBotones(true);
+  const d=await crearComprobante();
+  if(!d){ renderTicket(); return; }
+  compActual=d.id; abrirCobro();     // ← esta línea es la que setea compActual
+};
+
+// Dejar a cuenta: crea el comprobante sin ningún pago. Queda pendiente en la cuenta.
+$("#dejarCuenta").onclick=async()=>{
+  if(!ticketListo()) return;
+  disableBotones(true);
+  const nom=$("#cliente").value.trim();
+  const d=await crearComprobante();
+  if(!d){ renderTicket(); return; }
+  toast("Queda a cuenta de "+nom);
+  limpiar();
+};
+
+$("#crearPresu").onclick=async()=>{
+  disableBotones(true);
+  const d=await crearComprobante();
+  if(!d){ renderTicket(); return; }
+  limpiar();
+};
+
+function limpiar(){
+  ticket=[]; $("#cliente").value=""; clienteIdSel=null; $("#peluquero").value="";
+  $("#descuento").value=""; descPct=0; descNombre=null;
+  $("#aliasTransfer").value="";
+  $("#panelCobro").style.display="none"; compActual=null;
+  localStorage.removeItem(BORRADOR_KEY);
+  renderTicket();
+}
+
+async function abrirCobro(){
+  let saldo, total, pagos, titulo;
+  const esEf = formaPago==="efectivo";
+  if(compActual){
+    const c=await (await authFetch("/api/comprobantes/"+compActual)).json();
+    const totalEf = totalEfectivoComp(c);            // deuda total en efectivo, lista real
+    // el saldo en efectivo = total efectivo menos lo ya saldado, proporcional
+    total = esEf ? totalEf : c.total_final;
+    saldo = esEf ? Math.max(totalEf - c.pagos.reduce((a,p)=>a+p.monto,0), 0) : c.saldo;
+    pagos = c.pagos;
+    titulo = c.cliente_nombre || $("#cliente").value.trim() || "Cliente";
+  } else {
+    saldo=totalActual; total=totalActual; pagos=[];  // totalActual ya está en efectivo
+    titulo=$("#cliente").value.trim() || "Cliente";
+  }
+  $("#panelCobro").style.display="block";
+  $("#cobroTitulo").textContent="Cobrar — "+titulo;
+  $("#cobroTotal").textContent=fmt(total);
+  $("#cobroSaldo").textContent=fmt(saldo);
+  $("#cobroMonto").value=saldo>0 ? saldo : "";
+  const ab=$("#cobroAbonos");
+  ab.innerHTML = pagos.length ? pagos.map(p=>`<div class="muted">✓ ${p.forma_pago} ${fmt(p.monto)}</div>`).join("") : "";
+  $("#cobroCerrar").textContent = saldo<=0 ? "Finalizar comprobante" : "Finalizar (dejar saldo pendiente)";
+  if(saldo<=0){  
+    ab.innerHTML += '<div style="color:var(--ok);font-weight:700;margin-top:6px;">Saldado ✓</div>';
+    $("#cobroRegistrar").style.display="none";
+  } else { $("#cobroRegistrar").style.display="block"; }
+  $("#cobroForma").value = formaPago==="efectivo" ? "Efectivo" : "Transferencia";
+  $("#cobroForma").disabled = true;   // el panel no elige forma: la hereda del ticket
+  $("#cobroAliasBox").style.display = (formaPago==="transfer") ? "flex" : "none";
+  if(formaPago==="transfer") $("#cobroAlias").value = $("#aliasTransfer").value.trim();
+  actualizarAcciones();   // bloquea los botones de arriba mientras hay cobro en curso
+}
+
+// Total efectivo REAL de un comprobante
+function totalEfectivoComp(c){
+  const base = c.lineas.reduce((a,l)=>a + l.precio_efectivo*l.cantidad, 0) + (c.extra_dificultad||0);
+  const desc = Math.round(base * (c.descuento_pct||0) / 100);
+  return base - desc;
+}
+
+async function abrirMixto(){
+  mxDeudaActual = totalActual;                 // deuda a precio transfer, tomada de la pantalla
+  $("#mxDeuda").textContent = fmt(totalActual);
+  $("#mxTransfer").value = "";
+  $("#mxAlias").value = "";
+  $("#mxConfirmar").checked = false;
+  $("#mxResumen").style.display = "none";
+  $("#mxAliasBox").style.display = "none";
+  $("#mxRegistrar").disabled = true;
+  $("#panelMixto").style.display = "block";
+}
+
+$("#cobroForma").onchange=()=>{
+  $("#cobroAliasBox").style.display = ($("#cobroForma").value==="Transferencia") ? "flex" : "none";
+};
+
+function calcularMixto(){
+  const D = mxDeudaActual;
+  const T = parseInt($("#mxTransfer").value)||0;   // sin Math.min: tomamos lo que puso tal cual
+  const aviso = $("#mxAviso");
+
+  // Validamos y avisamos ANTES de calcular
+  let error = "";
+  if(T <= 0)      error = "Poné cuánto va por transferencia.";
+  else if(T >= D) error = `La transferencia debe ser menor a la deuda (${fmt(D)}).`;
+
+  if(error){
+    aviso.textContent = error;
+    aviso.style.display = "block";
+    $("#mxResumen").style.display = "none";   // escondemos el desglose mientras no sea válido
+    $("#mxRegistrar").disabled = true;
+    return null;                              // cortamos acá, no hay nada que calcular
+  }
+
+  // Si llegó hasta acá, el reparto es válido
+  aviso.style.display = "none";
+  $("#mxResumen").style.display = "block";
+
+  const efvoBruto = D - T;
+  const desc      = Math.round(efvoBruto*0.10);
+  const efvoReal  = efvoBruto - desc;
+  const totalCobrar = T + efvoReal;
+
+  $("#mxMonTransfer").textContent  = fmt(T);
+  $("#mxMonEfvoBruto").textContent = fmt(efvoBruto);
+  $("#mxDesc").textContent         = "−"+fmt(desc);
+  $("#mxEfvoReal").textContent     = fmt(efvoReal);
+  $("#mxTotal").textContent        = fmt(totalCobrar);
+
+  $("#mxRegistrar").disabled = false;
+  return { D, T, efvoBruto, desc, efvoReal };
+}
+
+
+$("#mxConfirmar").onchange=()=>{
+  const on = $("#mxConfirmar").checked;
+  $("#mxResumen").style.display = on ? "block" : "none";
+  $("#mxAliasBox").style.display = on ? "flex" : "none";  // pedimos alias cuando confirma
+  if(on) calcularMixto();
+  else $("#mxRegistrar").disabled = true;
+};
+
+$("#mxTransfer").oninput=()=>{ if($("#mxConfirmar").checked) calcularMixto(); };
+
+$("#mxRegistrar").onclick=async()=>{
+  $("#mxRegistrar").disabled = true;               // evita doble click y duplicados
+  const T = Math.min(parseInt($("#mxTransfer").value)||0, mxDeudaActual);
+  const alias = $("#mxAlias").value.trim() || null;
+
+  const d = await crearComprobante();              // ← recién ACÁ se escribe en la base
+  if(!d){ $("#mxRegistrar").disabled=false; return; }
+
+  // Consultamos la deuda real: el backend es la fuente de verdad, no la pantalla
+  const c = await (await authFetch("/api/comprobantes/"+d.id)).json();
+  const D = c.saldo;
+  const efvoBruto = D - T;
+  const efvoReal  = efvoBruto - Math.round(efvoBruto*0.10);
+
+  // Pago 1: transferencia (saldado = monto, sin descuento)
+  const r1 = await authFetch("/api/comprobantes/"+d.id+"/pagos",{method:"POST",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({ monto:T, saldado:T, forma_pago:"Transferencia", alias })});
+  if(!r1.ok){ toast("Falló la parte transferencia — quedó a cuenta"); $("#panelMixto").style.display="none"; limpiar(); return; }
+
+  // Pago 2: efectivo (saldado = lo que falta a precio transfer; monto = con 10% menos)
+  const r2 = await authFetch("/api/comprobantes/"+d.id+"/pagos",{method:"POST",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({ monto:efvoReal, saldado:efvoBruto, forma_pago:"Efectivo", alias:null })});
+  toast(r2.ok ? "Pago mixto registrado ✓" : "Falló la parte efectivo — quedó saldo a cuenta");
+
+  $("#panelMixto").style.display="none";
+  limpiar();
+};
+
+
+
+$("#cobroRegistrar").onclick=async()=>{
+  const saldado=parseInt($("#cobroMonto").value)||0;
+  if(saldado<=0){ toast("Poné un monto válido"); return; }
+  const forma=$("#cobroForma").value;
+  const body={ monto:saldado, saldado, forma_pago:forma,      // 1:1
+               alias: (forma==="Transferencia") ? ($("#cobroAlias").value.trim()||null) : null };
+  const r=await authFetch("/api/comprobantes/"+compActual+"/pagos",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+  if(!r.ok){ const e=await r.json(); toast(e.detail||"No se pudo"); return; }
+  const est=await r.json();
+  toast(est.saldo<=0 ? "Ticket saldado ✓" : "Pago registrado");
+  abrirCobro();
+};
+
+$("#cobroCerrar").onclick=limpiar;
+init();
+</script>
+</body></html>

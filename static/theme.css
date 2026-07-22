@@ -3,18 +3,17 @@
    Sobreescribe las variables :root y los estilos claros originales. */
 
 :root{
-  --tinta:#1f1f1f;
-  --tinta2:#2b2b2b;
-  --crema:#2b2b2b;
-  --linea:#3a3a3a;
-  --ok:#c9a84c;
+  /* ---- Dorados / marca ---- */
+  --oro:#c9a84c; --ok:#c9a84c; --oro-claro:#e8d5a3;
+  --oro-sombra:#1a1a1a;         /* texto oscuro ENCIMA del dorado */
   --okbg:rgba(201,168,76,.12);
-  --alerta:#c0785a;
-  --rojo:#c0392b;
-  --texto:#e0dcd4;
-  --oro:#c9a84c;
-  --oro-claro:#e8d5a3;
-  --superficie:#363636;
+  /* ---- Fondos (oscuro → claro) ---- */
+  --tinta:#1f1f1f; --tinta2:#2b2b2b; --crema:#2b2b2b;
+  --superficie:#363636; --linea:#3a3a3a;
+  /* ---- Texto ---- */
+  --texto:#e0dcd4; --texto-suave:#aaa; --texto-tenue:#888;
+  /* ---- Estados ---- */
+  --rojo:#c0392b; --alerta:#c0785a;
 }
 
 /* ----- Base ----- */
@@ -27,19 +26,38 @@ body{
 header{
   background:#1f1f1f !important;
   color:#e8d5a3 !important;
+  padding:20px 30px;
+  font-size:24px;
+  font-weight:800;
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:12px;
+  flex-wrap:wrap;
+  position:sticky; top:0; z-index:5;
 }
+
+nav.menu{
+  display:flex;
+  gap:8px;
+  flex-wrap:wrap;
+  justify-content:flex-end;
+}
+
 nav.menu a,
 header a,
 header span a{
   background:rgba(255,255,255,.08) !important;
   color:rgba(255,255,255,.6) !important;
   text-decoration:none !important;
-  font-size:12px;
-  font-weight:500;
-  padding:6px 10px;
-  border-radius:8px;
+  font-size:14px;
+  font-weight:600;
+  padding:9px 13px;
+  border-radius:10px;
   display:inline-block;
 }
+
+
 nav.menu a.actual,
 nav.menu a:hover,
 header a:hover{
@@ -317,14 +335,14 @@ th{
   background:#c9a84c !important;
   color:#1a1a1a !important;
 }
-.metricas{
+.segmentado{
   border-color:#3a3a3a !important;
 }
-.metricas button{
+.segmentado button{
   background:rgba(255,255,255,.06) !important;
   color:#aaa !important;
 }
-.metricas button.on{
+.segmentado button.on{
   background:#c9a84c !important;
   color:#1a1a1a !important;
 }
@@ -441,4 +459,62 @@ hr{
 }
 .vacio{
   color:#888 !important;
+}
+
+/* ----- Fuente de todos los botones ----- */
+button{
+  font-family:Georgia,'Times New Roman',serif !important;
+}
+
+/* ----- Agenda: tarjeta de turno (vista día) ----- */
+.turno-card{
+  background:#363636 !important;
+  border-color:#3a3a3a !important;
+}
+.turno-hora{
+  color:#c9a84c !important;
+}
+.turno-cliente{
+  color:#c9a84c !important;
+}
+.turno-servicio{
+  color:#e0dcd4 !important;
+}
+
+/* ----- Agenda: grilla semanal ----- */
+.gs-dayhead{
+  border:2px solid #c9a84c !important;
+  border-radius:8px;
+  margin:2px;
+  color:#c9a84c !important;
+}
+.gs-dayhead .n{
+  color:#c9a84c !important;
+}
+
+/* ----- Agenda: grilla mensual ----- */
+.gm-head{
+  border:2px solid #c9a84c !important;
+  border-radius:8px;
+  margin:2px;
+  color:#c9a84c !important;
+}
+.gm-cell[style*="f7f5f0"]{
+  background:#c9a84c !important;
+}
+
+/* ----- Agenda: líneas de la grilla más marcadas ----- */
+.grid-sem{
+  border-top:2px solid #c9a84c !important;
+}
+.gs-cell{
+  border-bottom:1px solid rgba(201,168,76,.35) !important;
+  border-left:1px solid rgba(201,168,76,.35) !important;
+}
+.grid-mes{
+  border-top:2px solid #c9a84c !important;
+}
+.gm-cell{
+  border-bottom:1px solid rgba(201,168,76,.35) !important;
+  border-left:1px solid rgba(201,168,76,.35) !important;
 }

@@ -1,7 +1,7 @@
 import json
 from database import engine, SessionLocal, Base
 import models
-from config_extra import FORMAS_PAGO, TIPOS_EGRESO, EXTRA_DIFICULTAD
+from config_extra import FORMAS_PAGO, TIPOS_EGRESO, EXTRA_DIFICULTAD, calcular_transfer
 from auth import nuevo_salt, hash_password
 
 def seed():
@@ -11,7 +11,8 @@ def seed():
     if db.query(models.Item).count() == 0:
         for it in json.load(open("catalogo.json", encoding="utf-8")):
             db.add(models.Item(categoria=it["categoria"], nombre=it["nombre"],
-                               precio=it["precio"], es_producto=it["es_producto"]))
+                               precio=it["precio"], precio_transfer=calcular_transfer(it["precio"]),
+                               es_producto=it["es_producto"]))
         db.commit(); print(f"Sembrados {db.query(models.Item).count()} items.")
     else:
         print("Items ya cargados.")

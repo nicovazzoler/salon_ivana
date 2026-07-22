@@ -12,4 +12,28 @@ async function authFetch(url,opts){
 }
 function requireLogin(){ if(!getToken()){location.href="/login";} }
 function requireDueno(){ requireLogin(); if(getRol()!=="dueno"){location.href="/";} }
-function pintarNav(){ if(getRol()!=="dueno"){document.querySelectorAll('[data-rol="dueno"]').forEach(e=>e.style.display="none");} }
+function pintarNav(){
+  const nav=document.querySelector("nav.menu");
+  if(!nav) return;
+  const rol=getRol();
+  const aqui=location.pathname;
+  // Un solo lugar donde se definen los links del menú. Cambiás acá y se actualiza en todas las páginas.
+  const links=[
+    {href:"/",           txt:"Facturar"},
+    {href:"/clientes",   txt:"Clientes"},
+    {href:"/historial",  txt:"Historial"},
+    {href:"/agenda",     txt:"Agenda"},
+    {href:"/caja",       txt:"Caja"},
+    {href:"/inventario", txt:"Inventario", dueno:true},
+    {href:"/reportes",   txt:"Reportes",   dueno:true},
+    {href:"/admin",      txt:"Admin",      dueno:true},
+  ];
+  let html="";
+  for(const l of links){
+    if(l.dueno && rol!=="dueno") continue;   // los empleados no ven los links de dueño
+    const esActual = (l.href===aqui) || (l.href==="/" && aqui==="/facturar");
+    html+=`<a href="${l.href}"${esActual?' class="actual"':''}>${l.txt}</a>`;
+  }
+  html+=`<a href="#" onclick="logout();return false;">Salir</a>`;
+  nav.innerHTML=html;
+}

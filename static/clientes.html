@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="es"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#1f1f1f"><title>Clientes — Peluquería</title>
+<style>
+  :root{--tinta:#150885;--crema:#f7f5f0;--linea:#e2ddd3;--ok:#2e7d4f;--rojo:#c0392b;}
+  *{box-sizing:border-box;}
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;background:var(--crema);color:#2b2b28;}
+  header{background:var(--tinta);color:#fff;padding:20px 30px;font-size:26px;font-weight:800;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;position:sticky;top:0;z-index:5;}
+  .wrap{max-width:1100px;margin:0 auto;padding:18px;}
+  .card{background:#fff;border:1px solid var(--linea);border-radius:14px;padding:18px;margin-bottom:16px;}
+  input{padding:9px;border:1px solid var(--linea);border-radius:8px;font-size:15px;font-family:inherit;}
+  button{font-family:inherit;cursor:pointer;border:none;border-radius:8px;padding:9px 14px;font-size:14px;font-weight:600;background:var(--tinta);color:#fff;}
+  .muted{color:#9a9a92;font-size:13px;}
+  .fila{display:flex;gap:8px;flex-wrap:wrap;align-items:center;}
+  .toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--ok);color:#fff;padding:12px 20px;border-radius:12px;font-weight:700;opacity:0;pointer-events:none;transition:opacity .25s;}
+  .toast.show{opacity:1;}
+
+  /* ---- grilla de clientes (solo lectura, la fila entera es un link a la ficha) ---- */
+  .grid-cli{display:grid;grid-template-columns:64px 1.4fr 1fr 1fr 90px;gap:10px;align-items:center;}
+  .grid-cli.cab{font-size:11px;text-transform:uppercase;color:#777;font-weight:700;padding:0 8px 8px;}
+  a.cli-row{padding:12px 8px;border-bottom:1px solid var(--linea);
+            text-decoration:none;color:inherit;border-radius:8px;transition:background .12s;}
+  a.cli-row:hover{background:rgba(255,255,255,.05);}
+  .cli-row .id{color:#9a9a92;font-size:12px;}
+  .cli-row .n{font-weight:600;}
+  .cli-row .meta{color:#777;font-size:13px;}
+</style><link rel="stylesheet" href="/static/theme.css"></head><body>
+<header>
+  <span>👥 Clientes</span>
+  <nav class="menu">
+    <a href="/">Facturación</a>
+    <a href="/agenda">Agenda</a>
+    <a href="/caja">Caja</a>
+    <a href="/clientes">Clientes</a>
+    <a href="/inventario" data-rol="dueno">Inventario</a>
+    <a href="/reportes" data-rol="dueno">Reportes</a>
+    <a href="/admin" data-rol="dueno">Admin</a>
+    <a href="#" onclick="logout();return false;">Salir</a>
+  </nav>
+</header>
+<div class="wrap">
+
+  <div class="card">
+    <h2>Nuevo cliente</h2>
+    <div class="fila">
+      <input id="nNombre" placeholder="Nombre y apellido" style="flex:1;min-width:160px;">
+      <input id="nTel" placeholder="Teléfono (opcional)">
+      <input id="nAlias" placeholder="Alias transferencia (opcional)">
+      <button id="btnNuevo">Agregar</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <input id="buscar" placeholder="🔎 Buscar por nombre o teléfono..." style="width:100%;margin-bottom:14px;">
+    <div class="grid-cli cab">
+      <span>Código</span><span>Nombre</span><span>Teléfono</span><span>Alias</span><span>Estado</span>
+    </div>
+    <div id="lista"></div>
+  </div>
+
+</div>
+<div class="toast" id="toast"></div>
+
+<script src="/static/auth.js"></script>
+<script>
+requireLogin(); pintarNav();
+const $=s=>document.querySelector(s);
+let timer=null;
+
+function toast(m){const t=$("#toast");t.textContent=m;t.classList.add("show");setTimeout(()=>t.classList.remove("show"),2200);}
+function clienteId(id){ return "C-"+String(id).padStart(3,"0"); }
+const money=n=>"$"+(n||0).toLocaleString("es-AR");
+
+async function cargar(){
+  const q=$("#buscar").value.trim();
+  const url = q ? "/api/clientes?q="+encodeURIComponent(q) : "/api/clientes";
+
+  // las dos en paralelo: si cada una tarda 200ms, en serie son 400 y así son 200
+  const [rc, rd] = await Promise.all([ authFetch(url), authFetch("/api/clientes/deudas") ]);
+  const clientes = await rc.json();
+  const deudasList = await rd.json();
+  const deben = new Set(deudasList.map(d => d.cliente_id));
+
+  const cont=$("#lista"); cont.innerHTML="";
+  if(clientes.length===0){ cont.innerHTML='<p class="muted">No hay clientes para mostrar.</p>'; return; }
+
+  clientes.forEach(c=>{
+    const row=document.createElement("a");     // <a> de verdad: click del medio, copiar link, teclado
+    row.className="cli-row grid-cli";
+    row.href="/cuenta?id="+c.id;
+    row.innerHTML=`
+      <span class="id">${clienteId(c.id)}</span>
+      <span class="n">${c.nombre||""}</span>
+      <span class="meta">${c.telefono||"—"}</span>
+      <span class="meta">${c.alias||"—"}</span>
+      <span>${deben.has(c.id)
+        ? '<b style="color:var(--rojo);">Debe</b>'
+        : '<span class="muted">Al día</span>'}</span>`;
+    cont.appendChild(row);
+  });
+}
+
+$("#buscar").oninput=()=>{ clearTimeout(timer); timer=setTimeout(cargar,250); };
+
+$("#btnNuevo").onclick=async()=>{
+  const nombre=$("#nNombre").value.trim();
+  if(!nombre){ toast("Poné al menos el nombre"); return; }
+  const body={ nombre, telefono:$("#nTel").value.trim(), alias:$("#nAlias").value.trim() };
+  const r=await authFetch("/api/clientes",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+  if(!r.ok){ const e=await r.json().catch(()=>({})); toast(e.detail || "No se pudo crear"); return; }
+  $("#nNombre").value=""; $("#nTel").value=""; $("#nAlias").value="";
+  toast("Cliente agregado"); cargar();
+};
+
+cargar();
+</script>
+</body></html>

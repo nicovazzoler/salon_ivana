@@ -9,8 +9,6 @@
   :root{--tinta:#2F4858;--tinta2:#3d5a6c;--crema:#f7f5f0;--linea:#e2ddd3;--ok:#2e7d4f;--rojo:#c0392b;--texto:#2b2b28;}
   *{box-sizing:border-box;}
   body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;background:var(--crema);color:var(--texto);}
-  header{background:var(--tinta);color:#fff;padding:20px 30px;font-size:26px;font-weight:800;display:flex;justify-content:space-between;align-items:center;position:sticky;top:0;z-index:5;}
-  header a{color:#fff;text-decoration:none;font-size:14px;font-weight:500;background:rgba(255,255,255,.15);padding:8px 14px;border-radius:10px;}
   .wrap{max-width:1100px;margin:0 auto;padding:18px;}
   .card{background:#fff;border:1px solid var(--linea);border-radius:14px;padding:18px;margin-bottom:20px;}
   .card h2{margin:0 0 14px;font-size:17px;color:var(--tinta);}
@@ -104,6 +102,18 @@
   </div>
 
   <div class="card">
+    <h2>Descuentos</h2>
+    <div id="listaDescuentos"></div>
+    <hr>
+    <div class="fila">
+      <div><label>Nombre</label><input id="nDescNombre" placeholder="Ej: Jubilado"></div>
+      <div><label>Porcentaje</label><input id="nDescPct" type="number" placeholder="10" style="width:80px;"></div>
+      <div><label><input type="checkbox" id="nDescMotivo" style="width:auto;"> Mostrar motivo</label></div>
+      <button class="b-ok" id="btnDesc">Agregar</button>
+    </div>
+  </div>
+
+  <div class="card">
     <h2>Usuarios y contraseñas</h2>
     <div id="listaUsuarios"></div>
     <hr>
@@ -183,7 +193,8 @@ function renderItems(items, mostrarCat){
     const cat = mostrarCat ? `<span class="tag" style="background:var(--crema);color:#777;">${it.categoria}</span>` : "";
     row.innerHTML=`
       <input class="n" value="${it.nombre.replace(/"/g,'&quot;')}">
-      <input class="p" type="number" value="${it.precio}">
+      <<input class="p" type="number" value="${it.precio}">
+      <span style="font-size:12px;color:#888;white-space:nowrap;">→ transf ${it.precio_transfer||0}</span>
       ${cat}${it.es_producto?'<span class="tag">prod</span>':''}
       <button class="b-tinta guardar">Guardar</button>
       <button class="b-del borrar">Eliminar</button>`;
@@ -264,6 +275,37 @@ $("#btnTipo").onclick=async()=>{
   await authFetch("/api/tipos-egreso",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({nombre:n})});
   $("#nTipo").value="";toast("Tipo agregado");cargarTipos();
 };
+
+
+// --- Descuentos ---
+
+async function cargarDescuentos(){
+  const ds = await (await authFetch("/api/descuentos")).json();
+  const cont = $("#listaDescuentos"); cont.innerHTML = "";
+  if(ds.length === 0){ cont.innerHTML = '<p class="muted">Todavía no hay descuentos.</p>'; }
+  ds.forEach(d => {
+    const row = document.createElement("div"); row.className = "item-row";
+    const motivo = d.mostrar_motivo ? ' · <span class="muted">muestra motivo</span>' : '';
+    row.innerHTML = `<span class="n">${d.nombre} — ${d.porcentaje}%${motivo}</span><button class="b-del">Eliminar</button>`;
+    row.querySelector("button").onclick = async () => {
+      await authFetch(`/api/descuentos/${d.id}`, {method:"DELETE"});
+      toast("Eliminado"); cargarDescuentos();
+    };
+    cont.appendChild(row);
+  });
+}
+
+$("#btnDesc").onclick = async () => {
+  const nombre = $("#nDescNombre").value.trim();
+  const porcentaje = parseInt($("#nDescPct").value);
+  if(!nombre){ toast("Falta el nombre"); return; }
+  if(isNaN(porcentaje) || porcentaje < 0 || porcentaje > 100){ toast("Porcentaje inválido (0 a 100)"); return; }
+  await authFetch("/api/descuentos", {method:"POST", headers:{"Content-Type":"application/json"},
+    body: JSON.stringify({ nombre, porcentaje, mostrar_motivo: $("#nDescMotivo").checked })});
+  $("#nDescNombre").value = ""; $("#nDescPct").value = ""; $("#nDescMotivo").checked = false;
+  toast("Descuento agregado"); cargarDescuentos();
+};
+
 
 // --- Usuarios ---
 async function cargarUsuarios(){
@@ -346,7 +388,8 @@ $("#btnBackup").onclick=async()=>{
   }catch(e){toast("Error: "+e.message);}
   finally{$("#btnBackup").textContent="Descargar backup";$("#btnBackup").disabled=false;}
 };
-cargarCats();cargarFormas();cargarExtra();cargarTipos();cargarUsuarios();cargarAlias();
+cargarCats();cargarFormas();cargarExtra();cargarTipos();cargarUsuarios();cargarAlias();cargarDescuentos();
+
 </script>
 </body>
 </html>

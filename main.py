@@ -2,7 +2,7 @@ from fastapi import FastAPI, Depends, HTTPException, Header
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy.orm import Session
-from sqlalchemy import text, inspect
+from sqlalchemy import text, inspect, func
 from pydantic import BaseModel
 from datetime import datetime, date, timedelta
 from openpyxl import Workbook
@@ -33,6 +33,26 @@ def migrar():
     if "peluquero" not in vcols:
         with engine.begin() as con:
             con.execute(text("ALTER TABLE ventas ADD COLUMN peluquero VARCHAR"))
+    lcols = [c["name"] for c in insp.get_columns("comprobante_lineas")]
+    if "precio_efectivo" not in lcols:
+        with engine.begin() as con:
+            con.execute(text("ALTER TABLE comprobante_lineas ADD COLUMN precio_efectivo INTEGER"))
+    pcols = [c["name"] for c in insp.get_columns("pagos")]
+    if "saldado" not in pcols:
+        with engine.begin() as con:
+            con.execute(text("ALTER TABLE pagos ADD COLUMN saldado INTEGER"))
+    ccols = [c["name"] for c in insp.get_columns("comprobantes")]
+    if "forma_pago" not in ccols:
+        with engine.begin() as con:
+            con.execute(text("ALTER TABLE comprobantes ADD COLUMN forma_pago VARCHAR"))
+    clcols = [c["name"] for c in insp.get_columns("clientes")]
+    if "direccion" not in clcols:
+        with engine.begin() as con:
+            con.execute(text("ALTER TABLE clientes ADD COLUMN direccion VARCHAR"))
+    if "dni" not in clcols:
+        with engine.begin() as con:
+            con.execute(text("ALTER TABLE clientes ADD COLUMN dni VARCHAR"))
+    
 migrar()
 
 # Auto-siembra al iniciar (idempotente): crea catalogo y usuarios si la base esta vacia
@@ -49,14 +69,32 @@ class LineaIn(BaseModel):
     item_id: int; cantidad: int = 1; dificultad: bool = False; precio_custom: int | None = None
 class VentaIn(BaseModel):
     forma_pago: str; alias: str | None = None; cliente: str | None = None; peluquero: str | None = None; lineas: list[LineaIn]
+class ClienteIn(BaseModel):
+    nombre: str; telefono: str | None = None; alias: str | None = None; notas: str | None = None; direccion: str | None = None; dni: str | None = None
+class ClienteEdit(BaseModel):
+    nombre: str | None = None; telefono: str | None = None; alias: str | None = None; notas: str | None = None; activo: bool | None = None; direccion: str | None = None; dni: str | None = None
 class ItemIn(BaseModel):
     categoria: str; nombre: str; precio: int; es_producto: bool = False
 class ItemEdit(BaseModel):
     categoria: str | None = None; nombre: str | None = None; precio: int | None = None; activo: bool | None = None
 class RenombrarCat(BaseModel):
     viejo: str; nuevo: str
+class LineaCompIn(BaseModel):
+    item_id: int; cantidad: int = 1; dificultad: bool = False; precio_custom: int | None = None
+class ComprobanteIn(BaseModel):
+    tipo: str; cliente_id: int | None = None; cliente_nombre: str | None = None; peluquero: str | None = None
+    forma_pago: str = "efectivo"
+    descuento_pct: int = 0; descuento_nombre: str | None = None; mostrar_motivo: bool = False
+    lineas: list[LineaCompIn]
+class PagoIn(BaseModel):
+    monto: int; forma_pago: str; alias: str | None = None; saldado: int | None = None
 class FormaIn(BaseModel):
     nombre: str
+class DescuentoIn(BaseModel):
+    nombre: str; porcentaje: int; mostrar_motivo: bool = False
+class DescuentoEdit(BaseModel):
+    nombre: str | None = None; porcentaje: int | None = None
+    mostrar_motivo: bool | None = None; activo: bool | None = None
 class EgresoIn(BaseModel):
     tipo: str; concepto: str | None = None; monto: int; forma_pago: str | None = None; notas: str | None = None
 class EgresoEdit(BaseModel):
@@ -79,12 +117,7 @@ class FondoIn(BaseModel):
 class NombreIn(BaseModel):
     nombre: str
 class TurnoIn(BaseModel):
-    fecha: str | None = None
-    hora: str
-    cliente: str
-    servicio: str
-    peluquero: str | None = None
-    notas: str | None = None
+    fecha: str | None = None; hora: str; cliente: str; cliente_id: int | None = None; servicio: str; peluquero: str | None = None; notas: str | None = None
 
 # ---------- auth ----------
 def usuario_actual(authorization: str = Header(default="")):
@@ -103,6 +136,12 @@ def get_extra(db) -> int:
     c = db.query(models.Config).filter_by(clave="extra_dificultad").first()
     return int(c.valor) if c else 0
 
+def calcular_transfer(precio_efectivo: int) -> int:
+    """Precio de transferencia = efectivo x 1.1111, redondeado PARA ARRIBA a múltiplo de 500."""
+    import math
+    bruto = precio_efectivo * 1.1111
+    return math.ceil(bruto / 500) * 500
+
 def get_fondo(db) -> int:
     c = db.query(models.Config).filter_by(clave="fondo_caja").first()
     return int(c.valor) if c else 0
@@ -120,6 +159,62 @@ def get_fondo_dia(db, d) -> int:
     if prev:
         return prev.monto
     return get_fondo(db)
+
+def estado_comprobante(db, comp) -> dict:
+    extra = comp.extra_dificultad or 0
+    total_transfer = comp.total_lista                                    # suma en lista transfer
+    total_efectivo = sum((l.precio_efectivo or 0) * l.cantidad for l in comp.lineas)
+
+    # El comprobante se precia según su forma: efectivo usa lista efectivo; cualquier otra, transfer.
+    if comp.forma_pago == "efectivo":
+        desc_efectivo = total_transfer - total_efectivo                  # diferencia entre listas
+        subtotal = total_efectivo + extra
+    else:
+        desc_efectivo = 0
+        subtotal = total_transfer + extra
+
+    # El descuento de listado (jubilado) va sobre el subtotal YA con el descuento efectivo restado.
+    desc_jubilado = round(subtotal * (comp.descuento_pct or 0) / 100)
+    total_final = subtotal - desc_jubilado
+
+    pagos = db.query(models.Pago).filter(models.Pago.comprobante_id == comp.id).all()
+    pagado = sum((p.saldado if p.saldado is not None else p.monto) for p in pagos)
+    ingresado = sum(p.monto for p in pagos)
+    saldo = total_final - pagado
+
+    if comp.tipo == "presupuesto": estado = "presupuesto"
+    elif pagado <= 0: estado = "pendiente"
+    elif saldo <= 0: estado = "pagado"
+    else: estado = "parcial"
+
+    return {
+        "total_transfer": total_transfer + extra,   # "Precios (transfer)"
+        "desc_efectivo": desc_efectivo,             # diferencia entre listas (0 si no es efectivo)
+        "subtotal": subtotal,                       # subtotal ya con el descuento efectivo
+        "desc_jubilado": desc_jubilado,             # descuento de listado
+        "total_final": total_final,                 # lo que paga el cliente
+        "pagado": pagado, "ingresado": ingresado, "saldo": saldo, "estado": estado,
+    }
+
+def forma_comprobante(db, comp) -> str:
+    """Forma de pago mostrada: se DEDUCE de los pagos, no se guarda.
+    Sin pagos = a cuenta; una sola forma = esa; varias formas = mixto."""
+    if comp.tipo == "presupuesto":
+        return "—"
+    pagos = db.query(models.Pago).filter(models.Pago.comprobante_id == comp.id).all()
+    if not pagos:
+        return "A cuenta"
+    formas = {p.forma_pago for p in pagos}     # set: descarta repetidos
+    if len(formas) == 1:
+        return next(iter(formas))              # "Efectivo" o "Transferencia"
+    return "Pago mixto"
+
+def siguiente_numero(db, tipo: str) -> int:
+    """Devuelve el próximo número de la secuencia para ese tipo de comprobante."""
+    ultimo = db.query(models.Comprobante).filter(
+        models.Comprobante.tipo == tipo
+    ).order_by(models.Comprobante.numero.desc()).first()
+    return (ultimo.numero + 1) if ultimo else 1
 
 def _puede_modificar(user, fecha) -> bool:
     # el dueño puede modificar cualquier fecha; el empleado solo lo de hoy
@@ -159,12 +254,12 @@ def categorias(_ = Depends(usuario_actual), db: Session = Depends(get_db)):
 @app.get("/api/items")
 def items(categoria: str, _ = Depends(usuario_actual), db: Session = Depends(get_db)):
     q = db.query(models.Item).filter(models.Item.categoria == categoria, models.Item.activo == True)
-    return [{"id": i.id, "nombre": i.nombre, "precio": i.precio, "es_producto": i.es_producto} for i in q]
+    return [{"id": i.id, "nombre": i.nombre, "precio": i.precio, "precio_transfer": i.precio_transfer, "es_producto": i.es_producto} for i in q]
 
 @app.get("/api/items/all")
 def items_all(_ = Depends(solo_dueno), db: Session = Depends(get_db)):
     q = db.query(models.Item).filter(models.Item.activo == True).order_by(models.Item.nombre)
-    return [{"id": i.id, "nombre": i.nombre, "precio": i.precio, "categoria": i.categoria,
+    return [{"id": i.id, "nombre": i.nombre, "precio": i.precio, "categoria": i.categoria, "precio_transfer": i.precio_transfer,
              "es_producto": i.es_producto} for i in q]
 
 @app.get("/api/catalogo")
@@ -172,7 +267,7 @@ def catalogo(_ = Depends(usuario_actual), db: Session = Depends(get_db)):
     """Todo el catálogo activo de una sola vez (para buscador y agrupado en Facturación)."""
     q = (db.query(models.Item).filter(models.Item.activo == True)
            .order_by(models.Item.categoria, models.Item.nombre))
-    return [{"id": i.id, "nombre": i.nombre, "precio": i.precio, "categoria": i.categoria,
+    return [{"id": i.id, "nombre": i.nombre, "precio": i.precio, "precio_transfer": i.precio_transfer,"categoria": i.categoria,  
              "es_producto": i.es_producto} for i in q]
 
 @app.get("/api/config")
@@ -199,6 +294,16 @@ def set_fondo(datos: FondoIn, _ = Depends(solo_dueno), db: Session = Depends(get
     f.monto = datos.valor
     db.commit()
     return {"ok": True}
+
+# precios transferencia
+
+@app.post("/api/admin/recalcular-transfer")
+def recalcular_transfer(_ = Depends(solo_dueno), db: Session = Depends(get_db)):
+    items = db.query(models.Item).all()
+    for it in items:
+        it.precio_transfer = calcular_transfer(it.precio)
+    db.commit()
+    return {"recalculados": len(items)}
 
 # tipos de egreso
 @app.get("/api/tipos-egreso")
@@ -267,11 +372,151 @@ def borrar_alias(alias_id: int, _ = Depends(solo_dueno), db: Session = Depends(g
     if not a: raise HTTPException(404, "Alias no existe")
     a.activo = False; db.commit(); return {"ok": True}
 
+# ---------- clientes ----------
+def _cliente_json(c):
+    """Cliente en JSON para API. No incluye fecha de creación ni activo."""
+    return {"id": c.id, "nombre": c.nombre, "telefono": c.telefono, "alias": c.alias,
+            "notas": c.notas, "direccion": c.direccion, "dni": c.dni}
+
+
+@app.get("/api/clientes")
+def listar_clientes(q: str | None = None, _ = Depends(usuario_actual), db: Session = Depends(get_db)):
+    query = db.query(models.Cliente).filter(models.Cliente.activo == True)
+    if q:
+        like = f"%{q.strip()}%"
+        query = query.filter(models.Cliente.nombre.ilike(like) | models.Cliente.telefono.ilike(like))
+    return [_cliente_json(c) for c in query.order_by(models.Cliente.nombre)]
+
+@app.post("/api/clientes")
+def crear_cliente(cli: ClienteIn, _ = Depends(usuario_actual), db: Session = Depends(get_db)):
+    nombre = cli.nombre.strip()
+    if not nombre:
+        raise HTTPException(400, "El nombre no puede estar vacío")
+    # ¿ya existe un cliente activo con ese nombre? (sin distinguir mayúsculas)
+    existe = db.query(models.Cliente).filter(
+        func.lower(models.Cliente.nombre) == nombre.lower(),
+        models.Cliente.activo == True
+    ).first()
+    if existe:
+        raise HTTPException(409, "Ya existe un cliente con ese nombre")
+    nuevo = models.Cliente(
+        nombre=nombre,
+        telefono=(cli.telefono or "").strip() or None,
+        alias=(cli.alias or "").strip() or None,
+        notas=(cli.notas or "").strip() or None,
+        direccion=(cli.direccion or "").strip() or None,
+        dni=(cli.dni or "").strip() or None)
+    db.add(nuevo); db.commit(); db.refresh(nuevo); return {"id": nuevo.id}
+
+@app.get("/api/clientes/deudas")
+def deudas_clientes(_ = Depends(usuario_actual), db: Session = Depends(get_db)):
+    """Saldo por cliente, solo de los que deben. Va ANTES de /{cliente_id}: las rutas fijas primero."""
+    # 1) cuánto se pagó por comprobante — UNA query agregada, la suma la hace la base
+    pagado_por_comp = dict(
+        db.query(models.Pago.comprobante_id,
+                 func.sum(func.coalesce(models.Pago.saldado, models.Pago.monto)))
+          .group_by(models.Pago.comprobante_id).all())
+
+    # 2) todos los tickets con cliente — UNA query
+    tickets = db.query(models.Comprobante).filter(
+        models.Comprobante.tipo == "ticket",
+        models.Comprobante.activo == True,
+        models.Comprobante.cliente_id != None).all()
+
+    # 3) filtro barato (total_final NUNCA supera total_lista + extra), cálculo fino solo si hace falta
+    deudas = {}
+    for t in tickets:
+        cota = (t.total_lista or 0) + (t.extra_dificultad or 0)
+        if pagado_por_comp.get(t.id, 0) >= cota:
+            continue
+        est = estado_comprobante(db, t)
+        if est["saldo"] > 0:
+            deudas[t.cliente_id] = deudas.get(t.cliente_id, 0) + est["saldo"]
+
+    return [{"cliente_id": k, "saldo": v} for k, v in deudas.items()]
+
+@app.get("/api/clientes/{cliente_id}")
+def ver_cliente(cliente_id: int, _ = Depends(usuario_actual), db: Session = Depends(get_db)):
+    c = db.get(models.Cliente, cliente_id)
+    if not c or not c.activo: raise HTTPException(404, "Cliente no existe")
+    return _cliente_json(c)
+
+@app.put("/api/clientes/{cliente_id}")
+def editar_cliente(cliente_id: int, cambios: ClienteEdit, _ = Depends(usuario_actual), db: Session = Depends(get_db)):
+    c = db.get(models.Cliente, cliente_id)
+    if not c: raise HTTPException(404, "Cliente no existe")
+    if cambios.nombre is not None:
+        nombre = cambios.nombre.strip()
+        if not nombre: raise HTTPException(400, "El nombre no puede quedar vacío")
+        existe = db.query(models.Cliente).filter(
+            func.lower(models.Cliente.nombre) == nombre.lower(),
+            models.Cliente.activo == True,
+            models.Cliente.id != cliente_id
+        ).first()
+        if existe: raise HTTPException(409, "Ya existe un cliente con ese nombre")
+        c.nombre = nombre
+    if cambios.telefono is not None: c.telefono = cambios.telefono.strip() or None
+    if cambios.alias is not None: c.alias = cambios.alias.strip() or None
+    if cambios.notas is not None: c.notas = cambios.notas.strip() or None
+    if cambios.direccion is not None: c.direccion = cambios.direccion.strip() or None
+    if cambios.dni is not None: c.dni = cambios.dni.strip() or None
+    if cambios.activo is not None: c.activo = cambios.activo
+    db.commit(); return {"ok": True}
+
+@app.delete("/api/clientes/{cliente_id}")
+def borrar_cliente(cliente_id: int, _ = Depends(solo_dueno), db: Session = Depends(get_db)):
+    c = db.get(models.Cliente, cliente_id)
+    if not c: raise HTTPException(404, "Cliente no existe")
+
+    comps = db.query(models.Comprobante).filter(
+        models.Comprobante.cliente_id == cliente_id,
+        models.Comprobante.tipo == "ticket",
+        models.Comprobante.activo == True).all()
+    deuda = sum(est["saldo"] for comp in comps
+                if (est := estado_comprobante(db, comp))["saldo"] > 0)
+    if deuda > 0:
+        raise HTTPException(409, f"No se puede eliminar: {c.nombre} debe ${deuda:,}".replace(",", "."))
+
+    c.activo = False; db.commit(); return {"ok": True}
+
+@app.get("/api/clientes/{cliente_id}/cuenta")
+def cuenta_cliente(cliente_id: int, _ = Depends(usuario_actual), db: Session = Depends(get_db)):
+    cli = db.get(models.Cliente, cliente_id)
+    if not cli or not cli.activo: raise HTTPException(404, "Cliente no existe")
+    comps = db.query(models.Comprobante).filter(
+        models.Comprobante.cliente_id == cliente_id,
+        models.Comprobante.tipo == "ticket",
+        models.Comprobante.activo == True
+    ).order_by(models.Comprobante.fecha.desc())
+    out = []; saldo_total = 0
+    for comp in comps:
+        est = estado_comprobante(db, comp)
+        if est["saldo"] > 0: saldo_total += est["saldo"]
+        out.append({"id": comp.id, "numero": comp.numero, "fecha": comp.fecha.isoformat(),
+                    "descuento_nombre": comp.descuento_nombre, "descuento_pct": comp.descuento_pct,
+                    "total_transfer": est["total_transfer"], "desc_efectivo": est["desc_efectivo"],
+                    "subtotal": est["subtotal"], "desc_jubilado": est["desc_jubilado"],
+                    "total_final": est["total_final"], "pagado": est["pagado"],
+                    "saldo": est["saldo"], "estado": est["estado"]})
+    return {"cliente": _cliente_json(cli),
+            "saldo_total": saldo_total, "comprobantes": out}
+
+@app.get("/api/clientes/{cliente_id}/proximo-turno")
+def proximo_turno(cliente_id: int, _ = Depends(usuario_actual), db: Session = Depends(get_db)):
+    hoy = datetime.now().strftime("%Y-%m-%d")
+    t = db.query(models.Turno).filter(
+        models.Turno.cliente_id == cliente_id,
+        models.Turno.activo == True,
+        models.Turno.fecha >= hoy
+    ).order_by(models.Turno.fecha, models.Turno.hora).first()
+    if not t: return {"turno": None}
+    return {"turno": {"fecha": t.fecha, "hora": t.hora, "servicio": t.servicio, "es_hoy": t.fecha == hoy}}
+
 # ---------- catalogo (admin: solo dueño) ----------
 @app.post("/api/items")
 def crear_item(item: ItemIn, _ = Depends(solo_dueno), db: Session = Depends(get_db)):
     nuevo = models.Item(categoria=item.categoria.strip(), nombre=item.nombre.strip(),
-                        precio=item.precio, es_producto=item.es_producto)
+                        precio=item.precio, precio_transfer=calcular_transfer(item.precio), es_producto=item.es_producto)
     db.add(nuevo); db.commit(); db.refresh(nuevo); return {"id": nuevo.id}
 
 @app.put("/api/items/{item_id}")
@@ -280,7 +525,9 @@ def editar_item(item_id: int, cambios: ItemEdit, _ = Depends(solo_dueno), db: Se
     if not item: raise HTTPException(404, "Item no existe")
     if cambios.categoria is not None: item.categoria = cambios.categoria.strip()
     if cambios.nombre is not None: item.nombre = cambios.nombre.strip()
-    if cambios.precio is not None: item.precio = cambios.precio
+    if cambios.precio is not None:
+        item.precio = cambios.precio
+        item.precio_transfer = calcular_transfer(cambios.precio)
     if cambios.activo is not None: item.activo = cambios.activo
     db.commit(); return {"ok": True}
 
@@ -322,6 +569,120 @@ def log_stock(db, item, tipo, cambio, motivo, usuario="sistema"):
         item_id=item.id, tipo=tipo, antes=antes,
         despues=antes + cambio, cambio=cambio,
         motivo=motivo, usuario=usuario))
+
+# ---------- comprobantes ----------
+@app.get("/api/comprobantes")
+def listar_comprobantes(tipo: str | None = None, _ = Depends(usuario_actual), db: Session = Depends(get_db)):
+    query = db.query(models.Comprobante).filter(models.Comprobante.activo == True)
+    if tipo: query = query.filter(models.Comprobante.tipo == tipo)
+    out = []
+    for comp in query.order_by(models.Comprobante.fecha.desc()):
+        conv = None
+        if comp.tipo == "presupuesto":
+            t = db.query(models.Comprobante).filter(models.Comprobante.convertido_de == comp.id).first()
+            conv = t.numero if t else None
+        out.append({"id": comp.id, "tipo": comp.tipo, "numero": comp.numero,
+                    "fecha": comp.fecha.isoformat(), "cliente_nombre": comp.cliente_nombre,
+                    "total_lista": comp.total_lista, "extra_dificultad": comp.extra_dificultad,
+                    "convertido_a": conv, "forma_pago": forma_comprobante(db, comp),
+                    **estado_comprobante(db, comp)})
+    return out
+
+@app.get("/api/comprobantes/{comp_id}")
+def ver_comprobante(comp_id: int, _ = Depends(usuario_actual), db: Session = Depends(get_db)):
+    comp = db.get(models.Comprobante, comp_id)
+    if not comp or not comp.activo: raise HTTPException(404, "Comprobante no existe")
+    return {"id": comp.id, "tipo": comp.tipo, "numero": comp.numero, "fecha": comp.fecha.isoformat(),
+        "cliente_id": comp.cliente_id, "cliente_nombre": comp.cliente_nombre, "peluquero": comp.peluquero,
+        "descuento_pct": comp.descuento_pct, "descuento_nombre": comp.descuento_nombre,
+        "mostrar_motivo": comp.mostrar_motivo, "forma_pago": comp.forma_pago, "total_lista": comp.total_lista, "extra_dificultad": comp.extra_dificultad,
+        "lineas": [{"nombre": l.nombre, "cantidad": l.cantidad, "precio_unit": l.precio_unit,
+                    "precio_efectivo": l.precio_efectivo, "dificultad": l.dificultad, "subtotal": l.subtotal} for l in comp.lineas], 
+        "pagos": [{"id": p.id, "fecha": p.fecha.isoformat(), "monto": p.monto, "saldado": p.saldado,
+                   "desc_aplicado": p.desc_aplicado, "forma_pago": p.forma_pago, "alias": p.alias}
+                  for p in db.query(models.Pago).filter(models.Pago.comprobante_id == comp.id).order_by(models.Pago.fecha)],
+        **estado_comprobante(db, comp)}
+
+@app.post("/api/comprobantes")
+def crear_comprobante(c: ComprobanteIn, user = Depends(usuario_actual), db: Session = Depends(get_db)):
+    if c.tipo not in ("ticket", "presupuesto"): raise HTTPException(400, "Tipo inválido")
+    if not c.lineas: raise HTTPException(400, "El comprobante no tiene líneas")
+    nombre_cli = None
+    if c.cliente_id:
+        cli = db.get(models.Cliente, c.cliente_id)
+        if not cli: raise HTTPException(404, "Cliente no existe")
+        nombre_cli = cli.nombre
+    elif c.cliente_nombre:
+        nombre_cli = c.cliente_nombre.strip() or None
+    comp = models.Comprobante(
+        tipo=c.tipo, numero=siguiente_numero(db, c.tipo),
+        cliente_id=c.cliente_id, cliente_nombre=nombre_cli, peluquero=c.peluquero,
+        forma_pago=c.forma_pago,
+        descuento_pct=c.descuento_pct or 0, descuento_nombre=c.descuento_nombre, mostrar_motivo=c.mostrar_motivo)
+    db.add(comp); db.flush()
+    extra = get_extra(db); total = 0; extra_total = 0
+    for ln in c.lineas:
+        item = db.get(models.Item, ln.item_id)
+        if not item: raise HTTPException(404, f"Item {ln.item_id} no existe")
+        # El comprobante se ancla SIEMPRE al precio transferencia (precio de referencia).
+        # El descuento por efectivo se aplica al cobrar, no acá.
+        precio = item.precio_transfer
+        sub = precio * ln.cantidad
+        total += sub
+        if ln.dificultad: extra_total += extra
+        db.add(models.ComprobanteLinea(comprobante_id=comp.id, item_id=item.id, nombre=item.nombre,
+            cantidad=ln.cantidad, precio_unit=precio, precio_efectivo=item.precio,
+            dificultad=ln.dificultad, subtotal=sub))
+    comp.total_lista = total
+    comp.extra_dificultad = extra_total
+    db.commit(); db.refresh(comp)
+    return {"id": comp.id, "numero": comp.numero, "tipo": comp.tipo}
+
+@app.post("/api/comprobantes/{comp_id}/pagos")
+def registrar_pago(comp_id: int, pago: PagoIn, _ = Depends(usuario_actual), db: Session = Depends(get_db)):
+    comp = db.get(models.Comprobante, comp_id)
+    if not comp or not comp.activo: raise HTTPException(404, "Comprobante no existe")
+    if comp.tipo != "ticket": raise HTTPException(400, "Solo se cobran tickets, no presupuestos")
+    est = estado_comprobante(db, comp)
+    if pago.monto <= 0: raise HTTPException(400, "El monto debe ser positivo")
+    # 'saldado' es cuánto de la cuenta (a precio transferencia) cubre este pago.
+    # Si no viene, se asume igual al monto (caso transferencia, sin descuento).
+    saldado = pago.saldado if pago.saldado is not None else pago.monto
+    if saldado <= 0: raise HTTPException(400, "Lo saldado debe ser positivo")
+    if saldado > est["saldo"]: raise HTTPException(400, f"Supera el saldo pendiente (${est['saldo']})")
+    desc = saldado - pago.monto   # descuento en pesos (0 si no hubo)
+    db.add(models.Pago(comprobante_id=comp.id, monto=pago.monto, saldado=saldado,
+                       forma_pago=pago.forma_pago, alias=pago.alias, desc_aplicado=desc))
+    db.commit(); return estado_comprobante(db, comp)
+
+@app.delete("/api/pagos/{pago_id}")
+def borrar_pago(pago_id: int, _ = Depends(usuario_actual), db: Session = Depends(get_db)):
+    """Anula un cobro mal cargado. El comprobante vuelve a quedar con saldo pendiente."""
+    p = db.get(models.Pago, pago_id)
+    if not p: raise HTTPException(404, "Pago no existe")
+    db.delete(p); db.commit(); return {"ok": True}
+
+@app.post("/api/comprobantes/{comp_id}/convertir")
+def convertir_a_ticket(comp_id: int, user = Depends(usuario_actual), db: Session = Depends(get_db)):
+    presu = db.get(models.Comprobante, comp_id)
+    if not presu or not presu.activo: raise HTTPException(404, "Comprobante no existe")
+    if presu.tipo != "presupuesto": raise HTTPException(400, "Solo se convierten presupuestos")
+    ya = db.query(models.Comprobante).filter(models.Comprobante.convertido_de == presu.id).first()
+    if ya: raise HTTPException(400, "Este presupuesto ya fue convertido")
+    ticket = models.Comprobante(
+        tipo="ticket", numero=siguiente_numero(db, "ticket"),
+        cliente_id=presu.cliente_id, cliente_nombre=presu.cliente_nombre, peluquero=presu.peluquero,
+        descuento_pct=presu.descuento_pct, descuento_nombre=presu.descuento_nombre,
+        mostrar_motivo=presu.mostrar_motivo, total_lista=presu.total_lista,
+        extra_dificultad=presu.extra_dificultad, convertido_de=presu.id)
+    db.add(ticket); db.flush()
+    for l in presu.lineas:
+        db.add(models.ComprobanteLinea(comprobante_id=ticket.id, item_id=l.item_id, nombre=l.nombre,
+            cantidad=l.cantidad, precio_unit=l.precio_unit, dificultad=l.dificultad, subtotal=l.subtotal))
+    db.commit(); db.refresh(ticket)
+    return {"id": ticket.id, "numero": ticket.numero}
+
+
 # ---------- ventas (cualquier usuario logueado) ----------
 @app.post("/api/ventas")    
 def crear_venta(venta: VentaIn, user = Depends(usuario_actual), db: Session = Depends(get_db)):
@@ -354,6 +715,19 @@ def _venta_detalle(v):
             "lineas": [{"item_id": l.item_id, "nombre": l.nombre, "cantidad": l.cantidad,
                         "precio_unit": l.precio_unit, "dificultad": l.dificultad,
                         "subtotal": l.subtotal} for l in v.lineas]}
+
+def _pago_detalle(p):
+    """Detalle de un cobro para la caja: hora, monto, forma de pago y a qué comprobante pertenece."""
+    comp = p.comprobante
+    ref = "—"
+    if comp:
+        pref = "A" if comp.tipo == "ticket" else "P"
+        ref = f"{pref}-{comp.numero:05d}"
+        if comp.cliente_nombre:
+            ref += f" · {comp.cliente_nombre}"
+    return {"id": p.id, "hora": p.fecha.strftime("%H:%M"), "total": p.monto,
+            "forma_pago": p.forma_pago, "alias": p.alias, "ref": ref,
+            "comprobante_id": comp.id if comp else None}
 
 @app.get("/api/ventas/dia")
 def ventas_dia(_ = Depends(usuario_actual), db: Session = Depends(get_db)):
@@ -460,27 +834,27 @@ def anular_egreso(egreso_id: int, user = Depends(usuario_actual), db: Session = 
 
 # ---------- caja (solo dueño) ----------
 def _rango_dia(d): ini = datetime(d.year, d.month, d.day); return ini, ini + timedelta(days=1)
-def _sv(db, i, f): return sum(v.total for v in db.query(models.Venta).filter(models.Venta.fecha >= i, models.Venta.fecha < f))
+def _sv(db, i, f): return sum(p.monto for p in db.query(models.Pago).filter(models.Pago.fecha >= i, models.Pago.fecha < f))
 def _se(db, i, f): return sum((e.monto or 0) for e in db.query(models.Egreso).filter(models.Egreso.fecha >= i, models.Egreso.fecha < f))
 
 @app.get("/api/caja/dia")
 def caja_dia(fecha: str | None = None, _ = Depends(usuario_actual), db: Session = Depends(get_db)):
     d = date.fromisoformat(fecha) if fecha else date.today()
     ini, fin = _rango_dia(d)
-    ventas = db.query(models.Venta).filter(models.Venta.fecha >= ini, models.Venta.fecha < fin).all()
+    pagos = db.query(models.Pago).filter(models.Pago.fecha >= ini, models.Pago.fecha < fin).all()
     egresos = db.query(models.Egreso).filter(models.Egreso.fecha >= ini, models.Egreso.fecha < fin).all()
-    ing = sum(v.total for v in ventas); egr = sum((e.monto or 0) for e in egresos)
+    ing = sum(p.monto for p in pagos); egr = sum((e.monto or 0) for e in egresos)
     por_pago = {}; por_tipo = {}
-    for v in ventas: por_pago[v.forma_pago] = por_pago.get(v.forma_pago, 0) + v.total
+    for p in pagos: por_pago[p.forma_pago] = por_pago.get(p.forma_pago, 0) + p.monto
     for e in egresos: por_tipo[e.tipo] = por_tipo.get(e.tipo, 0) + (e.monto or 0)
-    efectivo_ventas = sum(v.total for v in ventas if v.forma_pago == "Efectivo")
+    efectivo_ventas = sum(p.monto for p in pagos if p.forma_pago == "Efectivo")
     efectivo_egresos = sum((e.monto or 0) for e in egresos if e.forma_pago == "Efectivo")
     fondo = get_fondo_dia(db, d)
     return {"fecha": d.isoformat(), "ingresos": ing, "egresos": egr, "neto": ing - egr,
-            "ventas": len(ventas), "ingresos_por_pago": por_pago, "egresos_por_tipo": por_tipo,
+            "ventas": len(pagos), "ingresos_por_pago": por_pago, "egresos_por_tipo": por_tipo,
             "fondo": fondo, "efectivo_ventas": efectivo_ventas, "efectivo_egresos": efectivo_egresos,
             "efectivo_esperado": fondo + efectivo_ventas - efectivo_egresos,
-            "ventas_detalle": [_venta_detalle(v) for v in ventas],
+            "ventas_detalle": [_pago_detalle(p) for p in pagos],
             "egresos_detalle": [{"id": e.id, "hora": e.fecha.strftime("%H:%M"), "tipo": e.tipo,
                                  "concepto": e.concepto, "monto": e.monto, "forma_pago": e.forma_pago}
                                 for e in egresos]}
@@ -538,13 +912,15 @@ def historial_stock(item_id: int | None = None, _ = Depends(solo_dueno), db: Ses
 
 # ---------- reportes (solo dueño) ----------
 def _ventana(dias: int, desde: str | None, hasta: str | None):
-    # Si hay rango, lo usa. Si no, últimos `dias`. Si dias<=0, todo el historial.
+    # Si hay rango, lo usa. Si no, últimos `dias` CALENDARIO (hoy inclusive).
+    # Si dias<=0, todo el historial.
     if desde or hasta:
         ini = datetime.fromisoformat(desde) if desde else None
         fin = (datetime.fromisoformat(hasta) + timedelta(days=1)) if hasta else None
         return ini, fin
     if dias and dias > 0:
-        return datetime.now() - timedelta(days=dias), None
+        hoy = datetime(date.today().year, date.today().month, date.today().day)
+        return hoy - timedelta(days=dias - 1), hoy + timedelta(days=1)
     return None, None
 
 def _filtrar(query, col, ini, fin):
@@ -556,12 +932,22 @@ def _filtrar(query, col, ini, fin):
 def rep_resumen(dias: int = 30, desde: str | None = None, hasta: str | None = None,
                 _ = Depends(solo_dueno), db: Session = Depends(get_db)):
     ini, fin = _ventana(dias, desde, hasta)
-    ventas = _filtrar(db.query(models.Venta), models.Venta.fecha, ini, fin).all()
+    # Ingresos = plata que entró (igual que caja) → tabla pagos
+    pagos = _filtrar(db.query(models.Pago), models.Pago.fecha, ini, fin).all()
     egresos = _filtrar(db.query(models.Egreso), models.Egreso.fecha, ini, fin).all()
-    ing = sum(v.total for v in ventas); egr = sum((e.monto or 0) for e in egresos)
-    n = len(ventas)
+    ing = sum(p.monto for p in pagos)
+    egr = sum((e.monto or 0) for e in egresos)
+    # desglose por forma de pago (mismo formato que /api/caja/dia)
+    por_pago = {}
+    for p in pagos:
+        por_pago[p.forma_pago] = por_pago.get(p.forma_pago, 0) + p.monto
+    # Ventas = tickets emitidos (no presupuestos, no anulados)
+    q = db.query(models.Comprobante).filter(
+        models.Comprobante.tipo == "ticket",
+        models.Comprobante.activo == True)
+    n = _filtrar(q, models.Comprobante.fecha, ini, fin).count()
     return {"ingresos": ing, "egresos": egr, "neto": ing - egr,
-            "ventas": n, "ticket_promedio": round(ing / n) if n else 0}
+            "ventas": n, "ingresos_por_pago": por_pago}
 
 @app.get("/api/reportes/top-items")
 def rep_top(dias: int = 30, limite: int = 10, desde: str | None = None, hasta: str | None = None,
@@ -587,35 +973,65 @@ def rep_categoria(dias: int = 30, desde: str | None = None, hasta: str | None = 
         agg[cat] = agg.get(cat, 0) + (l.subtotal or 0)
     return sorted([{"categoria": k, "total": v} for k, v in agg.items()], key=lambda x: x["total"], reverse=True)
 
+@app.get("/api/reportes/deuda")
+def rep_deuda(_ = Depends(solo_dueno), db: Session = Depends(get_db)):
+    """Cuánto se debe HOY. No lleva período: es una foto, no un acumulado."""
+    tickets = (db.query(models.Comprobante)
+                 .filter(models.Comprobante.tipo == "ticket",
+                         models.Comprobante.activo == True)
+                 .all())
+    total = 0; cuantos = 0
+    for t in tickets:
+        est = estado_comprobante(db, t)
+        if est["saldo"] > 0:
+            total += est["saldo"]
+            cuantos += 1
+    return {"deuda": total, "tickets": cuantos}
+
+def _movimientos(db, ini, fin):
+    """Ingresos (pagos) + egresos del período. Fuente ÚNICA para el registro y el Excel."""
+    pagos = _filtrar(db.query(models.Pago), models.Pago.fecha, ini, fin).all()
+    egresos = _filtrar(db.query(models.Egreso), models.Egreso.fecha, ini, fin).all()
+    movs = []
+    for p in pagos:
+        comp = p.comprobante
+        ref = "—"; cliente = ""; items = ""
+        if comp:
+            pref = "A" if comp.tipo == "ticket" else "P"
+            ref = f"{pref}-{comp.numero:05d}"
+            cliente = comp.cliente_nombre or ""
+            items = ", ".join(f"{l.cantidad}× {l.nombre}" for l in comp.lineas)
+        movs.append({"fecha": p.fecha, "clase": "ingreso",
+                     "comprobante": ref, "cliente": cliente, "detalle": items,
+                     "forma_pago": (p.forma_pago or "") + (f" ({p.alias})" if p.alias else ""),
+                     "monto": p.monto})
+    for e in egresos:
+        det = (e.tipo or "")
+        if e.concepto: det += f" — {e.concepto}"
+        movs.append({"fecha": e.fecha, "clase": "egreso",
+                     "comprobante": "", "cliente": "", "detalle": det,
+                     "forma_pago": e.forma_pago or "", "monto": e.monto or 0})
+    movs.sort(key=lambda m: m["fecha"], reverse=True)
+    return movs
+
 @app.get("/api/reportes/excel")
 def reportes_excel(dias: int = 30, desde: str | None = None, hasta: str | None = None,
                    _ = Depends(solo_dueno), db: Session = Depends(get_db)):
     wb = Workbook()
     ws = wb.active
     ws.title = "Movimientos"
-    
+
     # encabezados
-    ws.append(["Fecha", "Hora", "Tipo", "Detalle", "Forma de pago", "Monto"])
+    ws.append(["Fecha", "Hora", "Tipo", "Comprobante", "Cliente", "Detalle", "Forma de pago", "Monto"])
 
-    # traigo los movimientos reales reusando la misma lógica que el registro de pantalla
-    ini, fin = _resolver_ventana(dias, desde, hasta, db)
-    ventas = db.query(models.Venta).filter(models.Venta.fecha >= ini, models.Venta.fecha < fin).all()
-    egresos = db.query(models.Egreso).filter(models.Egreso.fecha >= ini, models.Egreso.fecha < fin).all()
-
-    movimientos = []
-    for v in ventas:
-        detalle = ", ".join(f"{l.cantidad}x {l.nombre}" for l in v.lineas)
-        movimientos.append((v.fecha, "Venta", detalle, v.forma_pago or "", v.total or 0))
-    for e in egresos:
-        detalle = f"{e.tipo or ''} - {e.concepto or ''}".strip(" -")
-        movimientos.append((e.fecha, "Egreso", detalle, e.forma_pago or "", -(e.monto or 0)))
-
-    # ordeno por fecha
-    movimientos.sort(key=lambda m: m[0])
-
-    # escribo cada fila
-    for fecha, tipo, detalle, pago, monto in movimientos:
-        ws.append([fecha.strftime("%d/%m/%Y"), fecha.strftime("%H:%M"), tipo, detalle, pago, monto])
+    # una sola fuente: la misma función que usa el registro de pantalla
+    ini, fin = _ventana(dias, desde, hasta)
+    for m in reversed(_movimientos(db, ini, fin)):
+        signo = 1 if m["clase"] == "ingreso" else -1
+        ws.append([m["fecha"].strftime("%d/%m/%Y"), m["fecha"].strftime("%H:%M"),
+                   "Ingreso" if m["clase"] == "ingreso" else "Egreso",
+                   m["comprobante"], m["cliente"], m["detalle"], m["forma_pago"],
+                   signo * m["monto"]])
 
     buffer = io.BytesIO()
     wb.save(buffer)
@@ -628,16 +1044,13 @@ def reportes_excel(dias: int = 30, desde: str | None = None, hasta: str | None =
 
 # ---------- series temporales (para gráficos de línea) ----------
 def _resolver_ventana(dias, desde, hasta, db):
-    """Devuelve (ini, fin) concretos (datetime) para filtrar y bucketizar."""
-    if desde or hasta:
-        ini = datetime.fromisoformat(desde) if desde else None
-        fin = (datetime.fromisoformat(hasta) + timedelta(days=1)) if hasta else None
-    elif dias and dias > 0:
-        ini, fin = datetime.now() - timedelta(days=dias), None
-    else:
-        ini, fin = None, None
-    if ini is None:
-        primera = db.query(models.Venta).order_by(models.Venta.fecha.asc()).first()
+    """Igual que _ventana, pero garantiza (ini, fin) concretos para bucketizar."""
+    ini, fin = _ventana(dias, desde, hasta)
+    if ini is None:   # caso "Todo": arranca en el primer ticket
+        primera = (db.query(models.Comprobante)
+                     .filter(models.Comprobante.tipo == "ticket",
+                             models.Comprobante.activo == True)
+                     .order_by(models.Comprobante.fecha.asc()).first())
         ini = primera.fecha if primera else datetime.now() - timedelta(days=30)
     if fin is None:
         fin = datetime.now() + timedelta(days=1)
@@ -667,10 +1080,10 @@ def _buckets(ini, fin):
         out = [(ini, fin, ini.strftime("%d/%m"))]; gran = "dia"
     return out, gran
 
-def _serie(filas, etiqueta_de, metrica, limite, buckets):
+def _serie(filas, etiqueta_de, limite, buckets):
     """filas: lista de (linea, fecha, clave). Arma top N por métrica y su serie por bucket."""
     starts = [b[0] for b in buckets]
-    val = (lambda l: (l.cantidad or 0)) if metrica == "cantidad" else (lambda l: (l.subtotal or 0))
+    val = (lambda l: (l.cantidad or 0)) 
     totales = {}
     for l, f, clave in filas:
         totales[clave] = totales.get(clave, 0) + val(l)
@@ -688,30 +1101,35 @@ def _serie(filas, etiqueta_de, metrica, limite, buckets):
     return [{"nombre": n, "valores": series[n], "total": totales[n]} for n in top]
 
 @app.get("/api/reportes/serie-items")
-def serie_items(dias: int = 30, limite: int = 3, metrica: str = "ingreso",
+def serie_items(dias: int = 30, limite: int = 3, 
                 desde: str | None = None, hasta: str | None = None,
                 _ = Depends(solo_dueno), db: Session = Depends(get_db)):
     ini, fin = _resolver_ventana(dias, desde, hasta, db)
     buckets, gran = _buckets(ini, fin)
-    q = (db.query(models.VentaLinea, models.Venta.fecha).join(models.Venta)
-           .filter(models.Venta.fecha >= ini, models.Venta.fecha < fin))
+    q = (db.query(models.ComprobanteLinea, models.Comprobante.fecha)
+           .join(models.Comprobante)
+           .filter(models.Comprobante.tipo == "ticket",
+                   models.Comprobante.activo == True,
+                   models.Comprobante.fecha >= ini, models.Comprobante.fecha < fin))
     filas = [(l, f, l.nombre) for l, f in q.all()]
-    return {"buckets": [b[2] for b in buckets], "granularidad": gran, "metrica": metrica,
-            "series": _serie(filas, None, metrica, limite, buckets)}
+    return {"buckets": [b[2] for b in buckets], "granularidad": gran,
+            "series": _serie(filas, None, limite, buckets)}
 
 @app.get("/api/reportes/serie-categorias")
-def serie_categorias(dias: int = 30, limite: int = 3, metrica: str = "ingreso",
+def serie_categorias(dias: int = 30, limite: int = 3,
                      desde: str | None = None, hasta: str | None = None,
                      _ = Depends(solo_dueno), db: Session = Depends(get_db)):
     ini, fin = _resolver_ventana(dias, desde, hasta, db)
     buckets, gran = _buckets(ini, fin)
-    q = (db.query(models.VentaLinea, models.Venta.fecha, models.Item.categoria)
-           .join(models.Venta)
-           .outerjoin(models.Item, models.VentaLinea.item_id == models.Item.id)
-           .filter(models.Venta.fecha >= ini, models.Venta.fecha < fin))
+    q = (db.query(models.ComprobanteLinea, models.Comprobante.fecha, models.Item.categoria)
+           .join(models.Comprobante)
+           .outerjoin(models.Item, models.ComprobanteLinea.item_id == models.Item.id)
+           .filter(models.Comprobante.tipo == "ticket",
+                   models.Comprobante.activo == True,
+                   models.Comprobante.fecha >= ini, models.Comprobante.fecha < fin))
     filas = [(l, f, cat or "Otros") for l, f, cat in q.all()]
-    return {"buckets": [b[2] for b in buckets], "granularidad": gran, "metrica": metrica,
-            "series": _serie(filas, None, metrica, limite, buckets)}
+    return {"buckets": [b[2] for b in buckets], "granularidad": gran,
+            "series": _serie(filas, None, limite, buckets)}
 
 @app.get("/api/ventas/registro")
 def ventas_registro(desde: str | None = None, hasta: str | None = None,
@@ -728,42 +1146,20 @@ def ventas_registro(desde: str | None = None, hasta: str | None = None,
 
 @app.get("/api/registro")
 def registro_movimientos(desde: str | None = None, hasta: str | None = None,
+                         dias: int = 0,
                          _ = Depends(solo_dueno), db: Session = Depends(get_db)):
-    ini, fin = _ventana(0, desde, hasta)
-    ventas = _filtrar(db.query(models.Venta), models.Venta.fecha, ini, fin).all()
-    egresos = _filtrar(db.query(models.Egreso), models.Egreso.fecha, ini, fin).all()
-    movs = []
-    for v in ventas:
-        movs.append({"_orden": v.fecha.isoformat(), "fecha": v.fecha.strftime("%d/%m/%Y"),
-                     "hora": v.fecha.strftime("%H:%M"), "clase": "venta",
-                     "detalle": ", ".join(f"{l.cantidad}× {l.nombre}" for l in v.lineas),
-                     "forma_pago": v.forma_pago + (f" ({v.alias})" if v.alias else ""), "monto": v.total})
-    for e in egresos:
-        det = (e.tipo or "")
-        if e.concepto: det += f" — {e.concepto}"
-        movs.append({"_orden": e.fecha.isoformat(), "fecha": e.fecha.strftime("%d/%m/%Y"),
-                     "hora": e.fecha.strftime("%H:%M"), "clase": "egreso",
-                     "detalle": det, "forma_pago": e.forma_pago or "", "monto": e.monto or 0})
-    movs.sort(key=lambda m: m["_orden"], reverse=True)
-    for m in movs: del m["_orden"]
-    return movs[:1000]
-
+    ini, fin = _ventana(dias, desde, hasta)
+    return [{"fecha": m["fecha"].strftime("%d/%m/%Y"), "hora": m["fecha"].strftime("%H:%M"),
+             "clase": m["clase"], "comprobante": m["comprobante"], "cliente": m["cliente"],
+             "detalle": m["detalle"], "forma_pago": m["forma_pago"], "monto": m["monto"]}
+            for m in _movimientos(db, ini, fin)[:1000]]
 
 # ---------- agenda de turnos ----------
-@app.get("/api/turnos")
-def listar_turnos(fecha: str | None = None, _ = Depends(usuario_actual), db: Session = Depends(get_db)):
-    if not fecha:
-        fecha = datetime.now().strftime("%Y-%m-%d")
-    turnos = db.query(models.Turno).filter(models.Turno.fecha == fecha).all()
-    turnos.sort(key=lambda t: t.hora)
-    return [{"id": t.id, "fecha": t.fecha, "hora": t.hora, "cliente": t.cliente,
-             "servicio": t.servicio, "peluquero": t.peluquero, "notas": t.notas,
-             "activo": t.activo} for t in turnos]
 
 @app.post("/api/turnos")
 def crear_turno(turno: TurnoIn, _ = Depends(usuario_actual), db: Session = Depends(get_db)):
     fecha = turno.fecha or datetime.now().strftime("%Y-%m-%d")
-    nuevo = models.Turno(fecha=fecha, hora=turno.hora, cliente=turno.cliente,
+    nuevo = models.Turno(fecha=fecha, hora=turno.hora, cliente=turno.cliente, cliente_id=turno.cliente_id,
                          servicio=turno.servicio, peluquero=turno.peluquero, notas=turno.notas)
     db.add(nuevo)
     db.commit()
@@ -776,6 +1172,7 @@ def editar_turno(turno_id: int, datos: TurnoIn, _ = Depends(usuario_actual), db:
     if not turno:
         raise HTTPException(404, "Turno no encontrado")
     turno.hora = datos.hora
+    turno.cliente_id = datos.cliente_id
     turno.cliente = datos.cliente
     turno.servicio = datos.servicio
     turno.peluquero = datos.peluquero
@@ -791,6 +1188,51 @@ def cancelar_turno(turno_id: int, _ = Depends(usuario_actual), db: Session = Dep
     turno.activo = False
     db.commit()
     return {"ok": True}
+
+@app.get("/api/turnos")
+def listar_turnos(fecha: str | None = None, desde: str | None = None, hasta: str | None = None,
+                  _ = Depends(usuario_actual), db: Session = Depends(get_db)):
+    q = db.query(models.Turno)
+    if desde and hasta:
+        q = q.filter(models.Turno.fecha >= desde, models.Turno.fecha <= hasta)
+    else:
+        if not fecha: fecha = datetime.now().strftime("%Y-%m-%d")
+        q = q.filter(models.Turno.fecha == fecha)
+    turnos = q.all()
+    turnos.sort(key=lambda t: (t.fecha, t.hora))
+    return [{"id": t.id, "fecha": t.fecha, "hora": t.hora, "cliente": t.cliente, "cliente_id": t.cliente_id,
+             "servicio": t.servicio, "peluquero": t.peluquero, "notas": t.notas,
+             "activo": t.activo} for t in turnos]
+
+# ---------- descuentos ----------
+@app.get("/api/descuentos")
+def listar_descuentos(_ = Depends(usuario_actual), db: Session = Depends(get_db)):
+    return [{"id": d.id, "nombre": d.nombre, "porcentaje": d.porcentaje, "mostrar_motivo": d.mostrar_motivo}
+            for d in db.query(models.Descuento).filter(models.Descuento.activo == True).order_by(models.Descuento.nombre)]
+
+@app.post("/api/descuentos")
+def crear_descuento(d: DescuentoIn, _ = Depends(solo_dueno), db: Session = Depends(get_db)):
+    if d.porcentaje < 0 or d.porcentaje > 100: raise HTTPException(400, "Porcentaje inválido")
+    nuevo = models.Descuento(nombre=d.nombre.strip(), porcentaje=d.porcentaje, mostrar_motivo=d.mostrar_motivo)
+    db.add(nuevo); db.commit(); db.refresh(nuevo); return {"id": nuevo.id}
+
+@app.put("/api/descuentos/{desc_id}")
+def editar_descuento(desc_id: int, cambios: DescuentoEdit, _ = Depends(solo_dueno), db: Session = Depends(get_db)):
+    d = db.get(models.Descuento, desc_id)
+    if not d: raise HTTPException(404, "Descuento no existe")
+    if cambios.nombre is not None: d.nombre = cambios.nombre.strip()
+    if cambios.porcentaje is not None:
+        if cambios.porcentaje < 0 or cambios.porcentaje > 100: raise HTTPException(400, "Porcentaje inválido")
+        d.porcentaje = cambios.porcentaje
+    if cambios.mostrar_motivo is not None: d.mostrar_motivo = cambios.mostrar_motivo
+    if cambios.activo is not None: d.activo = cambios.activo
+    db.commit(); return {"ok": True}
+
+@app.delete("/api/descuentos/{desc_id}")
+def borrar_descuento(desc_id: int, _ = Depends(solo_dueno), db: Session = Depends(get_db)):
+    d = db.get(models.Descuento, desc_id)
+    if not d: raise HTTPException(404, "Descuento no existe")
+    d.activo = False; db.commit(); return {"ok": True}
 
 # ---------- backup completo (solo dueño) ----------
 @app.get("/api/backup")
@@ -860,6 +1302,40 @@ def backup_completo(_ = Depends(solo_dueno), db: Session = Depends(get_db)):
              "cambio": m.cambio, "motivo": m.motivo, "usuario": m.usuario}
             for m in db.query(models.MovimientoStock).order_by(models.MovimientoStock.fecha).all()
         ],
+        "clientes": [
+            {"id": c.id, "nombre": c.nombre, "telefono": c.telefono, "alias": c.alias,
+             "notas": c.notas, "direccion": c.direccion, "dni": c.dni,
+             "activo": c.activo, "creado": c.creado.isoformat() if c.creado else None}
+            for c in db.query(models.Cliente).all()
+        ],
+        "descuentos": [
+            {"id": d.id, "nombre": d.nombre, "porcentaje": d.porcentaje,
+             "mostrar_motivo": d.mostrar_motivo, "activo": d.activo}
+            for d in db.query(models.Descuento).all()
+        ],
+        "comprobantes": [
+            {"id": c.id, "tipo": c.tipo, "numero": c.numero, "fecha": c.fecha.isoformat(),
+             "cliente_id": c.cliente_id, "cliente_nombre": c.cliente_nombre,
+             "peluquero": c.peluquero, "total_lista": c.total_lista,
+             "extra_dificultad": c.extra_dificultad, "descuento_pct": c.descuento_pct,
+             "descuento_nombre": c.descuento_nombre, "forma_pago": c.forma_pago,
+             "mostrar_motivo": c.mostrar_motivo, "convertido_de": c.convertido_de,
+             "activo": c.activo,
+             "lineas": [
+                 {"id": l.id, "item_id": l.item_id, "nombre": l.nombre,
+                  "cantidad": l.cantidad, "precio_unit": l.precio_unit,
+                  "precio_efectivo": l.precio_efectivo, "dificultad": l.dificultad,
+                  "subtotal": l.subtotal}
+                 for l in c.lineas
+             ]}
+            for c in db.query(models.Comprobante).order_by(models.Comprobante.fecha).all()
+        ],
+        "pagos": [
+            {"id": p.id, "comprobante_id": p.comprobante_id, "fecha": p.fecha.isoformat(),
+             "monto": p.monto, "saldado": p.saldado, "forma_pago": p.forma_pago,
+             "alias": p.alias, "desc_aplicado": p.desc_aplicado}
+            for p in db.query(models.Pago).order_by(models.Pago.fecha).all()
+        ],
     }
 
     contenido = _json.dumps(data, ensure_ascii=False, indent=2)
@@ -876,7 +1352,9 @@ if os.path.isdir("static"):
     @app.get("/login")
     def p_login(): return FileResponse("static/login.html")
     @app.get("/")
-    def p_root(): return FileResponse("static/index.html")
+    def p_root(): return FileResponse("static/facturar.html")
+    @app.get("/facturar")
+    def pagina_facturar(): return FileResponse("static/facturar.html")
     @app.get("/agenda")
     def p_agenda(): return FileResponse("static/agenda.html")
     @app.get("/admin")
@@ -885,6 +1363,12 @@ if os.path.isdir("static"):
     def p_caja(): return FileResponse("static/caja.html")
     @app.get("/inventario")
     def p_inv(): return FileResponse("static/inventario.html")
+    @app.get("/clientes")
+    def pagina_clientes(): return FileResponse("static/clientes.html")
     @app.get("/reportes")
     def p_rep(): return FileResponse("static/reportes.html")
     app.mount("/static", StaticFiles(directory="static"), name="static")
+    @app.get("/cuenta")
+    def pagina_cuenta(): return FileResponse("static/cuenta.html")
+    @app.get("/historial")
+    def pagina_historial(): return FileResponse("static/historial.html")

@@ -1,309 +1,306 @@
 <!DOCTYPE html>
-<html lang="es">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<meta name="theme-color" content="#1f1f1f">
-<title>Agenda — Salón Ivana</title>
+<html lang="es"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#1f1f1f"><title>Agenda — Peluquería</title>
 <style>
-  :root{
-    --tinta:#1f1f1f; --tinta2:#2b2b2b; --crema:#2b2b2b; --linea:#3a3a3a;
-    --ok:#c9a84c; --rojo:#c0392b; --texto:#e0dcd4; --oro:#c9a84c;
-    --oro-claro:#e8d5a3; --superficie:#363636;
-  }
-  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
-  body{margin:0; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
-       background:var(--crema); color:var(--texto);}
-  header{background:var(--tinta); color:var(--oro-claro); padding:14px 24px; font-size:18px; font-weight:500;
-         position:sticky; top:0; z-index:10; display:flex; justify-content:space-between; align-items:center;
-         gap:12px; flex-wrap:wrap;}
-  nav.menu{display:flex; gap:6px; flex-wrap:wrap; justify-content:flex-end;}
-  nav.menu a{color:rgba(255,255,255,.6); text-decoration:none; font-size:12px; font-weight:500;
-             background:rgba(255,255,255,.08); padding:6px 10px; border-radius:8px;}
-  nav.menu a.actual{background:var(--oro); color:#1a1a1a;}
-
-  .wrap{max-width:900px; margin:0 auto; padding:20px;}
-
-  /* ---- date nav ---- */
-  .fecha-nav{display:flex; align-items:center; gap:12px; margin-bottom:20px; flex-wrap:wrap;}
-  .fecha-nav button{background:var(--superficie); border:1px solid var(--linea); border-radius:8px;
-                    padding:8px 14px; color:var(--texto); font-size:14px; cursor:pointer; font-family:inherit;}
-  .fecha-nav button:hover{border-color:var(--oro);}
-  .fecha-nav button.hoy{background:var(--oro); color:#1a1a1a; border-color:var(--oro); font-weight:500;}
-  .fecha-nav input[type=date]{padding:8px 10px; border:1px solid var(--linea); border-radius:8px;
-                               background:var(--superficie); color:var(--texto); font-size:14px; font-family:inherit;}
-  .fecha-label{font-size:15px; font-weight:500; color:var(--oro-claro);}
-
-  /* ---- form ---- */
-  .form-turno{display:flex; gap:8px; flex-wrap:wrap; align-items:flex-end; margin-bottom:20px;
-              padding:16px; background:var(--superficie); border-radius:12px; border:1px solid var(--linea);}
-  .form-turno .campo{flex:1; min-width:120px;}
-  .form-turno .campo.chico{flex:0 0 100px; min-width:80px;}
-  .form-turno .campo.opcional{opacity:.8;}
-  .form-turno label{display:block; font-size:11px; color:#888; margin-bottom:4px; text-transform:uppercase; letter-spacing:.5px;}
-  .form-turno label .opt{text-transform:none; color:#666; font-size:10px;}
-  .form-turno input,.form-turno select{width:100%; padding:8px 10px; border:1px solid var(--linea); border-radius:8px;
-                                        background:var(--crema); color:var(--texto); font-size:13px; font-family:inherit;}
-  .form-turno input::placeholder{color:#666;}
-  .form-turno input:focus{border-color:var(--oro); outline:none;}
-  .btn-agregar{padding:8px 20px; border-radius:8px; background:var(--oro); color:#1a1a1a;
-               border:none; font-size:13px; font-weight:500; cursor:pointer; font-family:inherit;
-               white-space:nowrap; height:36px;}
-
-  /* ---- turnos list ---- */
-  .section-label{font-size:11px; text-transform:uppercase; letter-spacing:1.5px; color:#888; margin-bottom:12px;}
-  .sin-turnos{color:#888; font-size:13px; padding:20px 0; text-align:center;}
-
-  .turno-card{display:flex; align-items:flex-start; gap:12px; padding:12px 0;
-              border-bottom:1px solid rgba(255,255,255,.06);}
-  .turno-hora{font-size:18px; font-weight:500; color:var(--oro); min-width:50px; padding-top:2px;}
+  :root{--tinta:#2F4858;--crema:#f7f5f0;--linea:#e2ddd3;--ok:#2e7d4f;--rojo:#c0392b;--oro:#c9a84c;}
+  *{box-sizing:border-box;}
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;background:var(--crema);color:#2b2b28;}
+  .wrap{max-width:1100px;margin:0 auto;padding:18px;}
+  input,select{padding:9px;border:1px solid var(--linea);border-radius:8px;font-size:15px;font-family:Georgia,serif;}
+  button{font-family:inherit;cursor:pointer;border:none;border-radius:8px;padding:9px 14px;font-size:14px;font-weight:600;background:var(--tinta);color:#fff;}
+  .seg{display:flex;gap:8px;margin-bottom:14px;}
+  .seg button{flex:1;background:#222020;border:1px solid var(--linea);color:#bbb;}
+  .seg button.on{background:#c9a84c;color:#1f1f1f;border-color:#c9a84c;}
+  .navbar{display:flex;align-items:center;gap:10px;margin-bottom:16px;flex-wrap:wrap;}
+  .navbar .lbl{font-weight:700;color:var(--tinta);flex:1;}
+  .card{background:#fff;border:1px solid var(--linea);border-radius:14px;padding:16px;margin-bottom:16px;}
+  .form-turno{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;}
+  .campo{display:flex;flex-direction:column;gap:4px;}
+  .campo label{font-size:12px;color:#666;}
+  .campo.chico input{width:90px;}
+  /* vista dia */
+  .turno-card{display:flex;gap:12px;align-items:flex-start;background:#fff;border:1px solid var(--linea);border-radius:12px;padding:12px;margin-bottom:8px;}
+  .turno-card.cancelado{opacity:.5;}
+  .turno-hora{font-weight:700;color:var(--tinta);min-width:52px;}
   .turno-body{flex:1;}
-  .turno-cliente{font-size:14px; font-weight:500; color:var(--texto);}
-  .turno-servicio{font-size:13px; color:#aaa; margin-top:2px;}
-  .turno-peluquero{font-size:12px; color:#888; margin-top:2px;}
-  .turno-notas{font-size:12px; color:#666; margin-top:4px; font-style:italic;}
-  .turno-actions{display:flex; gap:6px; flex-shrink:0; padding-top:2px;}
-  .turno-actions button{padding:5px 10px; border-radius:6px; font-size:11px; font-weight:500;
-                        cursor:pointer; font-family:inherit;}
-  .btn-editar{background:transparent; border:1px solid var(--linea); color:#aaa;}
-  .btn-editar:hover{border-color:var(--oro); color:var(--oro);}
-  .btn-cancelar{background:transparent; border:1px solid var(--rojo); color:var(--rojo);}
-  .turno-card.cancelado{opacity:.4;}
-  .turno-card.cancelado .turno-cliente{text-decoration:line-through;}
-
-  .toast{position:fixed; bottom:20px; left:50%; transform:translateX(-50%); background:var(--oro); color:#1a1a1a;
-         padding:12px 20px; border-radius:10px; font-weight:600; box-shadow:0 4px 16px rgba(0,0,0,.3);
-         opacity:0; pointer-events:none; transition:opacity .25s; font-size:14px;}
+  .turno-cliente{font-weight:600;}
+  .turno-servicio{font-size:14px;color:#666;}
+  .turno-peluquero,.turno-notas{font-size:12px;color:#999;margin-top:2px;}
+  .turno-actions{display:flex;flex-direction:column;gap:6px;}
+  .turno-actions button{font-size:12px;padding:5px 10px;}
+  .btn-cancelar{background:#fff;border:1px solid var(--rojo);color:var(--rojo);}
+  .sin-turnos{color:#9a9a92;padding:20px;text-align:center;}
+  /* grilla semana */
+  .grid-sem{display:grid;font-size:11px;border-top:1px solid var(--linea);}
+  .gs-cell{border-bottom:1px solid #eee;border-left:1px solid #eee;min-height:32px;padding:2px;}
+  .gs-hora{color:#999;text-align:right;padding:2px 6px 0 0;font-size:11px;}
+  .gs-dayhead{text-align:center;padding:6px 0;font-weight:600;}
+  .gs-dayhead .n{font-size:15px;color:var(--tinta);}
+  .gs-turno{background:#eee4c6;border-left:3px solid var(--oro);border-radius:0 4px 4px 0;padding:2px 4px;cursor:pointer;overflow:hidden;}
+  .gs-turno .c{font-weight:600;color:#7a5c1a;font-size:11px;}
+  .gs-turno .s{color:#999;font-size:10px;}
+  /* grilla mes */
+  .grid-mes{display:grid;grid-template-columns:repeat(5,1fr);border-top:1px solid var(--linea);}
+  .gm-head{text-align:center;color:#999;padding:6px 0;font-size:12px;}
+  .gm-cell{border-bottom:1px solid #eee;border-left:1px solid #eee;min-height:64px;padding:6px;cursor:pointer;}
+  .gm-cell:hover{background:#faf8f3;}
+  .gm-num{font-weight:600;}
+  .gm-num.hoy{background:var(--oro);color:#fff;border-radius:50%;width:22px;height:22px;display:flex;align-items:center;justify-content:center;}
+  .gm-count{font-size:11px;color:#777;margin-top:4px;display:flex;align-items:center;gap:4px;}
+  .gm-dot{width:6px;height:6px;border-radius:50%;background:var(--oro);}
+  .modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.5);display:none;align-items:center;justify-content:center;z-index:20;}
+  .modal-bg.show{display:flex;}
+  .modal{background:#fff;border-radius:14px;padding:20px;max-width:340px;width:90%;color:#2b2b28;}
+  .toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--ok);color:#fff;padding:12px 20px;border-radius:12px;font-weight:700;opacity:0;pointer-events:none;transition:opacity .25s;}
   .toast.show{opacity:1;}
-
-  @media(max-width:600px){
-    .form-turno{flex-direction:column;}
-    .form-turno .campo,.form-turno .campo.chico{flex:none; min-width:100%;}
-  }
-</style>
-<link rel="stylesheet" href="/static/theme.css">
-</head>
-<body>
+  .muted{color:#9a9a92;font-size:13px;}
+</style><link rel="stylesheet" href="/static/theme.css"></head><body>
 <header>
-  <span>Agenda</span>
+  <span>📅 Agenda</span>
   <nav class="menu">
-    <a href="/">Facturación</a>
-    <a href="/agenda" class="actual">Agenda</a>
-    <a href="/caja">Caja</a>
-    <a href="/inventario" data-rol="dueno">Inventario</a>
-    <a href="/reportes" data-rol="dueno">Reportes</a>
-    <a href="/admin" data-rol="dueno">Admin</a>
+    <a href="/facturar">Facturar</a>
+    <a href="/clientes">Clientes</a>
+    <a href="/agenda">Agenda</a>
     <a href="#" onclick="logout();return false;">Salir</a>
   </nav>
 </header>
-
 <div class="wrap">
-  <!-- Date navigation -->
-  <div class="fecha-nav">
-    <button id="btnAyer">← Ayer</button>
-    <button id="btnHoy" class="hoy">Hoy</button>
-    <button id="btnManana">Mañana →</button>
+
+  <div class="seg">
+    <button id="modoDia" class="on">Día</button>
+    <button id="modoSemana">Semana</button>
+    <button id="modoMes">Mes</button>
+  </div>
+
+  <div class="navbar">
+    <button id="btnPrev">←</button>
+    <button id="btnHoy">Hoy</button>
+    <button id="btnNext">→</button>
     <input type="date" id="fechaPicker">
-    <span class="fecha-label" id="fechaLabel"></span>
+    <span class="lbl" id="rangoLabel"></span>
   </div>
 
-  <!-- Add turno form -->
-  <div class="form-turno">
-    <div class="campo chico">
-      <label>Hora</label>
-      <input type="time" id="fHora" value="10:00">
+  <!-- formulario (solo en vista día) -->
+  <div class="card" id="formCard">
+    <div class="form-turno">
+      <div class="campo chico"><label>Hora</label><input type="time" id="fHora" value="10:00"></div>
+      <div class="campo"><label>Cliente</label><input id="fCliente" list="clientesList" placeholder="Nombre"><datalist id="clientesList"></datalist></div>
+      <div class="campo"><label>Servicio</label><input id="fServicio" list="serviciosList" placeholder="Corte, color..."><datalist id="serviciosList"></datalist></div>
+      <div class="campo"><label>Peluquero/a <span class="muted">(opc)</span></label><input id="fPeluquero"></div>
+      <div class="campo"><label>Notas <span class="muted">(opc)</span></label><input id="fNotas"></div>
+      <button id="btnAgregar">Agendar</button>
     </div>
-    <div class="campo">
-      <label>Cliente</label>
-      <input id="fCliente" placeholder="Nombre del cliente">
-    </div>
-    <div class="campo">
-      <label>Servicio</label>
-      <input id="fServicio" list="serviciosList" placeholder="Corte, color, alisado...">
-      <datalist id="serviciosList"></datalist>
-    </div>
-    <div class="campo opcional">
-      <label>Peluquero/a <span class="opt">(opcional)</span></label>
-      <input id="fPeluquero" placeholder="">
-    </div>
-    <div class="campo opcional">
-      <label>Notas <span class="opt">(opcional)</span></label>
-      <input id="fNotas" placeholder="">
-    </div>
-    <button class="btn-agregar" id="btnAgregar">Agendar</button>
   </div>
 
-  <!-- Turnos list -->
-  <div class="section-label" id="turnosLabel">Turnos del día</div>
-  <div id="turnosLista"></div>
+  <div id="vista"></div>
 </div>
 
+<div class="modal-bg" id="modalBg"><div class="modal" id="modalBody"></div></div>
 <div class="toast" id="toast"></div>
 
 <script src="/static/auth.js"></script>
 <script>
 requireLogin(); pintarNav();
-const $ = s => document.querySelector(s);
+const $=s=>document.querySelector(s);
+const DIAS_SEM=["Mar","Mié","Jue","Vie","Sáb"];  // martes a sábado
+const MESES=["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"];
+let modo="dia", fechaActual=hoyStr(), SERVICIOS=[], CLIENTES=[];
 
-let fechaActual = hoyStr();
-let SERVICIOS = [];
-
-function hoyStr(){
-  const d = new Date();
-  return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
-}
-
-function formatFecha(iso){
-  const [y,m,d] = iso.split("-");
-  const dias = ["domingo","lunes","martes","miércoles","jueves","viernes","sábado"];
-  const meses = ["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"];
-  const dt = new Date(parseInt(y), parseInt(m)-1, parseInt(d));
-  const hoy = hoyStr();
-  let prefix = "";
-  if(iso === hoy) prefix = "Hoy, ";
-  else{
-    const ayer = new Date(); ayer.setDate(ayer.getDate()-1);
-    const ayerStr = ayer.getFullYear()+"-"+String(ayer.getMonth()+1).padStart(2,"0")+"-"+String(ayer.getDate()).padStart(2,"0");
-    const man = new Date(); man.setDate(man.getDate()+1);
-    const manStr = man.getFullYear()+"-"+String(man.getMonth()+1).padStart(2,"0")+"-"+String(man.getDate()).padStart(2,"0");
-    if(iso === ayerStr) prefix = "Ayer, ";
-    if(iso === manStr) prefix = "Mañana, ";
-  }
-  return `${prefix}${dias[dt.getDay()]} ${parseInt(d)} de ${meses[parseInt(m)-1]}`;
-}
-
-function cambiarFecha(iso){
-  fechaActual = iso;
-  $("#fechaPicker").value = iso;
-  $("#fechaLabel").textContent = formatFecha(iso);
-  cargarTurnos();
-}
-
-function moverDia(delta){
-  const [y,m,d] = fechaActual.split("-").map(Number);
-  const dt = new Date(y, m-1, d+delta);
-  cambiarFecha(dt.getFullYear()+"-"+String(dt.getMonth()+1).padStart(2,"0")+"-"+String(dt.getDate()).padStart(2,"0"));
-}
-
-$("#btnAyer").onclick = ()=> moverDia(-1);
-$("#btnHoy").onclick = ()=> cambiarFecha(hoyStr());
-$("#btnManana").onclick = ()=> moverDia(1);
-$("#fechaPicker").onchange = (e)=> cambiarFecha(e.target.value);
-
-function toast(msg){
-  const t = $("#toast"); t.textContent = msg; t.classList.add("show");
-  setTimeout(()=>t.classList.remove("show"), 2200);
-}
+function hoyStr(){ const d=new Date(); return iso(d); }
+function iso(d){ return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"); }
+function parseISO(s){ const [y,m,d]=s.split("-").map(Number); return new Date(y,m-1,d); }
+function toast(m){const t=$("#toast");t.textContent=m;t.classList.add("show");setTimeout(()=>t.classList.remove("show"),2200);}
 
 async function init(){
   try{
-    const cat = await (await authFetch("/api/catalogo")).json();
-    SERVICIOS = cat.map(i=>i.nombre);
-    $("#serviciosList").innerHTML = SERVICIOS.map(s=>`<option value="${s}">`).join("");
+    const cat=await (await authFetch("/api/catalogo")).json();
+    SERVICIOS=cat.map(i=>i.nombre);
+    $("#serviciosList").innerHTML=SERVICIOS.map(s=>`<option value="${s}">`).join("");
+    CLIENTES=await (await authFetch("/api/clientes")).json();
+    $("#clientesList").innerHTML=CLIENTES.map(c=>`<option value="${c.nombre}">`).join("");
   }catch(e){}
-  cambiarFecha(hoyStr());
+  render();
 }
 
-async function cargarTurnos(){
-  const turnos = await (await authFetch(`/api/turnos?fecha=${fechaActual}`)).json();
-  const cont = $("#turnosLista");
-  const activos = turnos.filter(t=>t.activo);
-  const cancelados = turnos.filter(t=>!t.activo);
-  $("#turnosLabel").textContent = activos.length
-    ? `${activos.length} turno${activos.length>1?'s':''} para ${fechaActual===hoyStr()?'hoy':'el día'}`
-    : "Turnos del día";
+// --- navegación según modo ---
+$("#modoDia").onclick=()=>setModo("dia");
+$("#modoSemana").onclick=()=>setModo("semana");
+$("#modoMes").onclick=()=>setModo("mes");
+function setModo(m){
+  modo=m;
+  ["Dia","Semana","Mes"].forEach(x=>$("#modo"+x).classList.toggle("on", m===x.toLowerCase()));
+  $("#formCard").style.display = (m==="dia") ? "block" : "none";
+  render();
+}
+$("#btnHoy").onclick=()=>{ fechaActual=hoyStr(); render(); };
+$("#fechaPicker").onchange=e=>{ fechaActual=e.target.value; render(); };
+$("#btnPrev").onclick=()=>mover(-1);
+$("#btnNext").onclick=()=>mover(1);
+function mover(dir){
+  const d=parseISO(fechaActual);
+  if(modo==="dia") d.setDate(d.getDate()+dir);
+  else if(modo==="semana") d.setDate(d.getDate()+7*dir);
+  else d.setMonth(d.getMonth()+dir);
+  fechaActual=iso(d); render();
+}
 
-  if(turnos.length === 0){
-    cont.innerHTML = '<div class="sin-turnos">No hay turnos agendados para este día.</div>';
-    return;
-  }
-  cont.innerHTML = "";
-  [...activos, ...cancelados].forEach(t=>{
-    const div = document.createElement("div");
-    div.className = "turno-card" + (t.activo ? "" : " cancelado");
-    div.innerHTML = `
+// devuelve el martes de la semana de la fecha dada
+function martesDeSemana(d){
+  const x=new Date(d); const dow=x.getDay(); // 0 dom .. 6 sab
+  const diff=(dow===0)? -5 : (2-dow); // llevar a martes
+  x.setDate(x.getDate()+diff); return x;
+}
+
+async function render(){
+  $("#fechaPicker").value=fechaActual;
+  if(modo==="dia") return renderDia();
+  if(modo==="semana") return renderSemana();
+  return renderMes();
+}
+
+// ---------- VISTA DÍA ----------
+async function renderDia(){
+  const dt=parseISO(fechaActual);
+  const dias=["domingo","lunes","martes","miércoles","jueves","viernes","sábado"];
+  let pref="";
+  if(fechaActual===hoyStr()) pref="Hoy, ";
+  $("#rangoLabel").textContent=`${pref}${dias[dt.getDay()]} ${dt.getDate()} de ${MESES[dt.getMonth()]}`;
+  const turnos=await (await authFetch("/api/turnos?fecha="+fechaActual)).json();
+  const activos=turnos.filter(t=>t.activo), cancel=turnos.filter(t=>!t.activo);
+  const cont=$("#vista");
+  if(turnos.length===0){ cont.innerHTML='<div class="sin-turnos">No hay turnos para este día.</div>'; return; }
+  cont.innerHTML="";
+  [...activos,...cancel].forEach(t=>{
+    const div=document.createElement("div"); div.className="turno-card"+(t.activo?"":" cancelado");
+    div.innerHTML=`
       <div class="turno-hora">${t.hora}</div>
       <div class="turno-body">
-        <div class="turno-cliente">${t.cliente}</div>
+        <div class="turno-cliente">${t.cliente}${t.cliente_id?` <a href="/cuenta?id=${t.cliente_id}" style="font-size:12px;color:var(--oro);">ver cuenta</a>`:''}</div>
         <div class="turno-servicio">${t.servicio}</div>
-        ${t.peluquero ? `<div class="turno-peluquero">✂ ${t.peluquero}</div>` : ''}
-        ${t.notas ? `<div class="turno-notas">${t.notas}</div>` : ''}
-        ${!t.activo ? '<div style="font-size:11px;color:#c0392b;margin-top:4px;">Cancelado</div>' : ''}
+        ${t.peluquero?`<div class="turno-peluquero">✂ ${t.peluquero}</div>`:''}
+        ${t.notas?`<div class="turno-notas">${t.notas}</div>`:''}
+        ${!t.activo?'<div style="font-size:11px;color:var(--rojo);margin-top:4px;">Cancelado</div>':''}
       </div>
       <div class="turno-actions">
-        ${t.activo ? `<button class="btn-editar" data-id="${t.id}">Editar</button>
-                      <button class="btn-cancelar" data-id="${t.id}">Cancelar</button>` : ''}
+        ${t.activo?`<button class="btn-editar">Editar</button><button class="btn-cancelar">Cancelar</button>`:''}
       </div>`;
     if(t.activo){
-      div.querySelector(".btn-cancelar").onclick = async ()=>{
-        if(!confirm(`¿Cancelar el turno de ${t.cliente}?`)) return;
-        await authFetch(`/api/turnos/${t.id}`, {method:"DELETE"});
-        toast("Turno cancelado");
-        cargarTurnos();
+      div.querySelector(".btn-cancelar").onclick=async()=>{
+        if(!confirm(`¿Cancelar el turno de ${t.cliente}?`))return;
+        await authFetch("/api/turnos/"+t.id,{method:"DELETE"}); toast("Turno cancelado"); renderDia();
       };
-      div.querySelector(".btn-editar").onclick = ()=>{
-        $("#fHora").value = t.hora;
-        $("#fCliente").value = t.cliente;
-        $("#fServicio").value = t.servicio;
-        $("#fPeluquero").value = t.peluquero || "";
-        $("#fNotas").value = t.notas || "";
-        // reemplazar botón por "Guardar cambios"
-        const btn = $("#btnAgregar");
-        btn.textContent = "Guardar cambios";
-        btn.onclick = async ()=>{
-          const hora = $("#fHora").value;
-          const cliente = $("#fCliente").value.trim();
-          const servicio = $("#fServicio").value.trim();
-          if(!cliente || !servicio){ toast("Completá cliente y servicio"); return; }
-          await authFetch(`/api/turnos/${t.id}`, {method:"PUT",
-            headers:{"Content-Type":"application/json"},
-            body:JSON.stringify({hora, cliente, servicio,
-              peluquero:$("#fPeluquero").value.trim()||null,
-              notas:$("#fNotas").value.trim()||null})});
-          toast("Turno actualizado");
-          limpiarForm();
-          cargarTurnos();
-        };
-      };
+      div.querySelector(".btn-editar").onclick=()=>cargarEnForm(t);
     }
     cont.appendChild(div);
   });
 }
 
+function cargarEnForm(t){
+  $("#fHora").value=t.hora; $("#fCliente").value=t.cliente; $("#fServicio").value=t.servicio;
+  $("#fPeluquero").value=t.peluquero||""; $("#fNotas").value=t.notas||"";
+  const btn=$("#btnAgregar"); btn.textContent="Guardar cambios";
+  btn.onclick=async()=>{
+    const body=formBody(); if(!body)return;
+    await authFetch("/api/turnos/"+t.id,{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+    toast("Turno actualizado"); limpiarForm(); renderDia();
+  };
+  window.scrollTo(0,0);
+}
+function formBody(){
+  const cliente=$("#fCliente").value.trim(), servicio=$("#fServicio").value.trim();
+  if(!cliente||!servicio){ toast("Completá cliente y servicio"); return null; }
+  return { fecha:fechaActual, hora:$("#fHora").value, cliente,
+    cliente_id:(CLIENTES.find(c=>c.nombre.toLowerCase()===cliente.toLowerCase())||{}).id||null,
+    servicio, peluquero:$("#fPeluquero").value.trim()||null, notas:$("#fNotas").value.trim()||null };
+}
 function limpiarForm(){
-  $("#fHora").value = "10:00";
-  $("#fCliente").value = "";
-  $("#fServicio").value = "";
-  $("#fPeluquero").value = "";
-  $("#fNotas").value = "";
-  const btn = $("#btnAgregar");
-  btn.textContent = "Agendar";
-  btn.onclick = agregarTurno;
+  $("#fHora").value="10:00"; $("#fCliente").value=""; $("#fServicio").value="";
+  $("#fPeluquero").value=""; $("#fNotas").value="";
+  const btn=$("#btnAgregar"); btn.textContent="Agendar"; btn.onclick=agregarTurno;
 }
-
 async function agregarTurno(){
-  const hora = $("#fHora").value;
-  const cliente = $("#fCliente").value.trim();
-  const servicio = $("#fServicio").value.trim();
-  if(!cliente || !servicio){ toast("Completá cliente y servicio"); return; }
-  await authFetch("/api/turnos", {method:"POST",
-    headers:{"Content-Type":"application/json"},
-    body:JSON.stringify({
-      fecha: fechaActual,
-      hora,
-      cliente,
-      servicio,
-      peluquero: $("#fPeluquero").value.trim() || null,
-      notas: $("#fNotas").value.trim() || null
-    })});
-  toast(`Turno de ${cliente} agendado`);
-  limpiarForm();
-  cargarTurnos();
+  const body=formBody(); if(!body)return;
+  await authFetch("/api/turnos",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+  toast(`Turno de ${body.cliente} agendado`); limpiarForm(); renderDia();
+}
+$("#btnAgregar").onclick=agregarTurno;
+
+// ---------- VISTA SEMANA (grilla) ----------
+async function renderSemana(){
+  const mar=martesDeSemana(parseISO(fechaActual));
+  const fechas=[]; for(let i=0;i<5;i++){ const d=new Date(mar); d.setDate(d.getDate()+i); fechas.push(iso(d)); }
+  const desde=fechas[0], hasta=fechas[4];
+  $("#rangoLabel").textContent=`Semana del ${parseISO(desde).getDate()} al ${parseISO(hasta).getDate()} de ${MESES[parseISO(hasta).getMonth()]}`;
+  const turnos=(await (await authFetch(`/api/turnos?desde=${desde}&hasta=${hasta}`)).json()).filter(t=>t.activo);
+
+  // rango horario: 8 a 20, estirado si hay turnos fuera
+  let hMin=8, hMax=20;
+  turnos.forEach(t=>{ const h=parseInt(t.hora.split(":")[0]); if(h<hMin)hMin=h; if(h>hMax)hMax=h; });
+  const horas=[]; for(let h=hMin;h<=hMax;h++) horas.push(h);
+
+  let html=`<div class="grid-sem" style="grid-template-columns:44px repeat(5,1fr);">`;
+  html+=`<div></div>`;
+  fechas.forEach((f,i)=>{ const d=parseISO(f); html+=`<div class="gs-dayhead">${DIAS_SEM[i]}<div class="n">${d.getDate()}</div></div>`; });
+  horas.forEach(h=>{
+    html+=`<div class="gs-hora">${h}:00</div>`;
+    fechas.forEach(f=>{
+      const tsHora=turnos.filter(t=>t.fecha===f && parseInt(t.hora.split(":")[0])===h);
+      html+=`<div class="gs-cell">`+tsHora.map(t=>`<div class="gs-turno" data-id="${t.id}"><div class="c">${t.hora} ${t.cliente}</div><div class="s">${t.servicio}</div></div>`).join("")+`</div>`;
+    });
+  });
+  html+=`</div>`;
+  $("#vista").innerHTML=html;
+  $("#vista").querySelectorAll(".gs-turno").forEach(el=>{
+    el.onclick=()=>{ const t=turnos.find(x=>x.id==el.dataset.id); mostrarTurno(t); };
+  });
 }
 
-$("#btnAgregar").onclick = agregarTurno;
+function mostrarTurno(t){
+  $("#modalBody").innerHTML=`
+    <div style="font-weight:800;font-size:18px;color:var(--tinta);">${t.hora} — ${t.cliente}</div>
+    <div style="margin:8px 0;">${t.servicio}</div>
+    ${t.peluquero?`<div class="muted">✂ ${t.peluquero}</div>`:''}
+    ${t.notas?`<div class="muted">${t.notas}</div>`:''}
+    ${t.cliente_id?`<div style="margin-top:8px;"><a href="/cuenta?id=${t.cliente_id}" style="color:var(--oro);">Ver cuenta del cliente →</a></div>`:''}
+    <button style="margin-top:14px;width:100%;" onclick="$('#modalBg').classList.remove('show')">Cerrar</button>`;
+  $("#modalBg").classList.add("show");
+}
+$("#modalBg").onclick=e=>{ if(e.target.id==="modalBg") $("#modalBg").classList.remove("show"); };
+
+// ---------- VISTA MES (grilla de días) ----------
+async function renderMes(){
+  const dt=parseISO(fechaActual), año=dt.getFullYear(), mes=dt.getMonth();
+  $("#rangoLabel").textContent=`${MESES[mes]} ${año}`;
+  const desde=iso(new Date(año,mes,1)), hasta=iso(new Date(año,mes+1,0));
+  const turnos=(await (await authFetch(`/api/turnos?desde=${desde}&hasta=${hasta}`)).json()).filter(t=>t.activo);
+  const conteo={}; turnos.forEach(t=>{ conteo[t.fecha]=(conteo[t.fecha]||0)+1; });
+
+  // armar semanas de martes a sábado
+  let html=`<div class="grid-mes">`;
+  DIAS_SEM.forEach(d=>html+=`<div class="gm-head">${d}</div>`);
+  const primero=new Date(año,mes,1);
+  let cursor=martesDeSemana(primero);
+  const finMes=new Date(año,mes+1,0);
+  while(cursor<=finMes){
+    for(let i=0;i<5;i++){
+      const d=new Date(cursor); d.setDate(d.getDate()+i);
+      if(d.getMonth()!==mes){ html+=`<div class="gm-cell" style="background:#f7f5f0;cursor:default;"></div>`; continue; }
+      const f=iso(d), c=conteo[f]||0, esHoy=(f===hoyStr());
+      html+=`<div class="gm-cell" data-f="${f}">
+        <div class="gm-num ${esHoy?'hoy':''}">${d.getDate()}</div>
+        ${c>0?`<div class="gm-count"><span class="gm-dot"></span>${c} turno${c>1?'s':''}</div>`:''}
+      </div>`;
+    }
+    cursor.setDate(cursor.getDate()+7);
+  }
+  html+=`</div>`;
+  $("#vista").innerHTML=html;
+  $("#vista").querySelectorAll(".gm-cell[data-f]").forEach(el=>{
+    el.onclick=()=>{ fechaActual=el.dataset.f; setModo("dia"); };
+  });
+}
 
 init();
 </script>
-</body>
-</html>
+</body></html>
