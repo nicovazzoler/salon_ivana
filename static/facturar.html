@@ -2,51 +2,169 @@
 <html lang="es"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="theme-color" content="#1f1f1f"><title>Facturar — Peluquería</title>
+<link rel="stylesheet" href="/static/css/app.css">
 <style>
-  :root{--tinta:#2F4858;--crema:#f7f5f0;--linea:#e2ddd3;--ok:#2e7d4f;--rojo:#c0392b;--oro:#c9a84c;}
-  *{box-sizing:border-box;}
-  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;background:var(--crema);color:#2b2b28;}
-  .wrap{max-width:1100px;margin:0 auto;padding:18px;display:flex;gap:18px;flex-wrap:wrap;align-items:flex-start;}
-  .col{flex:1;min-width:300px;}
-  .card{background:#fff;border:1px solid var(--linea);border-radius:14px;padding:18px;margin-bottom:16px;}
-  input,select{padding:9px;border:1px solid var(--linea);border-radius:8px;font-size:15px;font-family:Georgia,'Times New Roman',serif;}
-  button{font-family:inherit;cursor:pointer;border:none;border-radius:8px;padding:9px 14px;font-size:14px;font-weight:600;background:var(--tinta);color:#fff;}
-  .grid-items{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px;margin-top:12px;}
-  .btn-item{display:flex;flex-direction:column;align-items:flex-start;gap:4px;padding:10px 12px;border-radius:10px;border:1px solid var(--linea);background:#fff;cursor:pointer;text-align:left;}
-  .btn-item .n{font-size:14px;font-weight:500;}
-  .btn-item .p{font-size:13px;font-weight:700;color:var(--ok);}
-  .seg{display:flex;gap:8px;margin-bottom:14px;}
-  .seg button{flex:1;background:#222020;border:1px solid var(--linea);color:#777;}
-  .seg button.on{background:#c9a84c;color:#1f1f1f;border-color:#c9a84c;}
-  .linea{display:flex;gap:8px;align-items:center;padding:8px 0;border-bottom:1px solid var(--linea);}
-  .linea .n{flex:1;font-size:14px;}
-  .linea .pin{width:80px;}
-  .dif{background:#fff;border:1px solid var(--linea);color:#999;padding:6px 8px;}
-  .dif.on{background:#c0785a;color:#fff;border-color:#c0785a;}
-  .qty{display:flex;align-items:center;gap:6px;}
-  .qty button{background:#eee;color:#333;padding:4px 9px;}
-  .quitar{background:#fff;color:var(--rojo);border:1px solid var(--linea);padding:6px 9px;}
-  .fila{display:flex;gap:8px;align-items:center;margin-bottom:10px;}
-  .fila label{font-size:13px;color:#666;min-width:80px;}
-  .tot-row{display:flex;justify-content:space-between;font-size:14px;margin:5px 0;}
-  .tot-extra{color:#c0785a;}
-  .tot-desc{color:#c0785a;}
-  .tot-final{font-size:20px;font-weight:700;color:var(--tinta);border-top:1px solid var(--linea);padding-top:8px;margin-top:8px;}
-  .muted{color:#9a9a92;font-size:13px;}
-  .crear{width:100%;background:var(--ok);font-size:16px;padding:13px;margin-top:12px;}
-  .crear:disabled{opacity:.5;cursor:not-allowed;}
-  .crear-sec{flex:1;background:#fff;border:1px solid var(--linea);color:var(--tinta);font-size:13px;padding:10px;}
-  .crear-sec:disabled{opacity:.5;cursor:not-allowed;}
-  .toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--ok);color:#fff;padding:12px 20px;border-radius:12px;font-weight:700;opacity:0;pointer-events:none;transition:opacity .25s;}
-  .toast.show{opacity:1;}
-  .cat-pill{background:#222020;border:1px solid var(--linea);color:#bbb;border-radius:20px;padding:6px 14px;font-size:13px;cursor:pointer;}
-  .cat-pill.on{background:#c9a84c;color:#1f1f1f;border-color:#c9a84c;font-weight:600;}
-  .btn-item .precios{text-align:right;}
-  .btn-item .p-tr{font-size:14px;color:var(--ok);font-weight:600;}
-  .btn-item .p-ef{font-size:11px;color:#999;}
-  .btn-item.grupo{background:rgba(201,168,76,.08);}
-  .btn-item.grupo .hint{font-size:11px;color:#888;margin-top:2px;display:block;}
-</style><link rel="stylesheet" href="/static/theme.css"></head><body>
+  .wrap{ display:flex; flex-wrap:wrap; align-items:flex-start; gap:18px; }
+  .fila{ margin-bottom:10px; }
+  .fila label{ min-width:80px; font-size:var(--fs-base); }
+  .cat-pill{
+    padding:6px 14px;
+    background:var(--bg-hundido);
+    border:1px solid var(--border);
+    border-radius:var(--r-full);
+    font-size:var(--fs-base);
+    color:var(--text-suave);
+    cursor:pointer;
+  }
+  .cat-pill.on{
+    background:var(--acento);
+    border-color:var(--acento);
+    color:var(--text-invertido);
+    font-weight:var(--fw-bold);
+  }
+  /* --- grilla del catálogo --- */
+  .grid-items{
+    display:grid;
+    grid-template-columns:repeat(auto-fill, minmax(140px, 1fr));
+    gap:var(--sp-2);
+    margin-top:var(--sp-3);
+  }
+  .btn-item{
+    display:flex; flex-direction:column; align-items:flex-start; gap:var(--sp-1);
+    padding:10px 12px;
+    background:var(--blanco-a04);
+    border:1px solid var(--border);
+    border-radius:var(--r-lg);
+    color:var(--text);
+    text-align:left;
+    cursor:pointer;
+  }
+  .btn-item:hover,
+  .btn-item:active{ border-color:var(--acento); }
+  .btn-item .n{ font-size:var(--fs-md); font-weight:var(--fw-medium); }
+  .btn-item .p{ font-size:var(--fs-base); font-weight:var(--fw-strong); color:var(--acento); }
+  .btn-item .precios{ text-align:right; }
+  .btn-item .p-tr{ font-size:var(--fs-md); font-weight:var(--fw-bold); color:var(--acento); }
+  .btn-item .p-ef{ font-size:var(--fs-xs); color:var(--text-tenue); }
+  .btn-item .cat-mini{ display:block; margin-top:2px; font-size:var(--fs-xs); color:var(--text-tenue); }
+
+  .btn-item.cat{                       /* tarjeta de categoría */
+    align-items:center; justify-content:center; text-align:center;
+    padding:14px 13px;
+    background:var(--acento-bg);
+    border-color:var(--acento-border);
+  }
+  .btn-item.cat .n{ color:var(--acento); }
+
+  .btn-item.grupo{                     /* agrupador de variantes (talles) */
+    background:var(--oro-a08);
+    border-color:var(--oro-a25);
+  }
+  .btn-item.grupo .n{ color:var(--text-titulo); }
+  .btn-item.grupo .hint{
+    display:block; margin-top:2px;
+    font-size:var(--fs-xs); color:var(--text-tenue);
+  }
+
+  /* --- líneas del ticket --- */
+  .linea{
+    display:flex; align-items:center; gap:var(--sp-2);
+    padding:var(--sp-2) 0;
+    border-bottom:1px solid var(--border-sutil);
+  }
+  .linea .n{ flex:1; font-size:var(--fs-md); }
+  .linea .pin{ width:80px; }
+
+  .dif{                                 /* recargo por dificultad */
+    padding:6px var(--sp-2);
+    background:var(--bg-input);
+    border:1px solid var(--border);
+    color:var(--text-suave);
+  }
+  .dif.on{ background:var(--warn); border-color:var(--warn); color:#fff; }
+
+  .qty{ display:flex; align-items:center; gap:6px; }
+  .qty button{
+    padding:4px 9px;
+    background:var(--bg-input);
+    border:1px solid var(--border);
+    color:var(--text);
+  }
+  .quitar{
+    padding:6px 9px;
+    background:transparent;
+    border:1px solid var(--border);
+    color:var(--danger);
+  }
+
+  /* --- bloque de totales --- */
+  .tot-row{ display:flex; justify-content:space-between; margin:5px 0; font-size:var(--fs-md); }
+  .tot-extra,
+  .tot-desc{ color:var(--warn); }
+  .tot-final{
+    margin-top:var(--sp-2);
+    padding-top:var(--sp-2);
+    border-top:1px solid var(--border);
+    font-size:20px;
+    font-weight:var(--fw-strong);
+    color:var(--acento);             
+  }
+
+  /* --- botones de acción --- */
+  .crear{                             /* acción principal, ancho completo */
+    width:100%;
+    margin-top:var(--sp-3);
+    padding:13px;
+    font-size:16px;
+  }
+  .crear-sec{                         /* acciones secundarias, lado a lado */
+    flex:1;
+    padding:10px;
+    font-size:var(--fs-base);
+    background:transparent;
+    border:1px solid var(--border);
+    color:var(--text);
+  }
+  .crear:disabled,
+  .crear-sec:disabled{ opacity:.5; cursor:not-allowed; }
+
+  /* --- títulos de los paneles de cobro --- */
+  .panel-titulo{
+    margin-bottom:var(--sp-1);
+    font-weight:var(--fw-strong);
+    color:var(--text-titulo);
+  }
+  /* Separador superior de los paneles desplegables */
+  .panel-cobro{
+    margin-top:14px;
+    padding-top:14px;
+    border-top:1px solid var(--border);
+  }
+
+  /* --- dropdown del buscador de clientes --- */
+  .cli-drop{
+    position:absolute; left:0; right:0; top:100%;
+    z-index:var(--z-dropdown);
+    max-height:220px; overflow:auto;
+    background:var(--bg-card);
+    border:1px solid var(--border);
+    border-radius:var(--r-md);
+  }
+  .cli-opt{
+    padding:9px 12px;
+    border-bottom:1px solid var(--border-sutil);
+    color:var(--text);
+    cursor:pointer;
+  }
+  .cli-opt:hover{ background:var(--bg-hover); }
+  /* Barra "← Volver | Nombre de categoría" (el display lo maneja el JS) */
+  .barra-nav{ align-items:center; gap:10px; margin-bottom:var(--sp-3); }
+  .titulo-cat{ font-weight:var(--fw-bold); color:var(--text-titulo); }
+
+  /* Aviso de validación del pago mixto */
+  .aviso{ margin-top:var(--sp-1); font-size:var(--fs-base); color:var(--danger); }
+</style>
+</head><body>
 <header>
   <span>🧾 Facturar</span>
   <nav class="menu"></nav>
@@ -56,10 +174,10 @@
   <div class="col">
     <div class="card">
       <input id="buscar" placeholder="🔎 Buscar servicio o producto..." style="width:100%;margin-bottom:12px;">
-      <div id="catPills" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px;"></div>
-      <div id="barraNav" style="display:none;align-items:center;gap:10px;margin-bottom:12px;">
-        <button id="volver" style="font-size:13px;">← Volver</button>
-        <span id="tituloCat" style="font-weight:600;color:var(--tinta);"></span>
+      <div id="catPills" class="pills"></div>
+      <div id="barraNav" class="barra-nav" style="display:none;">
+        <button id="volver" class="b-out" style="font-size:13px;">← Volver</button>
+        <span id="tituloCat" class="titulo-cat"></span>
       </div>
       <div class="grid-items" id="items"></div>
     </div>
@@ -86,10 +204,10 @@
       </div>
 
       <div class="fila">
-        <label>Cliente: <span style="color:var(--rojo);">*</span></label>
+        <label>Cliente: <span style="color:var(--danger);">*</span></label>
           <div style="position:relative;flex:1;">
           <input id="cliente" autocomplete="off" placeholder="Nombre del cliente (obligatorio)" style="width:100%;">
-          <div id="cliDrop" style="display:none;position:absolute;left:0;right:0;top:100%;z-index:20;background:#2b2a27;border:1px solid var(--linea);border-radius:8px;max-height:220px;overflow:auto;"></div>
+          <div id="cliDrop" class="cli-drop" style="display:none;"></div>
         </div>
       </div>
       <div class="fila">
@@ -123,8 +241,8 @@
       </div>
       <button class="crear" id="crearPresu" disabled style="display:none;">Crear presupuesto</button>
 
-      <div id="panelCobro" style="display:none;border-top:1px solid var(--linea);margin-top:14px;padding-top:14px;">
-        <div style="font-weight:700;color:var(--tinta);margin-bottom:4px;" id="cobroTitulo">Cobrar</div>
+      <div id="panelCobro" class="panel-cobro" style="display:none;">
+        <div class="panel-titulo" id="cobroTitulo"> Cobrar</div>
         <div class="tot-row"><span>Total</span><span id="cobroTotal">$0</span></div>
         <div class="tot-row" style="font-weight:700;"><span>Saldo</span><span id="cobroSaldo">$0</span></div>
         <div id="cobroAbonos" style="margin:8px 0;"></div>
@@ -137,14 +255,14 @@
           <input id="cobroAlias" list="aliasList" placeholder="¿A qué cuenta?" style="flex:1;">
           <datalist id="aliasList"></datalist>
         </div>
-        <button id="cobroRegistrar" style="width:100%;background:var(--ok);">Registrar pago</button>
-        <button id="cobroCerrar" style="width:100%;background:#fff;border:1px solid var(--linea);color:#777;margin-top:8px;">Listo (dejar saldo pendiente)</button>
+        <button id="cobroRegistrar" style="width:100%;">Registrar pago</button>
+        <button id="cobroCerrar" class="b-out" style="width:100%;margin-top:8px;">Listo (dejar saldo pendiente)</button>
       </div>
-      <div id="panelMixto" style="display:none;border-top:1px solid var(--linea);margin-top:14px;padding-top:14px;">
-        <div style="font-weight:700;color:var(--tinta);margin-bottom:8px;">Pago mixto</div>
+      <div id="panelMixto" class="panel-cobro" style="display:none;">
+        <div class="panel-titulo">Pago mixto</div>
 
         <div class="tot-row"><span>Deuda (transfer)</span><span id="mxDeuda">$0</span></div>
-        <div id="mxAviso" style="color:var(--mal,#c0392b);font-size:13px;margin-top:4px;display:none;"></div>
+        <div id="mxAviso" class="aviso" style="display:none;"></div>
         <div class="fila" style="margin-top:10px;">
           <label>Transferencia:</label>
           <input id="mxTransfer" type="number" placeholder="Cuánto va por transfer" style="flex:1;">
@@ -174,29 +292,29 @@
 
   <div class="col" style="flex:1 1 100%;">
     <div class="card">
-      <div style="font-weight:700;color:#c0785a;margin-bottom:12px;">↓ Registrar egreso</div>
+      <div style="font-weight:700;color:var(--warn);margin-bottom:12px;">↓ Registrar egreso</div>
       <div class="fila" style="flex-wrap:wrap;align-items:flex-end;">
-        <div style="display:flex;flex-direction:column;gap:4px;">
-          <label style="font-size:12px;color:#666;">Tipo</label>
+        <div class="campo">
+          <label>Tipo</label>
           <input id="egTipo" list="egTipos" placeholder="Proveedor, retiro...">
           <datalist id="egTipos"></datalist>
         </div>
-        <div style="display:flex;flex-direction:column;gap:4px;flex:1;">
-          <label style="font-size:12px;color:#666;">Concepto</label>
+        <div class="campo" style="flex:1;">
+          <label>Concepto</label>
           <input id="egConcepto" placeholder="Detalle" style="width:100%;">
         </div>
-        <div style="display:flex;flex-direction:column;gap:4px;">
-          <label style="font-size:12px;color:#666;">Monto</label>
+        <div class="campo">
+          <label>Monto</label>
           <input id="egMonto" type="number" placeholder="0" style="width:110px;">
         </div>
-        <div style="display:flex;flex-direction:column;gap:4px;">
-          <label style="font-size:12px;color:#666;">Forma de pago</label>
+        <div class="campo">
+          <label>Forma de pago</label>
           <select id="egPago"></select>
         </div>
         <button id="btnGuardarEgreso">Registrar</button>
       </div>
       <div style="margin-top:14px;">
-        <div id="toggleEgresosHoy" style="cursor:pointer;font-size:13px;color:#888;margin-bottom:8px;">Egresos de hoy ▾</div>
+        <div id="toggleEgresosHoy" class="muted" style="cursor:pointer;margin-bottom:8px;">Egresos de hoy ▾</div>
         <div id="egresosHoy"></div>
       </div>
     </div>
@@ -244,7 +362,7 @@ async function cargarEgresosHoy(){
     const row=document.createElement("div"); row.className="linea";
     row.innerHTML=`
       <span class="n">${e.hora} · ${e.tipo}${e.concepto?' · '+e.concepto:''} · ${e.forma_pago||''}</span>
-      <span style="min-width:70px;text-align:right;color:var(--rojo);">−${fmt(e.monto)}</span>
+      <span style="min-width:70px;text-align:right;color:var(--danger);">−${fmt(e.monto)}</span>
       <button class="quitar">×</button>`;
     row.querySelector(".quitar").onclick=async()=>{
       if(!confirm("¿Anular este egreso?"))return;
@@ -364,7 +482,7 @@ function renderTicket(){
     const row=document.createElement("div"); row.className="linea";
     row.innerHTML=`
       <span class="n">${l.nombre}</span>
-      <span style="min-width:110px;text-align:right;">${fmt(l.precioTransfer)} <span style="color:#999;font-size:11px;">(c/desc ${fmt(l.precio)} )</span></span>
+      <span style="min-width:110px;text-align:right;">${fmt(l.precioTransfer)} <span style="color:var(--text-tenue);font-size:11px;">c/desc ${fmt(l.precio)} )</span></span>
       <button class="dif ${l.dificultad?'on':''}">Dif</button>
       <div class="qty"><button class="menos">−</button><span>${l.cantidad}</span><button class="mas">+</button></div>
       <button class="quitar">×</button>`;
@@ -450,8 +568,7 @@ function restaurarBorrador(){
     descNombre = d.descNombre || null;
     $("#descuento").value = d.descuentoSel || "";
     formaPago = d.formaPago || "efectivo";
-    $("#fpEfectivo").classList.toggle("on", formaPago==="efectivo");   // reflejar la forma en las pills
-    $("#fpTransfer").classList.toggle("on", formaPago==="transfer");
+    $("#formaPago").value = formaPago;
   }catch(e){ localStorage.removeItem(BORRADOR_KEY); }
 }
 
@@ -593,10 +710,9 @@ cliInput.addEventListener("input", ()=>{
     const res = await (await authFetch("/api/clientes?q="+encodeURIComponent(term))).json();
     if(!res.length){ cliDrop.style.display="none"; return; }
     cliDrop.innerHTML = res.slice(0,8).map(c=>
-      `<div class="cli-opt" data-id="${c.id}" data-nom="${c.nombre.replace(/"/g,'&quot;')}"
-            style="padding:9px 12px;cursor:pointer;border-bottom:1px solid var(--linea);color:#e9e4d6;">
-         <b>${c.nombre}</b> <span class="muted">#${c.id}${c.telefono? ' · '+c.telefono : ''}</span>
-       </div>`).join("");
+      `<div class="cli-opt" data-id="${c.id}" data-nom="${c.nombre.replace(/"/g,'&quot;')}">
+        <b>${c.nombre}</b> <span class="muted">#${c.id}${c.telefono? ' · '+c.telefono : ''}</span>
+      </div>`).join("");
     cliDrop.style.display="block";
   }, 200);
 });
@@ -686,7 +802,7 @@ async function abrirCobro(){
   ab.innerHTML = pagos.length ? pagos.map(p=>`<div class="muted">✓ ${p.forma_pago} ${fmt(p.monto)}</div>`).join("") : "";
   $("#cobroCerrar").textContent = saldo<=0 ? "Finalizar comprobante" : "Finalizar (dejar saldo pendiente)";
   if(saldo<=0){  
-    ab.innerHTML += '<div style="color:var(--ok);font-weight:700;margin-top:6px;">Saldado ✓</div>';
+    ab.innerHTML += '<div style="color:var(--acento);font-weight:700;margin-top:6px;">Saldado ✓</div>';
     $("#cobroRegistrar").style.display="none";
   } else { $("#cobroRegistrar").style.display="block"; }
   $("#cobroForma").value = formaPago==="efectivo" ? "Efectivo" : "Transferencia";

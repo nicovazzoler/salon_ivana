@@ -2,39 +2,42 @@
 <html lang="es"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="theme-color" content="#1f1f1f"><title>Cuenta del cliente — Peluquería</title>
+<link rel="stylesheet" href="/static/css/app.css">
 <style>
-  :root{--tinta:#2F4858;--crema:#f7f5f0;--linea:#e2ddd3;--ok:#2e7d4f;--rojo:#c0392b;--oro:#c9a84c;}
-  *{box-sizing:border-box;}
-  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;background:var(--crema);color:#2b2b28;}
-  .wrap{max-width:800px;margin:0 auto;padding:18px;}
-  .card{background:#fff;border:1px solid var(--linea);border-radius:14px;padding:18px;margin-bottom:16px;}
-  input,select{padding:9px;border:1px solid var(--linea);border-radius:8px;font-size:15px;font-family:Georgia,'Times New Roman',serif;}
-  button{font-family:inherit;cursor:pointer;border:none;border-radius:8px;padding:9px 14px;font-size:14px;font-weight:600;background:var(--tinta);color:#fff;}
-  .cli-head{display:flex;align-items:center;gap:14px;}
-  .cli-head .av{width:48px;height:48px;border-radius:50%;background:#eee4c6;color:#9a7d2c;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:16px;}
-  .saldo-box{text-align:right;margin-left:auto;}
-  .saldo-box .lbl{font-size:12px;color:#888;}
-  .saldo-box .val{font-size:26px;font-weight:800;}
-  .comp{border:1px solid var(--linea);border-radius:12px;padding:14px;margin-bottom:10px;}
-  .comp-head{display:flex;justify-content:space-between;align-items:center;}
-  .comp-head .num{font-weight:700;}
-  .badge{font-size:11px;font-weight:700;padding:3px 10px;border-radius:6px;}
-  .badge.pendiente{background:#fdeaea;color:var(--rojo);}
-  .badge.parcial{background:#fff3e0;color:#c0785a;}
-  .badge.pagado{background:#e7f5ec;color:var(--ok);}
-  .comp-sub{font-size:13px;color:#777;margin-top:6px;}
-  .abonar-box{margin-top:10px;padding-top:10px;border-top:1px dashed var(--linea);display:none;}
-  .acciones{margin-top:14px;padding-top:12px;border-top:1px dashed var(--linea);}
-  .editar-box{margin-top:12px;padding-top:12px;border-top:1px dashed var(--linea);display:none;}
-  .grid-campos{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:10px;margin-bottom:12px;}
-  .campo{display:flex;flex-direction:column;gap:4px;}
-  .campo label{font-size:12px;color:#888;font-weight:600;}
-  .campo.ancho{grid-column:1 / -1;}
-  .fila{display:flex;gap:8px;align-items:center;flex-wrap:wrap;}
-  .muted{color:#9a9a92;font-size:14px;}
-  .toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--ok);color:#fff;padding:12px 20px;border-radius:12px;font-weight:700;opacity:0;pointer-events:none;transition:opacity .25s;}
-  .toast.show{opacity:1;}
-</style><link rel="stylesheet" href="/static/theme.css"></head><body>
+  /* ===== SOLO lo propio de la Cuenta del cliente ===== */
+
+  .wrap{ max-width:800px; }
+
+  /* Cabecera: avatar + datos + saldo */
+  .cli-head{ display:flex; align-items:center; gap:14px; }
+  .cli-head .av{
+    width:48px; height:48px;
+    border-radius:50%;
+    background:var(--oro-100);
+    color:var(--gris-900);
+    display:flex; align-items:center; justify-content:center;
+    font-size:16px; font-weight:var(--fw-strong);
+  }
+  .saldo-box{ margin-left:auto; text-align:right; }
+  .saldo-box .lbl{ font-size:var(--fs-sm); color:var(--text-tenue); }
+  .saldo-box .val{ font-size:26px; font-weight:var(--fw-black); }
+
+  /* Zonas separadas por línea punteada */
+  .abonar-box{ display:none; margin-top:10px; padding-top:10px; border-top:1px dashed var(--border); }
+  .editar-box{ display:none; margin-top:12px; padding-top:12px; border-top:1px dashed var(--border); }
+  .acciones{ margin-top:14px; padding-top:12px; border-top:1px dashed var(--border); }
+
+  /* Formulario de edición del cliente */
+  .grid-campos{
+    display:grid;
+    grid-template-columns:repeat(auto-fit, minmax(240px, 1fr));
+    gap:10px;
+    margin-bottom:var(--sp-3);
+  }
+  .campo label{ font-weight:var(--fw-bold); }
+  .campo.ancho{ grid-column:1 / -1; }
+</style>
+</head><body>
 <header>
   <span>📋 Cuenta del cliente</span>
   <nav class="menu">
@@ -84,8 +87,8 @@ async function cargar(){
       </div>
       <div class="saldo-box">
         <div class="lbl">Saldo adeudado</div>
-        <div class="val" style="color:${data.saldo_total>0?'var(--rojo)':'var(--ok)'};">${fmt(data.saldo_total)}</div>
-        <button style="margin-top:8px;background:var(--ok);" onclick="location.href='/facturar?cliente=${encodeURIComponent(c.nombre)}'">+ Facturar</button>
+        <div class="val" style="color:${data.saldo_total>0?'var(--danger)':'var(--acento)'};">${fmt(data.saldo_total)}</div>
+        <button style="margin-top:8px;background:var(--acento);" onclick="location.href='/facturar?cliente=${encodeURIComponent(c.nombre)}'">+ Facturar</button>
       </div>
     </div>
     <div class="fila acciones">
@@ -175,14 +178,14 @@ if($("#btnEliminar")) $("#btnEliminar").onclick=async()=>{
         <span class="badge ${comp.estado}">${comp.estado}</span>
       </div>
       <div class="comp-sub">Total ${fmt(comp.total_final)} · Pagado ${fmt(comp.pagado)} · Saldo <b>${fmt(comp.saldo)}</b></div>
-      <button class="btnDetalle" style="margin-top:8px;background:#fff;border:1px solid var(--linea);color:var(--tinta);">Ver detalle</button>
-      <div class="detalle-box" style="display:none;margin-top:10px;padding-top:10px;border-top:1px dashed var(--linea);"></div>
+      <button class="btnDetalle b-out" style="margin-top:8px;">Ver detalle</button>
+      <div class="detalle-box" style="display:none;margin-top:10px;padding-top:10px;border-top:1px dashed var(--border);"></div>
       ${comp.saldo>0?`<button class="btnAbrir" style="margin-top:10px;">Abonar</button>
       <div class="abonar-box">
         <div class="fila">
           <select class="aForma">${FORMAS.map(f=>`<option>${f}</option>`).join("")}</select>
           <input class="aMonto" type="number" value="${comp.saldo}" style="width:110px;">
-          <button class="aOk" style="background:var(--ok);">Registrar</button>
+          <button class="aOk">Registrar</button>
         </div>
         <div class="fila aAliasBox" style="display:none;margin-top:8px;">
           <label class="muted">Alias:</label>
@@ -215,7 +218,7 @@ if($("#btnEliminar")) $("#btnEliminar").onclick=async()=>{
 
       const pctEf = d.desc_efectivo>0 ? Math.round(d.desc_efectivo / d.total_transfer * 100) : 0;
       const filaDescEf = d.desc_efectivo>0 ? `<div class="fila" style="justify-content:space-between;color:#c0785a;"><span>Descuento ${pctEf}%</span><span>−${fmt(d.desc_efectivo)}</span></div>` : "";
-      const filaSubtotal = d.desc_efectivo>0 ? `<div class="fila" style="justify-content:space-between;border-top:1px solid var(--linea);padding-top:6px;"><span>Subtotal</span><span>${fmt(d.subtotal)}</span></div>` : "";
+      const filaSubtotal = d.desc_efectivo>0 ? `<div class="fila" style="justify-content:space-between;border-top:1px solid var(--border);padding-top:6px;"><span>Subtotal</span><span>${fmt(d.subtotal)}</span></div>` : "";
       const filaDescJub = d.desc_jubilado>0 ? `<div class="fila" style="justify-content:space-between;color:#c0785a;"><span>${d.descuento_nombre||'Descuento'} ${d.descuento_pct}%</span><span>−${fmt(d.desc_jubilado)}</span></div>` : "";
 
       const pagos = d.pagos.length
@@ -224,7 +227,7 @@ if($("#btnEliminar")) $("#btnEliminar").onclick=async()=>{
       boxDet.innerHTML=`
         <div style="font-weight:700;margin-bottom:6px;">Detalle</div>
         ${lineas}${extra}${filaDescEf}${filaSubtotal}${filaDescJub}
-        <div class="fila" style="justify-content:space-between;font-weight:700;border-top:1px solid var(--linea);margin-top:6px;padding-top:6px;"><span>Total</span><span>${fmt(d.total_final)}</span></div>
+        <div class="fila" style="justify-content:space-between;font-weight:700;border-top:1px solid var(--border);margin-top:6px;padding-top:6px;"><span>Total</span><span>${fmt(d.total_final)}</span></div>
         <div style="font-weight:700;margin:10px 0 6px;">Pagos</div>
         ${pagos}`;
       boxDet.style.display="block";

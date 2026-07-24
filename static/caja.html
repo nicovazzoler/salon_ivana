@@ -5,39 +5,20 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="theme-color" content="#1f1f1f">
 <title>Caja — Cierres y arqueo</title>
+<link rel="stylesheet" href="/static/css/app.css">
 <style>
-  :root{--tinta:#2F4858;--tinta2:#3d5a6c;--crema:#f7f5f0;--linea:#e2ddd3;--ok:#2e7d4f;--rojo:#c0392b;--texto:#2b2b28;}
-  *{box-sizing:border-box;}
-  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;background:var(--crema);color:var(--texto);}
-  header .tit{display:flex;align-items:center;gap:10px;}
-  .wrap{max-width:1100px;margin:0 auto;padding:18px;}
-  .card{background:#fff;border:1px solid var(--linea);border-radius:14px;padding:18px;margin-bottom:20px;}
-  .card h2{margin:0 0 14px;font-size:18px;color:var(--tinta);}
-  label{font-size:13px;color:#6b6b63;display:block;margin-bottom:4px;}
-  input,select{font-size:15px;padding:9px 10px;border:1px solid var(--linea);border-radius:9px;font-family:inherit;width:100%;}
-  button{font-family:inherit;cursor:pointer;border:none;border-radius:9px;padding:10px 16px;font-size:14px;font-weight:600;}
-  .b-ok{background:var(--ok);color:#fff;} .b-out{background:#fff;border:1px solid var(--linea);}
-  .nums{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:14px;}
-  .num{background:var(--crema);border-radius:12px;padding:14px;text-align:center;}
-  .num .lbl{font-size:12px;color:#6b6b63;} .num .val{font-size:22px;font-weight:800;margin-top:4px;}
-  .num.ing .val{color:var(--ok);} .num.egr .val{color:var(--rojo);} .num.net .val{color:var(--tinta);}
-  .desg{display:flex;gap:20px;flex-wrap:wrap;font-size:14px;color:#555;}
-  .desg div{flex:1;min-width:200px;}
-  .desg b{color:var(--tinta);}
-  .fila{display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;}
-  .fila > div{flex:1;min-width:110px;}
-  table{width:100%;border-collapse:collapse;font-size:14px;}
-  th,td{padding:8px 6px;border-bottom:1px solid var(--linea);text-align:right;}
-  th:first-child,td:first-child{text-align:left;}
-  th{color:var(--tinta);font-size:12px;text-transform:uppercase;letter-spacing:.03em;}
-  .neto-pos{color:var(--ok);font-weight:700;} .neto-neg{color:var(--rojo);font-weight:700;}
-  .toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--ok);color:#fff;padding:12px 20px;border-radius:12px;font-weight:700;opacity:0;pointer-events:none;transition:opacity .25s;}
-  .toast.show{opacity:1;}
-  .money{font-variant-numeric:tabular-nums;}
+  label{ display:block; margin-bottom:var(--sp-1); }
+  input,select{ width:100%; padding:9px 10px; }
+  .fila{ align-items:flex-end; }
+  th,td{ text-align:right; }
+  th:first-child,
+  td:first-child{ text-align:left; }
+  .nums{ grid-template-columns:repeat(4, 1fr); }
+  .celda-input{ width:100%; padding:6px; font-size:var(--fs-base); border-radius:7px; }
+  .mini{ padding:6px 9px; font-size:var(--fs-sm); border-radius:7px; }
+  .sub-titulo{ display:block; margin-top:14px; color:var(--text-titulo); }
 </style>
-<link rel="stylesheet" href="/static/theme.css">
-</head>
-<body>
+</head><body>
 <header>
   <span class="tit">💰 Caja</span>
   <nav class="menu">
@@ -61,7 +42,7 @@
       <div class="num ing"><div class="lbl">Ingresos</div><div class="val money" id="ing">$0</div></div>
       <div class="num egr"><div class="lbl">Egresos</div><div class="val money" id="egr">$0</div></div>
       <div class="num net"><div class="lbl">Neto</div><div class="val money" id="net">$0</div></div>
-      <div class="num"><div class="lbl">Ventas</div><div class="val" id="cant">0</div></div>
+      <div class="num"><div class="lbl">Movimientos</div><div class="val" id="cant">0</div></div>
     </div>
     <div class="desg">
       <div><b>Ingresos por forma de pago</b><div id="porPago"></div></div>
@@ -81,10 +62,10 @@
         <tr><td>Fondo inicial</td><td class="money" id="aqFondo">$0</td></tr>
         <tr><td>+ Ventas en efectivo</td><td class="money" id="aqVentas">$0</td></tr>
         <tr><td>− Egresos en efectivo</td><td class="money" id="aqEgresos">$0</td></tr>
-        <tr style="border-top:2px solid var(--tinta);"><td><b>= Debería haber en caja</b></td><td class="money" id="aqEsperado" style="font-weight:800;color:var(--ok);font-size:18px;">$0</td></tr>
+        <tr style="border-top:2px solid var(--acento);"><td><b>= Caja </b></td><td class="money" id="aqEsperado" style="font-weight:800;color:var(--acento);font-size:18px;">$0</td></tr>
       </tbody>
     </table>
-    <p style="color:#9a9a92;font-size:13px;margin-top:8px;">Es lo que tendría que haber en efectivo al cerrar. El fondo es por día: si no lo cambiás, se arrastra el último que pusiste.</p>
+    <p class="muted" style="margin-top:8px;">Es lo que tendría que haber en efectivo al cerrar. El fondo es por día: si no lo cambiás, se arrastra el último que pusiste.</p>
   </div>
 
 </div>
@@ -109,37 +90,34 @@ async function cargarDia(){
   $("#net").textContent=money(d.neto);
   $("#cant").textContent=d.ventas;
   $("#porPago").innerHTML=Object.keys(d.ingresos_por_pago).length
-    ? Object.entries(d.ingresos_por_pago).map(([k,v])=>`${k}: ${money(v)}`).join("<br>") : '<span style="color:#aaa">—</span>';
+    ? Object.entries(d.ingresos_por_pago).map(([k,v])=>`${k}: ${money(v)}`).join("<br>") : '<span class="muted">—</span>';
   $("#porTipo").innerHTML=Object.keys(d.egresos_por_tipo).length
-    ? Object.entries(d.egresos_por_tipo).map(([k,v])=>`${k}: ${money(v)}`).join("<br>") : '<span style="color:#aaa">—</span>';
+    ? Object.entries(d.egresos_por_tipo).map(([k,v])=>`${k}: ${money(v)}`).join("<br>") : '<span class="muted">—</span>';
 
   // detalle de cada venta y egreso del dia (editable por el dueño)
-  const ei = "padding:6px;border:1px solid var(--linea);border-radius:7px;font-size:13px;box-sizing:border-box;width:100%;";
-  const bsv = "background:var(--tinta);color:#fff;border:none;border-radius:7px;padding:6px 9px;font-size:12px;font-weight:600;cursor:pointer;";
-  const bdl = "background:#fff;border:1px solid #c0392b;color:#c0392b;border-radius:7px;padding:6px 9px;font-size:12px;font-weight:600;cursor:pointer;";
   let html = "";
   if(d.ventas_detalle && d.ventas_detalle.length){
-    html += '<b style="color:var(--tinta);">Cobros del día</b><table style="margin-top:6px;"><thead><tr><th>Hora</th><th>Comprobante</th><th>Pago</th><th>Monto</th><th></th></tr></thead><tbody>';
+    html += '<b class="sub-titulo">Cobros del día</b><table style="margin-top:6px;"><thead><tr><th>Hora</th><th>Comprobante</th><th>Pago</th><th>Monto</th><th></th></tr></thead><tbody>';
     d.ventas_detalle.forEach(v=>{
       const al=v.alias?` (${v.alias})`:"";
       html+=`<tr><td>${v.hora}</td><td>${v.ref||'—'}</td><td>${v.forma_pago}${al}</td><td class="money">${money(v.total)}</td>
-             <td><button style="${bdl}" onclick="anularPagoCaja(${v.id})">Anular</button></td></tr>`;
+             <td><button class="mini b-del" onclick="anularPagoCaja(${v.id})">Anular</button></td></tr>`;
     });
     html += '</tbody></table>';
   }
   if(d.egresos_detalle && d.egresos_detalle.length){
-    html += '<b style="color:var(--tinta);display:block;margin-top:14px;">Egresos del día</b><table style="margin-top:6px;"><thead><tr><th>Hora</th><th>Tipo</th><th>Concepto</th><th>Monto</th><th></th></tr></thead><tbody>';
+    html += '<b class="sub-titulo">Egresos del día</b>Egresos del día</b><table style="margin-top:6px;"><thead><tr><th>Hora</th><th>Tipo</th><th>Concepto</th><th>Monto</th><th></th></tr></thead><tbody>';
     d.egresos_detalle.forEach(e=>{
       html+=`<tr><td>${e.hora}</td>
-        <td><input id="ec_tipo_${e.id}" value="${e.tipo||''}" style="${ei}"></td>
-        <td><input id="ec_conc_${e.id}" value="${e.concepto||''}" style="${ei}"></td>
-        <td><input id="ec_monto_${e.id}" type="number" value="${e.monto}" style="${ei}max-width:95px;"></td>
-        <td style="white-space:nowrap;"><button style="${bsv}" onclick="guardarEgresoCaja(${e.id})">✓</button>
-            <button style="${bdl}" onclick="anularEgresoCaja(${e.id})">×</button></td></tr>`;
+        <td><input id="ec_tipo_${e.id}" value="${e.tipo||''}" class="celda-input"></td>
+        <td><input id="ec_conc_${e.id}" value="${e.concepto||''}" class="celda-input"></td>
+        <td><input id="ec_monto_${e.id}" type="number" value="${e.monto}" class="celda-input" style="max-width:95px;"></td>
+        <td style="white-space:nowrap;"><button class="mini b-ok" onclick="guardarEgresoCaja(${e.id})">✓</button>
+            <button class="mini b-del" onclick="anularEgresoCaja(${e.id})">×</button></td></tr>`;
     });
     html += '</tbody></table>';
   }
-  if(!html) html = '<span style="color:#aaa">Sin movimientos en esta fecha.</span>';
+  if(!html) html = '<span class="muted">Sin movimientos en esta fecha.</span>';
   $("#detalle").innerHTML = html;
 
   // arqueo de efectivo

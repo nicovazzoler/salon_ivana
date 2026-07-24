@@ -2,30 +2,30 @@
 <html lang="es"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="theme-color" content="#1f1f1f"><title>Historial — Peluquería</title>
+<link rel="stylesheet" href="/static/css/app.css">
 <style>
-  :root{--tinta:#2F4858;--crema:#f7f5f0;--linea:#e2ddd3;--ok:#2e7d4f;--rojo:#c0392b;--oro:#c9a84c;}
-  *{box-sizing:border-box;}
-  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;background:var(--crema);color:#bbb;}
-  .wrap{max-width:800px;margin:0 auto;padding:18px;}
-  .seg{display:flex;gap:8px;margin-bottom:16px;}
-  .seg button{flex:1;background:#222020;border:1px solid var(--linea);color:#999;border-radius:8px;padding:10px;font-weight:600;cursor:pointer;}
-  .seg button.on{background:#c9a84c;color:#1f1f1f;border-color:#c9a84c;}
-  .comp{background:#3d3c38;border:1px solid var(--linea);border-radius:12px;padding:14px;margin-bottom:10px;color:#c9a84c;}
-  .comp-head{display:flex;justify-content:space-between;align-items:center;cursor:pointer;}
-  .comp-head .num{font-weight:700;}
-  .comp-head .sub{font-size:13px;color:#fbfffe;margin-top:3px;}
-  .badge{font-size:11px;font-weight:700;padding:3px 10px;border-radius:6px;white-space:nowrap;}
-  .badge{text-transform:capitalize;}
-  .badge.pendiente{background:#4a2c2c;color:#e8a3a3;}
-  .badge.parcial{background:#4a3a24;color:#e0b878;}
-  .badge.pagado{background:#26402c;color:#8fcb9b;}
-  .badge.presupuesto{background:#2c3a4a;color:#9fc0e0;}
-  .detalle-box{display:none;margin-top:10px;padding-top:10px;border-top:1px dashed var(--linea);}
-  .fila{display:flex;justify-content:space-between;gap:8px;font-size:14px;margin:4px 0;}
-  .muted{color:#9a9a92;font-size:14px;}
-  .toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--ok);color:#fff;padding:12px 20px;border-radius:12px;font-weight:700;opacity:0;pointer-events:none;transition:opacity .25s;}
-  .toast.show{opacity:1;}
-</style><link rel="stylesheet" href="/static/theme.css"></head><body>
+  /* Única línea angosta */
+  .wrap{ max-width:800px; }
+
+  /* Tarjeta de comprobante */
+  .comp{
+    background:var(--bg-card);
+    color:var(--text-marca);    
+  }
+  .comp-head{
+    cursor:pointer;
+  }
+  .comp-head .sub{ margin-top:3px; font-size:var(--fs-base); color:var(--text); }
+
+  /* Fila del detalle: concepto ← → monto. */
+  .fila{
+    justify-content:space-between;
+    flex-wrap:nowrap;
+    font-size:var(--fs-md);
+    margin:4px 0;
+  }
+</style>
+</head><body>
 <header>
   <span>📜 Historial</span>
   <nav class="menu">
@@ -79,7 +79,7 @@ async function cargar(){
       ${comp.tipo==="presupuesto"
         ? (comp.convertido_a
             ? `<div class="muted" style="margin-top:8px;">Convertido → A-${String(comp.convertido_a).padStart(5,"0")}</div>`
-            : `<button class="btnConv" style="margin-top:8px;background:#c9a84c;color:#1f1f1f;font-family:Georgia,serif;font-weight:600;">Convertir a ticket</button>`)
+            : `<button class="btnConv" style="margin-top:8px;">Convertir a ticket</button>`)
         : ""}`;
     const head=div.querySelector(".comp-head");
     const box=div.querySelector(".detalle-box");
@@ -97,7 +97,7 @@ async function cargar(){
 
       // Subtotal: solo tiene sentido mostrarlo si hubo descuento efectivo (sino es igual al de arriba)
       const filaSubtotal=d.desc_efectivo>0
-        ? `<div class="fila" style="border-top:1px solid var(--linea);padding-top:6px;"><span>Subtotal</span><span>${fmt(d.subtotal)}</span></div>` : "";
+        ? `<div class="fila" style="border-top:1px solid var(--border);padding-top:6px;"><span>Subtotal</span><span>${fmt(d.subtotal)}</span></div>` : "";
 
       // Descuento de listado (jubilado)
       const filaDescJub=d.desc_jubilado>0
@@ -114,7 +114,7 @@ async function cargar(){
 
       box.innerHTML=`<div style="font-weight:700;margin-bottom:6px;">Detalle</div>
         ${lineas}${extra}${filaDescEf}${filaSubtotal}${filaDescJub}
-        <div class="fila" style="font-weight:700;border-top:1px solid var(--linea);margin-top:6px;padding-top:6px;"><span>Total</span><span>${fmt(d.total_final)}</span></div>
+        <div class="fila" style="font-weight:700;border-top:1px solid var(--border);margin-top:6px;padding-top:6px;"><span>Total</span><span>${fmt(d.total_final)}</span></div>
         ${d.tipo==="ticket"?`<div style="font-weight:700;margin:10px 0 6px;">Pagos</div>${pagos}`:''}`;
       box.style.display="block";
     };

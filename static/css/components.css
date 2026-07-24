@@ -1,0 +1,206 @@
+/* ==========================================================================
+   COMPONENTES — piezas reutilizables con nombre propio
+   ========================================================================== */
+
+/* ----- Botones con variante -----
+   La base ya la puso base.css. Acá van solo las variantes. */
+
+.b-ok,
+.b-tinta,
+.confirmar{
+  background:var(--acento);
+  color:var(--text-invertido);
+}
+
+.b-out{                              /* botón "fantasma": solo borde */
+  background:transparent;
+  border:1px solid var(--border);
+  color:var(--text);
+}
+.b-out:hover{ border-color:var(--acento); }
+
+.b-del{                              /* acción destructiva */
+  background:transparent;
+  border:1px solid var(--danger);
+  color:var(--danger);
+}
+
+.confirmar{                          /* botón grande de cerrar venta */
+  width:100%;
+  padding:var(--sp-3);
+  border-radius:var(--r-lg);
+  font-size:var(--fs-lg);
+  font-weight:var(--fw-medium);
+}
+
+/* ----- Pills: filtros de categoría (cápsula) ----- */
+.pill{
+  padding:6px 14px;
+  border:1px solid transparent;
+  border-radius:var(--r-full);
+  background:var(--bg-sutil);
+  color:var(--text-suave);
+  font-size:var(--fs-base);
+  cursor:pointer;
+  transition:all .15s;
+}
+.pill:hover{ border-color:var(--oro-a25); }
+.pill.on{
+  background:var(--acento-bg);
+  color:var(--acento);
+  border-color:var(--acento-border);
+}
+
+/* Contenedor de pills */
+.pills{
+  display:flex;
+  flex-wrap:wrap;
+  gap:6px;
+  margin-bottom:var(--sp-4);
+}
+
+/* ----- Segmentado: Ticket / Presupuesto, Productos / Categorías ----- */
+.seg{
+  display:flex;
+  gap:var(--sp-2);
+  margin-bottom:var(--sp-4);
+}
+.seg button{
+  flex:1;
+  padding:var(--sp-3);
+  background:var(--bg-hundido);      /* ← hundido, no elevado */
+  border:1px solid var(--border);
+  color:var(--text-suave);
+}
+.seg button.on{
+  background:var(--acento);
+  color:var(--text-invertido);
+  border-color:var(--acento);
+}
+
+/* ----- Tag: etiqueta informativa ----- */
+.tag{
+  display:inline-block;
+  padding:2px var(--sp-2);
+  border-radius:var(--r-full);
+  background:var(--acento-bg);
+  color:var(--acento);
+  font-size:var(--fs-xs);
+}
+
+.tag.neutro{ background:var(--bg-sutil); color:var(--text-tenue); }
+
+/* ----- Badge: estado de un comprobante ----- */
+.badge{
+  padding:3px var(--sp-3);
+  border-radius:var(--r-sm);
+  font-size:var(--fs-xs);
+  font-weight:var(--fw-bold);
+  white-space:nowrap;
+  text-transform:capitalize;
+}
+.badge.pendiente   { background:var(--est-pend-bg);  color:var(--est-pend-fg);  }
+.badge.parcial     { background:var(--est-parc-bg);  color:var(--est-parc-fg);  }
+.badge.pagado      { background:var(--est-pago-bg);  color:var(--est-pago-fg);  }
+.badge.presupuesto { background:var(--est-presu-bg); color:var(--est-presu-fg); }
+.badge.alerta      { background:var(--danger-bg); color:var(--danger);          }
+
+/* ----- Toast: aviso temporal abajo al centro ----- */
+.toast{
+  position:fixed;
+  bottom:var(--sp-5);
+  left:50%;
+  transform:translateX(-50%);
+  z-index:var(--z-toast);
+  padding:var(--sp-3) var(--sp-5);
+  border-radius:var(--r-xl);
+  background:var(--acento);
+  color:var(--text-invertido);
+  font-weight:var(--fw-bold);
+  opacity:0;
+  pointer-events:none;      /* invisible al mouse aunque esté ahí */
+  transition:opacity .25s;
+}
+.toast.show{ opacity:1; }
+
+/* ----- Textos auxiliares ----- */
+.muted{
+  color:var(--text-tenue);
+  font-size:var(--fs-base);
+}
+.vacio{                     /* "no hay nada todavía" */
+  padding:var(--sp-6) 0;
+  color:var(--text-tenue);
+  font-size:var(--fs-base);
+  text-align:center;
+}
+
+/* ----- Montos ----- */
+.money{
+  text-align:right;
+  font-variant-numeric:tabular-nums;   /* los números no bailan al actualizarse */
+}
+.neto-pos{ color:var(--acento); font-weight:var(--fw-bold); }
+.neto-neg{ color:var(--danger); font-weight:var(--fw-bold); }
+
+/* ----- Comprobante: tarjeta de ticket / presupuesto -----
+   Esqueleto para historial.html y cuenta.html */
+.comp{
+  padding:14px;
+  margin-bottom:10px;
+  border:1px solid var(--border);
+  border-radius:12px;
+}
+.comp-head{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:var(--sp-2);
+}
+.comp-head .num{ font-weight:var(--fw-strong); }
+.comp-sub{ margin-top:6px; font-size:var(--fs-base); color:var(--text-tenue); }
+
+/* Detalle desplegable (arranca oculto, el JS lo abre) */
+.detalle-box{
+  display:none;
+  margin-top:10px;
+  padding-top:10px;
+  border-top:1px dashed var(--border);
+}
+
+/* ----- Campo: etiqueta arriba, control abajo ----- */
+.campo{ display:flex; flex-direction:column; gap:var(--sp-1); }
+.campo label{ font-size:var(--fs-sm); color:var(--text-tenue); }
+
+/* ----- Números destacados (caja, reportes) ----- */
+.nums{
+  display:grid;
+  grid-template-columns:repeat(auto-fit, minmax(110px, 1fr));
+  gap:var(--sp-3);
+  margin-bottom:14px;
+}
+.num{
+  padding:14px;
+  border-radius:12px;
+  background:var(--blanco-a04);
+  text-align:center;
+}
+.num .lbl{ font-size:var(--fs-sm); color:var(--text-tenue); }
+.num .val{
+  margin-top:var(--sp-1);
+  font-size:22px;
+  font-weight:var(--fw-black);
+  color:var(--text-titulo);
+}
+.num.ing .val{ color:var(--acento); }
+.num.egr .val{ color:var(--danger); }
+
+/* ----- Desglose en columnas (caja, reportes) ----- */
+.desg{
+  display:flex; flex-wrap:wrap;
+  gap:var(--sp-5);
+  font-size:var(--fs-md);
+  color:var(--text-suave);
+}
+.desg > div{ flex:1; min-width:200px; }
+.desg b{ color:var(--text-titulo); }

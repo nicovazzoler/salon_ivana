@@ -1,0 +1,145 @@
+/* ==========================================================================
+   TOKENS — Colores, espaciados y tipografía
+   ========================================================================== */
+
+:root{
+
+  /* ======================================================================
+        1. Valores crudos — de más oscuro a más claro
+     ====================================================================== */
+
+  /* Dorado — color de marca */
+  --oro-100:#e8d5a3;              /* dorado claro, para títulos */
+  --oro-500:#c9a84c;              /* dorado principal */
+  --oro-a08:rgba(201,168,76,.08);
+  --oro-a12:rgba(201,168,76,.12);
+  --oro-a15:rgba(201,168,76,.15);
+  --oro-a25:rgba(201,168,76,.25);
+  --oro-a35:rgba(201,168,76,.35);
+
+  /* Neutros — de más oscuro a más claro */
+  --gris-900:#1a1a1a;             /* texto sobre dorado */
+  --gris-800:#1f1f1f;             /* header, ticket */
+  --gris-700:#2b2b2b;             /* fondo de la app, inputs */
+  --gris-600:#363636;             /* cards, superficies elevadas */
+  --gris-500:#3a3a3a;             /* bordes */
+  --gris-400:#555;                /* botón deshabilitado */
+  --gris-300:#777;                /* placeholders */
+  --gris-250:#888;                /* texto tenue */
+  --gris-200:#aaa;                /* texto suave */
+  --gris-100:#e0dcd4;             /* texto principal */
+
+  /* Blancos translúcidos — capas sobre fondo oscuro.
+     Ventaja sobre un gris fijo: se adaptan a lo que tengan debajo. */
+  --blanco-a04:rgba(255,255,255,.04);
+  --blanco-a06:rgba(255,255,255,.06);
+  --blanco-a08:rgba(255,255,255,.08);
+  --blanco-a10:rgba(255,255,255,.10);
+
+  /* Estados */
+  --rojo-500:#c0392b;             /* error, deuda, anular */
+  --verde-500:#8fcb9b;            /* pagado */
+  --naranja-500:#c0785a;          /* egresos, dificultad */
+
+  /* Estados de comprobante */
+  --est-pend-bg:#4a2c2c;   --est-pend-fg:#e8a3a3;
+  --est-parc-bg:#4a3a24;   --est-parc-fg:#e0b878;
+  --est-pago-bg:#26402c;   --est-pago-fg:#8fcb9b;
+  --est-presu-bg:#2c3a4a;  --est-presu-fg:#9fc0e0;
+
+  /* ======================================================================
+        2. Semánticos — para usar en la app
+     ====================================================================== */
+
+  /* Fondos */
+  --bg-app:        var(--gris-700);
+  --bg-header:     var(--gris-800);
+  --bg-card:       var(--gris-600);
+  --bg-input:      var(--gris-700);
+  --bg-sutil:      var(--blanco-a06);   /* pills, chips, botones secundarios */
+  --bg-sutil-hover:var(--blanco-a10);
+  --bg-hundido:    var(--gris-800);   /* pestañas inactivas, "fondo bajo" */
+  --bg-hover:      var(--blanco-a06); /* filas de lista al pasar el mouse */
+
+  /* Texto */
+  --text:          var(--gris-100);
+  --text-suave:    var(--gris-200);
+  --text-tenue:    var(--gris-250);
+  --text-titulo:   var(--oro-100);
+  --text-marca:    var(--oro-500);
+  --text-invertido: var(--gris-900);   /* texto oscuro ENCIMA del dorado */
+
+  /* Bordes */
+  --border:        var(--gris-500);
+  --border-sutil:  var(--blanco-a06);
+  --border-marca:  var(--oro-a25);
+  --border-focus:  var(--oro-500);
+
+  /* Estados semánticos */
+  --danger:        var(--rojo-500);
+  --danger-bg:     rgba(192,57,43,.15);
+  --success:       var(--verde-500);
+  --warn:          var(--naranja-500);
+
+  /* Acento (lo "seleccionado": pills activas, tabs, forma de pago elegida) */
+  --acento:        var(--oro-500);
+  --acento-bg:     var(--oro-a15);
+  --acento-border: var(--oro-a25);
+
+  /* Deshabilitado */
+  --bg-disabled:   var(--gris-400);
+  --text-disabled: var(--gris-250);
+
+
+  /* ======================================================================
+     3. ESCALAS - Espaciado, radios y tipografía
+     ====================================================================== */
+
+  /* Espaciado — todo múltiplo de 4 */
+  --sp-1:4px;
+  --sp-2:8px;
+  --sp-3:12px;
+  --sp-4:16px;
+  --sp-5:20px;
+  --sp-6:24px;
+  --sp-8:32px;
+
+  /* Radios */
+  --r-sm:6px;      /* botones chicos, chips */
+  --r-md:8px;      /* inputs, botones */
+  --r-lg:10px;     /* botones grandes, items del catálogo */
+  --r-xl:14px;     /* cards */
+  --r-full:999px;  /* pills */
+
+  /* Tipografía */
+  --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+  --font-serif: Georgia, 'Times New Roman', serif;   /* la de los botones hoy */
+
+  --font-texto:   var(--font-ui);      /* textos, títulos, tablas */
+  --font-control: var(--font-ui);     /* botones e inputs */
+
+  --fs-xs:11px;
+  --fs-sm:12px;
+  --fs-base:13px;
+  --fs-md:14px;
+  --fs-lg:15px;
+  --fs-xl:18px;
+  --fs-2xl:24px;
+
+  --fw-normal:400;
+  --fw-medium:500;
+  --fw-bold:600;
+  --fw-strong:700;
+  --fw-black:800;
+
+  /* Sombras */
+  --sombra-card: 0 8px 30px rgba(0,0,0,.5);
+
+  /* Capas (z-index) — que estén acá evita el z-index:9999 desesperado */
+  --z-header:5;
+  --z-dropdown:20;
+  --z-modal:50;
+  --z-toast:100;
+
+
+}

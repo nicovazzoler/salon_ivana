@@ -2,60 +2,108 @@
 <html lang="es"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="theme-color" content="#1f1f1f"><title>Agenda — Peluquería</title>
+<link rel="stylesheet" href="/static/css/app.css">
 <style>
-  :root{--tinta:#2F4858;--crema:#f7f5f0;--linea:#e2ddd3;--ok:#2e7d4f;--rojo:#c0392b;--oro:#c9a84c;}
-  *{box-sizing:border-box;}
-  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;background:var(--crema);color:#2b2b28;}
-  .wrap{max-width:1100px;margin:0 auto;padding:18px;}
-  input,select{padding:9px;border:1px solid var(--linea);border-radius:8px;font-size:15px;font-family:Georgia,serif;}
-  button{font-family:inherit;cursor:pointer;border:none;border-radius:8px;padding:9px 14px;font-size:14px;font-weight:600;background:var(--tinta);color:#fff;}
-  .seg{display:flex;gap:8px;margin-bottom:14px;}
-  .seg button{flex:1;background:#222020;border:1px solid var(--linea);color:#bbb;}
-  .seg button.on{background:#c9a84c;color:#1f1f1f;border-color:#c9a84c;}
-  .navbar{display:flex;align-items:center;gap:10px;margin-bottom:16px;flex-wrap:wrap;}
-  .navbar .lbl{font-weight:700;color:var(--tinta);flex:1;}
-  .card{background:#fff;border:1px solid var(--linea);border-radius:14px;padding:16px;margin-bottom:16px;}
-  .form-turno{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;}
-  .campo{display:flex;flex-direction:column;gap:4px;}
-  .campo label{font-size:12px;color:#666;}
-  .campo.chico input{width:90px;}
-  /* vista dia */
-  .turno-card{display:flex;gap:12px;align-items:flex-start;background:#fff;border:1px solid var(--linea);border-radius:12px;padding:12px;margin-bottom:8px;}
-  .turno-card.cancelado{opacity:.5;}
-  .turno-hora{font-weight:700;color:var(--tinta);min-width:52px;}
-  .turno-body{flex:1;}
-  .turno-cliente{font-weight:600;}
-  .turno-servicio{font-size:14px;color:#666;}
-  .turno-peluquero,.turno-notas{font-size:12px;color:#999;margin-top:2px;}
-  .turno-actions{display:flex;flex-direction:column;gap:6px;}
-  .turno-actions button{font-size:12px;padding:5px 10px;}
-  .btn-cancelar{background:#fff;border:1px solid var(--rojo);color:var(--rojo);}
-  .sin-turnos{color:#9a9a92;padding:20px;text-align:center;}
-  /* grilla semana */
-  .grid-sem{display:grid;font-size:11px;border-top:1px solid var(--linea);}
-  .gs-cell{border-bottom:1px solid #eee;border-left:1px solid #eee;min-height:32px;padding:2px;}
-  .gs-hora{color:#999;text-align:right;padding:2px 6px 0 0;font-size:11px;}
-  .gs-dayhead{text-align:center;padding:6px 0;font-weight:600;}
-  .gs-dayhead .n{font-size:15px;color:var(--tinta);}
-  .gs-turno{background:#eee4c6;border-left:3px solid var(--oro);border-radius:0 4px 4px 0;padding:2px 4px;cursor:pointer;overflow:hidden;}
-  .gs-turno .c{font-weight:600;color:#7a5c1a;font-size:11px;}
-  .gs-turno .s{color:#999;font-size:10px;}
-  /* grilla mes */
-  .grid-mes{display:grid;grid-template-columns:repeat(5,1fr);border-top:1px solid var(--linea);}
-  .gm-head{text-align:center;color:#999;padding:6px 0;font-size:12px;}
-  .gm-cell{border-bottom:1px solid #eee;border-left:1px solid #eee;min-height:64px;padding:6px;cursor:pointer;}
-  .gm-cell:hover{background:#faf8f3;}
-  .gm-num{font-weight:600;}
-  .gm-num.hoy{background:var(--oro);color:#fff;border-radius:50%;width:22px;height:22px;display:flex;align-items:center;justify-content:center;}
-  .gm-count{font-size:11px;color:#777;margin-top:4px;display:flex;align-items:center;gap:4px;}
-  .gm-dot{width:6px;height:6px;border-radius:50%;background:var(--oro);}
-  .modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.5);display:none;align-items:center;justify-content:center;z-index:20;}
-  .modal-bg.show{display:flex;}
-  .modal{background:#fff;border-radius:14px;padding:20px;max-width:340px;width:90%;color:#2b2b28;}
-  .toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--ok);color:#fff;padding:12px 20px;border-radius:12px;font-weight:700;opacity:0;pointer-events:none;transition:opacity .25s;}
-  .toast.show{opacity:1;}
-  .muted{color:#9a9a92;font-size:13px;}
-</style><link rel="stylesheet" href="/static/theme.css"></head><body>
+  /* --- barra de navegación de fechas --- */
+  .navbar{ display:flex; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:var(--sp-4); }
+  .navbar .lbl{ flex:1; font-weight:var(--fw-strong); color:var(--text-titulo); }
+  .navbar button{ background:var(--bg-sutil); color:var(--text); }  /* ← / Hoy / → discretos */
+
+  /* --- formulario de turno --- */
+  .form-turno{ display:flex; flex-wrap:wrap; align-items:flex-end; gap:10px; }
+  .campo.chico input{ width:90px; }
+
+  /* --- vista DÍA --- */
+  .turno-card{
+    display:flex; align-items:flex-start; gap:var(--sp-3);
+    padding:var(--sp-3); margin-bottom:var(--sp-2);
+    background:var(--bg-card);
+    border:1px solid var(--border);
+    border-radius:12px;
+  }
+  .turno-card.cancelado{ opacity:.5; }
+  .turno-hora{ min-width:52px; font-weight:var(--fw-strong); color:var(--acento); }
+  .turno-body{ flex:1; }
+  .turno-cliente{ font-weight:var(--fw-bold); color:var(--acento); }
+  .turno-servicio{ font-size:var(--fs-md); color:var(--text); }
+  .turno-peluquero,
+  .turno-notas{ margin-top:2px; font-size:var(--fs-sm); color:var(--text-tenue); }
+  .turno-actions{ display:flex; flex-direction:column; gap:6px; }
+  .turno-actions button{ padding:5px 10px; font-size:var(--fs-sm); }
+  .btn-cancelar{ background:transparent; border:1px solid var(--danger); color:var(--danger); }
+  .sin-turnos{ padding:var(--sp-5); text-align:center; color:var(--text-tenue); }
+
+  /* --- vista SEMANA: grilla de horas × días --- */
+  .grid-sem{ display:grid; font-size:var(--fs-xs); border-top:2px solid var(--acento); }
+  .gs-hora{ padding:2px 6px 0 0; text-align:right; font-size:var(--fs-xs); color:var(--text-tenue); }
+  .gs-cell{
+    min-height:32px; padding:2px;
+    border-bottom:1px solid var(--oro-a35);
+    border-left:1px solid var(--oro-a35);
+  }
+  .gs-dayhead{
+    margin:2px; padding:6px 0;
+    text-align:center; font-weight:var(--fw-bold);
+    color:var(--acento);
+    border:2px solid var(--acento);
+    border-radius:var(--r-md);
+  }
+  .gs-dayhead .n{ font-size:var(--fs-lg); color:var(--acento); }
+  .gs-turno{
+    padding:2px 4px;
+    background:var(--oro-100);
+    border-left:3px solid var(--acento);
+    border-radius:0 4px 4px 0;
+    overflow:hidden; cursor:pointer;
+  }
+  .gs-turno .c{ font-size:var(--fs-xs); font-weight:var(--fw-bold); color:var(--gris-900); }
+  .gs-turno .s{ font-size:10px; color:var(--gris-400); }
+
+  /* --- vista MES --- */
+  .grid-mes{ display:grid; grid-template-columns:repeat(5,1fr); border-top:2px solid var(--acento); }
+  .gm-head{
+    margin:2px; padding:6px 0;
+    text-align:center; font-size:var(--fs-sm);
+    color:var(--acento);
+    border:2px solid var(--acento);
+    border-radius:var(--r-md);
+  }
+  .gm-cell{
+    min-height:64px; padding:6px; cursor:pointer;
+    border-bottom:1px solid var(--oro-a35);
+    border-left:1px solid var(--oro-a35);
+  }
+  .gm-cell:hover{ background:var(--bg-hover); }
+  .gm-cell.fuera{ background:var(--blanco-a04); cursor:default; }   /* días de otro mes */
+  .gm-num{ font-weight:var(--fw-bold); }
+  .gm-num.hoy{
+    display:flex; align-items:center; justify-content:center;
+    width:22px; height:22px; border-radius:50%;
+    background:var(--acento); color:var(--text-invertido);
+  }
+  .gm-count{
+    display:flex; align-items:center; gap:var(--sp-1);
+    margin-top:var(--sp-1); font-size:var(--fs-xs); color:var(--text-tenue);
+  }
+  .gm-dot{ width:6px; height:6px; border-radius:50%; background:var(--acento); }
+
+  /* --- modal de detalle --- */
+  .modal-bg{
+    position:fixed; inset:0; z-index:var(--z-modal);
+    display:none; align-items:center; justify-content:center;
+    background:rgba(0,0,0,.6);
+  }
+  .modal-bg.show{ display:flex; }
+  .modal{
+    width:90%; max-width:340px;
+    padding:var(--sp-5);
+    background:var(--bg-card);
+    color:var(--text);
+    border:1px solid var(--border);
+    border-radius:var(--r-xl);
+  }
+</style>
+</head><body>
 <header>
   <span>📅 Agenda</span>
   <nav class="menu">
@@ -176,11 +224,11 @@ async function renderDia(){
     div.innerHTML=`
       <div class="turno-hora">${t.hora}</div>
       <div class="turno-body">
-        <div class="turno-cliente">${t.cliente}${t.cliente_id?` <a href="/cuenta?id=${t.cliente_id}" style="font-size:12px;color:var(--oro);">ver cuenta</a>`:''}</div>
+        <div class="turno-cliente">${t.cliente}${t.cliente_id?` <a href="/cuenta?id=${t.cliente_id}" style="font-size:12px;color:var(--acento);">ver cuenta</a>`:''}</div>
         <div class="turno-servicio">${t.servicio}</div>
         ${t.peluquero?`<div class="turno-peluquero">✂ ${t.peluquero}</div>`:''}
         ${t.notas?`<div class="turno-notas">${t.notas}</div>`:''}
-        ${!t.activo?'<div style="font-size:11px;color:var(--rojo);margin-top:4px;">Cancelado</div>':''}
+        ${!t.activo?'<div style="font-size:11px;color:var(--danger);margin-top:4px;">Cancelado</div>':''}
       </div>
       <div class="turno-actions">
         ${t.activo?`<button class="btn-editar">Editar</button><button class="btn-cancelar">Cancelar</button>`:''}
@@ -258,7 +306,7 @@ async function renderSemana(){
 
 function mostrarTurno(t){
   $("#modalBody").innerHTML=`
-    <div style="font-weight:800;font-size:18px;color:var(--tinta);">${t.hora} — ${t.cliente}</div>
+    <div style="font-weight:800;font-size:18px;color:var(--text-titulo);">${t.hora} — ${t.cliente}</div>
     <div style="margin:8px 0;">${t.servicio}</div>
     ${t.peluquero?`<div class="muted">✂ ${t.peluquero}</div>`:''}
     ${t.notas?`<div class="muted">${t.notas}</div>`:''}
@@ -285,7 +333,7 @@ async function renderMes(){
   while(cursor<=finMes){
     for(let i=0;i<5;i++){
       const d=new Date(cursor); d.setDate(d.getDate()+i);
-      if(d.getMonth()!==mes){ html+=`<div class="gm-cell" style="background:#f7f5f0;cursor:default;"></div>`; continue; }
+      if(d.getMonth()!==mes){ html+=`<div class="gm-cell fuera"></div>`; continue; }
       const f=iso(d), c=conteo[f]||0, esHoy=(f===hoyStr());
       html+=`<div class="gm-cell" data-f="${f}">
         <div class="gm-num ${esHoy?'hoy':''}">${d.getDate()}</div>

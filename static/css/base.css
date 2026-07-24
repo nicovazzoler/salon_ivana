@@ -1,0 +1,112 @@
+/* ==========================================================================
+   BASE — reset y estilos por defecto de las etiquetas HTML
+   Acá NO van clases. Solo elementos: body, input, button, table, h2...
+   ========================================================================== */
+
+*{
+  box-sizing:border-box;                  /* padding y border no agrandan el elemento */
+  -webkit-tap-highlight-color:transparent; /* saca el flash azul al tocar en tablet */
+}
+
+body{
+  margin:0;
+  font-family:var(--font-texto);
+  font-size:var(--fs-md);
+  background:var(--bg-app);
+  color:var(--text);
+}
+
+/* ----- Títulos ----- */
+h1,h2,h3{
+  margin:0 0 var(--sp-3);
+  color:var(--text-titulo);
+  font-weight:var(--fw-bold);
+}
+h2{ font-size:var(--fs-xl); }
+
+/* ----- Formularios ----- */
+label{
+  color:var(--text-suave);
+  font-size:var(--fs-sm);
+}
+
+input,select,textarea{
+  padding:9px;
+  border:1px solid var(--border);
+  border-radius:var(--r-md);
+  font-size:var(--fs-lg);
+  font-family:var(--font-control);
+  background:var(--bg-input);
+  color:var(--text);
+}
+input::placeholder,
+textarea::placeholder{
+  color:var(--gris-300);
+}
+input:focus,select:focus,textarea:focus{
+  border-color:var(--border-focus);
+  outline:none;
+}
+input:disabled,select:disabled{
+  opacity:.5;
+  cursor:not-allowed;
+}
+
+/* ----- Botones ----- */
+button{
+  font-family:var(--font-control);
+  font-size:var(--fs-md);
+  font-weight:var(--fw-bold);
+  padding:9px 14px;
+  border:none;
+  border-radius:var(--r-md);
+  cursor:pointer;
+  background:var(--acento);
+  color:var(--text-invertido);
+}
+
+/* ----- Botones deshabilitados ----- */ 
+button:disabled{
+  background:var(--bg-disabled);
+  color:var(--text-disabled);
+  cursor:not-allowed;
+  border-color:var(--bg-disabled);
+}
+
+/* ----- Tablas ----- */
+table{
+  width:100%;
+  border-collapse:collapse;
+  font-size:var(--fs-md);
+  color:var(--text);
+}
+th,td{
+  padding:var(--sp-2) 6px;
+  text-align:left;
+  vertical-align:middle;
+}
+th{
+  color:var(--text-marca);
+  font-size:var(--fs-sm);
+  text-transform:uppercase;
+  letter-spacing:.03em;
+  border-bottom:1px solid var(--blanco-a10);
+}
+td{
+  border-bottom:1px solid var(--border-sutil);
+}
+
+/* ----- Varios ----- */
+hr{
+  border:none;
+  border-top:1px solid var(--border-sutil);
+  margin:var(--sp-4) 0;
+}
+
+a{ color:var(--text-marca); }
+
+/* ----- Scrollbar ----- */
+::-webkit-scrollbar{ width:8px; height:8px; }
+::-webkit-scrollbar-track{ background:var(--bg-app); }
+::-webkit-scrollbar-thumb{ background:var(--gris-400); border-radius:4px; }
+::-webkit-scrollbar-thumb:hover{ background:var(--gris-300); }

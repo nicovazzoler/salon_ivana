@@ -2,48 +2,108 @@
 <html lang="es"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="theme-color" content="#1f1f1f"><title>Reportes — Peluquería</title>
+<link rel="stylesheet" href="/static/css/app.css">
 <style>
-  :root{--tinta:#2F4858;--tinta2:#3d5a6c;--crema:#f7f5f0;--linea:#e2ddd3;--ok:#2e7d4f;--rojo:#c0392b;}
-  *{box-sizing:border-box;}
-  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;background:var(--crema);color:#2b2b28;}
-  header .tit{display:flex;align-items:center;gap:10px;}
-  .wrap{max-width:1100px;margin:0 auto;padding:18px;}
-  .card{background:#fff;border:1px solid var(--linea);border-radius:14px;padding:18px;margin-bottom:18px;}
-  .card h2{margin:0 0 12px;font-size:18px;color:var(--tinta);}
-  .periodo{display:flex;gap:6px;align-items:center;flex-wrap:wrap;}
-  .periodo button[data-d]{padding:6px 12px;border:1px solid var(--linea);border-radius:9px;background:#fff;cursor:pointer;font-weight:600;font-size:13px;}
-  .periodo button[data-d].on{background:var(--tinta);color:#fff;border-color:var(--tinta);}
-  .rango{display:flex;gap:5px;align-items:center;font-size:13px;color:#777;margin-left:6px;flex-wrap:wrap;}
-  .rango input{padding:6px;border:1px solid var(--linea);border-radius:8px;font-size:13px;}
-  .rango .aplicar{padding:6px 12px;border:none;border-radius:8px;background:var(--ok);color:#fff;cursor:pointer;font-weight:600;font-size:13px;}
-  .controles{display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin-bottom:12px;padding-top:10px;border-top:1px dashed var(--linea);}
-  .segmentado{display:flex;gap:0;border:1px solid var(--linea);border-radius:9px;overflow:hidden;}
-  .segmentado button{padding:7px 14px;border:none;background:#fff;cursor:pointer;font-weight:600;font-size:13px;color:var(--tinta);}
-  .segmentado button.on{background:var(--tinta);color:#fff;}
-  .topn{font-size:13px;color:#555;font-weight:600;display:flex;align-items:center;gap:6px;}
-  .topn input{width:64px;padding:7px;border:1px solid var(--linea);border-radius:8px;font-size:14px;text-align:center;}
-  .chartbox{position:relative;height:300px;}
-  .nums{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:10px;}
-  .num{background:var(--crema);border-radius:12px;padding:14px;text-align:center;}
-  .num .lbl{font-size:12px;color:#6b6b63;}
-  .num .val{font-size:20px;font-weight:800;margin-top:4px;color:var(--tinta);}
-  .desg{display:flex;gap:20px;flex-wrap:wrap;font-size:14px;color:#555;}
-  .desg div{flex:1;min-width:200px;}
-  .desg b{color:var(--tinta);}
-  .barra-excel{margin-bottom:12px;}
-  .rank{margin-top:16px;}
-  .rank-row{display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid var(--linea);cursor:pointer;text-decoration:none;color:inherit;}
-  .rank-row:hover{background:rgba(201,168,76,.06);}
-  .rank-nombre{flex:0 0 34%;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-  .rank-bar-wrap{flex:1;background:#2b2b2b;border-radius:6px;height:22px;overflow:hidden;display:block;}
-  .rank-bar{display:block;height:100%;background:#c9a84c;border-radius:6px;min-width:2px;}
-  .rank-monto{flex:0 0 auto;font-size:14px;font-weight:700;min-width:80px;text-align:right;}
-  table{width:100%;border-collapse:collapse;font-size:13px;}
-  th,td{padding:7px 6px;border-bottom:1px solid var(--linea);text-align:left;}
-  th{color:var(--tinta);font-size:11px;text-transform:uppercase;}
-  td.money,th.money{text-align:right;}
-  .muted{color:#9a9a92;}
-</style><link rel="stylesheet" href="/static/theme.css"></head><body>
+  /* --- filtro de período (manda sobre resumen, gráfico y registro) --- */
+  .periodo{ display:flex; align-items:center; flex-wrap:wrap; gap:6px; }
+  .periodo button[data-d]{
+    padding:6px 12px;
+    background:var(--bg-sutil);
+    border:1px solid var(--border);
+    border-radius:9px;
+    font-size:var(--fs-base);
+    color:var(--text-suave);
+  }
+  .periodo button[data-d].on{
+    background:var(--acento);
+    border-color:var(--acento);
+    color:var(--text-invertido);
+  }
+  .rango{
+    display:flex; align-items:center; flex-wrap:wrap; gap:5px;
+    margin-left:6px;
+    font-size:var(--fs-base);
+    color:var(--text-tenue);
+  }
+  .rango input{ padding:6px; font-size:var(--fs-base); }
+  .rango .aplicar{ padding:6px 12px; font-size:var(--fs-base); }
+
+  /* --- controles del gráfico --- */
+  .controles{
+    display:flex; align-items:center; flex-wrap:wrap; gap:14px;
+    margin-bottom:var(--sp-3);
+    padding-top:10px;
+    border-top:1px dashed var(--border);
+  }
+
+  /* Segmentado "pegado": un bloque con los botones adentro. */
+  .segmentado{
+    display:flex;
+    border:1px solid var(--border);
+    border-radius:9px;
+    overflow:hidden;           /* recorta las esquinas de los botones internos */
+  }
+  .segmentado button{
+    padding:7px 14px;
+    border-radius:0;
+    background:var(--bg-sutil);
+    color:var(--text-suave);
+    font-size:var(--fs-base);
+  }
+  .segmentado button.on{ background:var(--acento); color:var(--text-invertido); }
+
+  .topn{
+    display:flex; align-items:center; gap:6px;
+    font-size:var(--fs-base); font-weight:var(--fw-bold);
+    color:var(--text-suave);
+  }
+  .topn input{ width:64px; padding:7px; font-size:var(--fs-md); text-align:center; }
+
+  .chartbox{ position:relative; height:300px; }
+
+  /* Los números acá son un punto más chicos que en Caja */
+  .num .val{ font-size:20px; }
+
+  /* --- ranking de deudores --- */
+  .barra-excel{ margin-bottom:var(--sp-3); }
+  .rank{ margin-top:var(--sp-4); }
+  .rank-row{
+    display:flex; align-items:center; gap:10px;
+    padding:7px 0;
+    border-bottom:1px solid var(--border);
+    text-decoration:none; color:inherit; cursor:pointer;
+  }
+  .rank-row:hover{ background:var(--oro-a08); }
+  .rank-nombre{
+    flex:0 0 34%;
+    font-size:var(--fs-md);
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+  }
+  .rank-bar-wrap{
+    flex:1; display:block;
+    height:22px;
+    background:var(--bg-app);
+    border-radius:var(--r-sm);
+    overflow:hidden;              /* la barra interna no se escapa de las esquinas */
+  }
+  .rank-bar{
+    display:block; height:100%;
+    min-width:2px;                /* que se vea aunque el monto sea ínfimo */
+    background:var(--acento);
+    border-radius:var(--r-sm);
+  }
+  .rank-monto{
+    flex:0 0 auto; min-width:80px;
+    font-size:var(--fs-md); font-weight:var(--fw-strong);
+    text-align:right;
+  }
+
+  /* --- tabla del registro: más densa que la de Caja --- */
+  table{ font-size:var(--fs-base); }
+  th,td{ padding:7px 6px; }
+  th{ font-size:var(--fs-xs); }
+</style>
+</head><body>
 <header>
   <span class="tit">📊 Reportes</span>
   <nav class="menu">
@@ -95,7 +155,7 @@
       <div class="num"><div class="lbl">Clientes con saldo: </div><div class="val" id="deudaTickets">—</div></div>
     </div>
     <div class="rank" id="rankDeuda"></div>
-    <button id="verTodos" style="display:none;margin-top:10px;background:#2b2b2b;border:1px solid #3a3a3a;color:#e0dcd4;">Ver todos</button>
+    <button id="verTodos" class="b-out" style="display:none;margin-top:10px;">Ver todos</button>
   </div>
 
   <div class="card" id="cReg">
@@ -110,6 +170,13 @@
 <script>
 requireDueno(); pintarNav();
 const $=s=>document.querySelector(s);
+// Chart.js pinta sobre un canvas: el CSS no lo alcanza.
+// Le pasamos los colores leyéndolos de los tokens, para no repetir hex acá.
+if(typeof Chart !== "undefined"){
+  const css = getComputedStyle(document.documentElement);
+  Chart.defaults.color       = css.getPropertyValue('--gris-200').trim();  // texto de ejes y leyenda
+  Chart.defaults.borderColor = css.getPropertyValue('--gris-500').trim();  // líneas de la grilla
+}
 const money=n=>"$"+(n||0).toLocaleString("es-AR");
 const fmtNum=n=>(n||0).toLocaleString("es-AR");
 const PALETA=["#c9a84c","#e8d5a3","#c0785a","#8b6914","#d4a843","#a0855b","#e6c97a","#b89a3e",
@@ -195,12 +262,12 @@ async function loadReg(s){
   let h='<table><thead><tr><th>Fecha</th><th>Hora</th><th>Tipo</th><th>Comprobante</th><th>Cliente</th><th>Detalle</th><th>Pago</th><th class="money">Monto</th></tr></thead><tbody>';
   movs.forEach(m=>{
     const esI = m.clase==="ingreso";
-    const etiqueta = esI ? '<span style="color:var(--ok);font-weight:700;">Ingreso</span>'
-                         : '<span style="color:var(--rojo);font-weight:700;">Egreso</span>';
+    const etiqueta = esI ? '<span style="color:var(--acento);font-weight:700;">Ingreso</span>'
+                         : '<span style="color:var(--danger);font-weight:700;">Egreso</span>';
     const monto = (esI?"+":"−")+money(m.monto).slice(1);
     h+=`<tr><td>${m.fecha}</td><td>${m.hora}</td><td>${etiqueta}</td><td>${m.comprobante}</td>
         <td>${m.cliente}</td><td>${m.detalle}</td><td>${m.forma_pago}</td>
-        <td class="money" style="color:${esI?'var(--ok)':'var(--rojo)'};">${monto}</td></tr>`;
+        <td class="money" style="color:${esI?'var(--acento)':'var(--danger)'};">${monto}</td></tr>`;
   });
   h+=`</tbody></table><p class="muted" style="margin-top:8px;">${movs.length} movimiento(s)${movs.length>=1000?' — mostrando los 1000 más recientes':''}.</p>`;
   $("#reg").innerHTML=h;
