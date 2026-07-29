@@ -4,7 +4,7 @@ from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import text, inspect, func
 from pydantic import BaseModel
-from datetime import datetime, date, timedelta
+from datetime import datetime, date, timedelta, timezone
 from openpyxl import Workbook
 import os, bisect, io
 
@@ -118,6 +118,14 @@ class NombreIn(BaseModel):
     nombre: str
 class TurnoIn(BaseModel):
     fecha: str | None = None; hora: str; cliente: str; cliente_id: int | None = None; servicio: str; peluquero: str | None = None; notas: str | None = None
+
+# ---------- Huso horario ----------
+
+def fecha_hora_now_utc():
+    return datetime.now(timezone.utc)
+
+def hora_argentina(dt):
+    return dt - timedelta(hours=3)
 
 # ---------- auth ----------
 def usuario_actual(authorization: str = Header(default="")):
@@ -503,7 +511,7 @@ def cuenta_cliente(cliente_id: int, _ = Depends(usuario_actual), db: Session = D
 
 @app.get("/api/clientes/{cliente_id}/proximo-turno")
 def proximo_turno(cliente_id: int, _ = Depends(usuario_actual), db: Session = Depends(get_db)):
-    hoy = datetime.now().strftime("%Y-%m-%d")
+    hoy = hora_argentina(fecha_hora_now_utc).strftime("%Y-%m-%d")
     t = db.query(models.Turno).filter(
         models.Turno.cliente_id == cliente_id,
         models.Turno.activo == True,
@@ -709,7 +717,7 @@ def crear_venta(venta: VentaIn, user = Depends(usuario_actual), db: Session = De
     return {"id": v.id, "total": v.total, "fecha": v.fecha.isoformat()}
 
 def _venta_detalle(v):
-    return {"id": v.id, "hora": v.fecha.strftime("%H:%M"), "total": v.total,
+    return {"id": v.id, "hora": hora_argentina(v.fecha).strftime("%H:%M"), "total": v.total,
             "forma_pago": v.forma_pago, "alias": v.alias,
             "cliente": v.cliente, "peluquero": v.peluquero,
             "lineas": [{"item_id": l.item_id, "nombre": l.nombre, "cantidad": l.cantidad,
@@ -725,7 +733,7 @@ def _pago_detalle(p):
         ref = f"{pref}-{comp.numero:05d}"
         if comp.cliente_nombre:
             ref += f" · {comp.cliente_nombre}"
-    return {"id": p.id, "hora": p.fecha.strftime("%H:%M"), "total": p.monto,
+    return {"id": p.id, "hora": hora_argentina(p.fecha).strftime("%H:%M"), "total": p.monto,
             "forma_pago": p.forma_pago, "alias": p.alias, "ref": ref,
             "comprobante_id": comp.id if comp else None}
 
@@ -800,7 +808,7 @@ def editar_venta(venta_id: int, venta: VentaIn, user = Depends(usuario_actual), 
 @app.post("/api/egresos")
 def crear_egreso(e: EgresoIn, _ = Depends(usuario_actual), db: Session = Depends(get_db)):
     eg = models.Egreso(tipo=e.tipo, concepto=e.concepto, monto=e.monto,
-                       forma_pago=e.forma_pago, notas=e.notas, fecha=datetime.now())
+                       forma_pago=e.forma_pago, notas=e.notas, fecha=fecha_hora_now_utc())
     db.add(eg); db.commit(); db.refresh(eg); return {"id": eg.id}
 
 @app.get("/api/egresos/dia")
@@ -808,7 +816,7 @@ def egresos_dia(_ = Depends(usuario_actual), db: Session = Depends(get_db)):
     ini, fin = _rango_dia(date.today())
     es = db.query(models.Egreso).filter(models.Egreso.fecha >= ini, models.Egreso.fecha < fin
          ).order_by(models.Egreso.id.desc()).all()
-    return [{"id": e.id, "hora": e.fecha.strftime("%H:%M"), "tipo": e.tipo, "concepto": e.concepto,
+    return [{"id": e.id, "hora": hora_argentina(e.fecha).strftime("%H:%M"), "tipo": e.tipo, "concepto": e.concepto,
              "monto": e.monto, "forma_pago": e.forma_pago} for e in es]
 
 @app.put("/api/egresos/{egreso_id}")
@@ -855,7 +863,7 @@ def caja_dia(fecha: str | None = None, _ = Depends(usuario_actual), db: Session 
             "fondo": fondo, "efectivo_ventas": efectivo_ventas, "efectivo_egresos": efectivo_egresos,
             "efectivo_esperado": fondo + efectivo_ventas - efectivo_egresos,
             "ventas_detalle": [_pago_detalle(p) for p in pagos],
-            "egresos_detalle": [{"id": e.id, "hora": e.fecha.strftime("%H:%M"), "tipo": e.tipo,
+            "egresos_detalle": [{"id": e.id, "hora": hora_argentina(e.fecha).strftime("%H:%M"), "tipo": e.tipo,
                                  "concepto": e.concepto, "monto": e.monto, "forma_pago": e.forma_pago}
                                 for e in egresos]}
 
@@ -1028,7 +1036,7 @@ def reportes_excel(dias: int = 30, desde: str | None = None, hasta: str | None =
     ini, fin = _ventana(dias, desde, hasta)
     for m in reversed(_movimientos(db, ini, fin)):
         signo = 1 if m["clase"] == "ingreso" else -1
-        ws.append([m["fecha"].strftime("%d/%m/%Y"), m["fecha"].strftime("%H:%M"),
+        ws.append([hora_argentina(m["fecha"]).strftime("%d/%m/%Y"), hora_argentina(m["fecha"]).strftime("%H:%M"),
                    "Ingreso" if m["clase"] == "ingreso" else "Egreso",
                    m["comprobante"], m["cliente"], m["detalle"], m["forma_pago"],
                    signo * m["monto"]])
@@ -1051,9 +1059,9 @@ def _resolver_ventana(dias, desde, hasta, db):
                      .filter(models.Comprobante.tipo == "ticket",
                              models.Comprobante.activo == True)
                      .order_by(models.Comprobante.fecha.asc()).first())
-        ini = primera.fecha if primera else datetime.now() - timedelta(days=30)
+        ini = primera.fecha if primera else fecha_hora_now_utc() - timedelta(days=30)
     if fin is None:
-        fin = datetime.now() + timedelta(days=1)
+        fin = fecha_hora_now_utc() + timedelta(days=1)
     if fin <= ini:
         fin = ini + timedelta(days=1)
     return ini, fin
@@ -1140,7 +1148,7 @@ def ventas_registro(desde: str | None = None, hasta: str | None = None,
     out = []
     for v in vs:
         d = _venta_detalle(v)
-        d["fecha"] = v.fecha.strftime("%d/%m/%Y")
+        d["fecha"] = hora_argentina(v.fecha).strftime("%d/%m/%Y")
         out.append(d)
     return out
 
@@ -1149,7 +1157,7 @@ def registro_movimientos(desde: str | None = None, hasta: str | None = None,
                          dias: int = 0,
                          _ = Depends(solo_dueno), db: Session = Depends(get_db)):
     ini, fin = _ventana(dias, desde, hasta)
-    return [{"fecha": m["fecha"].strftime("%d/%m/%Y"), "hora": m["fecha"].strftime("%H:%M"),
+    return [{"fecha": hora_argentina(m["fecha"]).strftime("%d/%m/%Y"), "hora": hora_argentina(m["fecha"]).strftime("%H:%M"),
              "clase": m["clase"], "comprobante": m["comprobante"], "cliente": m["cliente"],
              "detalle": m["detalle"], "forma_pago": m["forma_pago"], "monto": m["monto"]}
             for m in _movimientos(db, ini, fin)[:1000]]
@@ -1158,7 +1166,7 @@ def registro_movimientos(desde: str | None = None, hasta: str | None = None,
 
 @app.post("/api/turnos")
 def crear_turno(turno: TurnoIn, _ = Depends(usuario_actual), db: Session = Depends(get_db)):
-    fecha = turno.fecha or datetime.now().strftime("%Y-%m-%d")
+    fecha = turno.fecha or hora_argentina(fecha_hora_now_utc()).strftime("%Y-%m-%d")
     nuevo = models.Turno(fecha=fecha, hora=turno.hora, cliente=turno.cliente, cliente_id=turno.cliente_id,
                          servicio=turno.servicio, peluquero=turno.peluquero, notas=turno.notas)
     db.add(nuevo)
@@ -1196,7 +1204,7 @@ def listar_turnos(fecha: str | None = None, desde: str | None = None, hasta: str
     if desde and hasta:
         q = q.filter(models.Turno.fecha >= desde, models.Turno.fecha <= hasta)
     else:
-        if not fecha: fecha = datetime.now().strftime("%Y-%m-%d")
+        if not fecha: fecha = hora_argentina(fecha_hora_now_utc()).strftime("%Y-%m-%d")
         q = q.filter(models.Turno.fecha == fecha)
     turnos = q.all()
     turnos.sort(key=lambda t: (t.fecha, t.hora))
@@ -1241,7 +1249,7 @@ def backup_completo(_ = Depends(solo_dueno), db: Session = Depends(get_db)):
     import json as _json
 
     data = {
-        "fecha_backup": datetime.now().isoformat(),
+        "fecha_backup": hora_argentina(fecha_hora_now_utc()).isoformat(),
         "items": [
             {"id": i.id, "categoria": i.categoria, "nombre": i.nombre, "precio": i.precio,
              "es_producto": i.es_producto, "stock_actual": i.stock_actual,
@@ -1249,7 +1257,7 @@ def backup_completo(_ = Depends(solo_dueno), db: Session = Depends(get_db)):
             for i in db.query(models.Item).all()
         ],
         "ventas": [
-            {"id": v.id, "fecha": v.fecha.isoformat(), "forma_pago": v.forma_pago,
+            {"id": v.id, "fecha": hora_argentina(v.fecha).isoformat(), "forma_pago": v.forma_pago,
              "alias": v.alias, "cliente": v.cliente, "peluquero": v.peluquero, "total": v.total,
              "lineas": [
                  {"id": l.id, "item_id": l.item_id, "nombre": l.nombre,
@@ -1260,7 +1268,7 @@ def backup_completo(_ = Depends(solo_dueno), db: Session = Depends(get_db)):
             for v in db.query(models.Venta).order_by(models.Venta.fecha).all()
         ],
         "egresos": [
-            {"id": e.id, "fecha": e.fecha.isoformat(), "tipo": e.tipo,
+            {"id": e.id, "fecha": hora_argentina(e.fecha).isoformat(), "tipo": e.tipo,
              "concepto": e.concepto, "monto": e.monto,
              "forma_pago": e.forma_pago, "notas": e.notas}
             for e in db.query(models.Egreso).order_by(models.Egreso.fecha).all()
@@ -1297,7 +1305,7 @@ def backup_completo(_ = Depends(solo_dueno), db: Session = Depends(get_db)):
             for t in db.query(models.Turno).order_by(models.Turno.fecha, models.Turno.hora).all()
         ],
         "movimientos_stock": [
-            {"id": m.id, "item_id": m.item_id, "fecha": m.fecha.isoformat(),
+            {"id": m.id, "item_id": m.item_id, "fecha": hora_argentina(m.fecha).isoformat(),
              "tipo": m.tipo, "antes": m.antes, "despues": m.despues,
              "cambio": m.cambio, "motivo": m.motivo, "usuario": m.usuario}
             for m in db.query(models.MovimientoStock).order_by(models.MovimientoStock.fecha).all()
@@ -1305,7 +1313,7 @@ def backup_completo(_ = Depends(solo_dueno), db: Session = Depends(get_db)):
         "clientes": [
             {"id": c.id, "nombre": c.nombre, "telefono": c.telefono, "alias": c.alias,
              "notas": c.notas, "direccion": c.direccion, "dni": c.dni,
-             "activo": c.activo, "creado": c.creado.isoformat() if c.creado else None}
+             "activo": c.activo, "creado": hora_argentina(c.creado).isoformat() if c.creado else None}
             for c in db.query(models.Cliente).all()
         ],
         "descuentos": [
@@ -1314,7 +1322,7 @@ def backup_completo(_ = Depends(solo_dueno), db: Session = Depends(get_db)):
             for d in db.query(models.Descuento).all()
         ],
         "comprobantes": [
-            {"id": c.id, "tipo": c.tipo, "numero": c.numero, "fecha": c.fecha.isoformat(),
+            {"id": c.id, "tipo": c.tipo, "numero": c.numero, "fecha": hora_argentina(c.fecha).isoformat(),
              "cliente_id": c.cliente_id, "cliente_nombre": c.cliente_nombre,
              "peluquero": c.peluquero, "total_lista": c.total_lista,
              "extra_dificultad": c.extra_dificultad, "descuento_pct": c.descuento_pct,
@@ -1331,7 +1339,7 @@ def backup_completo(_ = Depends(solo_dueno), db: Session = Depends(get_db)):
             for c in db.query(models.Comprobante).order_by(models.Comprobante.fecha).all()
         ],
         "pagos": [
-            {"id": p.id, "comprobante_id": p.comprobante_id, "fecha": p.fecha.isoformat(),
+            {"id": p.id, "comprobante_id": p.comprobante_id, "fecha": hora_argentina(p.fecha).isoformat(),
              "monto": p.monto, "saldado": p.saldado, "forma_pago": p.forma_pago,
              "alias": p.alias, "desc_aplicado": p.desc_aplicado}
             for p in db.query(models.Pago).order_by(models.Pago.fecha).all()
@@ -1340,7 +1348,7 @@ def backup_completo(_ = Depends(solo_dueno), db: Session = Depends(get_db)):
 
     contenido = _json.dumps(data, ensure_ascii=False, indent=2)
     buffer = io.BytesIO(contenido.encode("utf-8"))
-    nombre = f"backup_pelu_{datetime.now().strftime('%Y%m%d_%H%M')}.json"
+    nombre = f"backup_pelu_{hora_argentina(fecha_hora_now_utc()).strftime('%Y%m%d_%H%M')}.json"
 
     return StreamingResponse(
         buffer,

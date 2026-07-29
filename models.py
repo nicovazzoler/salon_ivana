@@ -1,7 +1,15 @@
 from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey, Numeric
 from sqlalchemy.orm import relationship
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from database import Base
+
+# ---------- Huso horario ----------
+
+def fecha_hora_now_utc():
+    return datetime.now(timezone.utc)
+
+def hora_argentina(dt):
+    return dt - timedelta(hours=3)
 
 class Item(Base):
     """Cada cosa vendible: servicio, producto o servicio de peluqueria."""
@@ -20,7 +28,7 @@ class Venta(Base):
     """Cabecera de una venta (puede tener varias lineas)."""
     __tablename__ = "ventas"
     id = Column(Integer, primary_key=True)
-    fecha = Column(DateTime, default=datetime.now)
+    fecha = Column(DateTime, default=fecha_hora_now_utc)
     forma_pago = Column(String)
     alias = Column(String)        # alias de transferencia (opcional)
     cliente = Column(String)      # nombre del cliente (opcional)
@@ -43,7 +51,7 @@ class VentaLinea(Base):
 class Egreso(Base):
     __tablename__ = "egresos"
     id = Column(Integer, primary_key=True)
-    fecha = Column(DateTime, default=datetime.now)
+    fecha = Column(DateTime, default=fecha_hora_now_utc)
     tipo = Column(String)
     concepto = Column(String)
     monto = Column(Integer)
@@ -98,7 +106,7 @@ class Cliente(Base):
     direccion = Column(String)
     dni = Column(String)                 
     activo = Column(Boolean, default=True)
-    creado = Column(DateTime, default=datetime.now)
+    creado = Column(DateTime, default=fecha_hora_now_utc)
 
 class Turno(Base):
     """Turnos / citas agendadas."""
@@ -118,7 +126,7 @@ class MovimientoStock(Base):
     __tablename__ = "movimientos_stock"
     id = Column(Integer, primary_key=True)
     item_id = Column(Integer, ForeignKey("items.id"), nullable=False)
-    fecha = Column(DateTime, default=datetime.now)
+    fecha = Column(DateTime, default=fecha_hora_now_utc)
     tipo = Column(String, nullable=False)
     antes = Column(Integer)
     despues = Column(Integer)
@@ -132,7 +140,7 @@ class Comprobante(Base):
     id = Column(Integer, primary_key=True)
     tipo = Column(String, nullable=False)        # "ticket" o "presupuesto"
     numero = Column(Integer, nullable=False)      
-    fecha = Column(DateTime, default=datetime.now)
+    fecha = Column(DateTime, default=fecha_hora_now_utc)
     cliente_id = Column(Integer, ForeignKey("clientes.id"))  # opcional (puede ser None: mostrador)
     cliente_nombre = Column(String)               # snapshot del nombre al momento
     peluquero = Column(String)                    
@@ -165,7 +173,7 @@ class Pago(Base):
     __tablename__ = "pagos"
     id = Column(Integer, primary_key=True)
     comprobante_id = Column(Integer, ForeignKey("comprobantes.id"), nullable=False)
-    fecha = Column(DateTime, default=datetime.now)
+    fecha = Column(DateTime, default=fecha_hora_now_utc)
     monto = Column(Integer, nullable=False)      # lo que entró (a la caja)
     saldado = Column(Integer)                     # deuda (a precio transferencia) que cubre este pago
     forma_pago = Column(String)
