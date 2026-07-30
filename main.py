@@ -511,7 +511,7 @@ def cuenta_cliente(cliente_id: int, _ = Depends(usuario_actual), db: Session = D
 
 @app.get("/api/clientes/{cliente_id}/proximo-turno")
 def proximo_turno(cliente_id: int, _ = Depends(usuario_actual), db: Session = Depends(get_db)):
-    hoy = hora_argentina(fecha_hora_now_utc).strftime("%Y-%m-%d")
+    hoy = hora_argentina(fecha_hora_now_utc()).strftime("%Y-%m-%d")
     t = db.query(models.Turno).filter(
         models.Turno.cliente_id == cliente_id,
         models.Turno.activo == True,
@@ -662,6 +662,16 @@ def registrar_pago(comp_id: int, pago: PagoIn, _ = Depends(usuario_actual), db: 
     db.add(models.Pago(comprobante_id=comp.id, monto=pago.monto, saldado=saldado,
                        forma_pago=pago.forma_pago, alias=pago.alias, desc_aplicado=desc))
     db.commit(); return estado_comprobante(db, comp)
+
+@app.delete("/api/comprobantes/{comp_id}")
+def anular_comprobante(comp_id: int, _ = Depends(usuario_actual), db: Session = Depends(get_db)):
+    comp = db.get(models.Comprobante, comp_id)
+    if not comp or not comp.activo:
+        raise HTTPException(404, "Comprobante no existe")
+    db.query(models.Pago).filter(models.Pago.comprobante_id == comp.id).delete()
+    comp.activo = False
+    db.commit()
+    return {"ok": True}
 
 @app.delete("/api/pagos/{pago_id}")
 def borrar_pago(pago_id: int, _ = Depends(usuario_actual), db: Session = Depends(get_db)):

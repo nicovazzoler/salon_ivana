@@ -74,6 +74,7 @@ async function cargar(){
           <div class="sub">${fecha} · ${quien} · ${formaTxt} · ${fmt(comp.ingresado + comp.saldo)}</div>
         </div>
         <span class="badge ${comp.estado}">${comp.estado}</span>
+        <button class="btnAnular b-del" data-id="${comp.id}">Anular</button>
       </div>
       <div class="detalle-box"></div>
       ${comp.tipo==="presupuesto"
@@ -118,6 +119,13 @@ async function cargar(){
         ${d.tipo==="ticket"?`<div style="font-weight:700;margin:10px 0 6px;">Pagos</div>${pagos}`:''}`;
       box.style.display="block";
     };
+    div.querySelector(".btnAnular").onclick = async (e)=>{
+      e.stopPropagation();
+      if(!confirm("¿Anular este comprobante?")) return;
+      const r = await authFetch("/api/comprobantes/"+comp.id, {method:"DELETE"});
+      if(r.ok){ toast("Comprobante anulado"); cargar(); }
+      else { toast("No se pudo anular"); }
+    };
     if(comp.tipo==="presupuesto" && !comp.convertido_a){
       div.querySelector(".btnConv").onclick=async(e)=>{
         e.stopPropagation();
@@ -131,8 +139,9 @@ async function cargar(){
     }
     cont.appendChild(div);
   });
+  
 }
-
+    
 $("#tabTicket").onclick=()=>{ tipo="ticket"; $("#tabTicket").classList.add("on"); $("#tabPresu").classList.remove("on"); cargar(); };
 $("#tabPresu").onclick=()=>{ tipo="presupuesto"; $("#tabPresu").classList.add("on"); $("#tabTicket").classList.remove("on"); cargar(); };
 
