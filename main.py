@@ -641,6 +641,10 @@ def crear_comprobante(c: ComprobanteIn, user = Depends(usuario_actual), db: Sess
         db.add(models.ComprobanteLinea(comprobante_id=comp.id, item_id=item.id, nombre=item.nombre,
             cantidad=ln.cantidad, precio_unit=precio, precio_efectivo=item.precio,
             dificultad=ln.dificultad, subtotal=sub))
+        # descontar stock si es producto 
+        if item.es_producto and item.stock_actual is not None:
+            log_stock(db, item, "venta", -ln.cantidad, f"Comprobante #{comp.id}", user.get("usuario","?"))
+            item.stock_actual -= ln.cantidad
     comp.total_lista = total
     comp.extra_dificultad = extra_total
     db.commit(); db.refresh(comp)
@@ -669,6 +673,13 @@ def anular_comprobante(comp_id: int, _ = Depends(usuario_actual), db: Session = 
     if not comp or not comp.activo:
         raise HTTPException(404, "Comprobante no existe")
     db.query(models.Pago).filter(models.Pago.comprobante_id == comp.id).delete()
+    # devolver stock de los productos del comprobante
+    for l in comp.lineas:
+        if l.item_id:
+            it = db.get(models.Item, l.item_id)
+            if it and it.es_producto and it.stock_actual is not None:
+                log_stock(db, it, "anulacion", l.cantidad, f"Anulación comprobante #{comp.id}", "sistema")
+                it.stock_actual += l.cantidad
     comp.activo = False
     db.commit()
     return {"ok": True}
