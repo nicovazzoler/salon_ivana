@@ -17,6 +17,12 @@
   }
   .comp-head .sub{ margin-top:3px; font-size:var(--fs-base); color:var(--text); }
 
+  .comp-acciones{
+    display:flex;
+    align-items:center;
+    gap:12px;
+  }
+
   /* Fila del detalle: concepto ← → monto. */
   .fila{
     justify-content:space-between;
@@ -43,6 +49,7 @@
     color:var(--text-marca);
     font-weight:700;
   }
+  
 </style>
 </head><body>
 <header>
@@ -92,8 +99,10 @@ async function cargar(){
           <div class="sub">${fecha} · <span class="num">${numComp(comp.tipo,comp.numero)}</span> · ${quien}</div>
           <div class="comp-total">${fmt(comp.ingresado + comp.saldo)} <span class="fp">· ${formaTxt}</span></div>
         </div>
+        <div class="comp-acciones">
         <span class="badge ${comp.estado}">${comp.estado}</span>
         <button class="btnAnular b-del" data-id="${comp.id}">Anular</button>
+        </div>
       </div>
       <div class="detalle-box"></div>
       ${comp.tipo==="presupuesto"
