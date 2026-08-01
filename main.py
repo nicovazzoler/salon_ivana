@@ -145,10 +145,10 @@ def get_extra(db) -> int:
     return int(c.valor) if c else 0
 
 def calcular_transfer(precio_efectivo: int) -> int:
-    """Precio de transferencia = efectivo x 1.1111, redondeado PARA ARRIBA a múltiplo de 500."""
+    """Precio de transferencia = efectivo x 1.1111, redondeado PARA ARRIBA a múltiplo de 100."""
     import math
     bruto = precio_efectivo * 1.1111
-    return math.ceil(bruto / 500) * 500
+    return math.ceil(bruto / 100) * 100
 
 def get_fondo(db) -> int:
     c = db.query(models.Config).filter_by(clave="fondo_caja").first()
