@@ -204,3 +204,16 @@
 }
 .desg > div{ flex:1; min-width:200px; }
 .desg b{ color:var(--text-titulo); }
+
+/* ----- Filas del detalle de un comprobante (historial + cuenta) ----- */
+.fila-total{
+  font-weight:var(--fw-strong);
+  border-top:1px solid var(--border);
+  margin-top:6px;
+  padding-top:6px;
+}
+.fila-desc{ color:var(--warn); }              /* descuentos */
+.fila-sub{                                     /* subtotal antes de un descuento */
+  border-top:1px solid var(--border);
+  padding-top:6px;
+}

@@ -24,6 +24,25 @@
     font-size:var(--fs-md);
     margin:4px 0;
   }
+  
+  .comp-total{
+    margin-top:4px;
+    font-size:15px;
+    font-weight:700;
+  }
+  .comp-total .fp{        
+    font-size:13px;
+    font-weight:400;
+    color:var(--text-tenue);
+  }
+
+  /* Forzar regla */
+  .comp-head .num{
+    background:none;
+    padding:0;
+    color:var(--text-marca);
+    font-weight:700;
+  }
 </style>
 </head><body>
 <header>
@@ -70,8 +89,8 @@ async function cargar(){
     div.innerHTML=`
       <div class="comp-head">
         <div>
-          <div class="num">${numComp(comp.tipo,comp.numero)}</div>
-          <div class="sub">${fecha} · ${quien} · ${formaTxt} · ${fmt(comp.ingresado + comp.saldo)}</div>
+          <div class="sub">${fecha} · <span class="num">${numComp(comp.tipo,comp.numero)}</span> · ${quien}</div>
+          <div class="comp-total">${fmt(comp.ingresado + comp.saldo)} <span class="fp">· ${formaTxt}</span></div>
         </div>
         <span class="badge ${comp.estado}">${comp.estado}</span>
         <button class="btnAnular b-del" data-id="${comp.id}">Anular</button>
@@ -97,7 +116,7 @@ async function cargar(){
         ? `<div class="fila" style="color:#c0785a;"><span>Descuento ${pctEf}%</span><span>−${fmt(d.desc_efectivo)}</span></div>` : "";
 
       // Subtotal: solo tiene sentido mostrarlo si hubo descuento efectivo (sino es igual al de arriba)
-      const filaSubtotal=d.desc_efectivo>0
+      const filaSubtotal= d.desc_jubilado>0
         ? `<div class="fila" style="border-top:1px solid var(--border);padding-top:6px;"><span>Subtotal</span><span>${fmt(d.subtotal)}</span></div>` : "";
 
       // Descuento de listado (jubilado)
@@ -112,11 +131,18 @@ async function cargar(){
             return `<div class="fila" style="color:#555;"><span>✓ ${f} · ${p.forma_pago}${p.alias?' ('+p.alias+')':''}</span><span>${fmt(p.monto)}</span></div>`;
           }).join("")
         : (d.tipo==="ticket"?'<div class="muted">Sin pagos.</div>':'');
+      // Descuento efectivo real: suma de lo que se descontó en cada pago
+      const descEfvoReal = d.pagos.reduce((a,p)=> a + (p.desc_aplicado || 0), 0);
+      const pctEfvoReal = descEfvoReal>0 ? Math.round(descEfvoReal / d.total_final * 100) : 0;
+      const filaDescEfvoReal = descEfvoReal>0
+        ? `<div class="fila" style="color:var(--warn);"><span>Descuento ${pctEfvoReal}%</span><span>−${fmt(descEfvoReal)}</span></div>` : "";
+      const filaPendiente = d.saldo > 0
+        ? `<div class="fila fila-desc"><span>Pendiente</span><span>${fmt(d.saldo)}</span></div>` : "";
 
       box.innerHTML=`<div style="font-weight:700;margin-bottom:6px;">Detalle</div>
-        ${lineas}${extra}${filaDescEf}${filaSubtotal}${filaDescJub}
-        <div class="fila" style="font-weight:700;border-top:1px solid var(--border);margin-top:6px;padding-top:6px;"><span>Total</span><span>${fmt(d.total_final)}</span></div>
-        ${d.tipo==="ticket"?`<div style="font-weight:700;margin:10px 0 6px;">Pagos</div>${pagos}`:''}`;
+        ${lineas}${extra}${filaDescEf}${filaSubtotal}${filaDescEfvoReal}${filaDescJub}
+        <div class="fila fila-total"><span>Total</span><span>${fmt(d.ingresado + d.saldo)}</span></div>
+        ${d.tipo==="ticket"?`<div style="font-weight:700;margin:10px 0 6px;">Pagos</div>${pagos}${filaPendiente}`:''}`;
       box.style.display="block";
     };
     div.querySelector(".btnAnular").onclick = async (e)=>{

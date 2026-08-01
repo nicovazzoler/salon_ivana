@@ -505,6 +505,8 @@ def cuenta_cliente(cliente_id: int, _ = Depends(usuario_actual), db: Session = D
                     "total_transfer": est["total_transfer"], "desc_efectivo": est["desc_efectivo"],
                     "subtotal": est["subtotal"], "desc_jubilado": est["desc_jubilado"],
                     "total_final": est["total_final"], "pagado": est["pagado"],
+                    "ingresado": est["ingresado"],
+                    "forma_pago": forma_comprobante(db, comp),
                     "saldo": est["saldo"], "estado": est["estado"]})
     return {"cliente": _cliente_json(cli),
             "saldo_total": saldo_total, "comprobantes": out}
