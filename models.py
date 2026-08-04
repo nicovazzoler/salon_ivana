@@ -121,6 +121,15 @@ class Turno(Base):
     notas = Column(String)                                # opcional
     activo = Column(Boolean, default=True)
 
+class NotaDiaria(Base):
+    """Notas internas del día en agenda."""
+    __tablename__ = "notas_diarias"
+    id = Column(Integer, primary_key=True)
+    fecha = Column(String, nullable=False, index=True)
+    texto = Column(String, nullable=False)
+    creada = Column(DateTime, default=fecha_hora_now_utc)
+    activo = Column(Boolean, default=True)
+
 class MovimientoStock(Base):
     """Log de cada cambio de stock."""
     __tablename__ = "movimientos_stock"

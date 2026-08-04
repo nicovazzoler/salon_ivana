@@ -5,13 +5,24 @@
 <link rel="stylesheet" href="/static/css/app.css">
 <style>
   /* --- barra de navegación de fechas --- */
-  .navbar{ display:flex; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:var(--sp-4); }
-  .navbar .lbl{ flex:1; font-weight:var(--fw-strong); color:var(--text-titulo); }
-  .navbar button{ background:var(--bg-sutil); color:var(--text); }  /* ← / Hoy / → discretos */
+  .navbar{ display:flex; align-items:center; gap:var(--sp-2); margin-bottom:var(--sp-4); }
+  .navbar .lbl{ flex:1; text-align:center; font-weight:var(--fw-strong); color:var(--text-titulo); }
+  .navbar button{ background:var(--bg-sutil); color:var(--text); }
+  .nav-cal{ position:relative; display:inline-flex; align-items:center; cursor:pointer; padding:6px 8px; background:var(--bg-sutil); border:1px solid var(--border); border-radius:var(--r-md); }
+  .nav-cal input[type=date]{ position:absolute; inset:0; opacity:0; cursor:pointer; }
+  .navbar .lbl{ display:flex; align-items:center; gap:var(--sp-3); }
+  .navbar .lbl::before,
+  .navbar .lbl::after{ content:""; flex:1; height:1px; background:var(--oro-a25); }
 
   /* --- formulario de turno --- */
   .form-turno{ display:flex; flex-wrap:wrap; align-items:flex-end; gap:10px; }
   .campo.chico input{ width:90px; }
+  .dia-panel{ display:flex; flex-wrap:wrap; align-items:flex-start; gap:var(--sp-3); margin-bottom:var(--sp-4); }
+  .dia-panel > .card{ margin-bottom:0; }
+  #formCard{ flex:1.4 1 300px; }
+  #notasDia{ flex:1 1 240px; display:flex; flex-direction:column; }
+  #listaNotas{ flex:1; min-height:0; overflow-y:auto; }
+  .form-turno .campo{ flex:1 1 130px; }
 
   /* --- vista DÍA --- */
   .turno-card{
@@ -42,30 +53,39 @@
     border-left:1px solid var(--oro-a35);
   }
   .gs-dayhead{
-    margin:2px; padding:6px 0;
+    margin:1px; padding:3px 0;
     text-align:center; font-weight:var(--fw-bold);
     color:var(--acento);
-    border:2px solid var(--acento);
+    border:1px solid var(--oro-a35);
     border-radius:var(--r-md);
   }
-  .gs-dayhead .n{ font-size:var(--fs-lg); color:var(--acento); }
+  .gs-dayhead .nota-ind{ font-size:11px; }
   .gs-turno{
     padding:2px 4px;
-    background:var(--oro-100);
+    background:var(--oro-a12);
     border-left:3px solid var(--acento);
     border-radius:0 4px 4px 0;
     overflow:hidden; cursor:pointer;
   }
-  .gs-turno .c{ font-size:var(--fs-xs); font-weight:var(--fw-bold); color:var(--gris-900); }
-  .gs-turno .s{ font-size:10px; color:var(--gris-400); }
+  .gs-turno .c{ font-size:var(--fs-xs); font-weight:var(--fw-bold); color:var(--acento); }
+  .gs-turno .s{ font-size:10px; color:var(--text-tenue); }
+
+  .gs-notacol{ border-top:2px solid var(--acento); }
+  .gs-nota{
+    margin:2px 0; padding:2px 4px;
+    background:var(--oro-a12);
+    border-left:3px solid var(--acento);
+    border-radius:0 4px 4px 0;
+    font-size:10px; color:var(--text);
+  }
 
   /* --- vista MES --- */
-  .grid-mes{ display:grid; grid-template-columns:repeat(5,1fr); border-top:2px solid var(--acento); }
+  .grid-mes{ display:grid; grid-template-columns:repeat(7,1fr); border-top:2px solid var(--acento); }
   .gm-head{
-    margin:2px; padding:6px 0;
-    text-align:center; font-size:var(--fs-sm);
+    margin:1px; padding:3px 0;
+    text-align:center; font-size:var(--fs-xs);
     color:var(--acento);
-    border:2px solid var(--acento);
+    border:1px solid var(--oro-a35);
     border-radius:var(--r-md);
   }
   .gm-cell{
@@ -102,6 +122,48 @@
     border:1px solid var(--border);
     border-radius:var(--r-xl);
   }
+  /* --- notas del mes --- */
+  .gm-nota{ font-size:11px; line-height:1; margin-top:2px; }
+  .feed-notas{ margin-top:var(--sp-4); }
+  .feed-titulo{
+    display:flex; align-items:center; gap:var(--sp-3);
+    margin-bottom:var(--sp-3);
+    font-weight:var(--fw-bold); color:var(--text-titulo);
+  }
+  .feed-titulo::before,
+  .feed-titulo::after{
+    content:""; flex:1; height:1px; background:var(--oro-a25);
+  }
+  .feed-lista{ max-height:220px; overflow-y:auto; }
+  .feed-item{ display:flex; gap:var(--sp-3); padding:var(--sp-2) 0; border-top:1px solid var(--border); }
+  .feed-fecha{ min-width:110px; color:var(--acento); font-size:var(--fs-sm); }
+  .feed-texto{ flex:1; }
+  
+  
+  /* --- notas del día --- */
+  .nota-form{ display:flex; gap:8px; align-items:flex-start; }
+  .nota-form textarea{ flex:1; resize:vertical; }
+  .nota-item{
+    display:flex; justify-content:space-between; align-items:flex-start; gap:var(--sp-3);
+    padding:var(--sp-2) 0;
+    border-bottom:1px solid var(--border);
+  }
+  .nota-item .cuerpo{ flex:1; }
+  .nota-item .meta{ margin-top:2px; font-size:var(--fs-xs); color:var(--text-tenue); }
+  .nota-item .btn-borrar{
+    background:transparent; border:1px solid var(--danger); color:var(--danger);
+    padding:3px 8px; font-size:var(--fs-sm);
+  }
+
+  /* --- notas de la semana --- */
+  .notas-sem{ margin-top:var(--sp-4); }
+  .notas-sem-cols{ display:flex; flex-wrap:wrap; gap:12px; }
+  .notas-sem-col{ flex:1; min-width:150px; }
+  .notas-sem-dia{
+    margin-bottom:6px; padding-bottom:4px;
+    font-size:var(--fs-sm); font-weight:var(--fw-bold); color:var(--acento);
+    border-bottom:1px solid var(--border);
+  }
 </style>
 </head><body>
 <header>
@@ -123,24 +185,35 @@
 
   <div class="navbar">
     <button id="btnPrev">←</button>
-    <button id="btnHoy">Hoy</button>
-    <button id="btnNext">→</button>
-    <input type="date" id="fechaPicker">
     <span class="lbl" id="rangoLabel"></span>
+    <button id="btnNext">→</button>
+    <label class="nav-cal" title="Ir a una fecha">📅
+      <input type="date" id="fechaPicker">
+    </label>
   </div>
 
-  <!-- formulario (solo en vista día) -->
-  <div class="card" id="formCard">
-    <div class="form-turno">
-      <div class="campo chico"><label>Hora</label><input type="time" id="fHora" value="10:00"></div>
-      <div class="campo"><label>Cliente</label><input id="fCliente" list="clientesList" placeholder="Nombre"><datalist id="clientesList"></datalist></div>
-      <div class="campo"><label>Servicio</label><input id="fServicio" list="serviciosList" placeholder="Corte, color..."><datalist id="serviciosList"></datalist></div>
-      <div class="campo"><label>Peluquero/a <span class="muted">(opc)</span></label><input id="fPeluquero"></div>
-      <div class="campo"><label>Notas <span class="muted">(opc)</span></label><input id="fNotas"></div>
-      <button id="btnAgregar">Agendar</button>
+  <div class="dia-panel" id="diaPanel">
+    <!-- formulario (solo en vista día) -->
+    <div class="card" id="formCard">
+      <div class="form-turno">
+        <div class="campo chico"><label>Hora</label><input type="time" id="fHora" value="10:00"></div>
+        <div class="campo"><label>Cliente</label><input id="fCliente" list="clientesList" placeholder="Nombre"><datalist id="clientesList"></datalist></div>
+        <div class="campo"><label>Servicio</label><input id="fServicio" list="serviciosList" placeholder="Corte, color..."><datalist id="serviciosList"></datalist></div>
+        <div class="campo"><label>Peluquero/a <span class="muted">(opc)</span></label><input id="fPeluquero"></div>
+        <div class="campo"><label>Notas <span class="muted">(opc)</span></label><input id="fNotas"></div>
+        <button id="btnAgregar">Agendar</button>
+      </div>
+    </div>
+    <!-- notas del día -->
+    <div class="card" id="notasDia">
+      <div class="nota-form">
+        <textarea id="notaTexto" rows="1" placeholder="Escribí una nota del día…"></textarea>
+        <button id="btnNota">Anotar</button>
+      </div>
+      <div id="listaNotas"></div>
     </div>
   </div>
-
+  
   <div id="vista"></div>
 </div>
 
@@ -151,7 +224,8 @@
 <script>
 requireLogin(); pintarNav();
 const $=s=>document.querySelector(s);
-const DIAS_SEM=["Mar","Mié","Jue","Vie","Sáb"];  // martes a sábado
+const DIAS_SEM=["Lun","Mar","Mié","Jue","Vie","Sáb","Dom"];
+const DIAS_SEM_LARGO=["Lunes","Martes","Miércoles","Jueves","Viernes","Sábado","Domingo"];
 const MESES=["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"];
 let modo="dia", fechaActual=hoyStr(), SERVICIOS=[], CLIENTES=[];
 
@@ -159,6 +233,7 @@ function hoyStr(){ const d=new Date(); return iso(d); }
 function iso(d){ return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"); }
 function parseISO(s){ const [y,m,d]=s.split("-").map(Number); return new Date(y,m-1,d); }
 function toast(m){const t=$("#toast");t.textContent=m;t.classList.add("show");setTimeout(()=>t.classList.remove("show"),2200);}
+function cap(s){ return s.charAt(0).toUpperCase() + s.slice(1); }
 
 async function init(){
   try{
@@ -178,10 +253,9 @@ $("#modoMes").onclick=()=>setModo("mes");
 function setModo(m){
   modo=m;
   ["Dia","Semana","Mes"].forEach(x=>$("#modo"+x).classList.toggle("on", m===x.toLowerCase()));
-  $("#formCard").style.display = (m==="dia") ? "block" : "none";
+  $("#diaPanel").style.display = (m==="dia") ? "flex" : "none";
   render();
 }
-$("#btnHoy").onclick=()=>{ fechaActual=hoyStr(); render(); };
 $("#fechaPicker").onchange=e=>{ fechaActual=e.target.value; render(); };
 $("#btnPrev").onclick=()=>mover(-1);
 $("#btnNext").onclick=()=>mover(1);
@@ -193,10 +267,10 @@ function mover(dir){
   fechaActual=iso(d); render();
 }
 
-// devuelve el martes de la semana de la fecha dada
-function martesDeSemana(d){
-  const x=new Date(d); const dow=x.getDay(); // 0 dom .. 6 sab
-  const diff=(dow===0)? -5 : (2-dow); // llevar a martes
+// devuelve el lunes de la semana de la fecha dada
+function lunesDeSemana(d){
+  const x=new Date(d); const dow=x.getDay(); 
+  const diff=(dow===0)? -6 : (1-dow); 
   x.setDate(x.getDate()+diff); return x;
 }
 
@@ -207,13 +281,51 @@ async function render(){
   return renderMes();
 }
 
+
+// ---------- NOTAS DEL DÍA ----------
+
+async function renderNotasDia(){
+  const notas = await (await authFetch("/api/notas?fecha="+fechaActual)).json();
+  const cont = $("#listaNotas");
+  if(notas.length === 0){ cont.innerHTML = ""; return; }
+  cont.innerHTML = "";
+  notas.forEach(n => {
+    const div = document.createElement("div");
+    div.className = "nota-item";
+    div.innerHTML = `
+      <div class="cuerpo">
+        <div>${n.texto}</div>
+      </div>
+      <button class="btn-borrar">✕</button>`;
+    div.querySelector(".btn-borrar").onclick = async () => {
+      if(!confirm("¿Borrar esta nota?")) return;
+      await authFetch("/api/notas/"+n.id, { method: "DELETE" });
+      renderNotasDia();
+    };
+    cont.appendChild(div);
+  });
+}
+
+// -- CSS ---
+function ajustarAltoNotas(){
+  const nota=$("#notasDia"), form=$("#formCard");
+  if(modo!=="dia") return;
+  nota.style.height="auto";                     // reseteo para medir sin arrastrar lo anterior
+  if(nota.offsetTop === form.offsetTop){         // ¿están lado a lado?
+    nota.style.height = form.offsetHeight + "px";  // clavo la altura del turno
+  }
+}
+window.addEventListener("resize", ajustarAltoNotas);
+
 // ---------- VISTA DÍA ----------
 async function renderDia(){
   const dt=parseISO(fechaActual);
   const dias=["domingo","lunes","martes","miércoles","jueves","viernes","sábado"];
   let pref="";
   if(fechaActual===hoyStr()) pref="Hoy, ";
-  $("#rangoLabel").textContent=`${pref}${dias[dt.getDay()]} ${dt.getDate()} de ${MESES[dt.getMonth()]}`;
+  $("#rangoLabel").textContent=cap(`${pref}${dias[dt.getDay()]} ${dt.getDate()} de ${MESES[dt.getMonth()]}`);
+  renderNotasDia();
+  ajustarAltoNotas();
   const turnos=await (await authFetch("/api/turnos?fecha="+fechaActual)).json();
   const activos=turnos.filter(t=>t.activo), cancel=turnos.filter(t=>!t.activo);
   const cont=$("#vista");
@@ -274,22 +386,39 @@ async function agregarTurno(){
 }
 $("#btnAgregar").onclick=agregarTurno;
 
+
+async function agregarNota(){
+  const texto = $("#notaTexto").value.trim();
+  if(!texto) return;
+  await authFetch("/api/notas", {method:"POST", headers:{"Content-Type":"application/json"},
+    body: JSON.stringify({texto, fecha: fechaActual})});
+  $("#notaTexto").value = "";
+  toast("Nota guardada");
+  renderNotasDia();
+}
+$("#btnNota").onclick = agregarNota;
+
 // ---------- VISTA SEMANA (grilla) ----------
 async function renderSemana(){
-  const mar=martesDeSemana(parseISO(fechaActual));
-  const fechas=[]; for(let i=0;i<5;i++){ const d=new Date(mar); d.setDate(d.getDate()+i); fechas.push(iso(d)); }
-  const desde=fechas[0], hasta=fechas[4];
+  const ini=lunesDeSemana(parseISO(fechaActual));
+  const fechas=[]; for(let i=0;i<7;i++){ const d=new Date(ini); d.setDate(d.getDate()+i); fechas.push(iso(d)); }
+  const desde=fechas[0], hasta=fechas[6];
   $("#rangoLabel").textContent=`Semana del ${parseISO(desde).getDate()} al ${parseISO(hasta).getDate()} de ${MESES[parseISO(hasta).getMonth()]}`;
   const turnos=(await (await authFetch(`/api/turnos?desde=${desde}&hasta=${hasta}`)).json()).filter(t=>t.activo);
+  const notas = await (await authFetch(`/api/notas?desde=${desde}&hasta=${hasta}`)).json();      
+  const fechasConNota = new Set(notas.map(n => n.fecha));         
 
   // rango horario: 8 a 20, estirado si hay turnos fuera
   let hMin=8, hMax=20;
   turnos.forEach(t=>{ const h=parseInt(t.hora.split(":")[0]); if(h<hMin)hMin=h; if(h>hMax)hMax=h; });
   const horas=[]; for(let h=hMin;h<=hMax;h++) horas.push(h);
 
-  let html=`<div class="grid-sem" style="grid-template-columns:44px repeat(5,1fr);">`;
+  let html=`<div class="grid-sem" style="grid-template-columns:44px repeat(7,1fr);">`;
   html+=`<div></div>`;
-  fechas.forEach((f,i)=>{ const d=parseISO(f); html+=`<div class="gs-dayhead">${DIAS_SEM[i]}<div class="n">${d.getDate()}</div></div>`; });
+  fechas.forEach((f,i)=>{ const d=parseISO(f);
+    const ind = fechasConNota.has(f) ? ' <span class="nota-ind">📝</span>' : '';
+    html+=`<div class="gs-dayhead">${DIAS_SEM_LARGO[i]} ${d.getDate()}${ind}</div>`;
+  });
   horas.forEach(h=>{
     html+=`<div class="gs-hora">${h}:00</div>`;
     fechas.forEach(f=>{
@@ -297,7 +426,23 @@ async function renderSemana(){
       html+=`<div class="gs-cell">`+tsHora.map(t=>`<div class="gs-turno" data-id="${t.id}"><div class="c">${t.hora} ${t.cliente}</div><div class="s">${t.servicio}</div></div>`).join("")+`</div>`;
     });
   });
+
   html+=`</div>`;
+
+  const diasConNotas = fechas.filter(f => notas.some(n => n.fecha === f)); 
+  if(diasConNotas.length > 0){
+    html += `<div class="card notas-sem"><div class="feed-titulo">Notas de la semana</div><div class="notas-sem-cols">`;
+    diasConNotas.forEach(f => {
+      const i = fechas.indexOf(f);                    
+      const ns = notas.filter(n => n.fecha === f);             
+      html += `<div class="notas-sem-col">
+        <div class="notas-sem-dia">${DIAS_SEM[i]} ${parseISO(f).getDate()}</div>
+        ${ns.map(n => `<div class="gs-nota">${n.texto}</div>`).join("")}
+      </div>`;
+    });
+    html += `</div></div>`;
+  }
+
   $("#vista").innerHTML=html;
   $("#vista").querySelectorAll(".gs-turno").forEach(el=>{
     el.onclick=()=>{ const t=turnos.find(x=>x.id==el.dataset.id); mostrarTurno(t); };
@@ -316,38 +461,60 @@ function mostrarTurno(t){
 }
 $("#modalBg").onclick=e=>{ if(e.target.id==="modalBg") $("#modalBg").classList.remove("show"); };
 
+
+
 // ---------- VISTA MES (grilla de días) ----------
 async function renderMes(){
   const dt=parseISO(fechaActual), año=dt.getFullYear(), mes=dt.getMonth();
-  $("#rangoLabel").textContent=`${MESES[mes]} ${año}`;
+  $("#rangoLabel").textContent=cap(`${MESES[mes]} ${año}`);
   const desde=iso(new Date(año,mes,1)), hasta=iso(new Date(año,mes+1,0));
   const turnos=(await (await authFetch(`/api/turnos?desde=${desde}&hasta=${hasta}`)).json()).filter(t=>t.activo);
   const conteo={}; turnos.forEach(t=>{ conteo[t.fecha]=(conteo[t.fecha]||0)+1; });
+  const notas = await (await authFetch(`/api/notas?desde=${desde}&hasta=${hasta}`)).json();     
+  const fechasConNota = new Set(notas.map(n => n.fecha));
 
-  // armar semanas de martes a sábado
+  // armar semanas de lunes a domingo, incluyendo días de otros meses 
   let html=`<div class="grid-mes">`;
-  DIAS_SEM.forEach(d=>html+=`<div class="gm-head">${d}</div>`);
+  DIAS_SEM_LARGO.forEach(d=>html+=`<div class="gm-head">${d}</div>`);
   const primero=new Date(año,mes,1);
-  let cursor=martesDeSemana(primero);
+  let cursor=lunesDeSemana(primero);
   const finMes=new Date(año,mes+1,0);
   while(cursor<=finMes){
-    for(let i=0;i<5;i++){
+    for(let i=0;i<7;i++){
       const d=new Date(cursor); d.setDate(d.getDate()+i);
       if(d.getMonth()!==mes){ html+=`<div class="gm-cell fuera"></div>`; continue; }
       const f=iso(d), c=conteo[f]||0, esHoy=(f===hoyStr());
+      const ind = fechasConNota.has(f) ? '<div class="gm-nota">📝</div>' : ''; 
       html+=`<div class="gm-cell" data-f="${f}">
         <div class="gm-num ${esHoy?'hoy':''}">${d.getDate()}</div>
         ${c>0?`<div class="gm-count"><span class="gm-dot"></span>${c} turno${c>1?'s':''}</div>`:''}
+        ${ind}
       </div>`;
     }
     cursor.setDate(cursor.getDate()+7);
   }
   html+=`</div>`;
+
+  html += `<div class="card feed-notas"><div class="feed-titulo">Notas del mes</div>`;
+  if(notas.length === 0){
+    html += `<div class="muted">Sin notas este mes.</div></div>`;
+  } else {
+    const ordenadas = [...notas].sort((a,b) => a.fecha.localeCompare(b.fecha));
+    html += `<div class="feed-lista">` + ordenadas.map(n => `
+      <div class="feed-item">
+        <span class="feed-fecha">${n.fecha.split("-").reverse().join("/")}</span>
+        <span class="feed-texto">${n.texto}</span>
+      </div>`).join("") + `</div></div>`;
+  }
+
   $("#vista").innerHTML=html;
   $("#vista").querySelectorAll(".gm-cell[data-f]").forEach(el=>{
     el.onclick=()=>{ fechaActual=el.dataset.f; setModo("dia"); };
   });
 }
+
+
+
 
 init();
 </script>

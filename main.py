@@ -118,6 +118,8 @@ class NombreIn(BaseModel):
     nombre: str
 class TurnoIn(BaseModel):
     fecha: str | None = None; hora: str; cliente: str; cliente_id: int | None = None; servicio: str; peluquero: str | None = None; notas: str | None = None
+class NotaIn(BaseModel):
+    texto: str; fecha: str | None = None
 
 # ---------- Huso horario ----------
 
@@ -1234,6 +1236,37 @@ def listar_turnos(fecha: str | None = None, desde: str | None = None, hasta: str
     return [{"id": t.id, "fecha": t.fecha, "hora": t.hora, "cliente": t.cliente, "cliente_id": t.cliente_id,
              "servicio": t.servicio, "peluquero": t.peluquero, "notas": t.notas,
              "activo": t.activo} for t in turnos]
+
+# ---------- notas diarias ----------
+
+@app.post("/api/notas")
+def crear_nota(nota: NotaIn, _ = Depends(usuario_actual), db: Session = Depends(get_db)):
+    fecha = nota.fecha or hora_argentina(fecha_hora_now_utc()).strftime("%Y-%m-%d")
+    nueva = models.NotaDiaria(fecha=fecha, texto=nota.texto)
+    db.add(nueva); db.commit(); db.refresh(nueva)
+    return {"id": nueva.id, "ok": True}
+
+@app.get("/api/notas")
+def listar_notas(fecha: str | None = None, desde: str | None = None, hasta: str | None = None,
+                 _ = Depends(usuario_actual), db: Session = Depends(get_db)):
+    q = db.query(models.NotaDiaria).filter(models.NotaDiaria.activo == True)
+    if desde and hasta: # Esto significa q si existen soalmente no, porque se puede usar la funcion sin que esten por los none? explicame eso de paso
+      q = q.filter(models.NotaDiaria.fecha >= desde, models.NotaDiaria.fecha <= hasta)                                        
+    elif fecha:
+      q = q.filter(models.NotaDiaria.fecha == fecha)
+    # si no viene nada, devuelve todo lo activo (lo usa el feed general)
+    notas = q.all()
+    notas.sort(key=lambda n: (n.fecha, n.creada), reverse=True)
+    return [{"id": n.id, "fecha": n.fecha, "texto": n.texto,
+             "creada": hora_argentina(n.creada).strftime("%d/%m/%Y %H:%M")}                        # n.creada → hora argentina y formateá (mirá ventas_registro)
+            for n in notas]
+
+@app.delete("/api/notas/{nota_id}")
+def borrar_nota(nota_id: int, _ = Depends(usuario_actual), db: Session = Depends(get_db)):
+    nota = db.get(models.NotaDiaria, nota_id)                                     # traela por id (mirá cancelar_turno)
+    if not nota: raise HTTPException(404, "Nota no encontrada")
+    nota.activo = False
+    db.commit(); return {"ok": True}
 
 # ---------- descuentos ----------
 @app.get("/api/descuentos")
