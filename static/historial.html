@@ -120,7 +120,7 @@ async function cargar(){
       ).join("");
 
       // Descuento en efectivo: la diferencia entre listas (solo si el comprobante es efectivo)
-      const pctEf = d.desc_efectivo>0 ? Math.round(d.desc_efectivo / d.total_transfer * 100) : 0;
+      const pctEf = d.desc_efectivo>0 ? (d.desc_efectivo / d.total_transfer * 100).toFixed(2) : 0;
       const filaDescEf=d.desc_efectivo>0
         ? `<div class="fila" style="color:#c0785a;"><span>Descuento ${pctEf}%</span><span>−${fmt(d.desc_efectivo)}</span></div>` : "";
 
@@ -142,7 +142,7 @@ async function cargar(){
         : (d.tipo==="ticket"?'<div class="muted">Sin pagos.</div>':'');
       // Descuento efectivo real: suma de lo que se descontó en cada pago
       const descEfvoReal = d.pagos.reduce((a,p)=> a + (p.desc_aplicado || 0), 0);
-      const pctEfvoReal = descEfvoReal>0 ? Math.round(descEfvoReal / d.total_final * 100) : 0;
+      const pctEfvoReal = descEfvoReal>0 ? (descEfvoReal / d.total_final * 100).toFixed(2) : 0;
       const filaDescEfvoReal = descEfvoReal>0
         ? `<div class="fila" style="color:var(--warn);"><span>Descuento ${pctEfvoReal}%</span><span>−${fmt(descEfvoReal)}</span></div>` : "";
       const filaPendiente = d.saldo > 0

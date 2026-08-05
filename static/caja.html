@@ -14,7 +14,7 @@
   th:first-child,
   td:first-child{ text-align:left; }
   .nums{ grid-template-columns:repeat(4, 1fr); }
-  .celda-input{ width:100%; padding:6px; font-size:var(--fs-base); border-radius:7px; }
+  .celda-input[readonly]{ border-color:transparent; background:transparent; cursor:default; }
   .mini{ padding:6px 9px; font-size:var(--fs-sm); border-radius:7px; }
   .sub-titulo{ display:block; margin-top:14px; color:var(--text-titulo); }
 </style>
@@ -106,13 +106,18 @@ async function cargarDia(){
     html += '</tbody></table>';
   }
   if(d.egresos_detalle && d.egresos_detalle.length){
-    html += '<b class="sub-titulo">Egresos del día</b>Egresos del día</b><table style="margin-top:6px;"><thead><tr><th>Hora</th><th>Tipo</th><th>Concepto</th><th>Monto</th><th></th></tr></thead><tbody>';
+    html += '<b class="sub-titulo">Egresos del día</b><table style="margin-top:6px;"><thead><tr><th>Hora</th><th>Tipo</th><th>Concepto</th><th>Monto</th><th></th></tr></thead><tbody>';
     d.egresos_detalle.forEach(e=>{
-      html+=`<tr><td>${e.hora}</td>
-        <td><input id="ec_tipo_${e.id}" value="${e.tipo||''}" class="celda-input"></td>
-        <td><input id="ec_conc_${e.id}" value="${e.concepto||''}" class="celda-input"></td>
-        <td><input id="ec_monto_${e.id}" type="number" value="${e.monto}" class="celda-input" style="max-width:95px;"></td>
-        <td style="white-space:nowrap;"><button class="mini b-ok" onclick="guardarEgresoCaja(${e.id})">✓</button>
+      html+=`<tr data-tipo="${e.tipo||''}" data-conc="${e.concepto||''}" data-monto="${e.monto}">
+        <td>${e.hora}</td>
+        <td><input id="ec_tipo_${e.id}" value="${e.tipo||''}" class="celda-input" readonly></td>
+        <td><input id="ec_conc_${e.id}" value="${e.concepto||''}" class="celda-input" readonly></td>
+        <td><span id="ec_montotxt_${e.id}">${money(e.monto)}</span>
+           <input id="ec_monto_${e.id}" type="number" value="${e.monto}" class="celda-input" style="max-width:80px;display:none;"></td>
+        <td style="white-space:nowrap;">
+            <button id="ec_edit_${e.id}" class="mini b-out" onclick="editarEgresoCaja(${e.id})">✏</button>
+            <button id="ec_save_${e.id}" class="mini b-ok" onclick="guardarEgresoCaja(${e.id})" style="display:none;">✓</button>
+            <button id="ec_cancel_${e.id}" class="mini b-out" onclick="cancelarEgresoCaja(${e.id})" style="display:none;">↩</button>
             <button class="mini b-del" onclick="anularEgresoCaja(${e.id})">×</button></td></tr>`;
     });
     html += '</tbody></table>';
@@ -152,6 +157,29 @@ async function anularEgresoCaja(id){
   if(!confirm("¿Anular este egreso?"))return;
   await authFetch("/api/egresos/"+id,{method:"DELETE"});
   toast("Egreso anulado"); cargarDia();
+}
+
+function editarEgresoCaja(id){
+  ["ec_tipo_","ec_conc_"].forEach(p => { $("#"+p+id).removeAttribute("readonly"); });
+  $("#ec_montotxt_"+id).style.display = "none";        
+  $("#ec_monto_"+id).style.display    = "inline-block";
+  $("#ec_edit_"+id).style.display   = "none";
+  $("#ec_save_"+id).style.display   = "inline-block";
+  $("#ec_cancel_"+id).style.display = "inline-block";
+  $("#ec_tipo_"+id).focus();
+}
+
+function cancelarEgresoCaja(id){
+  const tr = $("#ec_tipo_"+id).closest("tr");
+  $("#ec_tipo_"+id).value  = tr.dataset.tipo;
+  $("#ec_conc_"+id).value  = tr.dataset.conc;
+  $("#ec_monto_"+id).value = tr.dataset.monto;
+  ["ec_tipo_","ec_conc_"].forEach(p => { $("#"+p+id).setAttribute("readonly",""); });
+  $("#ec_monto_"+id).style.display    = "none";        
+  $("#ec_montotxt_"+id).style.display = "inline";     
+  $("#ec_edit_"+id).style.display   = "inline-block";
+  $("#ec_save_"+id).style.display   = "none";
+  $("#ec_cancel_"+id).style.display = "none";
 }
 
 cargarDia();

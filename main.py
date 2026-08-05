@@ -884,7 +884,7 @@ def caja_dia(fecha: str | None = None, _ = Depends(usuario_actual), db: Session 
     efectivo_egresos = sum((e.monto or 0) for e in egresos if e.forma_pago == "Efectivo")
     fondo = get_fondo_dia(db, d)
     return {"fecha": d.isoformat(), "ingresos": ing, "egresos": egr, "neto": ing - egr,
-            "ventas": len(pagos), "ingresos_por_pago": por_pago, "egresos_por_tipo": por_tipo,
+            "ventas": len(pagos) + len(egresos), "ingresos_por_pago": por_pago, "egresos_por_tipo": por_tipo, # Ventas = "Movimientos"
             "fondo": fondo, "efectivo_ventas": efectivo_ventas, "efectivo_egresos": efectivo_egresos,
             "efectivo_esperado": fondo + efectivo_ventas - efectivo_egresos,
             "ventas_detalle": [_pago_detalle(p) for p in pagos],
