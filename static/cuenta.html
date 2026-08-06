@@ -84,6 +84,7 @@ requireLogin(); pintarNav();
 const $=s=>document.querySelector(s);
 const fmt=n=>"$"+(n||0).toLocaleString("es-AR");
 const id=new URLSearchParams(location.search).get("id");
+const ORIGEN = { efectivo:"Efectivo", transfer:"Transferencia", cuenta:"A cuenta", mixto:"Mixto" };
 let FORMAS=[], ALIAS=[];
 
 function toast(m){const t=$("#toast");t.textContent=m;t.classList.add("show");setTimeout(()=>t.classList.remove("show"),2200);}
@@ -202,22 +203,24 @@ if($("#btnEliminar")) $("#btnEliminar").onclick=async()=>{
       <div class="comp-head">
         <div>
           <div class="sub">${fecha} · <span class="num">${numTicket(comp.numero)}</span></div>
-          <div class="comp-total">${fmt(comp.ingresado + comp.saldo)} <span class="fp">· ${comp.forma_pago}</span></div>
+          <div class="comp-total">${fmt(comp.ingresado + comp.saldo)} <span class="fp">· ${ORIGEN[comp.forma_origen]||comp.forma_origen}${comp.forma_pago!==ORIGEN[comp.forma_origen]?` → ${comp.forma_pago}`:''}</span></div>
         </div>
         <span class="badge ${comp.estado}">${comp.estado}</span>
         <button class="btnAnular b-del" data-id="${comp.id}">Anular</button>
       </div>
       <div class="comp-sub">Total ${fmt(comp.total_final)} · Pagado ${fmt(comp.pagado)} · Saldo <b>${fmt(comp.saldo)}</b></div>
       <button class="btnDetalle b-out" style="margin-top:8px;">Ver detalle</button>
-      <div class="detalle-box" style="display:none;margin-top:10px;padding-top:10px;border-top:1px dashed var(--border);"></div>
-      ${comp.saldo>0?`<button class="btnAbrir" style="margin-top:10px;">Abonar</button>
+      <div class="detalle-box" style="display:none;"></div>
+      ${comp.saldo>0?`<button class="btnAbrir btnAbonar" style="margin-top:10px;">Registrar pago 💵</button>
       <div class="abonar-box">
         <div class="fila">
-          <select class="aForma"><option value=""selected>Elegí forma…</option>${FORMAS.map(f=>`<option>${f}</option>`).join("")}</select>
-          <input class="aMonto" type="number" value="${efvoTodo}" placeholder="Efectivo" style="width:110px;">
+          <select class="aForma">${comp.desc_efectivo>0
+            ? `<option value="Efectivo" selected>Efectivo</option>`
+            : `<option value="" selected>Elegí forma…</option>${FORMAS.map(f=>`<option>${f}</option>`).join("")}`}</select>
+          <input class="aMonto" type="number" placeholder="Monto" style="width:110px;">
           <button class="aOk">Registrar</button>
         </div>
-        <div class="muted" style="margin-top:6px;font-size:12px;">Debe ${fmt(comp.saldo)} · con ${fmt(efvoTodo)} en efectivo salda todo</div>
+        <div class="muted" style="margin-top:6px;font-size:12px;">Debe ${fmt(comp.saldo)}${comp.desc_efectivo===0 ? ` · con ${fmt(efvoTodo)} en efectivo salda todo` : ''}</div>
         <div class="fila aAliasBox" style="display:none;margin-top:8px;">
           <label class="muted">Alias:</label>
           <input class="aAlias" list="aliasDL" placeholder="¿A qué cuenta?" style="flex:1;">
@@ -231,8 +234,11 @@ if($("#btnEliminar")) $("#btnEliminar").onclick=async()=>{
       function refrescarForma(){
         const elegida = forma.value !== "";
         inp.disabled = !elegida;
-        btnOk.disabled = !elegida;                    
+        btnOk.disabled = forma.value === "";
         div.querySelector(".aAliasBox").style.display = forma.value==="Transferencia"?"flex":"none";
+        if(!elegida){ inp.value = ""; return; }                       
+        const aplicaDesc = forma.value==="Efectivo" && comp.desc_efectivo===0;
+        inp.value = aplicaDesc ? efvoTodo : comp.saldo;
       }
       forma.onchange = refrescarForma;
       refrescarForma();
@@ -251,10 +257,12 @@ if($("#btnEliminar")) $("#btnEliminar").onclick=async()=>{
         const queda = comp.saldo - tapa;
 
         if(queda <= 0){
-          avisoVivo.textContent = `Tapás ${fmt(tapa)} · salda todo ✓`;
-        } else {
-          const faltaEfvo = aplicaDesc ? Math.ceil(queda / 0.9/100) * 100 : queda;      
+          avisoVivo.textContent = `Salda todo ✓`;
+        } else if(aplicaDesc){
+          const faltaEfvo = Math.ceil(queda * 0.9 / 100) * 100;
           avisoVivo.textContent = `Tapás ${fmt(tapa)} · queda ${fmt(queda)} (con ${fmt(faltaEfvo)} en efectivo lo saldás)`;
+        } else {
+          avisoVivo.textContent = `Tapás ${fmt(tapa)} · queda ${fmt(queda)}`;
         }
       }
       inp.addEventListener("input", calcularAviso);
@@ -287,19 +295,19 @@ if($("#btnEliminar")) $("#btnEliminar").onclick=async()=>{
       if(boxDet.style.display==="block"){ boxDet.style.display="none"; return; }
       const d=await (await authFetch("/api/comprobantes/"+comp.id)).json();
       const lineas=d.lineas.map(l=>`<div class="fila" style="justify-content:space-between;"><span>${l.cantidad}× ${l.nombre}${l.dificultad?' (dif)':''}</span><span>${fmt(l.precio_unit*l.cantidad)}</span></div>`).join("");
-      const extra = d.extra_dificultad>0 ? `<div class="fila" style="justify-content:space-between;color:#c0785a;"><span>Extra dificultad</span><span>+${fmt(d.extra_dificultad)}</span></div>` : "";
+      const extra = d.extra_dificultad>0 ? `<div class="fila" style="justify-content:space-between;color:var(--warn);"><span>Extra dificultad</span><span>+${fmt(d.extra_dificultad)}</span></div>` : "";
 
       const pctEf = d.desc_efectivo>0 ? (d.desc_efectivo / d.total_transfer * 100).toFixed(2) : 0;
-      const filaDescEf = d.desc_efectivo>0 ? `<div class="fila" style="justify-content:space-between;color:#c0785a;"><span>Descuento ${pctEf}%</span><span>−${fmt(d.desc_efectivo)}</span></div>` : "";
+      const filaDescEf = d.desc_efectivo>0 ? `<div class="fila" style="justify-content:space-between;color:var(--warn);"><span>Descuento ${pctEf}%</span><span>−${fmt(d.desc_efectivo)}</span></div>` : "";
       const filaSubtotal = d.desc_jubilado>0 ? `<div class="fila" style="justify-content:space-between;border-top:1px solid var(--border);padding-top:6px;"><span>Subtotal</span><span>${fmt(d.subtotal)}</span></div>` : "";
-      const filaDescJub = d.desc_jubilado>0 ? `<div class="fila" style="justify-content:space-between;color:#c0785a;"><span>${d.descuento_nombre||'Descuento'} ${d.descuento_pct}%</span><span>−${fmt(d.desc_jubilado)}</span></div>` : "";
+      const filaDescJub = d.desc_jubilado>0 ? `<div class="fila" style="justify-content:space-between;color:var(--warn);"><span>${d.descuento_nombre||'Descuento'} ${d.descuento_pct}%</span><span>−${fmt(d.desc_jubilado)}</span></div>` : "";
 
       const pagos = d.pagos.length
         ? d.pagos.map(p=>{
             const f=new Date(p.fecha).toLocaleDateString("es-AR");
             const desc = p.desc_aplicado || 0;
             const extra = desc>0 ? ` <span class="muted">(saldó ${fmt(p.saldado)} · ${(desc / p.saldado * 100).toFixed(2)}% desc)</span>` : "";
-            return `<div class="fila" style="justify-content:space-between;color:#555;"><span>✓ ${f} · ${p.forma_pago}${p.alias?' ('+p.alias+')':''}${extra}</span><span>${fmt(p.monto)}</span></div>`;
+            return `<div class="fila" style="justify-content:space-between;color:var(--text-tenue);"><span>✓ ${f} · ${p.forma_pago}${p.alias?' ('+p.alias+')':''}${extra}</span><span>${fmt(p.monto)}</span></div>`;
           }).join("")
         : '<div class="muted">Sin pagos todavía.</div>';
       const descEfvoReal = d.pagos.reduce((a,p)=> a + (p.desc_aplicado || 0), 0);
@@ -318,6 +326,13 @@ if($("#btnEliminar")) $("#btnEliminar").onclick=async()=>{
     };
     
     cont.appendChild(div);
+
+    const compTarget = new URLSearchParams(location.search).get("comp");
+    if(compTarget && comp.id == compTarget){        
+      div.querySelector(".btnDetalle")?.click();  
+      div.style.outline = "2px solid var(--acento)";
+      div.scrollIntoView({behavior:"smooth", block:"center"});
+    }
   });
 }
 

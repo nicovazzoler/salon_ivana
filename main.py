@@ -508,7 +508,7 @@ def cuenta_cliente(cliente_id: int, _ = Depends(usuario_actual), db: Session = D
                     "subtotal": est["subtotal"], "desc_jubilado": est["desc_jubilado"],
                     "total_final": est["total_final"], "pagado": est["pagado"],
                     "ingresado": est["ingresado"],
-                    "forma_pago": forma_comprobante(db, comp),
+                    "forma_pago": forma_comprobante(db, comp), "forma_origen": comp.forma_pago,
                     "saldo": est["saldo"], "estado": est["estado"]})
     return {"cliente": _cliente_json(cli),
             "saldo_total": saldo_total, "comprobantes": out}
@@ -594,9 +594,10 @@ def listar_comprobantes(tipo: str | None = None, _ = Depends(usuario_actual), db
             t = db.query(models.Comprobante).filter(models.Comprobante.convertido_de == comp.id).first()
             conv = t.numero if t else None
         out.append({"id": comp.id, "tipo": comp.tipo, "numero": comp.numero,
-                    "fecha": comp.fecha.isoformat(), "cliente_nombre": comp.cliente_nombre,
+                    "fecha": comp.fecha.isoformat(), "cliente_nombre": comp.cliente_nombre, "cliente_id": comp.cliente_id,
                     "total_lista": comp.total_lista, "extra_dificultad": comp.extra_dificultad,
                     "convertido_a": conv, "forma_pago": forma_comprobante(db, comp),
+                     "forma_origen": comp.forma_pago,
                     **estado_comprobante(db, comp)})
     return out
 

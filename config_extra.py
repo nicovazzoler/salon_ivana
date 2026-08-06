@@ -2,7 +2,7 @@
 import math
 
 EXTRA_DIFICULTAD = 20000  # se suma a una linea marcada como "dificultad"
-FORMAS_PAGO = ["Efectivo", "Transferencia", "Tarjeta", "QR / MercadoPago"]
+FORMAS_PAGO = ["Efectivo", "Transferencia"]
 TIPOS_EGRESO = ["Pago proveedor", "Retiro de caja", "Gasto / insumo", "Sueldo", "Otro"]
 
 def calcular_transfer(precio_efectivo: int) -> int:
