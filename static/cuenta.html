@@ -259,7 +259,7 @@ if($("#btnEliminar")) $("#btnEliminar").onclick=async()=>{
         if(queda <= 0){
           avisoVivo.textContent = `Salda todo ✓`;
         } else if(aplicaDesc){
-          const faltaEfvo = Math.ceil(queda * 0.9 / 100) * 100;
+          const faltaEfvo = Math.ceil((queda * 0.9) / 100) * 100;
           avisoVivo.textContent = `Tapás ${fmt(tapa)} · queda ${fmt(queda)} (con ${fmt(faltaEfvo)} en efectivo lo saldás)`;
         } else {
           avisoVivo.textContent = `Tapás ${fmt(tapa)} · queda ${fmt(queda)}`;
@@ -271,7 +271,7 @@ if($("#btnEliminar")) $("#btnEliminar").onclick=async()=>{
         const efectivo=parseInt(div.querySelector(".aMonto").value)||0;
         if(efectivo<=0){ toast("Monto inválido"); return; }
         const aplicaDesc = forma.value==="Efectivo" && comp.desc_efectivo===0;
-        const saldadoCalc = aplicaDesc ? Math.ceil(efectivo / 0.9/100) * 100 : efectivo;  
+        const saldadoCalc = aplicaDesc ? Math.ceil((efectivo / 0.9) / 100) * 100 : efectivo;  
         const saldado = Math.min(saldadoCalc, comp.saldo);         
         const monto = efectivo;
         const body={ monto, saldado, forma_pago:forma.value,
