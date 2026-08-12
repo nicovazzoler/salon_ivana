@@ -17,11 +17,20 @@
   }
   .comp-head .sub{ margin-top:3px; font-size:var(--fs-base); color:var(--text); }
 
-  /* Grupo izquierdo: los datos y el estado, uno al lado del otro */
+  /* Grupo izquierdo: los datos ocupan el ancho, el estado queda en columna fija */
   .comp-datos{
     display:flex;
     align-items:center;
     gap:14px;
+    flex:1;                /* que el grupo se estire y ocupe el espacio */
+  }
+  .comp-datos > div:first-child{
+    flex:1;                /* el bloque de fecha/nombre/monto se estira... */
+    min-width:0;           /* ...y deja que el texto largo se corte en vez de empujar */
+  }
+  .comp-datos .badge{
+    flex:0 0 auto;         /* el badge no se estira ni se encoge: ancho fijo por su contenido */
+    margin-left:auto;      /* lo manda al final del grupo de datos, siempre en el mismo lugar */
   }
 
   .comp-acciones{
