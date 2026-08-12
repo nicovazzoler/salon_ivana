@@ -115,7 +115,7 @@ async function cargar(){
       <div class="comp-head">
         <div class="comp-datos">
           <div>
-            <div class="sub">${fecha} · <span class="num">${numComp(comp.tipo,comp.numero)}</span> · ${quien}</div>
+            <div class="sub">${fecha} · <span class="num">${numComp(comp.tipo,comp.numero)}</span> · ${titulo(quien)}</div>
             <div class="comp-total">${fmt(comp.ingresado + comp.saldo)} <span class="fp">· ${formaTxt}</span></div>
           </div>
           <span class="badge ${comp.estado}">${comp.estado}</span>
