@@ -3,8 +3,9 @@
    ========================================================================== */
 
 
-/* Primera letra de cada palabra en mayúscula */
-.cap{ text-transform:capitalize; }
+/* ----- Cap: primera letra mayúscula ----- */
+.cap{ text-transform:lowercase; display:inline-block; }
+.cap::first-letter{ text-transform:uppercase; }
 
 
 /* ----- Botones con variante ----- */

@@ -37,3 +37,7 @@ function pintarNav(){
   html+=`<a href="#" onclick="logout();return false;">Salir</a>`;
   nav.innerHTML=html;
 }
+
+function titulo(str){
+  return (str||"").toLowerCase().replace(/\b\p{L}/gu, c => c.toUpperCase());
+}

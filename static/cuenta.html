@@ -107,7 +107,7 @@ async function cargar(){
     <div class="cli-head">
       <div class="av">${inicial}</div>
       <div>
-        <div style="font-size:18px;font-weight:700;">${c.nombre}</div>
+        <div style="font-size:18px;font-weight:700;">${titulo(c.nombre)}</div>
         <div class="muted">${[c.telefono, c.alias].filter(Boolean).join(" · ") || "—"}</div>
         <div class="muted">${[c.dni && "DNI "+c.dni, c.direccion].filter(Boolean).join(" · ") || "—"}</div>
       </div>
