@@ -2,8 +2,12 @@
    COMPONENTES — piezas reutilizables con nombre propio
    ========================================================================== */
 
-/* ----- Botones con variante -----
-   La base ya la puso base.css. Acá van solo las variantes. */
+
+/* Primera letra de cada palabra en mayúscula */
+.cap{ text-transform:capitalize; }
+
+
+/* ----- Botones con variante ----- */
 
 .b-ok,
 .b-tinta,
@@ -22,9 +26,12 @@
 .b-del{                              /* acción destructiva */
   background:transparent;
   border:1px solid var(--danger);
-  color:var(--danger);
+  color:var(--danger); 
 }
-
+.b-del:hover{
+    transform:translateY(-1px);
+    box-shadow:0 3px 10px var(--danger);
+  }
 .confirmar{                          /* botón grande de cerrar venta */
   width:100%;
   padding:var(--sp-3);
@@ -32,6 +39,22 @@
   font-size:var(--fs-lg);
   font-weight:var(--fw-medium);
 }
+
+.btnAbonar{                 /* botón "Abonar" en caja / historial */
+    display:inline-flex; align-items:center; justify-content:center; gap:5px;
+    min-height:34px;
+    padding:5px 12px;
+    background:transparent; color:var(--acento);
+    border:1px solid var(--acento); border-radius:999px;
+    font-size:var(--fs-sm); font-weight:var(--fw-bold);
+    text-decoration:none;
+    transition:transform .1s ease, box-shadow .2s ease;
+  }
+.btnAbonar:hover{
+    transform:translateY(-1px);
+    background:var(--oro-a12);
+    box-shadow:0 3px 10px var(--oro-a35);
+  }
 
 /* ----- Pills: filtros de categoría (cápsula) ----- */
 .pill{
@@ -162,11 +185,23 @@
 
 /* Detalle desplegable (arranca oculto, el JS lo abre) */
 .detalle-box{
-  display:none;
-  margin-top:10px;
-  padding-top:10px;
-  border-top:1px dashed var(--border);
-}
+    margin-top:10px;
+    padding:12px;
+    border:2px solid var(--oro-a35);
+    border-radius:10px;
+    background:var(--oro-a08);
+  }
+
+/* ----- Botón "Ver detalle" ----- */
+.btnDetalle{
+    border:1px solid var(--border);
+    border-radius:8px;
+    background: var(--oro-a12);
+    color:var(--text);
+    padding:6px 12px;
+    font-size:var(--fs-sm);
+  }
+  .btnDetalle:hover{ border-color:var(--acento); color:var(--acento); }
 
 /* ----- Campo: etiqueta arriba, control abajo ----- */
 .campo{ display:flex; flex-direction:column; gap:var(--sp-1); }

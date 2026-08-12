@@ -70,7 +70,7 @@
   --text-invertido: var(--gris-900);   /* texto oscuro ENCIMA del dorado */
 
   /* Bordes */
-  --border:        var(--gris-500);
+  --border:        var(--oro-a35);
   --border-sutil:  var(--blanco-a06);
   --border-marca:  var(--oro-a25);
   --border-focus:  var(--oro-500);

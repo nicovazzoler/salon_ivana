@@ -127,8 +127,8 @@
     flex:1;
     padding:10px;
     font-size:var(--fs-base);
-    background:transparent;
-    border:1px solid var(--border);
+    background:var(--bg-card);
+    border:1px solid var(--acento);
     color:var(--text);
   }
   .crear:disabled,
@@ -169,6 +169,17 @@
 
   /* Aviso de validación del pago mixto */
   .aviso{ margin-top:var(--sp-1); font-size:var(--fs-base); color:var(--danger); }
+
+  /* Resumen de pago mixto (opción A) */
+  .mx-linea{
+    display:flex; justify-content:space-between; align-items:baseline;
+    margin:9px 0; font-size:var(--fs-md);
+  }
+  .mx-sub{
+    font-size:var(--fs-base);
+    color:var(--text-tenue);
+    margin:-2px 0 10px 2px;
+  }
 </style>
 </head><body>
 <header>
@@ -270,24 +281,18 @@
         <div class="tot-row"><span>Deuda (transfer)</span><span id="mxDeuda">$0</span></div>
         <div id="mxAviso" class="aviso" style="display:none;"></div>
         <div class="fila" style="margin-top:10px;">
-          <label>Transferencia:</label>
-          <input id="mxTransfer" type="number" placeholder="Cuánto va por transfer" style="flex:1;">
+          <label>Efectivo:</label>
+          <input id="mxEfectivo" type="number" placeholder="Cuánto paga en efectivo" style="flex:1;">
         </div>
-        <div class="fila" id="mxAliasBox" style="display:none;">
+        <div class="fila" id="mxAliasBox">
           <label>Alias:</label>
           <input id="mxAlias" list="aliasList" placeholder="¿A qué cuenta?" style="flex:1;">
         </div>
 
-        <label style="display:flex;gap:8px;align-items:center;margin:10px 0;">
-          <input type="checkbox" id="mxConfirmar" style="width:auto;">
-          Calcular parte en efectivo
-        </label>
-
-        <div id="mxResumen" style="display:none;">
-          <div class="tot-row"><span>Transferencia</span><span id="mxMonTransfer">$0</span></div>
-          <div class="tot-row"><span>Efectivo (transfer)</span><span id="mxMonEfvoBruto">$0</span></div>
-          <div class="tot-row tot-desc"><span>Descuento (10%)</span><span id="mxDesc">$0</span></div>
-          <div class="tot-row" style="font-weight:600;"><span>Total efectivo</span><span id="mxEfvoReal">$0</span></div>
+        <div id="mxResumen" style="display:none;margin-top:14px;">
+          <div class="mx-linea"><span>💵 Paga en efectivo</span><span id="mxMonEfvoReal">$0</span></div>
+          <div class="mx-sub" id="mxSubEfvo"></div>
+          <div class="mx-linea"><span>🏦 Paga por transferencia</span><span id="mxMonTransfer">$0</span></div>
           <div class="tot-row tot-final"><span>Total a cobrar</span><span id="mxTotal">$0</span></div>
         </div>
 
@@ -644,6 +649,7 @@ $("#formaPago").onchange = e => {
   renderTicket();
 };
 $("#cobrarMixto").onclick=()=>{
+  disableBotones(true)
   if(!ticketListo()) return;
   abrirMixto();
 };
@@ -828,11 +834,10 @@ function totalEfectivoComp(c){
 async function abrirMixto(){
   mxDeudaActual = totalActual;                 // deuda a precio transfer, tomada de la pantalla
   $("#mxDeuda").textContent = fmt(totalActual);
-  $("#mxTransfer").value = "";
+  $("#mxEfectivo").value = "";
   $("#mxAlias").value = "";
-  $("#mxConfirmar").checked = false;
   $("#mxResumen").style.display = "none";
-  $("#mxAliasBox").style.display = "none";
+  $("#mxAviso").style.display = "none";
   $("#mxRegistrar").disabled = true;
   $("#panelMixto").style.display = "block";
 }
@@ -842,75 +847,68 @@ $("#cobroForma").onchange=()=>{
 };
 
 function calcularMixto(){
-  const D = mxDeudaActual;
-  const T = parseInt($("#mxTransfer").value)||0;   // sin Math.min: tomamos lo que puso tal cual
+  const D = mxDeudaActual;                          
+  const E = parseInt($("#mxEfectivo").value)||0;    
   const aviso = $("#mxAviso");
+  const efvoBruto =  Math.ceil((E / 0.9) / 100) * 100;  // Deuda cubierta
 
-  // Validamos y avisamos ANTES de calcular
   let error = "";
-  if(T <= 0)      error = "Poné cuánto va por transferencia.";
-  else if(T >= D) error = `La transferencia debe ser menor a la deuda (${fmt(D)}).`;
+  if(E <= 0)              error = "Poné cuánto paga en efectivo.";
+  else if(efvoBruto >= D) error = `El efectivo cubre toda la deuda — usá cobro en efectivo, no mixto.`;
 
   if(error){
     aviso.textContent = error;
     aviso.style.display = "block";
-    $("#mxResumen").style.display = "none";   // escondemos el desglose mientras no sea válido
+    $("#mxResumen").style.display = "none";
     $("#mxRegistrar").disabled = true;
-    return null;                              // cortamos acá, no hay nada que calcular
+    return null;
   }
 
-  // Si llegó hasta acá, el reparto es válido
   aviso.style.display = "none";
   $("#mxResumen").style.display = "block";
 
-  const efvoBruto = D - T;
-  const desc      = Math.round(efvoBruto*0.10);
-  const efvoReal  = efvoBruto - desc;
-  const totalCobrar = T + efvoReal;
+  const T    = D - efvoBruto;                        // lo que queda va por transferencia
+  const desc = efvoBruto - E;                        // descuento = deuda cubierta − plata real
+  const totalCobrar = T + E;
+  const pct  = Math.round(desc / efvoBruto * 100); 
 
+  $("#mxMonEfvoReal").textContent  = fmt(E);
+  $("#mxSubEfvo").textContent     = `equivale a ${fmt(efvoBruto)} de deuda (−${pct}%)`;
   $("#mxMonTransfer").textContent  = fmt(T);
-  $("#mxMonEfvoBruto").textContent = fmt(efvoBruto);
-  $("#mxDesc").textContent         = "−"+fmt(desc);
-  $("#mxEfvoReal").textContent     = fmt(efvoReal);
   $("#mxTotal").textContent        = fmt(totalCobrar);
 
   $("#mxRegistrar").disabled = false;
-  return { D, T, efvoBruto, desc, efvoReal };
+  return { D, T, efvoBruto, E, desc };               
 }
 
 
-$("#mxConfirmar").onchange=()=>{
-  const on = $("#mxConfirmar").checked;
-  $("#mxResumen").style.display = on ? "block" : "none";
-  $("#mxAliasBox").style.display = on ? "flex" : "none";  // pedimos alias cuando confirma
-  if(on) calcularMixto();
-  else $("#mxRegistrar").disabled = true;
-};
-
-$("#mxTransfer").oninput=()=>{ if($("#mxConfirmar").checked) calcularMixto(); };
+$("#mxEfectivo").oninput = calcularMixto;
 
 $("#mxRegistrar").onclick=async()=>{
-  $("#mxRegistrar").disabled = true;               // evita doble click y duplicados
-  const T = Math.min(parseInt($("#mxTransfer").value)||0, mxDeudaActual);
+  $("#mxRegistrar").disabled = true;                 // evitar doble click y duplicados
+  const E = parseInt($("#mxEfectivo").value)||0;     
   const alias = $("#mxAlias").value.trim() || null;
 
-  const d = await crearComprobante();              // ← recién ACÁ se escribe en la base
+  const d = await crearComprobante();              
   if(!d){ $("#mxRegistrar").disabled=false; return; }
 
-  // Consultamos la deuda real: el backend es la fuente de verdad, no la pantalla
+
   const c = await (await authFetch("/api/comprobantes/"+d.id)).json();
   const D = c.saldo;
-  const efvoBruto = D - T;
-  const efvoReal  = efvoBruto - Math.round(efvoBruto*0.10);
+  let efvoBruto = Math.ceil((E / 0.9) / 100) * 100;  
+  efvoBruto = Math.min(efvoBruto, D);                // nunca más que la deuda real
+  const T = D - efvoBruto;                            
 
-  // Pago 1: transferencia (saldado = monto, sin descuento)
-  const r1 = await authFetch("/api/comprobantes/"+d.id+"/pagos",{method:"POST",headers:{"Content-Type":"application/json"},
-    body:JSON.stringify({ monto:T, saldado:T, forma_pago:"Transferencia", alias })});
-  if(!r1.ok){ toast("Falló la parte transferencia — quedó a cuenta"); $("#panelMixto").style.display="none"; limpiar(); return; }
+  // Pago 1: transferencia 
+  if(T > 0){
+    const r1 = await authFetch("/api/comprobantes/"+d.id+"/pagos",{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({ monto:T, saldado:T, forma_pago:"Transferencia", alias })});
+    if(!r1.ok){ toast("Falló la parte transferencia — quedó a cuenta"); $("#panelMixto").style.display="none"; limpiar(); return; }
+  }
 
-  // Pago 2: efectivo (saldado = lo que falta a precio transfer; monto = con 10% menos)
+  // Pago 2: efectivo (monto = plata real; saldado = deuda que cubre)
   const r2 = await authFetch("/api/comprobantes/"+d.id+"/pagos",{method:"POST",headers:{"Content-Type":"application/json"},
-    body:JSON.stringify({ monto:efvoReal, saldado:efvoBruto, forma_pago:"Efectivo", alias:null })});
+    body:JSON.stringify({ monto:E, saldado:efvoBruto, forma_pago:"Efectivo", alias:null })});
   toast(r2.ok ? "Pago mixto registrado ✓" : "Falló la parte efectivo — quedó saldo a cuenta");
 
   $("#panelMixto").style.display="none";

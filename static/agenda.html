@@ -335,10 +335,10 @@ async function renderDia(){
     div.innerHTML=`
       <div class="turno-hora">${t.hora}</div>
       <div class="turno-body">
-        <div class="turno-cliente">${t.cliente}${t.cliente_id?` <a href="/cuenta?id=${t.cliente_id}" style="font-size:12px;color:var(--acento);">ver cuenta</a>`:''}</div>
-        <div class="turno-servicio">${t.servicio}</div>
-        ${t.peluquero?`<div class="turno-peluquero">✂ ${t.peluquero}</div>`:''}
-        ${t.notas?`<div class="turno-notas">${t.notas}</div>`:''}
+        <div class="turno-cliente cap">${t.cliente}${t.cliente_id?` <a href="/cuenta?id=${t.cliente_id}" style="font-size:12px;color:var(--acento);margin-left:6px;"> Ver cuenta</a>`:''}</div>
+        <div class="turno-servicio cap">${t.servicio}</div>
+        ${t.peluquero?`<div class="turno-peluquero cap">✂ ${t.peluquero}</div>`:''}
+        ${t.notas?`<div class="turno-notas cap">${t.notas}</div>`:''}
         ${!t.activo?'<div style="font-size:11px;color:var(--danger);margin-top:4px;">Cancelado</div>':''}
       </div>
       <div class="turno-actions">
