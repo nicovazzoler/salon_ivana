@@ -127,8 +127,8 @@
     flex:1;
     padding:10px;
     font-size:var(--fs-base);
-    background:transparent;
-    border:1px solid var(--border);
+    background:var(--bg-card);
+    border:1px solid var(--acento);
     color:var(--text);
   }
   .crear:disabled,
@@ -169,6 +169,17 @@
 
   /* Aviso de validación del pago mixto */
   .aviso{ margin-top:var(--sp-1); font-size:var(--fs-base); color:var(--danger); }
+
+  /* Resumen de pago mixto (opción A) */
+  .mx-linea{
+    display:flex; justify-content:space-between; align-items:baseline;
+    margin:9px 0; font-size:var(--fs-md);
+  }
+  .mx-sub{
+    font-size:var(--fs-base);
+    color:var(--text-tenue);
+    margin:-2px 0 10px 2px;
+  }
 </style>
 </head><body>
 <header>
@@ -273,21 +284,15 @@
           <label>Efectivo:</label>
           <input id="mxEfectivo" type="number" placeholder="Cuánto paga en efectivo" style="flex:1;">
         </div>
-        <div class="fila" id="mxAliasBox" style="display:none;">
+        <div class="fila" id="mxAliasBox">
           <label>Alias:</label>
           <input id="mxAlias" list="aliasList" placeholder="¿A qué cuenta?" style="flex:1;">
         </div>
 
-        <label style="display:flex;gap:8px;align-items:center;margin:10px 0;">
-          <input type="checkbox" id="mxConfirmar" style="width:auto;">
-          Calcular parte en transferencia
-        </label>
-
-        <div id="mxResumen" style="display:none;">
-          <div class="tot-row"><span>Efectivo</span><span id="mxMonEfvoReal">$0</span></div>
-          <div class="tot-row tot-desc"><span>Descuento (10%)</span><span id="mxDesc">$0</span></div>
-          <div class="tot-row"><span>Efectivo (cubre en transfer)</span><span id="mxMonEfvoBruto">$0</span></div>
-          <div class="tot-row"><span>Transferencia</span><span id="mxMonTransfer">$0</span></div>
+        <div id="mxResumen" style="display:none;margin-top:14px;">
+          <div class="mx-linea"><span>💵 Paga en efectivo</span><span id="mxMonEfvoReal">$0</span></div>
+          <div class="mx-sub" id="mxSubEfvo"></div>
+          <div class="mx-linea"><span>🏦 Paga por transferencia</span><span id="mxMonTransfer">$0</span></div>
           <div class="tot-row tot-final"><span>Total a cobrar</span><span id="mxTotal">$0</span></div>
         </div>
 
@@ -831,9 +836,8 @@ async function abrirMixto(){
   $("#mxDeuda").textContent = fmt(totalActual);
   $("#mxEfectivo").value = "";
   $("#mxAlias").value = "";
-  $("#mxConfirmar").checked = false;
   $("#mxResumen").style.display = "none";
-  $("#mxAliasBox").style.display = "none";
+  $("#mxAviso").style.display = "none";
   $("#mxRegistrar").disabled = true;
   $("#panelMixto").style.display = "block";
 }
@@ -846,7 +850,7 @@ function calcularMixto(){
   const D = mxDeudaActual;                          
   const E = parseInt($("#mxEfectivo").value)||0;    
   const aviso = $("#mxAviso");
-  const efvoBruto =  Math.ceil((E / 0.9) / 100) * 100; 
+  const efvoBruto =  Math.ceil((E / 0.9) / 100) * 100;  // Deuda cubierta
 
   let error = "";
   if(E <= 0)              error = "Poné cuánto paga en efectivo.";
@@ -866,10 +870,10 @@ function calcularMixto(){
   const T    = D - efvoBruto;                        // lo que queda va por transferencia
   const desc = efvoBruto - E;                        // descuento = deuda cubierta − plata real
   const totalCobrar = T + E;
+  const pct  = Math.round(desc / efvoBruto * 100); 
 
   $("#mxMonEfvoReal").textContent  = fmt(E);
-  $("#mxDesc").textContent         = "−"+fmt(desc);
-  $("#mxMonEfvoBruto").textContent = fmt(efvoBruto);
+  $("#mxSubEfvo").textContent     = `equivale a ${fmt(efvoBruto)} de deuda (−${pct}%)`;
   $("#mxMonTransfer").textContent  = fmt(T);
   $("#mxTotal").textContent        = fmt(totalCobrar);
 
@@ -878,15 +882,7 @@ function calcularMixto(){
 }
 
 
-$("#mxConfirmar").onchange=()=>{
-  const on = $("#mxConfirmar").checked;
-  $("#mxResumen").style.display = on ? "block" : "none";
-  $("#mxAliasBox").style.display = on ? "flex" : "none";  // pedimos alias cuando confirma
-  if(on) calcularMixto();
-  else $("#mxRegistrar").disabled = true;
-};
-
-$("#mxEfectivo").oninput=()=>{ if($("#mxConfirmar").checked) calcularMixto(); };
+$("#mxEfectivo").oninput = calcularMixto;
 
 $("#mxRegistrar").onclick=async()=>{
   $("#mxRegistrar").disabled = true;                 // evitar doble click y duplicados

@@ -228,7 +228,10 @@ if($("#btnEliminar")) $("#btnEliminar").onclick=async()=>{
       </div>`:''}`;
     if(comp.saldo>0){
       const box=div.querySelector(".abonar-box");
-      div.querySelector(".btnAbrir").onclick=()=>{ box.style.display = box.style.display==="block"?"none":"block"; };
+      div.querySelector(".btnAbrir").onclick=(e)=>{
+        box.style.display = "block";
+        e.currentTarget.disabled = true;
+      };
       const forma=div.querySelector(".aForma");
       const inp=div.querySelector(".aMonto"), btnOk=div.querySelector(".aOk");
       function refrescarForma(){

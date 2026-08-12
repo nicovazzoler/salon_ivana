@@ -151,7 +151,7 @@
   <div class="card" id="cDeuda">
     <h2>Cuenta corriente</h2>
     <div class="nums">
-      <div class="num"><div class="lbl">Deudas de clientes hasta el día de la fecha: </div><div class="val" id="deudaTotal">—</div></div>
+      <div class="num"><div class="lbl">Deudas de clientes hasta el día de la fecha: </div><div class="val " id="deudaTotal">—</div></div>
       <div class="num"><div class="lbl">Clientes con saldo: </div><div class="val" id="deudaTickets">—</div></div>
     </div>
     <div class="rank" id="rankDeuda"></div>
@@ -323,7 +323,7 @@ function pintarRanking(){
     const pct = Math.round(d.saldo / max * 100);
     return `
       <a class="rank-row" href="/cuenta?id=${d.id}">
-        <span class="rank-nombre">${d.nombre}</span>
+        <span class="rank-nombre cap">${d.nombre}</span>
         <span class="rank-bar-wrap"><span class="rank-bar" style="width:${pct}%;"></span></span>
         <span class="rank-monto">${money(d.saldo)}</span>
       </a>`;

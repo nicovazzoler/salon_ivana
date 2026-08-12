@@ -2,6 +2,11 @@
    COMPONENTES — piezas reutilizables con nombre propio
    ========================================================================== */
 
+
+/* Primera letra de cada palabra en mayúscula */
+.cap{ text-transform:capitalize; }
+
+
 /* ----- Botones con variante ----- */
 
 .b-ok,

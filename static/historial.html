@@ -17,6 +17,13 @@
   }
   .comp-head .sub{ margin-top:3px; font-size:var(--fs-base); color:var(--text); }
 
+  /* Grupo izquierdo: los datos y el estado, uno al lado del otro */
+  .comp-datos{
+    display:flex;
+    align-items:center;
+    gap:14px;
+  }
+
   .comp-acciones{
     display:flex;
     align-items:center;
@@ -97,14 +104,16 @@ async function cargar(){
     const formaTxt = formas[comp.forma_origen] || comp.forma_origen;
     div.innerHTML=`
       <div class="comp-head">
-        <div>
-          <div class="sub">${fecha} · <span class="num">${numComp(comp.tipo,comp.numero)}</span> · ${quien}</div>
-          <div class="comp-total">${fmt(comp.ingresado + comp.saldo)} <span class="fp">· ${formaTxt}</span></div>
+        <div class="comp-datos">
+          <div>
+            <div class="sub">${fecha} · <span class="num">${numComp(comp.tipo,comp.numero)}</span> · ${quien}</div>
+            <div class="comp-total">${fmt(comp.ingresado + comp.saldo)} <span class="fp">· ${formaTxt}</span></div>
+          </div>
+          <span class="badge ${comp.estado}">${comp.estado}</span>
         </div>
         <div class="comp-acciones">
         ${(comp.tipo==="ticket" && comp.saldo>0 && comp.cliente_id)
           ? `<a class="btnAbonar" href="/cuenta?id=${comp.cliente_id}&comp=${comp.id}">Abonar 💵</a>` : ''}
-        <span class="badge ${comp.estado}">${comp.estado}</span>
         <button class="btnAnular b-del" data-id="${comp.id}">Anular</button>
         </div>
       </div>
@@ -141,7 +150,7 @@ async function cargar(){
 
       const pagos=d.pagos.length
         ? d.pagos.map(p=>{const f=new Date(p.fecha).toLocaleDateString("es-AR");
-            return `<div class="fila" style="color:#555;"><span>✓ ${f} · ${p.forma_pago}${p.alias?' ('+p.alias+')':''}</span><span>${fmt(p.monto)}</span></div>`;
+            return `<div class="fila" style="color:var(--text-tenue);"><span>✓ ${f} · ${p.forma_pago}${p.alias?' ('+p.alias+')':''}</span><span>${fmt(p.monto)}</span></div>`;
           }).join("")
         : (d.tipo==="ticket"?'<div class="muted">Sin pagos.</div>':'');
       // Descuento efectivo real: suma de lo que se descontó en cada pago
