@@ -37,6 +37,11 @@ Cierre diario con ingresos y egresos por forma de pago, arqueo de efectivo con f
 
 ![Pantalla de Caja](docs/caja.png)
 
+### Inventario
+Control de stock, se restan cantidades en base a lo que se factura. Se agrega a mano hasta que los proveedores pasen grillas de productos y se buscará otra forma de cargar eso.
+
+![Inventario](docs/inventario.png)
+
 ### Reportes
 Resumen por período, gráficos de evolución de los más vendidos, ingresos por forma de pago y deuda total de clientes. Exportación a Excel.
 
