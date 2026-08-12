@@ -54,7 +54,6 @@ Resumen por período, gráficos de evolución de los más vendidos, ingresos por
 - **Reportes** — Resumen por período, ranking de más vendidos, gráficos de evolución temporal, deuda total de clientes y exportación a Excel.
 - **Inventario** — Control de stock con alertas de reposición y carga de entradas de mercadería.
 - **Administración** — ABM de productos, categorías, precios, descuentos, formas de pago, alias, tipos de egreso y usuarios.
-- **Autenticación y roles** — Login con permisos diferenciados (dueño / empleado); el empleado solo factura y agenda, el dueño accede a todo.
 
 ---
 
