@@ -1,6 +1,6 @@
 # Salón Ivana — Sistema de gestión para comercios
 
-Aplicación web full-stack para la gestión diaria de una peluquería: facturación con cuenta corriente, clientes, agenda de turnos, caja, inventario, reportes y administración, con control de acceso por roles. **En producción y en uso diario real** desde una tablet en el local.
+Aplicación web full-stack para la gestión diaria de una peluquería: facturación con cuenta corriente, clientes, agenda de turnos, caja, inventario, reportes y administración. **En producción y en uso diario real** desde una tablet en el local.
 
 ---
 
@@ -36,6 +36,11 @@ Turnos en vista día, semana o mes. La vista día combina el formulario de turno
 Cierre diario con ingresos y egresos por forma de pago, arqueo de efectivo con fondo inicial (con arrastre del último valor) y edición en línea de egresos.
 
 ![Pantalla de Caja](docs/caja.png)
+
+### Inventario
+Control de stock, se restan cantidades en base a lo que se factura. Se agrega a mano hasta que los proveedores pasen grillas de productos y se buscará otra forma de cargar eso.
+
+![Inventario](docs/inventario.png)
 
 ### Reportes
 Resumen por período, gráficos de evolución de los más vendidos, ingresos por forma de pago y deuda total de clientes. Exportación a Excel.
