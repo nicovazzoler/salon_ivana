@@ -150,7 +150,8 @@
 /* ----- Textos auxiliares ----- */
 .muted{
   color:var(--text-tenue);
-  font-size:var(--fs-base);
+  font-size:var(--fs-xl);
+
 }
 .vacio{                     /* "no hay nada todavía" */
   padding:var(--sp-6) 0;
@@ -206,7 +207,7 @@
 
 /* ----- Campo: etiqueta arriba, control abajo ----- */
 .campo{ display:flex; flex-direction:column; gap:var(--sp-1); }
-.campo label{ font-size:var(--fs-sm); color:var(--text-tenue); }
+.campo label{ font-size:var(--fs-lg); color:var(--text-tenue); }
 
 /* ----- Números destacados (caja, reportes) ----- */
 .nums{

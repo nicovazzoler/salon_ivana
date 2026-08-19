@@ -485,6 +485,13 @@ function agregar(it){
   renderTicket();
 }
 
+function agregarItem(){
+
+  ticket.push({item_id: null, nombre: "", precio: 0, precioTransfer: 0,
+                 cantidad: 1, dificultad:false, precioEditado:false});          
+  renderTicket()              
+}
+
 function renderTicket(){
   const esEf = formaPago==="efectivo";
   const cont=$("#lineas"); cont.innerHTML="";
