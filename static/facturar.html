@@ -81,6 +81,11 @@
   .linea .n{ flex:1; font-size:var(--fs-md); }
   .linea .pin{ width:80px; }
 
+  .linea input{
+  min-width:0;
+  flex:1;
+}
+
   .dif{                                 /* recargo por dificultad */
     padding:6px var(--sp-2);
     background:var(--bg-input);
@@ -233,6 +238,7 @@
       </div>
 
       <div id="lineas"></div>
+      <button id="item-extra">+ Agregar item extra</button>
 
       <div class="fila" style="margin-top:14px;">
         <label>Descuento:</label>
@@ -485,11 +491,12 @@ function agregar(it){
   renderTicket();
 }
 
-function agregarItem(){
+$("#item-extra").onclick=()=>{agregarItem()}
 
+function agregarItem(){
   ticket.push({item_id: null, nombre: "", precio: 0, precioTransfer: 0,
                  cantidad: 1, dificultad:false, precioEditado:false});          
-  renderTicket()              
+  renderTicket() 
 }
 
 function renderTicket(){
@@ -499,15 +506,35 @@ function renderTicket(){
   ticket.forEach((l,i)=>{
     const row=document.createElement("div"); row.className="linea";
     row.innerHTML=`
-      <span class="n">${l.nombre}</span>
-      <span style="min-width:110px;text-align:right;">${fmt(l.precioTransfer)} <span style="color:var(--text-tenue);font-size:11px;">c/desc ${fmt(l.precio)} )</span></span>
+      ${l.item_id === null
+        ?`<input class="nombre-item-extra" placeholder="Nombre?">
+          <span style="min-width:110px;text-align:right;">${fmt(l.precioTransfer)} <span style="color:var(--text-tenue);font-size:11px;">(c/desc </span></span>
+          <input class="precio-item-extra" placeholder="Precio">)
+          `
+        :`<span class="n">${l.nombre}</span>
+          <span style="min-width:110px;text-align:right;">${fmt(l.precioTransfer)} <span style="color:var(--text-tenue);font-size:11px;">(c/desc ${fmt(l.precio)} )</span></span>
+          `
+      }
       <button class="dif ${l.dificultad?'on':''}">Dif</button>
       <div class="qty"><button class="menos">−</button><span>${l.cantidad}</span><button class="mas">+</button></div>
-      <button class="quitar">×</button>`;
+      <button class="quitar">×</button>
+    `;
+
+    // inputs
+    if(l.item_id === null){
+      const inputnombre = row.querySelector(".nombre-item-extra");
+      inputnombre.oninput=(e) => {ticket[i].nombre = (e.target.value);};
+
+      const inputprecio = row.querySelector(".precio-item-extra");
+      inputprecio.oninput=(e) => {ticket[i].precio = Number(e.target.value);
+                                  ticket[i].precioTransfer = Math.ceil((Number(e.target.value) * 1.1111 / 100)) * 100};                                              
+    }
+    // onclicks
     row.querySelector(".dif").onclick=()=>{ l.dificultad=!l.dificultad; renderTicket(); };
     row.querySelector(".mas").onclick=()=>{ l.cantidad++; renderTicket(); };
     row.querySelector(".menos").onclick=()=>{ l.cantidad--; if(l.cantidad<=0) ticket.splice(i,1); renderTicket(); };
     row.querySelector(".quitar").onclick=()=>{ ticket.splice(i,1); renderTicket(); };
+
     cont.appendChild(row);
   });
   // --- subtotales base ---

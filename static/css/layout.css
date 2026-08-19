@@ -1,8 +1,7 @@
 /* ==========================================================================
-   LAYOUT — la estructura: header, nav, contenedores, cards, filas
+   LAYOUT — header, nav, contenedores, cards, filas
    ========================================================================== */
 
-/* ----- Header ----- */
 header{
   position:sticky; top:0; z-index:var(--z-header);
   display:flex;
@@ -18,9 +17,11 @@ header{
 }
 
 /* ----- EXC Agenda ----- */
+
 header .tit{ display:flex; align-items:center; gap:10px; }
 
-/* ----- Menú de navegación ----- */
+/* ---------------------- */
+
 nav.menu{
   display:flex;
   flex-wrap:wrap;
@@ -40,7 +41,7 @@ nav.menu a{
 }
 
 nav.menu a:hover,
-nav.menu a.actual{        /* .actual = la página donde estás parado */
+nav.menu a.actual{ 
   background:var(--acento);
   color:var(--text-invertido);
 }
@@ -52,12 +53,7 @@ nav.menu a.actual{        /* .actual = la página donde estás parado */
   padding:18px;
 }
 
-.container{                /* ⚠️ solo index.html. Más ancho, para el layout de 2 columnas */
-  max-width:1280px;
-  margin:0 auto;
-}
 
-/* ----- Card: la caja blanca (bueno, gris) que envuelve cada sección ----- */
 .card,
 .panel{
   background:var(--bg-card);
@@ -76,7 +72,7 @@ nav.menu a.actual{        /* .actual = la página donde estás parado */
   color:var(--warn);
 }
 
-/* ----- Fila: campos uno al lado del otro ----- */
+
 .fila{
   display:flex;
   flex-wrap:wrap;
@@ -88,7 +84,7 @@ nav.menu a.actual{        /* .actual = la página donde estás parado */
   min-width:110px;
 }
 
-/* ----- Columna: mitad de pantalla, se apila en mobile ----- */
+
 .col{
   flex:1;
   min-width:300px;
