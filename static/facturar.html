@@ -83,7 +83,7 @@
 
   .linea input{
   min-width:0;
-  flex:1;
+  flex-grow:1;
 }
 
   .dif{                                 /* recargo por dificultad */
@@ -491,7 +491,7 @@ function agregar(it){
   renderTicket();
 }
 
-$("#item-extra").onclick=()=>{agregarItem()}
+$("#item-extra").onclick=()=>{agregarItem(); disableBotones(true)}
 
 function agregarItem(){
   ticket.push({item_id: null, nombre: "", precio: 0, precioTransfer: 0,
@@ -502,14 +502,17 @@ function agregarItem(){
 function renderTicket(){
   const esEf = formaPago==="efectivo";
   const cont=$("#lineas"); cont.innerHTML="";
+
   if(ticket.length===0){ cont.innerHTML='<p class="muted">Tocá un servicio para empezar.</p>'; }
   ticket.forEach((l,i)=>{
+
     const row=document.createElement("div"); row.className="linea";
     row.innerHTML=`
-      ${l.item_id === null
+      ${l.nombre === "" && l.precio <= 0
         ?`<input class="nombre-item-extra" placeholder="Nombre?">
-          <span style="min-width:110px;text-align:right;">${fmt(l.precioTransfer)} <span style="color:var(--text-tenue);font-size:11px;">(c/desc </span></span>
+          <span class="precio-transfer-vivo" style="min-width:110px;text-align:right;">${fmt(l.precioTransfer)} <span style="color:var(--text-tenue);font-size:11px;">(c/desc </span></span>
           <input class="precio-item-extra" placeholder="Precio">)
+          <button class="check-item-extra">💾</button>
           `
         :`<span class="n">${l.nombre}</span>
           <span style="min-width:110px;text-align:right;">${fmt(l.precioTransfer)} <span style="color:var(--text-tenue);font-size:11px;">(c/desc ${fmt(l.precio)} )</span></span>
@@ -521,14 +524,19 @@ function renderTicket(){
     `;
 
     // inputs
-    if(l.item_id === null){
+    if(l.nombre === "" && l.precio <= 0){
       const inputnombre = row.querySelector(".nombre-item-extra");
       inputnombre.oninput=(e) => {ticket[i].nombre = (e.target.value);};
 
       const inputprecio = row.querySelector(".precio-item-extra");
       inputprecio.oninput=(e) => {ticket[i].precio = Number(e.target.value);
-                                  ticket[i].precioTransfer = Math.ceil((Number(e.target.value) * 1.1111 / 100)) * 100};                                              
-    }
+                                  ticket[i].precioTransfer = Math.ceil((Number(e.target.value) * 1.1111 / 100)) * 100;
+                                  row.querySelector(".precio-transfer-vivo").textContent = fmt(ticket[i].precioTransfer)};
+      row.querySelector(".check-item-extra").onclick=()=> {renderTicket()};
+        
+    };
+
+    
     // onclicks
     row.querySelector(".dif").onclick=()=>{ l.dificultad=!l.dificultad; renderTicket(); };
     row.querySelector(".mas").onclick=()=>{ l.cantidad++; renderTicket(); };
@@ -537,6 +545,7 @@ function renderTicket(){
 
     cont.appendChild(row);
   });
+  
   // --- subtotales base ---
   const totalEf = ticket.reduce((a,l)=>a+l.precio*l.cantidad,0);          // a precio efectivo
   const totalTr = ticket.reduce((a,l)=>a+l.precioTransfer*l.cantidad,0);  // a precio transfer

@@ -66,7 +66,7 @@ app = FastAPI(title="Pelu App")
 
 # ---------- esquemas ----------
 class LineaIn(BaseModel):
-    item_id: int; cantidad: int = 1; dificultad: bool = False; precio_custom: int | None = None
+    item_id: int | None = None; cantidad: int = 1; dificultad: bool = False; precio_custom: int | None = None
 class VentaIn(BaseModel):
     forma_pago: str; alias: str | None = None; cliente: str | None = None; peluquero: str | None = None; lineas: list[LineaIn]
 class ClienteIn(BaseModel):
@@ -80,7 +80,7 @@ class ItemEdit(BaseModel):
 class RenombrarCat(BaseModel):
     viejo: str; nuevo: str
 class LineaCompIn(BaseModel):
-    item_id: int; cantidad: int = 1; dificultad: bool = False; precio_custom: int | None = None
+    item_id: int | None = None; cantidad: int = 1; dificultad: bool = False; precio_custom: int | None = None; precio: int
 class ComprobanteIn(BaseModel):
     tipo: str; cliente_id: int | None = None; cliente_nombre: str | None = None; peluquero: str | None = None
     forma_pago: str = "efectivo"
