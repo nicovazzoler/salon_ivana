@@ -6,6 +6,6 @@ FORMAS_PAGO = ["Efectivo", "Transferencia"]
 TIPOS_EGRESO = ["Pago proveedor", "Retiro de caja", "Gasto / insumo", "Sueldo", "Otro"]
 
 def calcular_transfer(precio_efectivo: int) -> int:
-    """Precio de transferencia = efectivo x 1,1111, redondeado PARA ARRIBA a múltiplo de 500."""
+    """Precio de transferencia = efectivo x 1,1111, redondeado PARA ARRIBA a múltiplo de 100."""
     bruto = precio_efectivo * 1.1111
-    return math.ceil(bruto / 500) * 500
+    return math.ceil(bruto / 100) * 100

@@ -80,7 +80,7 @@ class ItemEdit(BaseModel):
 class RenombrarCat(BaseModel):
     viejo: str; nuevo: str
 class LineaCompIn(BaseModel):
-    item_id: int | None = None; cantidad: int = 1; dificultad: bool = False; precio_custom: int | None = None; precio: int
+    item_id: int | None = None; cantidad: int = 1; dificultad: bool = False; precio_custom: int | None = None; nombre: str | None = None
 class ComprobanteIn(BaseModel):
     tipo: str; cliente_id: int | None = None; cliente_nombre: str | None = None; peluquero: str | None = None
     forma_pago: str = "efectivo"
@@ -635,21 +635,29 @@ def crear_comprobante(c: ComprobanteIn, user = Depends(usuario_actual), db: Sess
     db.add(comp); db.flush()
     extra = get_extra(db); total = 0; extra_total = 0
     for ln in c.lineas:
-        item = db.get(models.Item, ln.item_id)
-        if not item: raise HTTPException(404, f"Item {ln.item_id} no existe")
-        # El comprobante se ancla SIEMPRE al precio transferencia (precio de referencia).
-        # El descuento por efectivo se aplica al cobrar, no acá.
-        precio = item.precio_transfer
-        sub = precio * ln.cantidad
-        total += sub
         if ln.dificultad: extra_total += extra
-        db.add(models.ComprobanteLinea(comprobante_id=comp.id, item_id=item.id, nombre=item.nombre,
+        if(ln.item_id):
+            item = db.get(models.Item, ln.item_id)
+            if not item: raise HTTPException(404, f"Item {ln.item_id} no existe")
+            # El comprobante se ancla SIEMPRE al precio transferencia (precio de referencia).
+            # El descuento por efectivo se aplica al cobrar, no acá.
+            precio = item.precio_transfer
+            sub = precio * ln.cantidad
+            total += sub
+            db.add(models.ComprobanteLinea(comprobante_id=comp.id, item_id=item.id, nombre=item.nombre,
             cantidad=ln.cantidad, precio_unit=precio, precio_efectivo=item.precio,
             dificultad=ln.dificultad, subtotal=sub))
-        # descontar stock si es producto 
-        if item.es_producto and item.stock_actual is not None:
-            log_stock(db, item, "venta", -ln.cantidad, f"Comprobante #{comp.id}", user.get("usuario","?"))
-            item.stock_actual -= ln.cantidad
+            # descontar stock si es producto 
+            if item.es_producto and item.stock_actual is not None:
+                log_stock(db, item, "venta", -ln.cantidad, f"Comprobante #{comp.id}", user.get("usuario","?"))
+                item.stock_actual -= ln.cantidad
+        else:
+            precio = calcular_transfer(ln.precio_custom)
+            sub = precio * ln.cantidad
+            total += sub
+            db.add(models.ComprobanteLinea(comprobante_id=comp.id, item_id=None, nombre=ln.nombre,
+            cantidad=ln.cantidad, precio_unit=precio, precio_efectivo=ln.precio_custom,
+            dificultad=ln.dificultad, subtotal=sub))
     comp.total_lista = total
     comp.extra_dificultad = extra_total
     db.commit(); db.refresh(comp)

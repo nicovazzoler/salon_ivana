@@ -80,10 +80,11 @@
   }
   .linea .n{ flex:1; font-size:var(--fs-md); }
   .linea .pin{ width:80px; }
+  .linea .nombre-item-extra{ width: 110px; flex-grow:0;}
+  .linea .precio-item-extra{width: 110px; flex-grow:0;}
 
   .linea input{
   min-width:0;
-  flex-grow:1;
 }
 
   .dif{                                 /* recargo por dificultad */
@@ -494,8 +495,8 @@ function agregar(it){
 $("#item-extra").onclick=()=>{agregarItem(); disableBotones(true)}
 
 function agregarItem(){
-  ticket.push({item_id: null, nombre: "", precio: 0, precioTransfer: 0,
-                 cantidad: 1, dificultad:false, precioEditado:false});          
+  ticket.push({item_id: null, nombre: "", precio: 0, precioTransfer: 0, 
+              precioCatalogo: 0, cantidad: 1, dificultad:false, precioEditado:false});
   renderTicket() 
 }
 
@@ -531,9 +532,10 @@ function renderTicket(){
       const inputprecio = row.querySelector(".precio-item-extra");
       inputprecio.oninput=(e) => {ticket[i].precio = Number(e.target.value);
                                   ticket[i].precioTransfer = Math.ceil((Number(e.target.value) * 1.1111 / 100)) * 100;
-                                  row.querySelector(".precio-transfer-vivo").textContent = fmt(ticket[i].precioTransfer)};
-      row.querySelector(".check-item-extra").onclick=()=> {renderTicket()};
-        
+                                  row.querySelector(".precio-transfer-vivo").textContent = fmt(ticket[i].precioTransfer) };
+      row.querySelector(".check-item-extra").onclick=()=> {
+        if(ticket[i].nombre.trim() === "" || !(ticket[i].precio > 0)) {toast("Por favor completar ambos campos correctamente"); return;}
+        ticket[i].precioEditado = true; renderTicket()};
     };
 
     
@@ -739,7 +741,7 @@ async function crearComprobante(){
     descuento_pct: descPct,
     descuento_nombre: descNombre,
     mostrar_motivo: true,
-    lineas: ticket.map(l=>({item_id:l.item_id, cantidad:l.cantidad, dificultad:l.dificultad,
+    lineas: ticket.map(l=>({item_id:l.item_id, nombre: l.nombre, cantidad:l.cantidad, dificultad:l.dificultad,
                             precio_custom: l.precioEditado ? l.precio : null}))
   };
   const r=await authFetch("/api/comprobantes",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
