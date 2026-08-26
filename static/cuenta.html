@@ -119,6 +119,7 @@ async function cargar(){
       </div>
     </div>
     <div class="fila acciones">
+      ${data.saldo_total>0 ? `<a class="btnAbonar" href="/ticket?tipo=cuenta&cliente=${id}">🖨️ Imprimir cuenta</a>` : ''}
       <button class="b-out" id="btnEditar">✏️ Editar datos</button>
       ${getRol()==="dueno" ? '<button class="b-del" id="btnEliminar">🗑️ Eliminar</button>' : ''}
     </div>
@@ -207,6 +208,7 @@ if($("#btnEliminar")) $("#btnEliminar").onclick=async()=>{
           <div class="comp-total">${fmt(comp.ingresado + comp.saldo)} <span class="fp">· ${ORIGEN[comp.forma_origen]||comp.forma_origen}${comp.forma_pago!==ORIGEN[comp.forma_origen]?` → ${comp.forma_pago}`:''}</span></div>
         </div>
         <span class="badge ${comp.estado}">${comp.estado}</span>
+        <a class="btnAbonar" href="/ticket?id=${comp.id}" title="Imprimir" onclick="event.stopPropagation();">🖨️</a>
         <button class="btnAnular b-del" data-id="${comp.id}">Anular</button>
       </div>
       <div class="comp-sub">Total ${fmt(comp.total_final)} · Pagado ${fmt(comp.pagado)} · Saldo <b>${fmt(comp.saldo)}</b></div>

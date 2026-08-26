@@ -572,11 +572,11 @@ function renderTicket(){
     const esExtra  = l.item_id === null;     // ítem cargado a mano (ya guardado o en edición)
     const row=document.createElement("div"); row.className = "linea" + (editando ? " editando" : "");
 
-    // En presupuesto, mostrar ambos precios (Lista/Promo); en ticket, solo el de la forma seleccionada
+    // En presupuesto, mostrar ambos precios (Lista/Descuento); en ticket, solo el de la forma seleccionada
     const preciosHTML = esPresu && !editando
       ? `<div style="display:flex;gap:12px;font-size:13px;min-width:130px;text-align:right;">
            <div><span style="font-size:11px;color:var(--text-tenue);">Lista</span><br>${fmt(l.precioTransfer)}</div>
-           <div><span style="font-size:11px;color:var(--text-tenue);">Promo</span><br>${fmt(l.precio)}</div>
+           <div><span style="font-size:11px;color:var(--text-tenue);">Descuento</span><br>${fmt(l.precio)}</div>
          </div>`
       : `<span style="min-width:110px;text-align:right;">${fmt(l.precioTransfer)} <span style="color:var(--text-tenue);font-size:11px;">(c/desc ${fmt(l.precio)} )</span></span>`;
 
@@ -639,9 +639,9 @@ function renderTicket(){
   const baseCat = esEf ? subEf : subTr;
   const descCat = hayDescCat ? (esEf ? descCatEf : descCatTr) : 0;
 
-  // En presupuesto, mostrar AMBOS subtotales (Lista/Promo); en ticket, solo el de la forma seleccionada
+  // En presupuesto, mostrar AMBOS subtotales (Lista/Descuento); en ticket, solo el de la forma seleccionada
   if(esPresu){
-    $("#subtotal").innerHTML = `<div style="display:flex;gap:16px;"><div>Lista<br><strong>${fmt(subTr)}</strong></div><div>Promo<br><strong>${fmt(subEf)}</strong></div></div>`;
+    $("#subtotal").innerHTML = `<div style="display:flex;gap:16px;"><div>Lista<br><strong>${fmt(subTr)}</strong></div><div>Descuento<br><strong>${fmt(subEf)}</strong></div></div>`;
   } else {
     $("#subtotal").textContent = fmt(subTr);
   }
@@ -663,7 +663,7 @@ function renderTicket(){
   $("#rowSubEfvo").style.display = (hayDescCatYPresu || hayDescCatYEf) ? "flex" : "none";
   if(hayDescCatYPresu){
     document.querySelector("#rowSubEfvo span").textContent = "Subtotal c/desc";
-    $("#subEfvoMonto").innerHTML = `<div style="display:flex;gap:16px;"><div>Lista: ${fmt(subTr - descCatTr)}</div><div>Promo: ${fmt(subEf - descCatEf)}</div></div>`;
+    $("#subEfvoMonto").innerHTML = `<div style="display:flex;gap:16px;"><div>Lista: ${fmt(subTr - descCatTr)}</div><div>Descuento: ${fmt(subEf - descCatEf)}</div></div>`;
   } else {
     $("#subEfvoMonto").textContent = fmt(subEf);
   }
@@ -679,7 +679,7 @@ function renderTicket(){
   // total
   const total = baseCat - descCat;
   if(esPresu){
-    $("#total").innerHTML = `<div style="display:flex;gap:16px;"><div>Lista<br><strong>${fmt(subTr - descCatTr)}</strong></div><div>Promo<br><strong>${fmt(subEf - descCatEf)}</strong></div></div>`;
+    $("#total").innerHTML = `<div style="display:flex;gap:16px;"><div>Lista<br><strong>${fmt(subTr - descCatTr)}</strong></div><div>Descuento<br><strong>${fmt(subEf - descCatEf)}</strong></div></div>`;
     totalActual = subEf - descCatEf;  // usar total efectivo para operaciones
   } else {
     $("#total").textContent = fmt(total);

@@ -84,6 +84,10 @@
     <button id="tabTicket" class="on">Tickets</button>
     <button id="tabPresu">Presupuestos</button>
   </div>
+  <div style="display:flex;gap:8px;margin:10px 0;">
+    <input id="filtroCliente" placeholder="Buscar cliente..." style="flex:1;">
+    <input id="filtroNum" placeholder="N° comp." style="width:110px;" inputmode="numeric">
+  </div>
   <div id="lista"></div>
 </div>
 <div class="toast" id="toast"></div>
@@ -94,12 +98,24 @@ requireLogin(); pintarNav();
 const $=s=>document.querySelector(s);
 const fmt=n=>"$"+(n||0).toLocaleString("es-AR");
 let tipo="ticket";
+let todosComps=[];
 
 function toast(m){const t=$("#toast");t.textContent=m;t.classList.add("show");setTimeout(()=>t.classList.remove("show"),2200);}
 function numComp(t,n){ return (t==="ticket"?"A-":"P-")+String(n).padStart(5,"0"); }
 
 async function cargar(){
-  const comps=await (await authFetch("/api/comprobantes?tipo="+tipo)).json();
+  todosComps=await (await authFetch("/api/comprobantes?tipo="+tipo)).json();
+  renderLista();
+}
+
+function renderLista(){
+  const filtCli = ($("#filtroCliente").value||"").trim().toLowerCase();
+  const filtNum = ($("#filtroNum").value||"").trim();
+  const comps = todosComps.filter(comp=>{
+    if(filtCli && !(comp.cliente_nombre||"").toLowerCase().includes(filtCli)) return false;
+    if(filtNum && !String(comp.numero).includes(filtNum)) return false;
+    return true;
+  });
   const cont=$("#lista"); cont.innerHTML="";
   if(comps.length===0){ cont.innerHTML='<p class="muted">No hay '+(tipo==="ticket"?"tickets":"presupuestos")+' todavía.</p>'; return; }
   comps.forEach(comp=>{
@@ -143,7 +159,7 @@ async function cargar(){
       const lineas=d.lineas.map(l=>
         `<div class="fila"><span>${l.cantidad}× ${l.nombre}${l.dificultad?' (dif)':''}</span>`+
         (esPresu
-          ? `<span style="white-space:nowrap;">${fmt(l.precio_unit*l.cantidad)} <span style="color:var(--text-tenue);font-size:11px;">/ efvo ${fmt(l.precio_efectivo*l.cantidad)}</span></span>`
+          ? `<span style="white-space:nowrap;">${fmt(l.precio_unit*l.cantidad)} <span style="color:var(--text-tenue);font-size:11px;">/ desc. ${fmt(l.precio_efectivo*l.cantidad)}</span></span>`
           : `<span>${fmt(l.precio_unit*l.cantidad)}</span>`)
         +`</div>`
       ).join("");
@@ -190,8 +206,8 @@ async function cargar(){
         const filaDescPresu = d.descuento_pct>0
           ? `<div class="fila" style="color:var(--text-tenue);"><span>${d.descuento_nombre||'Descuento'} ${d.descuento_pct}%</span><span>aplicado</span></div>` : "";
         totales=`${filaDescPresu}
-          <div class="fila fila-total"><span>Total transferencia</span><span>${fmt(totTr)}</span></div>
-          <div class="fila fila-total"><span>Total efectivo</span><span>${fmt(totEf)}</span></div>`;
+          <div class="fila fila-total"><span>Total lista</span><span>${fmt(totTr)}</span></div>
+          <div class="fila fila-total"><span>Total descuento</span><span>${fmt(totEf)}</span></div>`;
       } else {
         totales=`<div class="fila fila-total"><span>Total</span><span>${fmt(d.ingresado + d.saldo)}</span></div>`;
       }
@@ -229,6 +245,9 @@ async function cargar(){
     
 $("#tabTicket").onclick=()=>{ tipo="ticket"; $("#tabTicket").classList.add("on"); $("#tabPresu").classList.remove("on"); cargar(); };
 $("#tabPresu").onclick=()=>{ tipo="presupuesto"; $("#tabPresu").classList.add("on"); $("#tabTicket").classList.remove("on"); cargar(); };
+
+$("#filtroCliente").oninput = ()=> renderLista();
+$("#filtroNum").oninput = ()=> renderLista();
 
 cargar();
 </script>

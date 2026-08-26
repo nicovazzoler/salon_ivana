@@ -105,9 +105,9 @@ const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&
 function toast(m){const t=$("#toast");t.textContent=m;t.classList.add("show");setTimeout(()=>t.classList.remove("show"),2600);}
 
 /* En el ticket impreso NUNCA se usa la palabra "efectivo":
-   la lista transferencia es "Lista" y la lista efectivo es "Promo". */
+   la lista transferencia es "Lista" y la lista efectivo es "Descuento". */
 
-let COMP=null, NEGOCIO={};
+let COMP=null, NEGOCIO={}, CUENTA=null;
 
 function numComp(t,n){ return (t==="ticket"?"A-":"P-")+String(n).padStart(5,"0"); }
 function fechaLocal(iso){
@@ -117,16 +117,33 @@ function fechaLocal(iso){
 }
 
 async function init(){
-  const id=new URLSearchParams(location.search).get("id");
-  if(!id){ $("#estado").textContent="Falta el número de comprobante (?id=...)"; return; }
+  const params=new URLSearchParams(location.search);
+  const id=params.get("id");
+  const tipoPag=params.get("tipo");
+  const clienteId=params.get("cliente");
+
   try{
     const cfg=await (await authFetch("/api/config")).json();
     NEGOCIO=cfg.negocio||{};
-    const r=await authFetch("/api/comprobantes/"+id);
-    if(!r.ok){ $("#estado").textContent="No se encontró el comprobante."; return; }
-    COMP=await r.json();
-  }catch(e){ $("#estado").textContent="No se pudo cargar."; return; }
-  render();
+  }catch(e){ $("#estado").textContent="No se pudo cargar config."; return; }
+
+  if(tipoPag==="cuenta" && clienteId){
+    try{
+      const r=await authFetch("/api/clientes/"+clienteId+"/cuenta");
+      if(!r.ok){ $("#estado").textContent="No se encontró el cliente."; return; }
+      CUENTA=await r.json();
+    }catch(e){ $("#estado").textContent="No se pudo cargar la cuenta."; return; }
+    renderCuenta();
+  } else if(id){
+    try{
+      const r=await authFetch("/api/comprobantes/"+id);
+      if(!r.ok){ $("#estado").textContent="No se encontró el comprobante."; return; }
+      COMP=await r.json();
+    }catch(e){ $("#estado").textContent="No se pudo cargar."; return; }
+    render();
+  } else {
+    $("#estado").textContent="Falta el numero de comprobante (?id=...)"; return;
+  }
   $("#estado").style.display="none";
   $("#papel").style.display="block";
 }
@@ -149,7 +166,7 @@ function render(){
 
   if(esPresu){
     // presupuesto: las dos listas de precios, columna por columna
-    partes.push('<table><tr><th>Detalle</th><th>Lista</th><th>Promo</th></tr>');
+    partes.push('<table><tr><th>Detalle</th><th>Lista</th><th>Descuento</th></tr>');
     d.lineas.forEach(l=>{
       partes.push(`<tr><td>${l.cantidad}× ${esc(l.nombre)}${l.dificultad?" *":""}</td>
         <td class="precio">${fmt(l.precio_unit*l.cantidad)}</td>
@@ -168,7 +185,7 @@ function render(){
       totPromo=Math.round(totPromo*(100-d.descuento_pct)/100);
     }
     partes.push(`<div class="fila total"><span>Total lista</span><span class="der">${fmt(totLista)}</span></div>`);
-    partes.push(`<div class="fila total"><span>Total promo</span><span class="der">${fmt(totPromo)}</span></div>`);
+    partes.push(`<div class="fila total"><span>Total descuento</span><span class="der">${fmt(totPromo)}</span></div>`);
     partes.push(`<div class="c chico" style="margin-top:8px;">Presupuesto sin valor fiscal.<br>Precios sujetos a cambio sin previo aviso.</div>`);
   } else {
     // ticket de venta: precios de lista + descuentos aplicados
@@ -179,15 +196,15 @@ function render(){
     partes.push('<hr class="sep">');
 
     if(d.desc_efectivo>0){
-      const pct=(d.desc_efectivo/d.total_transfer*100).toFixed(0);
-      partes.push(`<div class="fila tenue"><span>Promo ${pct}%</span><span class="der">−${fmt(d.desc_efectivo)}</span></div>`);
+      const pct=(d.desc_efectivo/d.total_transfer*100).toFixed(2);
+      partes.push(`<div class="fila tenue"><span>Descuento ${pct}%</span><span class="der">−${fmt(d.desc_efectivo)}</span></div>`);
     }
     if(d.desc_jubilado>0){
       partes.push(`<div class="fila tenue"><span>${esc(d.descuento_nombre||"Descuento")} ${d.descuento_pct}%</span><span class="der">−${fmt(d.desc_jubilado)}</span></div>`);
     }
     // descuento hecho al momento de pagar (ej: abonó en promo una deuda)
     const descPagos=d.pagos.reduce((a,p)=>a+(p.desc_aplicado||0),0);
-    if(descPagos>0) partes.push(`<div class="fila tenue"><span>Promo (al abonar)</span><span class="der">−${fmt(descPagos)}</span></div>`);
+    if(descPagos>0) partes.push(`<div class="fila tenue"><span>Descuento (al abonar)</span><span class="der">−${fmt(descPagos)}</span></div>`);
 
     const totalCobrado=d.ingresado + Math.max(d.saldo,0);
     partes.push(`<div class="fila total"><span>TOTAL</span><span class="der">${fmt(totalCobrado)}</span></div>`);
@@ -196,14 +213,54 @@ function render(){
       partes.push('<hr class="sep">');
       d.pagos.forEach(p=>{
         const f=new Date(p.fecha.endsWith("Z")?p.fecha:p.fecha+"Z").toLocaleDateString("es-AR");
-        const via=p.forma_pago==="Transferencia"?" · transf.":"";
-        partes.push(`<div class="fila tenue"><span>Recibido ${f}${via}</span><span class="der">${fmt(p.monto)}</span></div>`);
+        const fp=p.forma_pago ? ` (${p.forma_pago}${p.alias?" · "+p.alias:""})` : "";
+        partes.push(`<div class="fila tenue"><span>Recibido ${f}${fp}</span><span class="der">${fmt(p.monto)}</span></div>`);
       });
     }
     if(d.saldo>0) partes.push(`<div class="fila pend"><span>PENDIENTE</span><span class="der">${fmt(d.saldo)}</span></div>`);
   }
 
   partes.push(`<div class="c gracias">¡Gracias por su visita! ✂</div>`);
+  $("#papel").innerHTML=partes.join("");
+}
+
+/* ---------- vista previa de cuenta corriente ---------- */
+function renderCuenta(){
+  const c=CUENTA.cliente, comps=CUENTA.comprobantes;
+  const conDeuda=comps.filter(x=>x.saldo>0).slice(0,20);
+  const partes=[];
+
+  partes.push(`<div class="c marca">${esc(NEGOCIO.nombre||"")}</div>`);
+  const datos=[NEGOCIO.direccion, NEGOCIO.telefono&&("Tel: "+NEGOCIO.telefono), NEGOCIO.instagram].filter(Boolean);
+  if(datos.length) partes.push(`<div class="c chico">${datos.map(esc).join("<br>")}</div>`);
+
+  partes.push('<hr class="sep">');
+  partes.push(`<div class="c" style="font-weight:700;font-size:14px;">CUENTA CORRIENTE</div>`);
+  const ahora=new Date();
+  partes.push(`<div class="fila chico"><span>Cliente: ${esc(c.nombre)}</span><span class="der">${ahora.toLocaleDateString("es-AR")}</span></div>`);
+  partes.push('<hr class="sep">');
+
+  if(conDeuda.length===0){
+    partes.push(`<div class="c tenue">Sin deuda pendiente.</div>`);
+  } else {
+    partes.push('<table><tr><th>Comprobante</th><th>Total</th><th>Pagado</th><th>Saldo</th></tr>');
+    conDeuda.forEach(comp=>{
+      const f=new Date(comp.fecha).toLocaleDateString("es-AR");
+      partes.push(`<tr>
+        <td>A-${String(comp.numero).padStart(5,"0")}<br><span class="tenue" style="font-size:10px;">${f}</span></td>
+        <td class="precio">${fmt(comp.total_final)}</td>
+        <td class="precio">${fmt(comp.pagado)}</td>
+        <td class="precio" style="font-weight:700;">${fmt(comp.saldo)}</td>
+      </tr>`);
+    });
+    partes.push('</table>');
+  }
+  partes.push('<hr class="sep">');
+  partes.push(`<div class="fila total"><span>SALDO TOTAL</span><span class="der">${fmt(CUENTA.saldo_total)}</span></div>`);
+  if(conDeuda.length<comps.filter(x=>x.saldo>0).length){
+    partes.push(`<div class="c tenue chico">Mostrando los primeros 20 comprobantes con deuda.</div>`);
+  }
+  partes.push(`<div class="c chico" style="margin-top:8px;">Comprobante sin valor fiscal.</div>`);
   $("#papel").innerHTML=partes.join("");
 }
 
@@ -230,7 +287,14 @@ function fila3(a,b,c){                       // detalle | lista | promo (26+11+1
   return a+" ".repeat(26-a.length)+b.padStart(11)+c.padStart(11);
 }
 
+function fila4(a,b,c,d_){
+  a=translit(a); b=translit(b); c=translit(c); d_=translit(d_);
+  if(a.length>16) a=a.slice(0,16);
+  return a+" ".repeat(16-a.length)+b.padStart(10)+c.padStart(11)+d_.padStart(11);
+}
+
 function generarEscpos(){
+  if(CUENTA) return generarEscposCuenta();
   const d=COMP, esPresu=d.tipo==="presupuesto";
   const B=[];
   const raw=(...x)=>B.push(...x);
@@ -254,7 +318,7 @@ function generarEscpos(){
   sep();
 
   if(esPresu){
-    lin(fila3("Detalle","Lista","Promo"));
+    lin(fila3("Detalle","Lista","Desc."));
     d.lineas.forEach(l=>lin(fila3(l.cantidad+"x "+l.nombre+(l.dificultad?" *":""),
                                   fmtP(l.precio_unit*l.cantidad), fmtP(l.precio_efectivo*l.cantidad))));
     if(d.extra_dificultad>0) lin(fila2("* Extra dificultad","+"+fmtP(d.extra_dificultad)));
@@ -269,7 +333,7 @@ function generarEscpos(){
     }
     negrita(true);
     lin(fila2("Total lista",fmtP(totLista)));
-    lin(fila2("Total promo",fmtP(totPromo)));
+    lin(fila2("Total descuento",fmtP(totPromo)));
     negrita(false);
     lin(); centro(true);
     lin("Presupuesto sin valor fiscal.");
@@ -279,10 +343,10 @@ function generarEscpos(){
     d.lineas.forEach(l=>lin(fila2(l.cantidad+"x "+l.nombre+(l.dificultad?" *":""), fmtP(l.precio_unit*l.cantidad))));
     if(d.extra_dificultad>0) lin(fila2("* Extra dificultad","+"+fmtP(d.extra_dificultad)));
     sep();
-    if(d.desc_efectivo>0) lin(fila2("Promo "+(d.desc_efectivo/d.total_transfer*100).toFixed(0)+"%","-"+fmtP(d.desc_efectivo)));
+    if(d.desc_efectivo>0) lin(fila2("Descuento "+(d.desc_efectivo/d.total_transfer*100).toFixed(2)+"%","-"+fmtP(d.desc_efectivo)));
     if(d.desc_jubilado>0) lin(fila2((d.descuento_nombre||"Descuento")+" "+d.descuento_pct+"%","-"+fmtP(d.desc_jubilado)));
     const descPagos=d.pagos.reduce((a,p)=>a+(p.desc_aplicado||0),0);
-    if(descPagos>0) lin(fila2("Promo (al abonar)","-"+fmtP(descPagos)));
+    if(descPagos>0) lin(fila2("Descuento (al abonar)","-"+fmtP(descPagos)));
     negrita(true); grande(true);
     lin(fila2("TOTAL",fmtP(d.ingresado+Math.max(d.saldo,0)),24));   // 24 cols: la letra es doble ancho
     grande(false); negrita(false);
@@ -290,7 +354,8 @@ function generarEscpos(){
       sep();
       d.pagos.forEach(p=>{
         const f=new Date(p.fecha.endsWith("Z")?p.fecha:p.fecha+"Z").toLocaleDateString("es-AR");
-        lin(fila2("Recibido "+f+(p.forma_pago==="Transferencia"?" - transf.":""), fmtP(p.monto)));
+        const fp=p.forma_pago ? " ("+p.forma_pago+")" : "";
+        lin(fila2("Recibido "+f+fp, fmtP(p.monto)));
       });
     }
     if(d.saldo>0){ negrita(true); lin(fila2("PENDIENTE",fmtP(d.saldo))); negrita(false); }
@@ -302,11 +367,55 @@ function generarEscpos(){
   return new Uint8Array(B);
 }
 
+function generarEscposCuenta(){
+  const c=CUENTA.cliente, comps=CUENTA.comprobantes;
+  const conDeuda=comps.filter(x=>x.saldo>0).slice(0,20);
+  const B=[];
+  const raw=(...x)=>B.push(...x);
+  const txt=s=>{ for(const ch of translit(s)) B.push(ch.charCodeAt(0)); };
+  const lin=(s="")=>{ txt(s); raw(10); };
+  const centro=on=>raw(0x1b,0x61,on?1:0);
+  const negrita=on=>raw(0x1b,0x45,on?1:0);
+  const grande=on=>raw(0x1d,0x21,on?0x11:0x00);
+  const sep=()=>lin("-".repeat(ANCHO));
+
+  raw(0x1b,0x40);
+  centro(true);
+  grande(true); negrita(true); lin(NEGOCIO.nombre||""); negrita(false); grande(false);
+  [NEGOCIO.direccion, NEGOCIO.telefono&&("Tel: "+NEGOCIO.telefono), NEGOCIO.instagram]
+    .filter(Boolean).forEach(x=>lin(x));
+  centro(false);
+  sep();
+  centro(true); negrita(true); lin("CUENTA CORRIENTE"); negrita(false); centro(false);
+  const ahora=new Date();
+  lin(fila2("Cliente: "+c.nombre, ahora.toLocaleDateString("es-AR")));
+  sep();
+
+  if(conDeuda.length===0){
+    lin("Sin deuda pendiente.");
+  } else {
+    lin(fila4("Comprobante","Total","Pagado","Saldo"));
+    sep();
+    conDeuda.forEach(comp=>{
+      const f=new Date(comp.fecha).toLocaleDateString("es-AR");
+      lin(fila4("A-"+String(comp.numero).padStart(5,"0")+" "+f, fmtP(comp.total_final), fmtP(comp.pagado), fmtP(comp.saldo)));
+    });
+  }
+  sep();
+  negrita(true); grande(true);
+  lin(fila2("SALDO TOTAL",fmtP(CUENTA.saldo_total),24));
+  grande(false); negrita(false);
+  lin(); centro(true); lin("Comprobante sin valor fiscal."); centro(false);
+  raw(0x1b,0x64,4);
+  raw(0x1d,0x56,0x42,0x00);
+  return new Uint8Array(B);
+}
+
 /* ---------- imprimir ---------- */
 // La comandera se maneja con la app RawBT (Play Store): recibe los bytes ESC/POS
 // por el esquema rawbt: y los manda por Bluetooth a la impresora.
 $("#btnComandera").onclick=()=>{
-  if(!COMP) return;
+  if(!COMP && !CUENTA) return;
   try{
     const bytes=generarEscpos();
     let bin=""; bytes.forEach(b=>bin+=String.fromCharCode(b));
