@@ -148,6 +148,21 @@ async function init(){
   $("#papel").style.display="block";
 }
 
+/* Precios unitarios de una línea, ya con su ajuste aplicado. El backend los manda
+   calculados; el fallback es por si el comprobante viene de una versión anterior. */
+const pu = l => l.precio_unit_final     ?? l.precio_unit     ?? 0;
+const pe = l => l.precio_efectivo_final ?? l.precio_efectivo ?? 0;
+
+/* Renglón que explica el ajuste de una línea: cuánto era y cuánto quedó por unidad. */
+function filaAjuste(l){
+  const desc = l.ajuste_pct < 0;
+  const etiqueta = (l.ajuste_nombre ? esc(l.ajuste_nombre) : (desc ? "Descuento" : "Recargo"))
+                 + ` ${desc?"−":"+"}${Math.abs(l.ajuste_pct)}%`;
+  return `<div class="fila tenue" style="padding-left:10px;">
+    <span>↳ ${etiqueta}</span>
+    <span class="der">${fmt(l.precio_unit)} → ${fmt(pu(l))} c/u</span></div>`;
+}
+
 /* ---------- vista previa HTML (espejo de lo que sale por la comandera) ---------- */
 function render(){
   const d=COMP, esPresu=d.tipo==="presupuesto";
@@ -166,31 +181,34 @@ function render(){
 
   if(esPresu){
     // presupuesto: las dos listas de precios, columna por columna
-    partes.push('<table><tr><th>Detalle</th><th>Lista</th><th>Descuento</th></tr>');
+    partes.push('<table><tr><th>Detalle</th><th>Lista</th><th>Con descuento</th></tr>');
     d.lineas.forEach(l=>{
       partes.push(`<tr><td>${l.cantidad}× ${esc(l.nombre)}${l.dificultad?" *":""}</td>
-        <td class="precio">${fmt(l.precio_unit*l.cantidad)}</td>
-        <td class="precio">${fmt(l.precio_efectivo*l.cantidad)}</td></tr>`);
+        <td class="precio">${fmt(pu(l)*l.cantidad)}</td>
+        <td class="precio">${fmt(pe(l)*l.cantidad)}</td></tr>`);
+      // el ajuste de la línea se detalla abajo, con el precio de lista original
+      if(l.ajuste_pct) partes.push(filaAjuste(l));
     });
     partes.push('</table>');
     if(d.extra_dificultad>0) partes.push(`<div class="fila tenue"><span>* Extra dificultad</span><span class="der">+${fmt(d.extra_dificultad)}</span></div>`);
     partes.push('<hr class="sep">');
 
     const extra=d.extra_dificultad||0;
-    let totLista=d.lineas.reduce((a,l)=>a+l.precio_unit*l.cantidad,0)+extra;
-    let totPromo=d.lineas.reduce((a,l)=>a+l.precio_efectivo*l.cantidad,0)+extra;
+    let totLista=d.lineas.reduce((a,l)=>a+pu(l)*l.cantidad,0)+extra;
+    let totPromo=d.lineas.reduce((a,l)=>a+pe(l)*l.cantidad,0)+extra;
     if(d.descuento_pct>0){
       partes.push(`<div class="fila tenue"><span>${esc(d.descuento_nombre||"Descuento")} ${d.descuento_pct}%</span><span class="der">aplicado</span></div>`);
       totLista=Math.round(totLista*(100-d.descuento_pct)/100);
       totPromo=Math.round(totPromo*(100-d.descuento_pct)/100);
     }
     partes.push(`<div class="fila total"><span>Total lista</span><span class="der">${fmt(totLista)}</span></div>`);
-    partes.push(`<div class="fila total"><span>Total descuento</span><span class="der">${fmt(totPromo)}</span></div>`);
+    partes.push(`<div class="fila total"><span>Total con descuento</span><span class="der">${fmt(totPromo)}</span></div>`);
     partes.push(`<div class="c chico" style="margin-top:8px;">Presupuesto sin valor fiscal.<br>Precios sujetos a cambio sin previo aviso.</div>`);
   } else {
     // ticket de venta: precios de lista + descuentos aplicados
     d.lineas.forEach(l=>{
-      partes.push(`<div class="fila"><span>${l.cantidad}× ${esc(l.nombre)}${l.dificultad?" *":""}</span><span class="der">${fmt(l.precio_unit*l.cantidad)}</span></div>`);
+      partes.push(`<div class="fila"><span>${l.cantidad}× ${esc(l.nombre)}${l.dificultad?" *":""}</span><span class="der">${fmt(pu(l)*l.cantidad)}</span></div>`);
+      if(l.ajuste_pct) partes.push(filaAjuste(l));
     });
     if(d.extra_dificultad>0) partes.push(`<div class="fila tenue"><span>* Extra dificultad</span><span class="der">+${fmt(d.extra_dificultad)}</span></div>`);
     partes.push('<hr class="sep">');
@@ -287,6 +305,14 @@ function fila3(a,b,c){                       // detalle | lista | promo (26+11+1
   return a+" ".repeat(26-a.length)+b.padStart(11)+c.padStart(11);
 }
 
+/* Renglón del ajuste de una línea, para la comandera */
+function lineaAjuste(l){
+  const desc = l.ajuste_pct < 0;
+  const etiqueta = (l.ajuste_nombre || (desc ? "Descuento" : "Recargo"))
+                 + ` ${desc?"-":"+"}${Math.abs(l.ajuste_pct)}%`;
+  return fila2("  > "+etiqueta, fmtP(l.precio_unit)+" > "+fmtP(pu(l))+" c/u");
+}
+
 function fila4(a,b,c,d_){
   a=translit(a); b=translit(b); c=translit(c); d_=translit(d_);
   if(a.length>16) a=a.slice(0,16);
@@ -318,14 +344,17 @@ function generarEscpos(){
   sep();
 
   if(esPresu){
-    lin(fila3("Detalle","Lista","Desc."));
-    d.lineas.forEach(l=>lin(fila3(l.cantidad+"x "+l.nombre+(l.dificultad?" *":""),
-                                  fmtP(l.precio_unit*l.cantidad), fmtP(l.precio_efectivo*l.cantidad))));
+    lin(fila3("Detalle","Lista","C/desc."));
+    d.lineas.forEach(l=>{
+      lin(fila3(l.cantidad+"x "+l.nombre+(l.dificultad?" *":""),
+                fmtP(pu(l)*l.cantidad), fmtP(pe(l)*l.cantidad)));
+      if(l.ajuste_pct) lin(lineaAjuste(l));
+    });
     if(d.extra_dificultad>0) lin(fila2("* Extra dificultad","+"+fmtP(d.extra_dificultad)));
     sep();
     const extra=d.extra_dificultad||0;
-    let totLista=d.lineas.reduce((a,l)=>a+l.precio_unit*l.cantidad,0)+extra;
-    let totPromo=d.lineas.reduce((a,l)=>a+l.precio_efectivo*l.cantidad,0)+extra;
+    let totLista=d.lineas.reduce((a,l)=>a+pu(l)*l.cantidad,0)+extra;
+    let totPromo=d.lineas.reduce((a,l)=>a+pe(l)*l.cantidad,0)+extra;
     if(d.descuento_pct>0){
       lin(fila2((d.descuento_nombre||"Descuento")+" "+d.descuento_pct+"%","aplicado"));
       totLista=Math.round(totLista*(100-d.descuento_pct)/100);
@@ -333,14 +362,17 @@ function generarEscpos(){
     }
     negrita(true);
     lin(fila2("Total lista",fmtP(totLista)));
-    lin(fila2("Total descuento",fmtP(totPromo)));
+    lin(fila2("Total con descuento",fmtP(totPromo)));
     negrita(false);
     lin(); centro(true);
     lin("Presupuesto sin valor fiscal.");
     lin("Precios sujetos a cambio sin previo aviso.");
     centro(false);
   } else {
-    d.lineas.forEach(l=>lin(fila2(l.cantidad+"x "+l.nombre+(l.dificultad?" *":""), fmtP(l.precio_unit*l.cantidad))));
+    d.lineas.forEach(l=>{
+      lin(fila2(l.cantidad+"x "+l.nombre+(l.dificultad?" *":""), fmtP(pu(l)*l.cantidad)));
+      if(l.ajuste_pct) lin(lineaAjuste(l));
+    });
     if(d.extra_dificultad>0) lin(fila2("* Extra dificultad","+"+fmtP(d.extra_dificultad)));
     sep();
     if(d.desc_efectivo>0) lin(fila2("Descuento "+(d.desc_efectivo/d.total_transfer*100).toFixed(2)+"%","-"+fmtP(d.desc_efectivo)));

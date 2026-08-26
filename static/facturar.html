@@ -137,6 +137,48 @@
   }
   .dif.on{ background:var(--warn); border-color:var(--warn); color:#fff; }
 
+  /* --- ajuste por línea (descuento o recargo de ese ítem solo) --- */
+  .aj{                                  /* botón que abre el panel */
+    padding:6px var(--sp-2);
+    background:var(--bg-input);
+    border:1px solid var(--border);
+    color:var(--text-suave);
+    white-space:nowrap;
+  }
+  .aj.desc{ background:var(--acento-bg); border-color:var(--acento); color:var(--acento); }
+  .aj.rec { background:var(--warn); border-color:var(--warn); color:#fff; }
+
+  /* El panel ocupa todo el ancho abajo de la línea: la línea envuelve */
+  .linea{ flex-wrap:wrap; }
+  .aj-panel{
+    flex:1 0 100%;
+    display:flex; flex-wrap:wrap; align-items:center; gap:6px;
+    margin-top:6px; padding:8px;
+    background:var(--bg-sutil);
+    border:1px solid var(--border-sutil);
+    border-radius:var(--r-md);
+  }
+  .aj-panel .lbl{ font-size:var(--fs-sm); color:var(--text-tenue); }
+  .aj-panel select{ flex:1 1 150px; min-width:0; padding:6px 8px; }
+  .aj-panel .pct-box{
+    display:flex; align-items:center; gap:2px;
+    width:96px; padding:0 8px;
+    background:var(--bg-input); border:1px solid var(--border); border-radius:var(--r-md);
+  }
+  .aj-panel .pct-box input{ width:100%; border:none; background:transparent; padding:6px 0; }
+  .aj-panel .pct-box .sfx{ color:var(--text-tenue); font-size:var(--fs-sm); }
+  .aj-panel .quitar-aj{
+    padding:6px 10px; background:transparent;
+    border:1px solid var(--border); color:var(--text-suave);
+  }
+
+  /* precio tachado cuando la línea tiene ajuste */
+  .precio-viejo{
+    color:var(--text-tenue);
+    text-decoration:line-through;
+    font-size:var(--fs-xs);
+  }
+
   .qty{ display:flex; align-items:center; gap:6px; }
   .qty button{
     padding:4px 9px;
@@ -454,6 +496,7 @@ async function init(){
   DESCUENTOS=await (await authFetch("/api/descuentos")).json();
   $("#descuento").innerHTML='<option value="">Sin descuento</option>'+
     DESCUENTOS.map((d,i)=>`<option value="${i}">${d.nombre} ${d.porcentaje}%</option>`).join("");
+  AJUSTES=await (await authFetch("/api/ajustes-item")).json();   // descuentos/recargos por línea
   renderCategorias(); restaurarBorrador(); renderTicket(); mostrarBotones(); cargarEgresosHoy();
   const cliParam=new URLSearchParams(location.search).get("cliente");
   if(cliParam){ $("#cliente").value=cliParam; }
@@ -529,12 +572,40 @@ $("#buscar").oninput=e=>{ const q=e.target.value.trim(); if(q.length===0){render
 $("#volver").onclick=()=>{ $("#buscar").value=""; if(vista==="grupo"){abrirCategoria(catActual);} else {renderCategorias();} };
 
 function agregar(it){
-  const ex=ticket.find(l=>l.item_id===it.id && !l.precioEditado);
+  // Solo se acumula con una línea SIN ajuste: si la de arriba tiene un descuento
+  // propio, sumarle una unidad se lo aplicaría también, que no es lo que se quiere.
+  const ex=ticket.find(l=>l.item_id===it.id && !l.precioEditado && !l.ajustePct);
   if(ex){ ex.cantidad++; } else {
     ticket.push({item_id:it.id, nombre:it.nombre, precio:it.precio, precioTransfer:it.precio_transfer,
-                 precioCatalogo:it.precio, cantidad:1, dificultad:false, precioEditado:false});
+                 precioCatalogo:it.precio, cantidad:1, dificultad:false, precioEditado:false,
+                 ajustePct:0, ajusteNombre:null});
   }
   renderTicket();
+}
+
+// --- Ajuste por línea ---------------------------------------------------
+// El porcentaje va con signo: -10 descuenta un 10%, +15 recarga un 15%.
+// Mismo criterio que precio_con_ajuste() en el backend.
+const conAjuste = (base, pct) => pct ? Math.round((base||0) * (100 + pct) / 100) : (base||0);
+const precioAjEf = l => conAjuste(l.precio,         l.ajustePct);
+const precioAjTr = l => conAjuste(l.precioTransfer, l.ajustePct);
+let AJUSTES = [];                 // lista configurada en admin
+
+const claseAj = aj => aj < 0 ? "aj desc" : aj > 0 ? "aj rec" : "aj";
+const textoAj = aj => aj ? `${aj<0?"−":"+"}${Math.abs(aj)}%` : "%";
+
+/* Precios de una línea listos para pintar. Está aparte del render completo porque
+   mientras se tipea un porcentaje hay que refrescarlos sin volver a dibujar la
+   línea entera (si no, el input pierde el foco a mitad de lo que estás cargando). */
+function htmlPrecios(l, dosColumnas){
+  const aj = l.ajustePct || 0;
+  const tachado = base => aj ? `<span class="precio-viejo">${fmt(base)}</span> ` : "";
+  return dosColumnas
+    ? `<span style="display:flex;gap:12px;font-size:13px;min-width:130px;text-align:right;">
+         <span><span style="font-size:11px;color:var(--text-tenue);">Lista</span><br>${tachado(l.precioTransfer)}${fmt(precioAjTr(l))}</span>
+         <span><span style="font-size:11px;color:var(--text-tenue);">Con desc.</span><br>${tachado(l.precio)}${fmt(precioAjEf(l))}</span>
+       </span>`
+    : `<span style="min-width:110px;text-align:right;">${tachado(l.precioTransfer)}${fmt(precioAjTr(l))} <span style="color:var(--text-tenue);font-size:11px;">(c/desc ${fmt(precioAjEf(l))} )</span></span>`;
 }
 
 $("#item-extra").onclick=()=>agregarItem();
@@ -543,7 +614,8 @@ function agregarItem(){
   // 'editando:true' marca la línea como "en edición": mientras esté así se muestran
   // los inputs y no se puede cobrar. Recién al tocar 💾 pasa a false y queda fija.
   ticket.push({item_id: null, nombre: "", precio: 0, precioTransfer: 0,
-              precioCatalogo: 0, cantidad: 1, dificultad:false, precioEditado:false, editando:true});
+              precioCatalogo: 0, cantidad: 1, dificultad:false, precioEditado:false, editando:true,
+              ajustePct:0, ajusteNombre:null});
   renderTicket();
 }
 
@@ -572,13 +644,10 @@ function renderTicket(){
     const esExtra  = l.item_id === null;     // ítem cargado a mano (ya guardado o en edición)
     const row=document.createElement("div"); row.className = "linea" + (editando ? " editando" : "");
 
-    // En presupuesto, mostrar ambos precios (Lista/Descuento); en ticket, solo el de la forma seleccionada
-    const preciosHTML = esPresu && !editando
-      ? `<div style="display:flex;gap:12px;font-size:13px;min-width:130px;text-align:right;">
-           <div><span style="font-size:11px;color:var(--text-tenue);">Lista</span><br>${fmt(l.precioTransfer)}</div>
-           <div><span style="font-size:11px;color:var(--text-tenue);">Descuento</span><br>${fmt(l.precio)}</div>
-         </div>`
-      : `<span style="min-width:110px;text-align:right;">${fmt(l.precioTransfer)} <span style="color:var(--text-tenue);font-size:11px;">(c/desc ${fmt(l.precio)} )</span></span>`;
+    const aj = l.ajustePct || 0;
+    const preciosHTML = `<span class="precios-linea">${htmlPrecios(l, esPresu && !editando)}</span>`;
+    const ajClase = claseAj(aj), ajTexto = textoAj(aj);
+    const ajTitulo = aj ? esc(l.ajusteNombre || "Ajuste manual") : "Descuento o recargo de este ítem";
 
     row.innerHTML=`
       ${editando
@@ -592,9 +661,22 @@ function renderTicket(){
         :`<span class="n">${l.nombre}</span>
           ${preciosHTML}`
       }
+      ${editando ? "" : `<button class="${ajClase}" title="${ajTitulo}">${ajTexto}</button>`}
       <button class="dif ${l.dificultad?'on':''}">Dif</button>
       <div class="qty"><button class="menos">−</button><span>${l.cantidad}</span><button class="mas">+</button></div>
       <button class="quitar">×</button>
+      ${l.ajusteAbierto && !editando ? `
+      <div class="aj-panel">
+        <span class="lbl">Ajuste:</span>
+        <select class="aj-sel">
+          <option value="">Sin ajuste</option>
+          ${AJUSTES.map(a=>`<option value="${a.id}"${l.ajusteNombre===a.nombre && l.ajustePct===a.porcentaje?" selected":""}>${esc(a.nombre)} (${a.porcentaje<0?"−":"+"}${Math.abs(a.porcentaje)}%)</option>`).join("")}
+          <option value="libre"${aj && !l.ajusteNombre?" selected":""}>Otro…</option>
+        </select>
+        <div class="pct-box"><input class="aj-pct" type="number" min="-100" max="100" placeholder="0" value="${aj||''}"><span class="sfx">%</span></div>
+        <span class="lbl">(negativo descuenta)</span>
+        <button class="quitar-aj">Listo</button>
+      </div>` : ""}
     `;
 
     // Ítem extra en edición: inputs de nombre/precio + guardar
@@ -615,6 +697,38 @@ function renderTicket(){
       row.querySelector(".edit-item-extra").onclick = () => { l.editando = true; renderTicket(); };
     }
 
+    // Ajuste de la línea: abrir/cerrar el panel, elegir de la lista o tipear a mano
+    if(!editando){
+      row.querySelector(".aj").onclick = () => { l.ajusteAbierto = !l.ajusteAbierto; renderTicket(); };
+    }
+    if(l.ajusteAbierto && !editando){
+      const sel = row.querySelector(".aj-sel");
+      const inp = row.querySelector(".aj-pct");
+      sel.onchange = () => {
+        if(sel.value === ""){ l.ajustePct = 0; l.ajusteNombre = null; }
+        else if(sel.value === "libre"){ l.ajusteNombre = null; }   // deja lo tipeado
+        else {
+          const a = AJUSTES.find(x => String(x.id) === sel.value);
+          if(a){ l.ajustePct = a.porcentaje; l.ajusteNombre = a.nombre; }
+        }
+        renderTicket();
+      };
+      inp.oninput = () => {
+        let v = parseInt(inp.value);
+        if(isNaN(v)) v = 0;
+        v = Math.max(-100, Math.min(100, v));
+        l.ajustePct = v;
+        l.ajusteNombre = null;          // si lo tipea a mano, ya no es uno de la lista
+        // Refrescamos a mano lo que cambia, en vez de redibujar: así el input
+        // conserva el foco y el cursor mientras se sigue escribiendo.
+        sel.value = v ? "libre" : "";
+        const btn = row.querySelector(".aj");
+        btn.className = claseAj(v); btn.textContent = textoAj(v);
+        row.querySelector(".precios-linea").innerHTML = htmlPrecios(l, esPresu && !editando);
+        actualizarTotales();
+      };
+      row.querySelector(".quitar-aj").onclick = () => { l.ajusteAbierto = false; renderTicket(); };
+    }
 
     // onclicks
     row.querySelector(".dif").onclick=()=>{ l.dificultad=!l.dificultad; renderTicket(); };
@@ -624,10 +738,20 @@ function renderTicket(){
 
     cont.appendChild(row);
   });
-  
-  // --- subtotales base ---
-  const totalEf = ticket.reduce((a,l)=>a+l.precio*l.cantidad,0);          // a precio efectivo
-  const totalTr = ticket.reduce((a,l)=>a+l.precioTransfer*l.cantidad,0);  // a precio transfer
+
+  actualizarTotales();
+}
+
+/* Los totales van aparte del render de las líneas: así, mientras se tipea un
+   porcentaje a mano, se pueden recalcular sin volver a dibujar el input
+   (redibujarlo le sacaría el foco en la mitad de lo que estás escribiendo). */
+function actualizarTotales(){
+  const esEf = formaPago==="efectivo";
+  const esPresu = document.getElementById("btnPresu").classList.contains("on");
+
+  // --- subtotales base (ya con el ajuste de cada línea aplicado) ---
+  const totalEf = ticket.reduce((a,l)=>a+precioAjEf(l)*l.cantidad,0);     // a precio efectivo
+  const totalTr = ticket.reduce((a,l)=>a+precioAjTr(l)*l.cantidad,0);     // a precio transfer
   const extra   = ticket.reduce((a,l)=>a+(l.dificultad?extraDif:0),0);    // extra dificultad
   const subTr = totalTr + extra;   // subtotal transfer (el que se ve siempre)
   const subEf = totalEf + extra;   // subtotal efectivo
@@ -641,7 +765,7 @@ function renderTicket(){
 
   // En presupuesto, mostrar AMBOS subtotales (Lista/Descuento); en ticket, solo el de la forma seleccionada
   if(esPresu){
-    $("#subtotal").innerHTML = `<div style="display:flex;gap:16px;"><div>Lista<br><strong>${fmt(subTr)}</strong></div><div>Descuento<br><strong>${fmt(subEf)}</strong></div></div>`;
+    $("#subtotal").innerHTML = `<div style="display:flex;gap:16px;"><div>Lista<br><strong>${fmt(subTr)}</strong></div><div>Con descuento<br><strong>${fmt(subEf)}</strong></div></div>`;
   } else {
     $("#subtotal").textContent = fmt(subTr);
   }
@@ -663,7 +787,7 @@ function renderTicket(){
   $("#rowSubEfvo").style.display = (hayDescCatYPresu || hayDescCatYEf) ? "flex" : "none";
   if(hayDescCatYPresu){
     document.querySelector("#rowSubEfvo span").textContent = "Subtotal c/desc";
-    $("#subEfvoMonto").innerHTML = `<div style="display:flex;gap:16px;"><div>Lista: ${fmt(subTr - descCatTr)}</div><div>Descuento: ${fmt(subEf - descCatEf)}</div></div>`;
+    $("#subEfvoMonto").innerHTML = `<div style="display:flex;gap:16px;"><div>Lista: ${fmt(subTr - descCatTr)}</div><div>Con descuento: ${fmt(subEf - descCatEf)}</div></div>`;
   } else {
     $("#subEfvoMonto").textContent = fmt(subEf);
   }
@@ -679,7 +803,7 @@ function renderTicket(){
   // total
   const total = baseCat - descCat;
   if(esPresu){
-    $("#total").innerHTML = `<div style="display:flex;gap:16px;"><div>Lista<br><strong>${fmt(subTr - descCatTr)}</strong></div><div>Descuento<br><strong>${fmt(subEf - descCatEf)}</strong></div></div>`;
+    $("#total").innerHTML = `<div style="display:flex;gap:16px;"><div>Lista<br><strong>${fmt(subTr - descCatTr)}</strong></div><div>Con descuento<br><strong>${fmt(subEf - descCatEf)}</strong></div></div>`;
     totalActual = subEf - descCatEf;  // usar total efectivo para operaciones
   } else {
     $("#total").textContent = fmt(total);
@@ -847,7 +971,8 @@ async function crearComprobante(){
     descuento_nombre: descNombre,
     mostrar_motivo: true,
     lineas: ticket.map(l=>({item_id:l.item_id, nombre: l.nombre, cantidad:l.cantidad, dificultad:l.dificultad,
-                            precio_custom: l.precioEditado ? l.precio : null}))
+                            precio_custom: l.precioEditado ? l.precio : null,
+                            ajuste_pct: l.ajustePct || 0, ajuste_nombre: l.ajusteNombre || null}))
   };
   const r=await authFetch("/api/comprobantes",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
   if(!r.ok){ toast("No se pudo crear"); return null; }

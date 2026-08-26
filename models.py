@@ -173,6 +173,11 @@ class ComprobanteLinea(Base):
     cantidad = Column(Integer, default=1)
     precio_unit = Column(Integer)      # snapshot del precio transferencia (precio de referencia)
     precio_efectivo = Column(Integer)  # snapshot del precio efectivo de catálogo (para el descuento)
+    # Ajuste de ESTA línea, con signo: -10 = 10% de descuento, +15 = 15% de recargo.
+    # Los precios de arriba quedan como el catálogo los tenía, así el ticket puede
+    # mostrar "precio de lista → precio ajustado" por unidad.
+    ajuste_pct = Column(Integer, default=0)
+    ajuste_nombre = Column(String)     # snapshot del motivo ("Fidelidad", "Pelo largo"...)
     dificultad = Column(Boolean, default=False)
     subtotal = Column(Integer)
     comprobante = relationship("Comprobante", back_populates="lineas")
@@ -191,10 +196,19 @@ class Pago(Base):
     comprobante = relationship("Comprobante")
 
 class Descuento(Base):
-    """Catálogo de descuentos configurables."""
+    """Catálogo de descuentos configurables. Se aplican al comprobante entero."""
     __tablename__ = "descuentos"
     id = Column(Integer, primary_key=True)
     nombre = Column(String, nullable=False)            # "Efectivo", "Jubilado", etc.
     porcentaje = Column(Integer, nullable=False)        # 10, 15, 20...
     mostrar_motivo = Column(Boolean, default=False)     # default de si se imprime el motivo
+    activo = Column(Boolean, default=True)
+
+class AjusteItem(Base):
+    """Descuentos y recargos que se aplican a UNA línea, no al comprobante entero.
+    El porcentaje va con signo: negativo descuenta, positivo recarga."""
+    __tablename__ = "ajustes_item"
+    id = Column(Integer, primary_key=True)
+    nombre = Column(String, nullable=False)             # "Fidelidad", "Pelo largo"...
+    porcentaje = Column(Integer, nullable=False)        # -10 descuenta, +15 recarga
     activo = Column(Boolean, default=True)

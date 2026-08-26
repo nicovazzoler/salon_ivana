@@ -37,6 +37,12 @@ def migrar():
     if "precio_efectivo" not in lcols:
         with engine.begin() as con:
             con.execute(text("ALTER TABLE comprobante_lineas ADD COLUMN precio_efectivo INTEGER"))
+    if "ajuste_pct" not in lcols:
+        with engine.begin() as con:
+            con.execute(text("ALTER TABLE comprobante_lineas ADD COLUMN ajuste_pct INTEGER DEFAULT 0"))
+    if "ajuste_nombre" not in lcols:
+        with engine.begin() as con:
+            con.execute(text("ALTER TABLE comprobante_lineas ADD COLUMN ajuste_nombre VARCHAR"))
     pcols = [c["name"] for c in insp.get_columns("pagos")]
     if "saldado" not in pcols:
         with engine.begin() as con:
@@ -81,6 +87,8 @@ class RenombrarCat(BaseModel):
     viejo: str; nuevo: str
 class LineaCompIn(BaseModel):
     item_id: int | None = None; cantidad: int = 1; dificultad: bool = False; precio_custom: int | None = None; nombre: str | None = None
+    ajuste_pct: int = 0                      # ajuste de esta línea, con signo: -10 descuenta, +15 recarga
+    ajuste_nombre: str | None = None         # motivo, si salió de la lista de ajustes
 class ComprobanteIn(BaseModel):
     tipo: str; cliente_id: int | None = None; cliente_nombre: str | None = None; peluquero: str | None = None
     forma_pago: str = "efectivo"
@@ -92,6 +100,8 @@ class FormaIn(BaseModel):
     nombre: str
 class DescuentoIn(BaseModel):
     nombre: str; porcentaje: int; mostrar_motivo: bool = False
+class AjusteItemIn(BaseModel):
+    nombre: str; porcentaje: int          # con signo: negativo descuenta, positivo recarga
 class DescuentoEdit(BaseModel):
     nombre: str | None = None; porcentaje: int | None = None
     mostrar_motivo: bool | None = None; activo: bool | None = None
@@ -152,6 +162,13 @@ def calcular_transfer(precio_efectivo: int) -> int:
     bruto = precio_efectivo * 1.1111
     return math.ceil(bruto / 100) * 100
 
+def precio_con_ajuste(base: int, pct: int | None) -> int:
+    """Precio unitario con el ajuste de la línea aplicado.
+    El pct va con signo: -10 descuenta un 10%, +15 recarga un 15%."""
+    if not pct:
+        return base or 0
+    return round((base or 0) * (100 + pct) / 100)
+
 def get_fondo(db) -> int:
     c = db.query(models.Config).filter_by(clave="fondo_caja").first()
     return int(c.valor) if c else 0
@@ -173,7 +190,9 @@ def get_fondo_dia(db, d) -> int:
 def estado_comprobante(db, comp) -> dict:
     extra = comp.extra_dificultad or 0
     total_transfer = comp.total_lista                                    # suma en lista transfer
-    total_efectivo = sum((l.precio_efectivo or 0) * l.cantidad for l in comp.lineas)
+    # Las dos listas llevan el mismo ajuste por línea, así los totales quedan parejos.
+    total_efectivo = sum(precio_con_ajuste(l.precio_efectivo, l.ajuste_pct) * l.cantidad
+                         for l in comp.lineas)
 
     # El comprobante se precia según su forma: efectivo usa lista efectivo; cualquier otra, transfer.
     if comp.forma_pago == "efectivo":
@@ -610,8 +629,14 @@ def ver_comprobante(comp_id: int, _ = Depends(usuario_actual), db: Session = Dep
         "cliente_id": comp.cliente_id, "cliente_nombre": comp.cliente_nombre, "peluquero": comp.peluquero,
         "descuento_pct": comp.descuento_pct, "descuento_nombre": comp.descuento_nombre,
         "mostrar_motivo": comp.mostrar_motivo, "forma_pago": comp.forma_pago, "total_lista": comp.total_lista, "extra_dificultad": comp.extra_dificultad,
+        # precio_unit / precio_efectivo son los del catálogo; los "_final" ya llevan el
+        # ajuste de la línea, así el ticket puede imprimir los dos y mostrar el descuento.
         "lineas": [{"nombre": l.nombre, "cantidad": l.cantidad, "precio_unit": l.precio_unit,
-                    "precio_efectivo": l.precio_efectivo, "dificultad": l.dificultad, "subtotal": l.subtotal} for l in comp.lineas], 
+                    "precio_efectivo": l.precio_efectivo, "dificultad": l.dificultad, "subtotal": l.subtotal,
+                    "ajuste_pct": l.ajuste_pct or 0, "ajuste_nombre": l.ajuste_nombre,
+                    "precio_unit_final": precio_con_ajuste(l.precio_unit, l.ajuste_pct),
+                    "precio_efectivo_final": precio_con_ajuste(l.precio_efectivo, l.ajuste_pct)}
+                   for l in comp.lineas],
         "pagos": [{"id": p.id, "fecha": p.fecha.isoformat(), "monto": p.monto, "saldado": p.saldado,
                    "desc_aplicado": p.desc_aplicado, "forma_pago": p.forma_pago, "alias": p.alias}
                   for p in db.query(models.Pago).filter(models.Pago.comprobante_id == comp.id).order_by(models.Pago.fecha)],
@@ -637,27 +662,32 @@ def crear_comprobante(c: ComprobanteIn, user = Depends(usuario_actual), db: Sess
     extra = get_extra(db); total = 0; extra_total = 0
     for ln in c.lineas:
         if ln.dificultad: extra_total += extra
+        # El precio guardado es el del catálogo; el subtotal ya lleva el ajuste de la línea,
+        # así el ticket puede mostrar "precio de lista → precio ajustado" por unidad.
+        ajuste = ln.ajuste_pct or 0
         if(ln.item_id):
             item = db.get(models.Item, ln.item_id)
             if not item: raise HTTPException(404, f"Item {ln.item_id} no existe")
             # El comprobante se ancla SIEMPRE al precio transferencia (precio de referencia).
             # El descuento por efectivo se aplica al cobrar, no acá.
             precio = item.precio_transfer
-            sub = precio * ln.cantidad
+            sub = precio_con_ajuste(precio, ajuste) * ln.cantidad
             total += sub
             db.add(models.ComprobanteLinea(comprobante_id=comp.id, item_id=item.id, nombre=item.nombre,
             cantidad=ln.cantidad, precio_unit=precio, precio_efectivo=item.precio,
+            ajuste_pct=ajuste, ajuste_nombre=(ln.ajuste_nombre or None) if ajuste else None,
             dificultad=ln.dificultad, subtotal=sub))
-            # descontar stock si es producto 
+            # descontar stock si es producto
             if item.es_producto and item.stock_actual is not None:
                 log_stock(db, item, "venta", -ln.cantidad, f"Comprobante #{comp.id}", user.get("usuario","?"))
                 item.stock_actual -= ln.cantidad
         else:
             precio = calcular_transfer(ln.precio_custom)
-            sub = precio * ln.cantidad
+            sub = precio_con_ajuste(precio, ajuste) * ln.cantidad
             total += sub
             db.add(models.ComprobanteLinea(comprobante_id=comp.id, item_id=None, nombre=ln.nombre,
             cantidad=ln.cantidad, precio_unit=precio, precio_efectivo=ln.precio_custom,
+            ajuste_pct=ajuste, ajuste_nombre=(ln.ajuste_nombre or None) if ajuste else None,
             dificultad=ln.dificultad, subtotal=sub))
     comp.total_lista = total
     comp.extra_dificultad = extra_total
@@ -720,8 +750,13 @@ def convertir_a_ticket(comp_id: int, user = Depends(usuario_actual), db: Session
         extra_dificultad=presu.extra_dificultad, convertido_de=presu.id)
     db.add(ticket); db.flush()
     for l in presu.lineas:
+        # Ojo: hay que copiar TAMBIÉN precio_efectivo y el ajuste de la línea. Sin
+        # precio_efectivo el ticket convertido queda sin lista efectivo y el descuento
+        # por pago en efectivo sale mal calculado.
         db.add(models.ComprobanteLinea(comprobante_id=ticket.id, item_id=l.item_id, nombre=l.nombre,
-            cantidad=l.cantidad, precio_unit=l.precio_unit, dificultad=l.dificultad, subtotal=l.subtotal))
+            cantidad=l.cantidad, precio_unit=l.precio_unit, precio_efectivo=l.precio_efectivo,
+            ajuste_pct=l.ajuste_pct or 0, ajuste_nombre=l.ajuste_nombre,
+            dificultad=l.dificultad, subtotal=l.subtotal))
     db.commit(); db.refresh(ticket)
     return {"id": ticket.id, "numero": ticket.numero}
 
@@ -1307,6 +1342,27 @@ def borrar_descuento(desc_id: int, _ = Depends(solo_dueno), db: Session = Depend
     d = db.get(models.Descuento, desc_id)
     if not d: raise HTTPException(404, "Descuento no existe")
     d.activo = False; db.commit(); return {"ok": True}
+
+# ---------- ajustes por ítem (descuento o recargo de UNA línea) ----------
+@app.get("/api/ajustes-item")
+def listar_ajustes_item(_ = Depends(usuario_actual), db: Session = Depends(get_db)):
+    return [{"id": a.id, "nombre": a.nombre, "porcentaje": a.porcentaje}
+            for a in db.query(models.AjusteItem).filter(models.AjusteItem.activo == True)
+                       .order_by(models.AjusteItem.porcentaje, models.AjusteItem.nombre)]
+
+@app.post("/api/ajustes-item")
+def crear_ajuste_item(a: AjusteItemIn, _ = Depends(solo_dueno), db: Session = Depends(get_db)):
+    if a.porcentaje == 0: raise HTTPException(400, "El porcentaje no puede ser 0")
+    if a.porcentaje < -100 or a.porcentaje > 100: raise HTTPException(400, "Porcentaje inválido (-100 a 100)")
+    if not a.nombre.strip(): raise HTTPException(400, "Falta el nombre")
+    nuevo = models.AjusteItem(nombre=a.nombre.strip(), porcentaje=a.porcentaje)
+    db.add(nuevo); db.commit(); db.refresh(nuevo); return {"id": nuevo.id}
+
+@app.delete("/api/ajustes-item/{aj_id}")
+def borrar_ajuste_item(aj_id: int, _ = Depends(solo_dueno), db: Session = Depends(get_db)):
+    a = db.get(models.AjusteItem, aj_id)
+    if not a: raise HTTPException(404, "Ajuste no existe")
+    a.activo = False; db.commit(); return {"ok": True}
 
 # ---------- backup completo (solo dueño) ----------
 @app.get("/api/backup")

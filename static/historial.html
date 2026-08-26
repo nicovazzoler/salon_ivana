@@ -194,7 +194,7 @@ function renderLista(){
           ? `<div class="fila" style="color:var(--text-tenue);"><span>${d.descuento_nombre||'Descuento'} ${d.descuento_pct}%</span><span>aplicado</span></div>` : "";
         totales=`${filaDescPresu}
           <div class="fila fila-total"><span>Total lista</span><span>${fmt(totTr)}</span></div>
-          <div class="fila fila-total"><span>Total descuento</span><span>${fmt(totEf)}</span></div>`;
+          <div class="fila fila-total"><span>Total con descuento</span><span>${fmt(totEf)}</span></div>`;
       } else {
         totales=`<div class="fila fila-total"><span>Total</span><span>${fmt(d.ingresado + d.saldo)}</span></div>`;
       }
