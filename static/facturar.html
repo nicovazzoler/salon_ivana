@@ -306,6 +306,8 @@
         <button class="crear" id="cobrarMixto" disabled style="display:none;">Cobrar (pago mixto)</button>
       </div>
       <button class="crear" id="crearPresu" disabled style="display:none;">Crear presupuesto</button>
+      <a id="printUltimo" class="crear-sec" href="#"
+         style="display:none;margin-top:8px;text-align:center;text-decoration:none;padding:10px;border-radius:var(--r-md);"></a>
 
       <div id="panelCobro" class="panel-cobro" style="display:none;">
         <div class="panel-titulo" id="cobroTitulo"> Cobrar</div>
@@ -819,6 +821,11 @@ async function crearComprobante(){
   const d=await r.json();
   const pref = d.tipo==="ticket" ? "A-" : "P-";
   toast(`${d.tipo} ${pref}${String(d.numero).padStart(5,"0")} creado`);
+  // dejar a mano el botón para imprimir el comprobante recién creado
+  const pu=$("#printUltimo");
+  pu.href="/ticket?id="+d.id;
+  pu.textContent=`🖨️ Imprimir ${pref}${String(d.numero).padStart(5,"0")}`;
+  pu.style.display="block";
   return d;
 }
 

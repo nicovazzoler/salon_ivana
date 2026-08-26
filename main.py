@@ -10,7 +10,7 @@ import os, bisect, io
 
 from database import get_db, engine, Base
 import models
-from config_extra import EXTRA_DIFICULTAD, TIPOS_EGRESO
+from config_extra import EXTRA_DIFICULTAD, TIPOS_EGRESO, NEGOCIO
 import auth
 
 Base.metadata.create_all(engine)
@@ -285,7 +285,8 @@ def config(_ = Depends(usuario_actual), db: Session = Depends(get_db)):
     formas = [f.nombre for f in db.query(models.FormaPago).filter(models.FormaPago.activo == True)]
     tipos = [t.nombre for t in db.query(models.TipoEgreso).filter(models.TipoEgreso.activo == True)]
     alias = [a.nombre for a in db.query(models.Alias).filter(models.Alias.activo == True)]
-    return {"extra_dificultad": get_extra(db), "formas_pago": formas, "tipos_egreso": tipos, "alias": alias}
+    return {"extra_dificultad": get_extra(db), "formas_pago": formas, "tipos_egreso": tipos, "alias": alias,
+            "negocio": NEGOCIO}
 
 @app.put("/api/config/extra-dificultad")
 def set_extra(datos: ExtraIn, _ = Depends(solo_dueno), db: Session = Depends(get_db)):
@@ -1445,3 +1446,5 @@ if os.path.isdir("static"):
     def pagina_cuenta(): return FileResponse("static/cuenta.html")
     @app.get("/historial")
     def pagina_historial(): return FileResponse("static/historial.html")
+    @app.get("/ticket")
+    def pagina_ticket(): return FileResponse("static/ticket.html")

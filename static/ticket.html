@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="es"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#1f1f1f"><title>Ticket — Peluquería</title>
+<link rel="stylesheet" href="/static/css/app.css">
+<style>
+  .wrap{ max-width:460px; }
+
+  /* --- barra de acciones --- */
+  .acciones{ display:flex; gap:8px; margin-bottom:14px; flex-wrap:wrap; }
+  .acciones .volver{
+    padding:10px 14px;
+    background:var(--bg-sutil);
+    border:1px solid var(--border);
+    color:var(--text);
+  }
+  .btn-imprimir{ flex:1; padding:12px; font-size:15px; }
+  .btn-navegador{
+    padding:10px 14px;
+    background:var(--bg-card);
+    border:1px solid var(--acento);
+    color:var(--text);
+  }
+
+  /* --- papel: simula el rollo de 80mm --- */
+  .papel{
+    width:100%; max-width:340px;          /* ~80mm en pantalla */
+    margin:0 auto;
+    padding:18px 14px 26px;
+    background:#fdfdf8;
+    color:#1a1a1a;
+    font-family:"Courier New", ui-monospace, monospace;
+    font-size:12.5px;
+    line-height:1.45;
+    border-radius:4px 4px 0 0;
+    box-shadow:var(--sombra-card);
+    /* borde dentado abajo, como ticket cortado */
+    clip-path:polygon(0 0, 100% 0, 100% calc(100% - 7px),
+      97.5% 100%, 95% calc(100% - 7px), 92.5% 100%, 90% calc(100% - 7px),
+      87.5% 100%, 85% calc(100% - 7px), 82.5% 100%, 80% calc(100% - 7px),
+      77.5% 100%, 75% calc(100% - 7px), 72.5% 100%, 70% calc(100% - 7px),
+      67.5% 100%, 65% calc(100% - 7px), 62.5% 100%, 60% calc(100% - 7px),
+      57.5% 100%, 55% calc(100% - 7px), 52.5% 100%, 50% calc(100% - 7px),
+      47.5% 100%, 45% calc(100% - 7px), 42.5% 100%, 40% calc(100% - 7px),
+      37.5% 100%, 35% calc(100% - 7px), 32.5% 100%, 30% calc(100% - 7px),
+      27.5% 100%, 25% calc(100% - 7px), 22.5% 100%, 20% calc(100% - 7px),
+      17.5% 100%, 15% calc(100% - 7px), 12.5% 100%, 10% calc(100% - 7px),
+      7.5% 100%, 5% calc(100% - 7px), 2.5% 100%, 0 calc(100% - 7px));
+  }
+  /* el papel pisa los estilos oscuros globales de la app (table, th, .fila...) */
+  .papel .c{ text-align:center; }
+  .papel .marca{ font-size:18px; font-weight:700; letter-spacing:1px; }
+  .papel .chico{ font-size:11px; color:#555; }
+  .papel .sep{ border:none; border-top:1px dashed #999; margin:8px 0; }
+  .papel .fila{ display:flex; flex-wrap:nowrap; justify-content:space-between; gap:8px; margin:2px 0; color:inherit; }
+  .papel .fila .der{ white-space:nowrap; }
+  .papel .fila.tenue{ color:#666; }
+  .papel .fila.total{ font-weight:700; font-size:15px; margin-top:4px; }
+  .papel .fila.pend{ font-weight:700; }
+  .papel table{ width:100%; border-collapse:collapse; color:inherit; font-size:inherit; }
+  .papel th{ text-align:right; font-size:11px; color:#555; font-weight:400;
+             text-transform:none; letter-spacing:0; background:none;
+             padding:0 0 2px; border-bottom:none; }
+  .papel th:first-child{ text-align:left; }
+  .papel td{ vertical-align:top; padding:1px 0; color:inherit; border-bottom:none; font-size:inherit; }
+  .papel td.precio{ text-align:right; white-space:nowrap; padding-left:8px; }
+  .papel .gracias{ margin-top:12px; }
+
+  #estado{ margin:20px 0; text-align:center; }
+
+  /* --- impresión desde el navegador: solo el papel, en 80mm --- */
+  @media print{
+    @page{ size:80mm auto; margin:0; }
+    body{ background:#fff; }
+    header, .acciones, #estado, .toast{ display:none !important; }
+    .wrap{ max-width:none; margin:0; padding:0; }
+    .papel{
+      max-width:none; width:72mm; margin:0; padding:4mm 2mm;
+      box-shadow:none; border-radius:0; clip-path:none;
+    }
+  }
+</style>
+</head><body>
+<header>
+  <span>🧾 Ticket</span>
+  <nav class="menu"></nav>
+</header>
+<div class="wrap">
+  <div class="acciones">
+    <button class="volver" onclick="history.length>1?history.back():location.href='/historial'">← Volver</button>
+    <button class="btn-imprimir" id="btnComandera">🖨️ Imprimir</button>
+    <button class="btn-navegador" id="btnNavegador" title="Imprimir con el diálogo del navegador">PDF</button>
+  </div>
+  <div id="estado" class="muted">Cargando…</div>
+  <div class="papel" id="papel" style="display:none;"></div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script src="/static/auth.js"></script>
+<script>
+requireLogin(); pintarNav();
+const $=s=>document.querySelector(s);
+const fmt=n=>"$"+(n||0).toLocaleString("es-AR");
+const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+function toast(m){const t=$("#toast");t.textContent=m;t.classList.add("show");setTimeout(()=>t.classList.remove("show"),2600);}
+
+/* En el ticket impreso NUNCA se usa la palabra "efectivo":
+   la lista transferencia es "Lista" y la lista efectivo es "Promo". */
+
+let COMP=null, NEGOCIO={};
+
+function numComp(t,n){ return (t==="ticket"?"A-":"P-")+String(n).padStart(5,"0"); }
+function fechaLocal(iso){
+  // el backend guarda UTC sin zona: agregamos la Z para que el dispositivo la convierta
+  const d=new Date(iso.endsWith("Z")?iso:iso+"Z");
+  return d.toLocaleDateString("es-AR")+" "+d.toLocaleTimeString("es-AR",{hour:"2-digit",minute:"2-digit",hour12:false});
+}
+
+async function init(){
+  const id=new URLSearchParams(location.search).get("id");
+  if(!id){ $("#estado").textContent="Falta el número de comprobante (?id=...)"; return; }
+  try{
+    const cfg=await (await authFetch("/api/config")).json();
+    NEGOCIO=cfg.negocio||{};
+    const r=await authFetch("/api/comprobantes/"+id);
+    if(!r.ok){ $("#estado").textContent="No se encontró el comprobante."; return; }
+    COMP=await r.json();
+  }catch(e){ $("#estado").textContent="No se pudo cargar."; return; }
+  render();
+  $("#estado").style.display="none";
+  $("#papel").style.display="block";
+}
+
+/* ---------- vista previa HTML (espejo de lo que sale por la comandera) ---------- */
+function render(){
+  const d=COMP, esPresu=d.tipo==="presupuesto";
+  const partes=[];
+
+  // encabezado del negocio (los campos vacíos no salen)
+  partes.push(`<div class="c marca">${esc(NEGOCIO.nombre||"")}</div>`);
+  const datos=[NEGOCIO.direccion, NEGOCIO.telefono&&("Tel: "+NEGOCIO.telefono), NEGOCIO.instagram].filter(Boolean);
+  if(datos.length) partes.push(`<div class="c chico">${datos.map(esc).join("<br>")}</div>`);
+
+  partes.push('<hr class="sep">');
+  partes.push(`<div class="fila"><span>${esPresu?"PRESUPUESTO":"TICKET"} <b>${numComp(d.tipo,d.numero)}</b></span><span class="der chico">${fechaLocal(d.fecha)}</span></div>`);
+  if(d.cliente_nombre) partes.push(`<div class="fila chico"><span>Cliente: ${esc(d.cliente_nombre)}</span></div>`);
+  if(d.peluquero)      partes.push(`<div class="fila chico"><span>Atendió: ${esc(d.peluquero)}</span></div>`);
+  partes.push('<hr class="sep">');
+
+  if(esPresu){
+    // presupuesto: las dos listas de precios, columna por columna
+    partes.push('<table><tr><th>Detalle</th><th>Lista</th><th>Promo</th></tr>');
+    d.lineas.forEach(l=>{
+      partes.push(`<tr><td>${l.cantidad}× ${esc(l.nombre)}${l.dificultad?" *":""}</td>
+        <td class="precio">${fmt(l.precio_unit*l.cantidad)}</td>
+        <td class="precio">${fmt(l.precio_efectivo*l.cantidad)}</td></tr>`);
+    });
+    partes.push('</table>');
+    if(d.extra_dificultad>0) partes.push(`<div class="fila tenue"><span>* Extra dificultad</span><span class="der">+${fmt(d.extra_dificultad)}</span></div>`);
+    partes.push('<hr class="sep">');
+
+    const extra=d.extra_dificultad||0;
+    let totLista=d.lineas.reduce((a,l)=>a+l.precio_unit*l.cantidad,0)+extra;
+    let totPromo=d.lineas.reduce((a,l)=>a+l.precio_efectivo*l.cantidad,0)+extra;
+    if(d.descuento_pct>0){
+      partes.push(`<div class="fila tenue"><span>${esc(d.descuento_nombre||"Descuento")} ${d.descuento_pct}%</span><span class="der">aplicado</span></div>`);
+      totLista=Math.round(totLista*(100-d.descuento_pct)/100);
+      totPromo=Math.round(totPromo*(100-d.descuento_pct)/100);
+    }
+    partes.push(`<div class="fila total"><span>Total lista</span><span class="der">${fmt(totLista)}</span></div>`);
+    partes.push(`<div class="fila total"><span>Total promo</span><span class="der">${fmt(totPromo)}</span></div>`);
+    partes.push(`<div class="c chico" style="margin-top:8px;">Presupuesto sin valor fiscal.<br>Precios sujetos a cambio sin previo aviso.</div>`);
+  } else {
+    // ticket de venta: precios de lista + descuentos aplicados
+    d.lineas.forEach(l=>{
+      partes.push(`<div class="fila"><span>${l.cantidad}× ${esc(l.nombre)}${l.dificultad?" *":""}</span><span class="der">${fmt(l.precio_unit*l.cantidad)}</span></div>`);
+    });
+    if(d.extra_dificultad>0) partes.push(`<div class="fila tenue"><span>* Extra dificultad</span><span class="der">+${fmt(d.extra_dificultad)}</span></div>`);
+    partes.push('<hr class="sep">');
+
+    if(d.desc_efectivo>0){
+      const pct=(d.desc_efectivo/d.total_transfer*100).toFixed(0);
+      partes.push(`<div class="fila tenue"><span>Promo ${pct}%</span><span class="der">−${fmt(d.desc_efectivo)}</span></div>`);
+    }
+    if(d.desc_jubilado>0){
+      partes.push(`<div class="fila tenue"><span>${esc(d.descuento_nombre||"Descuento")} ${d.descuento_pct}%</span><span class="der">−${fmt(d.desc_jubilado)}</span></div>`);
+    }
+    // descuento hecho al momento de pagar (ej: abonó en promo una deuda)
+    const descPagos=d.pagos.reduce((a,p)=>a+(p.desc_aplicado||0),0);
+    if(descPagos>0) partes.push(`<div class="fila tenue"><span>Promo (al abonar)</span><span class="der">−${fmt(descPagos)}</span></div>`);
+
+    const totalCobrado=d.ingresado + Math.max(d.saldo,0);
+    partes.push(`<div class="fila total"><span>TOTAL</span><span class="der">${fmt(totalCobrado)}</span></div>`);
+
+    if(d.pagos.length){
+      partes.push('<hr class="sep">');
+      d.pagos.forEach(p=>{
+        const f=new Date(p.fecha.endsWith("Z")?p.fecha:p.fecha+"Z").toLocaleDateString("es-AR");
+        const via=p.forma_pago==="Transferencia"?" · transf.":"";
+        partes.push(`<div class="fila tenue"><span>Recibido ${f}${via}</span><span class="der">${fmt(p.monto)}</span></div>`);
+      });
+    }
+    if(d.saldo>0) partes.push(`<div class="fila pend"><span>PENDIENTE</span><span class="der">${fmt(d.saldo)}</span></div>`);
+  }
+
+  partes.push(`<div class="c gracias">¡Gracias por su visita! ✂</div>`);
+  $("#papel").innerHTML=partes.join("");
+}
+
+/* ---------- ESC/POS para la comandera (80mm = 48 columnas) ---------- */
+const ANCHO=48;
+
+// la comandera no maneja tildes de forma confiable: mandamos ASCII pelado
+function translit(s){
+  return String(s).normalize("NFD").replace(/[\u0300-\u036f]/g,"")
+    .replace(/[×]/g,"x").replace(/[−–—]/g,"-").replace(/[·]/g,"-")
+    .replace(/[“”]/g,'"').replace(/[’‘]/g,"'").replace(/[✂✓]/g,"")
+    .replace(/[^\x20-\x7e\n]/g,"");
+}
+function fmtP(n){ return "$"+(n||0).toLocaleString("es-AR"); }
+function fila2(izq,der,w=ANCHO){
+  izq=translit(izq); der=translit(der);
+  const max=w-der.length-1;
+  if(izq.length>max) izq=izq.slice(0,max);
+  return izq+" ".repeat(w-izq.length-der.length)+der;
+}
+function fila3(a,b,c){                       // detalle | lista | promo (26+11+11)
+  a=translit(a); b=translit(b); c=translit(c);
+  if(a.length>26) a=a.slice(0,26);
+  return a+" ".repeat(26-a.length)+b.padStart(11)+c.padStart(11);
+}
+
+function generarEscpos(){
+  const d=COMP, esPresu=d.tipo==="presupuesto";
+  const B=[];
+  const raw=(...x)=>B.push(...x);
+  const txt=s=>{ for(const ch of translit(s)) B.push(ch.charCodeAt(0)); };
+  const lin=(s="")=>{ txt(s); raw(10); };
+  const centro=on=>raw(0x1b,0x61,on?1:0);
+  const negrita=on=>raw(0x1b,0x45,on?1:0);
+  const grande=on=>raw(0x1d,0x21,on?0x11:0x00);
+  const sep=()=>lin("-".repeat(ANCHO));
+
+  raw(0x1b,0x40);                            // reset
+  centro(true);
+  grande(true); negrita(true); lin(NEGOCIO.nombre||""); negrita(false); grande(false);
+  [NEGOCIO.direccion, NEGOCIO.telefono&&("Tel: "+NEGOCIO.telefono), NEGOCIO.instagram]
+    .filter(Boolean).forEach(x=>lin(x));
+  centro(false);
+  sep();
+  lin(fila2((esPresu?"PRESUPUESTO ":"TICKET ")+numComp(d.tipo,d.numero), fechaLocal(d.fecha)));
+  if(d.cliente_nombre) lin("Cliente: "+d.cliente_nombre);
+  if(d.peluquero)      lin("Atendio: "+d.peluquero);
+  sep();
+
+  if(esPresu){
+    lin(fila3("Detalle","Lista","Promo"));
+    d.lineas.forEach(l=>lin(fila3(l.cantidad+"x "+l.nombre+(l.dificultad?" *":""),
+                                  fmtP(l.precio_unit*l.cantidad), fmtP(l.precio_efectivo*l.cantidad))));
+    if(d.extra_dificultad>0) lin(fila2("* Extra dificultad","+"+fmtP(d.extra_dificultad)));
+    sep();
+    const extra=d.extra_dificultad||0;
+    let totLista=d.lineas.reduce((a,l)=>a+l.precio_unit*l.cantidad,0)+extra;
+    let totPromo=d.lineas.reduce((a,l)=>a+l.precio_efectivo*l.cantidad,0)+extra;
+    if(d.descuento_pct>0){
+      lin(fila2((d.descuento_nombre||"Descuento")+" "+d.descuento_pct+"%","aplicado"));
+      totLista=Math.round(totLista*(100-d.descuento_pct)/100);
+      totPromo=Math.round(totPromo*(100-d.descuento_pct)/100);
+    }
+    negrita(true);
+    lin(fila2("Total lista",fmtP(totLista)));
+    lin(fila2("Total promo",fmtP(totPromo)));
+    negrita(false);
+    lin(); centro(true);
+    lin("Presupuesto sin valor fiscal.");
+    lin("Precios sujetos a cambio sin previo aviso.");
+    centro(false);
+  } else {
+    d.lineas.forEach(l=>lin(fila2(l.cantidad+"x "+l.nombre+(l.dificultad?" *":""), fmtP(l.precio_unit*l.cantidad))));
+    if(d.extra_dificultad>0) lin(fila2("* Extra dificultad","+"+fmtP(d.extra_dificultad)));
+    sep();
+    if(d.desc_efectivo>0) lin(fila2("Promo "+(d.desc_efectivo/d.total_transfer*100).toFixed(0)+"%","-"+fmtP(d.desc_efectivo)));
+    if(d.desc_jubilado>0) lin(fila2((d.descuento_nombre||"Descuento")+" "+d.descuento_pct+"%","-"+fmtP(d.desc_jubilado)));
+    const descPagos=d.pagos.reduce((a,p)=>a+(p.desc_aplicado||0),0);
+    if(descPagos>0) lin(fila2("Promo (al abonar)","-"+fmtP(descPagos)));
+    negrita(true); grande(true);
+    lin(fila2("TOTAL",fmtP(d.ingresado+Math.max(d.saldo,0)),24));   // 24 cols: la letra es doble ancho
+    grande(false); negrita(false);
+    if(d.pagos.length){
+      sep();
+      d.pagos.forEach(p=>{
+        const f=new Date(p.fecha.endsWith("Z")?p.fecha:p.fecha+"Z").toLocaleDateString("es-AR");
+        lin(fila2("Recibido "+f+(p.forma_pago==="Transferencia"?" - transf.":""), fmtP(p.monto)));
+      });
+    }
+    if(d.saldo>0){ negrita(true); lin(fila2("PENDIENTE",fmtP(d.saldo))); negrita(false); }
+  }
+
+  lin(); centro(true); lin("Gracias por su visita!"); centro(false);
+  raw(0x1b,0x64,4);                          // avanzar papel
+  raw(0x1d,0x56,0x42,0x00);                  // corte parcial (si la comandera tiene cortador)
+  return new Uint8Array(B);
+}
+
+/* ---------- imprimir ---------- */
+// La comandera se maneja con la app RawBT (Play Store): recibe los bytes ESC/POS
+// por el esquema rawbt: y los manda por Bluetooth a la impresora.
+$("#btnComandera").onclick=()=>{
+  if(!COMP) return;
+  try{
+    const bytes=generarEscpos();
+    let bin=""; bytes.forEach(b=>bin+=String.fromCharCode(b));
+    location.href="rawbt:base64,"+btoa(bin);
+    toast("Enviado a la comandera (RawBT)");
+  }catch(e){ toast("No se pudo generar la impresión"); }
+};
+$("#btnNavegador").onclick=()=>window.print();
+
+init();
+</script>
+</body></html>

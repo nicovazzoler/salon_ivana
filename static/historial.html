@@ -123,6 +123,7 @@ async function cargar(){
         <div class="comp-acciones">
         ${(comp.tipo==="ticket" && comp.saldo>0 && comp.cliente_id)
           ? `<a class="btnAbonar" href="/cuenta?id=${comp.cliente_id}&comp=${comp.id}">Abonar 💵</a>` : ''}
+        <a class="btnAbonar btnPrint" href="/ticket?id=${comp.id}" title="Imprimir ticket">🖨️</a>
         <button class="btnAnular b-del" data-id="${comp.id}">Anular</button>
         </div>
       </div>
@@ -137,8 +138,14 @@ async function cargar(){
     head.onclick=async()=>{
       if(box.style.display==="block"){ box.style.display="none"; return; }
       const d=await (await authFetch("/api/comprobantes/"+comp.id)).json();
+      const esPresu = d.tipo==="presupuesto";
+      // En presupuesto se muestran las dos listas por línea (transfer y efectivo)
       const lineas=d.lineas.map(l=>
-        `<div class="fila"><span>${l.cantidad}× ${l.nombre}${l.dificultad?' (dif)':''}</span><span>${fmt(l.precio_unit*l.cantidad)}</span></div>`
+        `<div class="fila"><span>${l.cantidad}× ${l.nombre}${l.dificultad?' (dif)':''}</span>`+
+        (esPresu
+          ? `<span style="white-space:nowrap;">${fmt(l.precio_unit*l.cantidad)} <span style="color:var(--text-tenue);font-size:11px;">/ efvo ${fmt(l.precio_efectivo*l.cantidad)}</span></span>`
+          : `<span>${fmt(l.precio_unit*l.cantidad)}</span>`)
+        +`</div>`
       ).join("");
 
       // Descuento en efectivo: la diferencia entre listas (solo si el comprobante es efectivo)
@@ -170,12 +177,33 @@ async function cargar(){
       const filaPendiente = d.saldo > 0
         ? `<div class="fila fila-desc"><span>Pendiente</span><span>${fmt(d.saldo)}</span></div>` : "";
 
+      let totales;
+      if(esPresu){
+        // Presupuesto: total por cada lista (con el descuento de catálogo aplicado a ambas)
+        const ex=d.extra_dificultad||0;
+        let totTr=d.lineas.reduce((a,l)=>a+l.precio_unit*l.cantidad,0)+ex;
+        let totEf=d.lineas.reduce((a,l)=>a+l.precio_efectivo*l.cantidad,0)+ex;
+        if(d.descuento_pct>0){
+          totTr=Math.round(totTr*(100-d.descuento_pct)/100);
+          totEf=Math.round(totEf*(100-d.descuento_pct)/100);
+        }
+        const filaDescPresu = d.descuento_pct>0
+          ? `<div class="fila" style="color:var(--text-tenue);"><span>${d.descuento_nombre||'Descuento'} ${d.descuento_pct}%</span><span>aplicado</span></div>` : "";
+        totales=`${filaDescPresu}
+          <div class="fila fila-total"><span>Total transferencia</span><span>${fmt(totTr)}</span></div>
+          <div class="fila fila-total"><span>Total efectivo</span><span>${fmt(totEf)}</span></div>`;
+      } else {
+        totales=`<div class="fila fila-total"><span>Total</span><span>${fmt(d.ingresado + d.saldo)}</span></div>`;
+      }
+
       box.innerHTML=`<div style="font-weight:700;margin-bottom:6px;">Detalle</div>
-        ${lineas}${extra}${filaDescEf}${filaSubtotal}${filaDescEfvoReal}${filaDescJub}
-        <div class="fila fila-total"><span>Total</span><span>${fmt(d.ingresado + d.saldo)}</span></div>
-        ${d.tipo==="ticket"?`<div style="font-weight:700;margin:10px 0 6px;">Pagos</div>${pagos}${filaPendiente}`:''}`;
+        ${lineas}${extra}${esPresu?'':filaDescEf+filaSubtotal+filaDescEfvoReal+filaDescJub}
+        ${totales}
+        ${d.tipo==="ticket"?`<div style="font-weight:700;margin:10px 0 6px;">Pagos</div>${pagos}${filaPendiente}`:''}
+        <a class="btnAbonar" href="/ticket?id=${d.id}" style="margin-top:10px;">🖨️ Imprimir</a>`;
       box.style.display="block";
     };
+    div.querySelector(".btnPrint").onclick = e=>e.stopPropagation();   // que no despliegue el detalle
     div.querySelector(".btnAnular").onclick = async (e)=>{
       e.stopPropagation();
       if(!confirm("¿Anular este comprobante?")) return;
