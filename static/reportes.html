@@ -4,7 +4,25 @@
 <meta name="theme-color" content="#1f1f1f"><title>Reportes — Peluquería</title>
 <link rel="stylesheet" href="/static/css/app.css">
 <style>
-  /* --- filtro de período (manda sobre resumen, gráfico y registro) --- */
+  /* ----- Cabecera de cada bloque ----- */
+  .card{ scroll-margin-top:96px; }
+  .card-head{ margin-bottom:var(--sp-4); }
+  .card-head h2{ margin:0; display:flex; align-items:center; gap:var(--sp-2); }
+  .card-head p{ margin:var(--sp-1) 0 0; font-size:var(--fs-base); color:var(--text-tenue); }
+
+  /* ----- Índice de secciones ----- */
+  .indice{
+    position:sticky; top:76px; z-index:var(--z-dropdown);
+    display:flex; flex-wrap:wrap; gap:6px;
+    margin-bottom:var(--sp-4);
+    padding:var(--sp-2);
+    border:1px solid var(--border-sutil);
+    border-radius:var(--r-full);
+    background:var(--bg-header);
+  }
+  .indice a{ text-decoration:none; }
+
+  /* --- filtro de período (manda sobre resumen, gráficos y registro) --- */
   .periodo{ display:flex; align-items:center; flex-wrap:wrap; gap:6px; }
   .periodo button[data-d]{
     padding:6px 12px;
@@ -21,22 +39,43 @@
   }
   .rango{
     display:flex; align-items:center; flex-wrap:wrap; gap:5px;
-    margin-left:6px;
+    margin-left:auto;
     font-size:var(--fs-base);
     color:var(--text-tenue);
   }
   .rango input{ padding:6px; font-size:var(--fs-base); }
   .rango .aplicar{ padding:6px 12px; font-size:var(--fs-base); }
 
-  /* --- controles del gráfico --- */
+  /* ----- KPIs ----- */
+  .kpis{
+    display:grid;
+    grid-template-columns:repeat(auto-fit, minmax(150px, 1fr));
+    gap:var(--sp-3);
+  }
+  .kpi{
+    padding:var(--sp-3) var(--sp-4);
+    border:1px solid var(--border-sutil);
+    border-radius:var(--r-lg);
+    background:var(--bg-sutil);
+  }
+  .kpi .lbl{
+    display:block;
+    font-size:var(--fs-xs); color:var(--text-tenue);
+    text-transform:uppercase; letter-spacing:.04em;
+  }
+  .kpi .val{
+    display:block; margin-top:2px;
+    font-size:var(--fs-2xl); font-weight:var(--fw-black);
+    color:var(--text-titulo);
+  }
+  .kpi .val.neg{ color:var(--danger); }
+  .kpi .pie{ display:block; margin-top:2px; font-size:var(--fs-xs); color:var(--text-tenue); }
+
+  /* --- controles de un gráfico --- */
   .controles{
     display:flex; align-items:center; flex-wrap:wrap; gap:14px;
     margin-bottom:var(--sp-3);
-    padding-top:10px;
-    border-top:1px dashed var(--border);
   }
-
-  /* Segmentado "pegado": un bloque con los botones adentro. */
   .segmentado{
     display:flex;
     border:1px solid var(--border);
@@ -59,49 +98,88 @@
   }
   .topn input{ width:64px; padding:7px; font-size:var(--fs-md); text-align:center; }
 
-  .chartbox{ position:relative; height:300px; }
+  /* ===== Gráfico de líneas (SVG propio, sin librería) =====
+     Se dibuja a mano en vez de traer Chart.js de un CDN: la tablet del local
+     puede quedarse sin internet y la pantalla tiene que seguir sirviendo. */
+  .grafico{ position:relative; }
+  .grafico svg{ display:block; width:100%; height:280px; overflow:visible; }
+  .grafico .grid{ stroke:var(--gris-500); stroke-width:1; }      /* hairline sólida, recesiva */
+  .grafico .eje-txt{ fill:var(--text-tenue); font-size:11px; }
+  .grafico .linea{ fill:none; stroke-width:2; stroke-linejoin:round; stroke-linecap:round; }
+  .grafico .punta{ stroke:var(--bg-card); stroke-width:2; }      /* anillo del color de la superficie */
+  .grafico .cruz{ stroke:var(--text-tenue); stroke-width:1; stroke-dasharray:none; }
 
-  /* Los números acá son un punto más chicos que en Caja */
-  .num .val{ font-size:20px; }
+  /* Leyenda: siempre presente cuando hay 2 o más series */
+  .leyenda{
+    display:flex; flex-wrap:wrap; gap:var(--sp-4);
+    margin-top:var(--sp-2);
+    font-size:var(--fs-base); color:var(--text-suave);
+  }
+  .leyenda span{ display:flex; align-items:center; gap:6px; }
+  .leyenda i{ width:14px; height:2px; border-radius:1px; }   /* llave de línea, no cuadrito */
 
-  /* --- ranking de deudores --- */
-  .barra-excel{ margin-bottom:var(--sp-3); }
-  .rank{ margin-top:var(--sp-4); }
-  .rank-row{
-    display:flex; align-items:center; gap:10px;
-    padding:7px 0;
-    border-bottom:1px solid var(--border);
-    text-decoration:none; color:inherit; cursor:pointer;
+  /* Tooltip: el valor manda, el nombre de la serie acompaña */
+  .tip{
+    position:absolute; z-index:var(--z-dropdown);
+    display:none; pointer-events:none;
+    min-width:120px; padding:8px 10px;
+    background:var(--bg-header);
+    border:1px solid var(--border);
+    border-radius:var(--r-md);
+    box-shadow:var(--sombra-card);
+    font-size:var(--fs-base);
   }
-  .rank-row:hover{ background:var(--oro-a08); }
-  .rank-nombre{
-    flex:0 0 34%;
-    font-size:var(--fs-md);
-    white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
-  }
-  .rank-bar-wrap{
-    flex:1; display:block;
-    height:22px;
-    background:var(--bg-app);
+  .tip .cuando{ margin-bottom:4px; color:var(--text-tenue); font-size:var(--fs-xs); }
+  .tip .fila-tip{ display:flex; align-items:center; gap:6px; margin-top:3px; }
+  .tip .fila-tip i{ width:12px; height:2px; border-radius:1px; flex:0 0 auto; }
+  .tip .fila-tip b{ margin-left:auto; font-variant-numeric:tabular-nums; }
+  .tip .fila-tip span{ color:var(--text-tenue); }
+
+  /* ===== Barras horizontales (ranking y formas de pago) ===== */
+  .barras{ display:grid; gap:var(--sp-2); }
+  .barra{
+    display:grid;
+    grid-template-columns:minmax(0,190px) 1fr auto;
+    align-items:center;
+    gap:var(--sp-3);
+    padding:3px var(--sp-2);
     border-radius:var(--r-sm);
-    overflow:hidden;              /* la barra interna no se escapa de las esquinas */
+    text-decoration:none; color:inherit;
   }
-  .rank-bar{
-    display:block; height:100%;
-    min-width:2px;                /* que se vea aunque el monto sea ínfimo */
-    background:var(--acento);
-    border-radius:var(--r-sm);
+  .barra:hover{ background:var(--bg-hover); }
+  .barra .cat{
+    display:flex; align-items:baseline; gap:4px;
+    min-width:0;
+    font-size:var(--fs-base); color:var(--text-suave);
   }
-  .rank-monto{
-    flex:0 0 auto; min-width:80px;
-    font-size:var(--fs-md); font-weight:var(--fw-strong);
-    text-align:right;
+  .barra .cat .nom{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .barra .cat i{ flex:0 0 auto; font-style:normal; color:var(--text-tenue); }
+  .barra .track{ display:block; min-width:0; }
+  .barra .fill{
+    display:block; height:14px; min-width:2px;
+    border-radius:0 4px 4px 0;      /* punta redondeada, cuadrada en la base */
+    background:#b08f3a;
   }
+  .barra .val{
+    font-size:var(--fs-base); font-weight:var(--fw-bold);
+    font-variant-numeric:tabular-nums; color:var(--text);
+  }
+  @media (max-width:560px){
+    .barra{ grid-template-columns:1fr auto; row-gap:2px; }
+    .barra .cat{ grid-column:1; }
+    .barra .val{ grid-column:2; }
+    .barra .track{ grid-column:1 / -1; }
+  }
+
+  .vacio-graf{ padding:40px 0; text-align:center; color:var(--text-tenue); font-size:var(--fs-md); }
 
   /* --- tabla del registro: más densa que la de Caja --- */
   table{ font-size:var(--fs-base); }
   th,td{ padding:7px 6px; }
   th{ font-size:var(--fs-xs); }
+  /* En pantalla chica la tabla no entra: que scrollee ELLA, no la página entera */
+  #reg{ overflow-x:auto; }
+  #reg table{ min-width:640px; }
 </style>
 </head><body>
 <header>
@@ -118,7 +196,16 @@
 </header>
 <div class="wrap">
 
-  <!-- FILTRO GLOBAL: manda sobre resumen, gráfico y registro (la deuda NO depende del período) -->
+  <nav class="indice">
+    <a class="pill" href="#resumen">📈 Resumen</a>
+    <a class="pill" href="#evolucion">📉 Evolución</a>
+    <a class="pill" href="#ranking">🏆 Lo más vendido</a>
+    <a class="pill" href="#pagos">💳 Formas de pago</a>
+    <a class="pill" href="#deuda">🧾 Cuenta corriente</a>
+    <a class="pill" href="#registro">📋 Movimientos</a>
+  </nav>
+
+  <!-- FILTRO GLOBAL: manda sobre resumen, gráficos y registro (la deuda NO depende del período) -->
   <div class="card" id="cFiltro">
     <div class="periodo">
       <button data-d="1">Hoy</button><button data-d="7">7d</button><button data-d="30" class="on">30d</button>
@@ -127,133 +214,253 @@
     </div>
   </div>
 
-  <div class="card" id="cResumen">
-    <h2>Resumen</h2>
-    <div class="nums" id="resumen"></div>
-    <div class="desg" style="margin-top:14px;">
-      <div>Ingresos por forma de pago<br><b id="porPago">—</b></div>
+  <div class="card" id="resumen">
+    <div class="card-head">
+      <h2>📈 Resumen del período</h2>
+      <p>Lo que entró, lo que salió y cuántos tickets se emitieron.</p>
     </div>
+    <div class="kpis" id="kpis"></div>
   </div>
 
-  <div class="card" id="cGrafico">
-    <h2>Cantidad de ventas por producto / categoría</h2>
-    <div class="controles" style="border-top:none;padding-top:0;">
+  <div class="card" id="evolucion">
+    <div class="card-head">
+      <h2>📉 Evolución de la caja</h2>
+      <p>Ingresos y egresos período a período. Pasá el mouse para ver los valores de cada fecha.</p>
+    </div>
+    <div class="grafico" id="gEvolucion"></div>
+  </div>
+
+  <div class="card" id="ranking">
+    <div class="card-head">
+      <h2>🏆 Lo más vendido</h2>
+      <p>Ordenado por facturación. Entre paréntesis, cuántas unidades se vendieron.</p>
+    </div>
+    <div class="controles">
       <div class="segmentado">
-        <button data-v="items" class="on">Productos</button>
+        <button data-v="items" class="on">Servicios</button>
         <button data-v="categorias">Categorías</button>
       </div>
-      <label class="topn">Top <input type="number" class="lim" value="3" min="1" max="15"></label>
+      <label class="topn">Top <input type="number" class="lim" value="8" min="1" max="20"></label>
     </div>
-    <div class="chartbox"><canvas class="chart"></canvas></div>
-    <div class="sindatos muted" style="display:none;text-align:center;padding:20px;">Sin datos en el período.</div>
+    <div class="barras" id="gRanking"></div>
   </div>
 
-  <div class="card" id="cDeuda">
-    <h2>Cuenta corriente</h2>
-    <div class="nums">
-      <div class="num"><div class="lbl">Deudas de clientes hasta el día de la fecha: </div><div class="val " id="deudaTotal">—</div></div>
-      <div class="num"><div class="lbl">Clientes con saldo: </div><div class="val" id="deudaTickets">—</div></div>
+  <div class="card" id="pagos">
+    <div class="card-head">
+      <h2>💳 Ingresos por forma de pago</h2>
+      <p>Con qué paga la gente en el período elegido.</p>
     </div>
-    <div class="rank" id="rankDeuda"></div>
+    <div class="barras" id="gPagos"></div>
+  </div>
+
+  <div class="card" id="deuda">
+    <div class="card-head">
+      <h2>🧾 Cuenta corriente</h2>
+      <p>Foto de hoy: no depende del período de arriba. Tocá un cliente para ver su cuenta.</p>
+    </div>
+    <div class="kpis" style="margin-bottom:var(--sp-4);">
+      <div class="kpi"><span class="lbl">Deuda total</span><span class="val" id="deudaTotal">—</span></div>
+      <div class="kpi"><span class="lbl">Clientes con saldo</span><span class="val" id="deudaTickets">—</span></div>
+    </div>
+    <div class="barras" id="rankDeuda"></div>
     <button id="verTodos" class="b-out" style="display:none;margin-top:10px;">Ver todos</button>
   </div>
 
-  <div class="card" id="cReg">
-    <h2>Registro de movimientos (ingresos y egresos)</h2>
-    <div class="barra-excel"><button id="wkexcel">Descargar excel</button></div>
+  <div class="card" id="registro">
+    <div class="card-head">
+      <h2>📋 Registro de movimientos</h2>
+      <p>Ingresos y egresos del período, uno por uno.</p>
+    </div>
+    <div class="barra-excel" style="margin-bottom:var(--sp-3);"><button id="wkexcel">Descargar excel</button></div>
     <div id="reg"></div>
   </div>
 
 </div>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="/static/auth.js"></script>
 <script>
 requireDueno(); pintarNav();
 const $=s=>document.querySelector(s);
-// Chart.js pinta sobre un canvas: el CSS no lo alcanza.
-// Le pasamos los colores leyéndolos de los tokens, para no repetir hex acá.
-if(typeof Chart !== "undefined"){
-  const css = getComputedStyle(document.documentElement);
-  Chart.defaults.color       = css.getPropertyValue('--gris-200').trim();  // texto de ejes y leyenda
-  Chart.defaults.borderColor = css.getPropertyValue('--gris-500').trim();  // líneas de la grilla
-}
 const money=n=>"$"+(n||0).toLocaleString("es-AR");
 const fmtNum=n=>(n||0).toLocaleString("es-AR");
-const PALETA=["#c9a84c","#e8d5a3","#c0785a","#8b6914","#d4a843","#a0855b","#e6c97a","#b89a3e",
-              "#dbb96e","#9c7530","#c4a24d","#7a6021","#f0d68a","#b08d35","#d9b84b"];
+const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+
+/* Colores de las series. El dorado de marca (#c9a84c) queda fuera de la banda de
+   luminosidad para fondo oscuro, así que se usa un paso más oscuro. Para egresos
+   NO sirve el naranja de --warn: contra el dorado quedan casi indistinguibles
+   (y peor todavía con daltonismo). El rojo de --danger separa bien y además es
+   el color que la app ya usa para lo que sale de la caja. */
+const COLOR_ING = "#b08f3a";
+const COLOR_EGR = "#c0392b";
 
 // ---- ESTADO ÚNICO DE LA PÁGINA ----
-// dias/desde/hasta -> los manda el filtro global (afectan a todo)
-// vista/limite     -> solo del gráfico
-const state={dias:30, desde:"", hasta:"", vista:"items", limite:3};
+const state={dias:30, desde:"", hasta:"", vista:"items", limite:8};
 
 function qbase(s){ return (s.desde||s.hasta) ? `desde=${s.desde}&hasta=${s.hasta}` : `dias=${s.dias}`; }
 
 function recargarTodo(){
   loadResumen(state);
-  loadGrafico(state);
+  loadEvolucion(state);
+  loadRanking(state);
   loadReg(state);
   // loadDeuda() NO va acá: la deuda es una foto de hoy, no depende del período
 }
 
-function dibujarLinea(rootSel, data){
-  const root=$(rootSel);
-  const canvas=root.querySelector(".chart");
-  const sinDatos=root.querySelector(".sindatos");
-  if(canvas._chart){ canvas._chart.destroy(); canvas._chart=null; }
-  const hayDatos = data.series && data.series.length && data.buckets.length;
-  if(typeof Chart==="undefined"){
-    sinDatos.style.display="block"; sinDatos.textContent="No se pudo cargar la librería de gráficos (¿sin internet?).";
+/* ============ Gráfico de líneas en SVG ============ */
+function dibujarLineas(cont, data, colores){
+  const series = (data.series||[]).filter(s=>s.valores && s.valores.length);
+  const etiquetas = data.buckets || [];
+  if(!series.length || !etiquetas.length || series.every(s=>s.valores.every(v=>!v))){
+    cont.innerHTML = '<div class="vacio-graf">Sin movimientos en el período.</div>';
     return;
   }
-  if(!hayDatos){ sinDatos.style.display="block"; sinDatos.textContent="Sin datos en el período."; canvas.style.display="none"; return; }
-  sinDatos.style.display="none"; canvas.style.display="block";
-  const datasets=data.series.map((s,i)=>({
-    label:s.nombre, data:s.valores,
-    borderColor:PALETA[i%PALETA.length], backgroundColor:PALETA[i%PALETA.length],
-    tension:.3, borderWidth:2, pointRadius:2, fill:false
-  }));
-  canvas._chart=new Chart(canvas.getContext("2d"),{
-    type:"line",
-    data:{labels:data.buckets, datasets},
-    options:{
-      responsive:true, maintainAspectRatio:false,
-      interaction:{mode:"index", intersect:false},
-      plugins:{
-        legend:{position:"bottom", labels:{boxWidth:12, font:{size:11}}},
-        tooltip:{callbacks:{label:(c)=> `${c.dataset.label}: ${fmtNum(c.parsed.y)}`}}
-      },
-      scales:{ y:{beginAtZero:true, ticks:{callback:(v)=>fmtNum(v)}} }
-    }
+
+  // El viewBox se dibuja al ancho REAL del contenedor: 1 unidad = 1 píxel. Si en
+  // cambio se escalara un ancho fijo, en pantalla angosta el texto de los ejes
+  // saldría achatado.
+  const W = Math.max(cont.clientWidth || 800, 300), H=280;
+  const mIzq=64, mDer=14, mArr=14, mAba=30;
+  const anchoUtil=W-mIzq-mDer, altoUtil=H-mArr-mAba;
+
+  // Escala Y desde 0 hasta un tope "redondo", así los números del eje quedan limpios
+  const maxDato = Math.max(...series.flatMap(s=>s.valores), 1);
+  const paso = Math.pow(10, Math.floor(Math.log10(maxDato)) ) / 2 || 1;
+  const tope = Math.ceil(maxDato / paso) * paso;
+  const nTicks = 4;
+
+  const x = i => mIzq + (etiquetas.length===1 ? anchoUtil/2 : i*anchoUtil/(etiquetas.length-1));
+  const y = v => mArr + altoUtil - (v/tope)*altoUtil;
+
+  // Grilla + números del eje Y (llevan los valores que no se etiquetan a mano)
+  let svg=`<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Evolución de ingresos y egresos">`;
+  for(let t=0;t<=nTicks;t++){
+    const v = tope*t/nTicks, yy = y(v);
+    svg += `<line class="grid" x1="${mIzq}" y1="${yy}" x2="${W-mDer}" y2="${yy}"/>`;
+    svg += `<text class="eje-txt" x="${mIzq-8}" y="${yy+4}" text-anchor="end">${fmtNum(Math.round(v))}</text>`;
+  }
+  // Fechas del eje X: se saltean etiquetas si no entran
+  const cadaX = Math.ceil(etiquetas.length/8);
+  etiquetas.forEach((et,i)=>{
+    if(i % cadaX) return;
+    svg += `<text class="eje-txt" x="${x(i)}" y="${H-8}" text-anchor="middle">${esc(et)}</text>`;
   });
+
+  series.forEach((s,si)=>{
+    const col = colores[si % colores.length];
+    const d = s.valores.map((v,i)=>`${i?"L":"M"}${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(" ");
+    svg += `<path class="linea" d="${d}" stroke="${col}"/>`;
+    // punta de la serie: marca de 8px con anillo del color de la superficie
+    const ult = s.valores.length-1;
+    svg += `<circle class="punta" cx="${x(ult).toFixed(1)}" cy="${y(s.valores[ult]).toFixed(1)}" r="4" fill="${col}"/>`;
+  });
+
+  // capa de hover: una banda por bucket, más ancha que la línea para que sea fácil apuntar
+  svg += `<g id="capaHover">`;
+  svg += `<line class="cruz" id="cruz" x1="0" y1="${mArr}" x2="0" y2="${mArr+altoUtil}" style="display:none"/>`;
+  etiquetas.forEach((_,i)=>{
+    const ancho = anchoUtil/Math.max(etiquetas.length-1,1);
+    svg += `<rect data-i="${i}" x="${(x(i)-ancho/2).toFixed(1)}" y="${mArr}" width="${ancho.toFixed(1)}" height="${altoUtil}" fill="transparent"/>`;
+  });
+  svg += `</g></svg>`;
+
+  // leyenda (2 series o más: siempre presente)
+  svg += `<div class="leyenda">` + series.map((s,si)=>
+      `<span><i style="background:${colores[si%colores.length]}"></i>${esc(s.nombre)}</span>`).join("") + `</div>`;
+  svg += `<div class="tip" id="tip"></div>`;
+  cont.innerHTML = svg;
+
+  // --- hover: una sola lectura con todas las series de esa fecha ---
+  const tip = cont.querySelector("#tip");
+  const cruz = cont.querySelector("#cruz");
+  const svgEl = cont.querySelector("svg");
+  cont.querySelectorAll("#capaHover rect").forEach(r=>{
+    const mostrar = ev => {
+      const i = +r.dataset.i;
+      cruz.style.display="";
+      cruz.setAttribute("x1", x(i)); cruz.setAttribute("x2", x(i));
+      // el nombre de la serie es dato externo: se inserta como texto, no como HTML
+      tip.innerHTML = `<div class="cuando"></div>`;
+      tip.querySelector(".cuando").textContent = etiquetas[i];
+      series.forEach((s,si)=>{
+        const fila = document.createElement("div"); fila.className="fila-tip";
+        const key = document.createElement("i"); key.style.background = colores[si%colores.length];
+        const nom = document.createElement("span"); nom.textContent = s.nombre;
+        const val = document.createElement("b");   val.textContent = money(s.valores[i]);
+        fila.append(key, nom, val); tip.appendChild(fila);
+      });
+      const caja = svgEl.getBoundingClientRect();
+      const px = (x(i)/W) * caja.width;
+      tip.style.display="block";
+      tip.style.left = Math.min(Math.max(px-60, 0), caja.width-140) + "px";
+      tip.style.top  = "6px";
+    };
+    r.addEventListener("pointerenter", mostrar);
+    r.addEventListener("pointermove", mostrar);
+  });
+  cont.addEventListener("pointerleave", ()=>{ tip.style.display="none"; cruz.style.display="none"; });
 }
 
+/* ============ Barras horizontales ============ */
+function dibujarBarras(cont, filas, opciones={}){
+  const { vacio="Sin datos en el período.", color="#b08f3a", href=null } = opciones;
+  if(!filas.length){ cont.innerHTML = `<div class="vacio-graf">${vacio}</div>`; return; }
+  const tope = Math.max(...filas.map(f=>f.valor), 1);
+  cont.innerHTML = filas.map(f=>{
+    const etq = f.nota ? `<i>(${esc(f.nota)})</i>` : "";
+    const cuerpo = `
+      <span class="cat"><span class="nom">${esc(f.nombre)}</span>${etq}</span>
+      <span class="track"><span class="fill" style="width:${(f.valor/tope*100).toFixed(1)}%;background:${color};"></span></span>
+      <span class="val">${esc(f.texto)}</span>`;
+    return href
+      ? `<a class="barra" href="${href(f)}" title="${esc(f.nombre)}">${cuerpo}</a>`
+      : `<div class="barra" title="${esc(f.nombre)}">${cuerpo}</div>`;
+  }).join("");
+}
+
+/* ============ Cargas ============ */
 async function loadResumen(s){
   const r=await (await authFetch("/api/reportes/resumen?"+qbase(s))).json();
-  $("#resumen").innerHTML=`
-    <div class="num"><div class="lbl">Ingresos</div><div class="val">${money(r.ingresos)}</div></div>
-    <div class="num"><div class="lbl">Egresos</div><div class="val">${money(r.egresos)}</div></div>
-    <div class="num"><div class="lbl">Neto</div><div class="val">${money(r.neto)}</div></div>
-    <div class="num"><div class="lbl">Ventas</div><div class="val">${r.ventas}</div></div>`;
+  const promedio = r.ventas ? Math.round(r.ingresos / r.ventas) : 0;
+  $("#kpis").innerHTML=`
+    <div class="kpi"><span class="lbl">Ingresos</span><span class="val">${money(r.ingresos)}</span></div>
+    <div class="kpi"><span class="lbl">Egresos</span><span class="val ${r.egresos?'neg':''}">${money(r.egresos)}</span></div>
+    <div class="kpi"><span class="lbl">Neto</span><span class="val ${r.neto<0?'neg':''}">${money(r.neto)}</span></div>
+    <div class="kpi"><span class="lbl">Tickets</span><span class="val">${r.ventas}</span></div>
+    <div class="kpi"><span class="lbl">Ticket promedio</span><span class="val">${money(promedio)}</span>
+      <span class="pie">${r.ventas ? "sobre "+r.ventas+" ticket(s)" : "sin ventas"}</span></div>`;
+
+  // formas de pago: barras con el % al lado
   const fp = r.ingresos_por_pago || {};
-  const pct = v => {
-    if(!r.ingresos) return "0%";
-    const p = v*100/r.ingresos;
-    if(p > 0 && p < 1)    return "<1%";    // existe, pero es menos de 1
-    if(p > 99 && p < 100) return ">99%";   // casi todo, pero no todo
-    return Math.round(p)+"%";
-  };
-  $("#porPago").innerHTML = Object.keys(fp).length
-    ? Object.entries(fp).sort((a,b)=>b[1]-a[1])
-        .map(([k,v])=>`${k}: ${money(v)} (${pct(v)})`).join("<br>")
-    : "—";
+  const filas = Object.entries(fp).sort((a,b)=>b[1]-a[1]).map(([nombre,v])=>({
+    nombre, valor:v,
+    texto: money(v),
+    nota: r.ingresos ? (v*100/r.ingresos).toFixed(v*100/r.ingresos < 10 ? 1 : 0)+"%" : "0%"
+  }));
+  dibujarBarras($("#gPagos"), filas, {vacio:"No hubo ingresos en el período."});
 }
 
-async function loadGrafico(s){
-  const q=`${qbase(s)}&limite=${s.limite}`;
-  const url = s.vista==="items" ? "/api/reportes/serie-items" : "/api/reportes/serie-categorias";
-  const data=await (await authFetch(url+"?"+q)).json();
-  dibujarLinea("#cGrafico", data);
+let ULTIMA_EVOLUCION=null;   // guardada para poder redibujar al cambiar el ancho
+
+async function loadEvolucion(s){
+  ULTIMA_EVOLUCION=await (await authFetch("/api/reportes/serie-caja?"+qbase(s))).json();
+  dibujarLineas($("#gEvolucion"), ULTIMA_EVOLUCION, [COLOR_ING, COLOR_EGR]);
+}
+
+// El SVG se dibuja al ancho real, así que hay que rehacerlo cuando ese ancho cambia
+// (girar la tablet, agrandar la ventana). Con un respiro para no dibujar de más.
+let tResize=null;
+window.addEventListener("resize", ()=>{
+  if(!ULTIMA_EVOLUCION) return;
+  clearTimeout(tResize);
+  tResize=setTimeout(()=>dibujarLineas($("#gEvolucion"), ULTIMA_EVOLUCION, [COLOR_ING, COLOR_EGR]), 150);
+});
+
+async function loadRanking(s){
+  const q=`${qbase(s)}&limite=${s.limite}&vista=${s.vista}`;
+  const data=await (await authFetch("/api/reportes/ranking-items?"+q)).json();
+  const filas=(data.filas||[]).map(f=>({
+    nombre:f.nombre, valor:f.total, texto:money(f.total), nota:f.cantidad+"u"
+  }));
+  dibujarBarras($("#gRanking"), filas, {vacio:"No se vendió nada en el período."});
 }
 
 async function loadReg(s){
@@ -281,14 +488,12 @@ async function loadDeuda(){
   const [deudas, clientes] = await Promise.all([
     authFetch("/api/clientes/deudas").then(r=>r.json()),
     authFetch("/api/clientes").then(r=>r.json())
-    
   ]);
 
   // diccionario id -> nombre, para no recorrer el array de clientes por cada deuda
   const nombrePorId = {};
   clientes.forEach(c => { nombrePorId[c.id] = c.nombre; });
 
-  // pegar el nombre a cada deuda y ordenar de mayor a menor
   DEUDORES = deudas
     .map(d => ({ id:d.cliente_id, saldo:d.saldo, nombre: nombrePorId[d.cliente_id] || "(cliente eliminado)" }))
     .sort((a,b) => b.saldo - a.saldo);
@@ -301,38 +506,20 @@ async function loadDeuda(){
 }
 
 function pintarRanking(){
-  const cont = $("#rankDeuda");
-
+  const btn = $("#verTodos");
   if(DEUDORES.length === 0){
-    cont.innerHTML = '<p class="muted" style="margin-top:12px;">Nadie debe nada. 🎉</p>';
-    return;
-  const btn = $("#verTodos");
-  if(DEUDORES.length > 10){
-    btn.style.display = "block";
-    btn.textContent = mostrarTodos ? `Ver menos` : `Ver todos (${DEUDORES.length})`;
-    btn.onclick = ()=>{ mostrarTodos = !mostrarTodos; pintarRanking(); };
-  } else {
+    $("#rankDeuda").innerHTML = '<div class="vacio-graf">Nadie debe nada. 🎉</div>';
     btn.style.display = "none";
+    return;
   }
-  }
-
   const top = mostrarTodos ? DEUDORES : DEUDORES.slice(0, 10);
-  const max = DEUDORES[0].saldo;   // el más grande: la barra llena. DEUDORES ya viene ordenado
+  dibujarBarras($("#rankDeuda"), top.map(d=>({
+    nombre: titulo(d.nombre), valor: d.saldo, texto: money(d.saldo), _id: d.id
+  })), { color: COLOR_EGR, href: f => "/cuenta?id="+f._id });
 
-  cont.innerHTML = top.map(d => {
-    const pct = Math.round(d.saldo / max * 100);
-    return `
-      <a class="rank-row" href="/cuenta?id=${d.id}">
-        <span class="rank-nombre">${titulo(d.nombre)}</span>
-        <span class="rank-bar-wrap"><span class="rank-bar" style="width:${pct}%;"></span></span>
-        <span class="rank-monto">${money(d.saldo)}</span>
-      </a>`;
-  }).join("");
-
-  const btn = $("#verTodos");
   if(DEUDORES.length > 10){
     btn.style.display = "block";
-    btn.textContent = mostrarTodos ? `Ver menos` : `Ver todos (${DEUDORES.length})`;
+    btn.textContent = mostrarTodos ? "Ver menos" : `Ver todos (${DEUDORES.length})`;
     btn.onclick = ()=>{ mostrarTodos = !mostrarTodos; pintarRanking(); };
   } else {
     btn.style.display = "none";
@@ -340,30 +527,21 @@ function pintarRanking(){
 }
 
 async function descargarExcel(){
-  // 1. mismo período que el filtro global
   const q = qbase(state);
-
-  // 2. pido el archivo al backend CON el carnet (por eso authFetch, no fetch pelado)
   const r = await authFetch("/api/reportes/excel?" + q);
   if(!r.ok){ alert("No se pudo generar el Excel"); return; }
-
-  // 3. recibo los bytes del archivo (no es texto: es un "blob")
   const blob = await r.blob();
-
-  // 4. el truco: fabrico un link invisible que apunta a esos bytes y lo "clickeo" por código
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = "reportes.xlsx";   // el nombre con el que se baja
+  a.download = "reportes.xlsx";
   a.click();
-
-  // 5. limpio el link temporal
   URL.revokeObjectURL(url);
 }
 
 // ---- CABLEADO ----
 
-// Filtro global: cambia el período y recarga las tres cards
+// Filtro global: cambia el período y recarga todo lo que depende de él
 (function(){
   const root=$("#cFiltro");
   root.querySelectorAll("button[data-d]").forEach(b=>{
@@ -383,21 +561,21 @@ async function descargarExcel(){
   };
 })();
 
-// Controles del gráfico: solo recargan el gráfico
+// Controles del ranking: solo recargan ese gráfico
 (function(){
-  const root=$("#cGrafico");
+  const root=$("#ranking");
   root.querySelectorAll(".segmentado button[data-v]").forEach(b=>{
     b.onclick=()=>{
       root.querySelectorAll(".segmentado button[data-v]").forEach(x=>x.classList.remove("on"));
       b.classList.add("on");
       state.vista=b.dataset.v;
-      loadGrafico(state);
+      loadRanking(state);
     };
   });
   const lim=root.querySelector(".lim");
   lim.onchange=()=>{
-    let v=parseInt(lim.value)||3; v=Math.max(1,Math.min(15,v)); lim.value=v;
-    state.limite=v; loadGrafico(state);
+    let v=parseInt(lim.value)||8; v=Math.max(1,Math.min(20,v)); lim.value=v;
+    state.limite=v; loadRanking(state);
   };
 })();
 

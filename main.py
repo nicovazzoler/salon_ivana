@@ -1127,16 +1127,24 @@ def reportes_excel(dias: int = 30, desde: str | None = None, hasta: str | None =
 
 # ---------- series temporales (para gráficos de línea) ----------
 def _resolver_ventana(dias, desde, hasta, db):
-    """Igual que _ventana, pero garantiza (ini, fin) concretos para bucketizar."""
+    """Igual que _ventana, pero garantiza (ini, fin) concretos para bucketizar.
+
+    Todo se maneja en UTC SIN zona: así lo devuelve _ventana y así lo guarda
+    SQLite. fecha_hora_now_utc() sí trae zona, y mezclarlas reventaba el caso
+    "Todo" con "can't compare offset-naive and offset-aware datetimes".
+    """
+    ahora = fecha_hora_now_utc().replace(tzinfo=None)
     ini, fin = _ventana(dias, desde, hasta)
     if ini is None:   # caso "Todo": arranca en el primer ticket
         primera = (db.query(models.Comprobante)
                      .filter(models.Comprobante.tipo == "ticket",
                              models.Comprobante.activo == True)
                      .order_by(models.Comprobante.fecha.asc()).first())
-        ini = primera.fecha if primera else fecha_hora_now_utc() - timedelta(days=30)
+        ini = primera.fecha if primera else ahora - timedelta(days=30)
+    if ini.tzinfo is not None: ini = ini.replace(tzinfo=None)
     if fin is None:
-        fin = fecha_hora_now_utc() + timedelta(days=1)
+        fin = ahora + timedelta(days=1)
+    if fin.tzinfo is not None: fin = fin.replace(tzinfo=None)
     if fin <= ini:
         fin = ini + timedelta(days=1)
     return ini, fin
@@ -1213,6 +1221,54 @@ def serie_categorias(dias: int = 30, limite: int = 3,
     filas = [(l, f, cat or "Otros") for l, f, cat in q.all()]
     return {"buckets": [b[2] for b in buckets], "granularidad": gran,
             "series": _serie(filas, None, limite, buckets)}
+
+@app.get("/api/reportes/serie-caja")
+def serie_caja(dias: int = 30, desde: str | None = None, hasta: str | None = None,
+               _ = Depends(solo_dueno), db: Session = Depends(get_db)):
+    """Ingresos y egresos período a período, para ver la evolución del negocio."""
+    ini, fin = _resolver_ventana(dias, desde, hasta, db)
+    buckets, gran = _buckets(ini, fin)
+
+    pagos   = _filtrar(db.query(models.Pago),   models.Pago.fecha,   ini, fin).all()
+    egresos = _filtrar(db.query(models.Egreso), models.Egreso.fecha, ini, fin).all()
+
+    def acumular(registros, monto_de):
+        serie = [0] * len(buckets)
+        for r in registros:
+            for i, (b_ini, b_fin, _et) in enumerate(buckets):
+                if b_ini <= r.fecha < b_fin:
+                    serie[i] += monto_de(r) or 0
+                    break
+        return serie
+
+    ingresos = acumular(pagos,   lambda p: p.monto)
+    egr      = acumular(egresos, lambda e: e.monto)
+    return {"buckets": [b[2] for b in buckets], "granularidad": gran,
+            "series": [{"nombre": "Ingresos", "valores": ingresos},
+                       {"nombre": "Egresos",  "valores": egr}]}
+
+@app.get("/api/reportes/ranking-items")
+def ranking_items(dias: int = 30, limite: int = 8,
+                  desde: str | None = None, hasta: str | None = None,
+                  vista: str = "items",
+                  _ = Depends(solo_dueno), db: Session = Depends(get_db)):
+    """Lo más vendido del período, por facturación y por cantidad.
+    Lee de comprobantes (top-items mira la tabla vieja de ventas)."""
+    ini, fin = _resolver_ventana(dias, desde, hasta, db)
+    q = (db.query(models.ComprobanteLinea, models.Item.categoria)
+           .join(models.Comprobante)
+           .outerjoin(models.Item, models.ComprobanteLinea.item_id == models.Item.id)
+           .filter(models.Comprobante.tipo == "ticket",
+                   models.Comprobante.activo == True,
+                   models.Comprobante.fecha >= ini, models.Comprobante.fecha < fin))
+    agg = {}
+    for linea, categoria in q.all():
+        clave = (categoria or "Otros") if vista == "categorias" else (linea.nombre or "—")
+        a = agg.setdefault(clave, {"nombre": clave, "cantidad": 0, "total": 0})
+        a["cantidad"] += linea.cantidad or 0
+        a["total"]    += linea.subtotal or 0
+    ordenado = sorted(agg.values(), key=lambda x: x["total"], reverse=True)
+    return {"filas": ordenado[:limite], "total_general": sum(a["total"] for a in agg.values())}
 
 @app.get("/api/ventas/registro")
 def ventas_registro(desde: str | None = None, hasta: str | None = None,
