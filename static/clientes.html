@@ -64,7 +64,12 @@
   </div>
 
   <div class="card">
-    <input id="buscar" placeholder="🔎 Buscar por nombre o teléfono..." style="width:100%;margin-bottom:14px;">
+    <input id="buscar" placeholder="🔎 Buscar por nombre o teléfono..." style="width:100%;margin-bottom:10px;">
+    <div class="pills" id="filtros">
+      <button class="pill on" data-f="todos">Todos</button>
+      <button class="pill" data-f="deudores">Solo deudores</button>
+      <span id="resumenDeuda" class="muted" style="margin-left:auto;align-self:center;"></span>
+    </div>
     <div class="grid-cli cab">
       <span>Código</span><span>Nombre</span><span>Teléfono</span><span>Alias</span><span>Estado</span>
     </div>
@@ -79,6 +84,7 @@
 requireLogin(); pintarNav();
 const $=s=>document.querySelector(s);
 let timer=null;
+let CLIENTES=[], DEUDAS=new Map(), filtro="todos";
 
 function toast(m){const t=$("#toast");t.textContent=m;t.classList.add("show");setTimeout(()=>t.classList.remove("show"),2200);}
 function clienteId(id){ return "C-"+String(id).padStart(3,"0"); }
@@ -90,30 +96,51 @@ async function cargar(){
 
   // las dos en paralelo: si cada una tarda 200ms, en serie son 400 y así son 200
   const [rc, rd] = await Promise.all([ authFetch(url), authFetch("/api/clientes/deudas") ]);
-  const clientes = await rc.json();
+  CLIENTES = await rc.json();
   const deudasList = await rd.json();
-  const deben = new Set(deudasList.map(d => d.cliente_id));
+  // cuánto debe cada uno, para poder filtrar y mostrar el monto en la fila
+  DEUDAS = new Map(deudasList.map(d => [d.cliente_id, d.saldo]));
 
+  const total = deudasList.reduce((a,d)=>a+d.saldo, 0);
+  $("#resumenDeuda").textContent = deudasList.length
+    ? `${deudasList.length} ${deudasList.length===1?'cliente debe':'clientes deben'} ${money(total)}`
+    : "Nadie debe nada";
+  renderClientes();
+}
+
+function renderClientes(){
   const cont=$("#lista"); cont.innerHTML="";
-  if(clientes.length===0){ cont.innerHTML='<p class="muted">No hay clientes para mostrar.</p>'; return; }
+  const clientes = filtro==="deudores" ? CLIENTES.filter(c=>DEUDAS.has(c.id)) : CLIENTES;
+
+  if(CLIENTES.length===0){ cont.innerHTML='<p class="muted">No hay clientes para mostrar.</p>'; return; }
+  if(clientes.length===0){ cont.innerHTML='<p class="muted">Ningún cliente con deuda.</p>'; return; }
 
   clientes.forEach(c=>{
     const row=document.createElement("a");     // <a> de verdad: click del medio, copiar link, teclado
     row.className="cli-row grid-cli";
     row.href="/cuenta?id="+c.id;
+    const debe = DEUDAS.get(c.id);
     row.innerHTML=`
       <span class="id">${clienteId(c.id)}</span>
       <span class="n">${titulo(c.nombre||"")}</span>
       <span class="meta">${c.telefono||"—"}</span>
       <span class="meta">${c.alias||"—"}</span>
-      <span>${deben.has(c.id)
-        ? '<b style="color:var(--danger);">Debe</b>'
+      <span>${debe
+        ? `<b style="color:var(--danger);">${money(debe)}</b>`
         : '<span style="color:var(--success);" class="muted">Al día</span>'}</span>`;
     cont.appendChild(row);
   });
 }
 
 $("#buscar").oninput=()=>{ clearTimeout(timer); timer=setTimeout(cargar,250); };
+
+document.querySelectorAll("#filtros .pill").forEach(b=>{
+  b.onclick=()=>{
+    filtro=b.dataset.f;
+    document.querySelectorAll("#filtros .pill").forEach(x=>x.classList.toggle("on", x===b));
+    renderClientes();
+  };
+});
 
 $("#btnNuevo").onclick=async()=>{
   const nombre=$("#nNombre").value.trim();

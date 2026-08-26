@@ -513,21 +513,26 @@ def borrar_cliente(cliente_id: int, _ = Depends(solo_dueno), db: Session = Depen
 def cuenta_cliente(cliente_id: int, _ = Depends(usuario_actual), db: Session = Depends(get_db)):
     cli = db.get(models.Cliente, cliente_id)
     if not cli or not cli.activo: raise HTTPException(404, "Cliente no existe")
+    # Trae tickets Y presupuestos. Solo los tickets suman al saldo: un presupuesto
+    # todavía no es una deuda, es un precio que se pasó.
     comps = db.query(models.Comprobante).filter(
         models.Comprobante.cliente_id == cliente_id,
-        models.Comprobante.tipo == "ticket",
         models.Comprobante.activo == True
     ).order_by(models.Comprobante.fecha.desc())
     out = []; saldo_total = 0
     for comp in comps:
         est = estado_comprobante(db, comp)
-        if est["saldo"] > 0: saldo_total += est["saldo"]
-        out.append({"id": comp.id, "numero": comp.numero, "fecha": comp.fecha.isoformat(),
+        if comp.tipo == "ticket" and est["saldo"] > 0: saldo_total += est["saldo"]
+        conv = None
+        if comp.tipo == "presupuesto":
+            t = db.query(models.Comprobante).filter(models.Comprobante.convertido_de == comp.id).first()
+            conv = t.numero if t else None
+        out.append({"id": comp.id, "tipo": comp.tipo, "numero": comp.numero, "fecha": comp.fecha.isoformat(),
                     "descuento_nombre": comp.descuento_nombre, "descuento_pct": comp.descuento_pct,
                     "total_transfer": est["total_transfer"], "desc_efectivo": est["desc_efectivo"],
                     "subtotal": est["subtotal"], "desc_jubilado": est["desc_jubilado"],
                     "total_final": est["total_final"], "pagado": est["pagado"],
-                    "ingresado": est["ingresado"],
+                    "ingresado": est["ingresado"], "convertido_a": conv,
                     "forma_pago": forma_comprobante(db, comp), "forma_origen": comp.forma_pago,
                     "saldo": est["saldo"], "estado": est["estado"]})
     return {"cliente": _cliente_json(cli),

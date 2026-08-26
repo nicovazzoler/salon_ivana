@@ -88,6 +88,11 @@
 <div class="wrap">
   <div class="card" id="cabecera"></div>
   <div id="turno"></div>
+  <div class="seg" id="tabsTipo">
+    <button data-tipo="todos" class="on">Todos</button>
+    <button data-tipo="ticket">Tickets</button>
+    <button data-tipo="presupuesto">Presupuestos</button>
+  </div>
   <div id="lista"></div>
 </div>
 <div class="toast" id="toast"></div>
@@ -101,8 +106,12 @@ const id=new URLSearchParams(location.search).get("id");
 const ORIGEN = { efectivo:"Efectivo", transfer:"Transferencia", cuenta:"A cuenta", mixto:"Mixto" };
 let FORMAS=[], ALIAS=[];
 
+let COMPS=[];                 // tickets y presupuestos del cliente
+let tipoFiltro="todos";       // pestaña elegida: todos | ticket | presupuesto
+
 function toast(m){const t=$("#toast");t.textContent=m;t.classList.add("show");setTimeout(()=>t.classList.remove("show"),2200);}
 function numTicket(n){ return "A-"+String(n).padStart(5,"0"); }
+function numComp(c){ return (c.tipo==="presupuesto"?"P-":"A-")+String(c.numero).padStart(5,"0"); }
 function parseISO2(s){ const [y,m,d]=s.split("-").map(Number); return new Date(y,m-1,d); }
 
 async function cargar(){
@@ -208,9 +217,21 @@ if($("#btnEliminar")) $("#btnEliminar").onclick=async()=>{
     }
   }catch(e){}
 
+  COMPS = data.comprobantes;
+  renderComprobantes();
+}
+
+/* Lista de comprobantes, filtrada por la pestaña elegida. */
+function renderComprobantes(){
   const cont=$("#lista"); cont.innerHTML="";
-  if(data.comprobantes.length===0){ cont.innerHTML='<p class="muted">Este cliente no tiene tickets todavía.</p>'; return; }
-  data.comprobantes.forEach(comp=>{
+  const comps = tipoFiltro==="todos" ? COMPS : COMPS.filter(c=>c.tipo===tipoFiltro);
+  if(COMPS.length===0){ cont.innerHTML='<p class="muted">Este cliente no tiene comprobantes todavía.</p>'; return; }
+  if(comps.length===0){
+    cont.innerHTML=`<p class="muted">Este cliente no tiene ${tipoFiltro==="ticket"?"tickets":"presupuestos"}.</p>`;
+    return;
+  }
+  comps.forEach(comp=>{
+    const esPresu = comp.tipo==="presupuesto";
     const div=document.createElement("div"); div.className="comp card";
     const fecha=new Date(comp.fecha).toLocaleDateString("es-AR");
     const efvoTodo = comp.desc_efectivo>0 ? comp.saldo : Math.ceil(comp.saldo * 0.9/100)*100;
@@ -218,8 +239,8 @@ if($("#btnEliminar")) $("#btnEliminar").onclick=async()=>{
       <div class="comp-head">
         <div class="comp-datos">
           <div>
-            <div class="sub">${fecha} · <span class="num">${numTicket(comp.numero)}</span></div>
-            <div class="comp-total">${fmt(comp.ingresado + comp.saldo)} <span class="fp">· ${ORIGEN[comp.forma_origen]||comp.forma_origen}${comp.forma_pago!==ORIGEN[comp.forma_origen]?` → ${comp.forma_pago}`:''}</span></div>
+            <div class="sub">${fecha} · <span class="num">${numComp(comp)}</span></div>
+            <div class="comp-total">${fmt(comp.ingresado + comp.saldo)} ${esPresu?'':`<span class="fp">· ${ORIGEN[comp.forma_origen]||comp.forma_origen}${comp.forma_pago!==ORIGEN[comp.forma_origen]?` → ${comp.forma_pago}`:''}</span>`}</div>
           </div>
           <span class="badge ${comp.estado}">${comp.estado}</span>
         </div>
@@ -228,14 +249,22 @@ if($("#btnEliminar")) $("#btnEliminar").onclick=async()=>{
           <button class="btnAnular b-del" data-id="${comp.id}">Anular</button>
         </div>
       </div>
-      <div class="comp-cifras">
-        <div><span class="lbl">Total</span><span class="val">${fmt(comp.total_final)}</span></div>
-        <div><span class="lbl">Pagado</span><span class="val">${fmt(comp.pagado)}</span></div>
-        <div><span class="lbl">Saldo</span><span class="val ${comp.saldo>0?'deuda':'ok'}">${fmt(comp.saldo)}</span></div>
-      </div>
+      ${esPresu
+        ? `<div class="comp-cifras" style="grid-template-columns:1fr 1fr;">
+             <div><span class="lbl">Total lista</span><span class="val">${fmt(comp.total_transfer)}</span></div>
+             <div><span class="lbl">Con descuento</span><span class="val">${fmt(comp.subtotal)}</span></div>
+           </div>
+           ${comp.convertido_a
+              ? `<div class="muted" style="margin-top:8px;">Convertido → A-${String(comp.convertido_a).padStart(5,"0")}</div>`
+              : ''}`
+        : `<div class="comp-cifras">
+             <div><span class="lbl">Total</span><span class="val">${fmt(comp.total_final)}</span></div>
+             <div><span class="lbl">Pagado</span><span class="val">${fmt(comp.pagado)}</span></div>
+             <div><span class="lbl">Saldo</span><span class="val ${comp.saldo>0?'deuda':'ok'}">${fmt(comp.saldo)}</span></div>
+           </div>`}
       <button class="btnDetalle b-out" style="margin-top:8px;">Ver detalle</button>
       <div class="detalle-box" style="display:none;"></div>
-      ${comp.saldo>0?`<button class="btnAbrir btnAbonar" style="margin-top:10px;">Registrar pago 💵</button>
+      ${(!esPresu && comp.saldo>0)?`<button class="btnAbrir btnAbonar" style="margin-top:10px;">Registrar pago 💵</button>
       <div class="abonar-box">
         <div class="fila">
           <select class="aForma">${comp.desc_efectivo>0
@@ -250,7 +279,7 @@ if($("#btnEliminar")) $("#btnEliminar").onclick=async()=>{
           <input class="aAlias" list="aliasDL" placeholder="¿A qué cuenta?" style="flex:1;">
         </div>
       </div>`:''}`;
-    if(comp.saldo>0){
+    if(!esPresu && comp.saldo>0){
       const box=div.querySelector(".abonar-box");
       div.querySelector(".btnAbrir").onclick=(e)=>{
         box.style.display = "block";
@@ -321,7 +350,20 @@ if($("#btnEliminar")) $("#btnEliminar").onclick=async()=>{
     btnDet.onclick=async()=>{
       if(boxDet.style.display==="block"){ boxDet.style.display="none"; return; }
       const d=await (await authFetch("/api/comprobantes/"+comp.id)).json();
-      const lineas=d.lineas.map(l=>`<div class="fila" style="justify-content:space-between;"><span>${l.cantidad}× ${l.nombre}${l.dificultad?' (dif)':''}</span><span>${fmt(l.precio_unit*l.cantidad)}</span></div>`).join("");
+      const pu = l => l.precio_unit_final ?? l.precio_unit ?? 0;
+      const pe = l => l.precio_efectivo_final ?? l.precio_efectivo ?? 0;
+      // el ajuste de cada línea se aclara abajo del renglón
+      const ajuste = l => l.ajuste_pct
+        ? `<div class="fila" style="justify-content:space-between;color:var(--text-tenue);font-size:12px;padding-left:10px;">
+             <span>↳ ${l.ajuste_nombre || (l.ajuste_pct<0?'Descuento':'Recargo')} ${l.ajuste_pct<0?'−':'+'}${Math.abs(l.ajuste_pct)}%</span>
+             <span>${fmt(l.precio_unit)} → ${fmt(pu(l))} c/u</span></div>` : "";
+      const lineas=d.lineas.map(l=>
+        `<div class="fila" style="justify-content:space-between;"><span>${l.cantidad}× ${l.nombre}${l.dificultad?' (dif)':''}</span>`+
+        (esPresu
+          ? `<span style="white-space:nowrap;">${fmt(pu(l)*l.cantidad)} <span style="color:var(--text-tenue);font-size:11px;">/ c/desc ${fmt(pe(l)*l.cantidad)}</span></span>`
+          : `<span>${fmt(pu(l)*l.cantidad)}</span>`)
+        + `</div>` + ajuste(l)
+      ).join("");
       const extra = d.extra_dificultad>0 ? `<div class="fila" style="justify-content:space-between;color:var(--warn);"><span>Extra dificultad</span><span>+${fmt(d.extra_dificultad)}</span></div>` : "";
 
       const pctEf = d.desc_efectivo>0 ? (d.desc_efectivo / d.total_transfer * 100).toFixed(2) : 0;
@@ -343,12 +385,30 @@ if($("#btnEliminar")) $("#btnEliminar").onclick=async()=>{
         ? `<div class="fila fila-desc"><span>Descuento ${pctEfvoReal}%</span><span>−${fmt(descEfvoReal)}</span></div>` : "";
       const filaPendiente = d.saldo > 0
         ? `<div class="fila fila-desc"><span>Pendiente</span><span>${fmt(d.saldo)}</span></div>` : "";
-      boxDet.innerHTML=`
-        <div style="font-weight:700;margin-bottom:6px;">Detalle</div>
-        ${lineas}${extra}${filaDescEf}${filaSubtotal}${filaDescEfvoReal}${filaDescJub}
-        <div class="fila fila-total"><span>Total</span><span>${fmt(d.ingresado + d.saldo)}</span></div>
-        <div style="font-weight:700;margin:10px 0 6px;">Pagos</div>
-        ${pagos}${filaPendiente}`;
+      if(esPresu){
+        // Un presupuesto no tiene pagos: se muestran los dos totales y listo.
+        const ex=d.extra_dificultad||0;
+        let totTr=d.lineas.reduce((a,l)=>a+pu(l)*l.cantidad,0)+ex;
+        let totEf=d.lineas.reduce((a,l)=>a+pe(l)*l.cantidad,0)+ex;
+        let filaDescPresu="";
+        if(d.descuento_pct>0){
+          filaDescPresu=`<div class="fila" style="color:var(--text-tenue);"><span>${d.descuento_nombre||'Descuento'} ${d.descuento_pct}%</span><span>aplicado</span></div>`;
+          totTr=Math.round(totTr*(100-d.descuento_pct)/100);
+          totEf=Math.round(totEf*(100-d.descuento_pct)/100);
+        }
+        boxDet.innerHTML=`
+          <div style="font-weight:700;margin-bottom:6px;">Detalle</div>
+          ${lineas}${extra}${filaDescPresu}
+          <div class="fila fila-total"><span>Total lista</span><span>${fmt(totTr)}</span></div>
+          <div class="fila fila-total"><span>Total con descuento</span><span>${fmt(totEf)}</span></div>`;
+      } else {
+        boxDet.innerHTML=`
+          <div style="font-weight:700;margin-bottom:6px;">Detalle</div>
+          ${lineas}${extra}${filaDescEf}${filaSubtotal}${filaDescEfvoReal}${filaDescJub}
+          <div class="fila fila-total"><span>Total</span><span>${fmt(d.ingresado + d.saldo)}</span></div>
+          <div style="font-weight:700;margin:10px 0 6px;">Pagos</div>
+          ${pagos}${filaPendiente}`;
+      }
       boxDet.style.display="block";
     };
     
@@ -362,6 +422,15 @@ if($("#btnEliminar")) $("#btnEliminar").onclick=async()=>{
     }
   });
 }
+
+// Pestañas Todos / Tickets / Presupuestos
+document.querySelectorAll("#tabsTipo button").forEach(b=>{
+  b.onclick=()=>{
+    tipoFiltro=b.dataset.tipo;
+    document.querySelectorAll("#tabsTipo button").forEach(x=>x.classList.toggle("on", x===b));
+    renderComprobantes();
+  };
+});
 
 const dl=document.createElement("datalist"); dl.id="aliasDL"; document.body.appendChild(dl);
 cargar().then(()=>{ dl.innerHTML=ALIAS.map(a=>`<option value="${a}">`).join(""); });
