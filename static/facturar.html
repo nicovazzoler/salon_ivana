@@ -80,12 +80,54 @@
   }
   .linea .n{ flex:1; font-size:var(--fs-md); }
   .linea .pin{ width:80px; }
-  .linea .nombre-item-extra{ width: 110px; flex-grow:0;}
-  .linea .precio-item-extra{width: 110px; flex-grow:0;}
 
   .linea input{
   min-width:0;
 }
+
+  /* --- línea de ítem extra (cargado a mano) --- */
+  .linea.editando{                      /* resalta la línea mientras se completa */
+    flex-wrap:wrap;
+    gap:var(--sp-1);
+    padding:var(--sp-2);
+    background:var(--oro-a08);
+    border:1px solid var(--oro-a25);
+    border-radius:var(--r-md);
+  }
+  .linea .nombre-item-extra{ flex:1 1 130px; }
+  .linea .precio-extra-box{             /* input de precio con prefijo "$" */
+    display:flex; align-items:center; gap:2px;
+    width:120px; padding:0 8px;
+    background:var(--bg-input);
+    border:1px solid var(--border);
+    border-radius:var(--r-md);
+  }
+  .linea .precio-extra-box .pfx{ color:var(--text-tenue); }
+  .linea .precio-item-extra{ border:none; background:transparent; padding:8px 0; width:100%; }
+  .linea .transfer-vivo{ font-size:var(--fs-xs); color:var(--text-tenue); white-space:nowrap; }
+  .linea .check-item-extra{
+    padding:7px 10px;
+    background:var(--acento-bg); border:1px solid var(--acento);
+    color:var(--acento); border-radius:var(--r-sm);
+  }
+  .linea .edit-item-extra{              /* lápiz para reabrir un ítem ya guardado */
+    margin-left:6px; padding:0 2px;
+    background:transparent; border:none; cursor:pointer;
+    font-size:var(--fs-sm); opacity:.6;
+  }
+  .linea .edit-item-extra:hover{ opacity:1; }
+
+  /* Botón "+ Agregar item extra": afordancia secundaria, no compite con "Cobrar" */
+  #item-extra{
+    width:100%;
+    margin-top:var(--sp-2);
+    padding:9px;
+    background:transparent;
+    border:1px dashed var(--oro-a35);
+    color:var(--text-suave);
+    font-weight:var(--fw-medium);
+  }
+  #item-extra:hover{ background:var(--oro-a08); color:var(--text-titulo); }
 
   .dif{                                 /* recargo por dificultad */
     padding:6px var(--sp-2);
@@ -346,6 +388,7 @@
 requireLogin(); pintarNav();
 const $=s=>document.querySelector(s);
 const fmt=n=>"$"+(n||0).toLocaleString("es-AR");
+const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 let CATALOGO=[], DESCUENTOS=[], CLIENTES=[], ticket=[], extraDif=0;
 let tipo="ticket", descPct=0, descNombre=null, formaPago="efectivo";
 let totalActual=0;
@@ -492,12 +535,27 @@ function agregar(it){
   renderTicket();
 }
 
-$("#item-extra").onclick=()=>{agregarItem(); disableBotones(true)}
+$("#item-extra").onclick=()=>agregarItem();
 
 function agregarItem(){
-  ticket.push({item_id: null, nombre: "", precio: 0, precioTransfer: 0, 
-              precioCatalogo: 0, cantidad: 1, dificultad:false, precioEditado:false});
-  renderTicket() 
+  // 'editando:true' marca la línea como "en edición": mientras esté así se muestran
+  // los inputs y no se puede cobrar. Recién al tocar 💾 pasa a false y queda fija.
+  ticket.push({item_id: null, nombre: "", precio: 0, precioTransfer: 0,
+              precioCatalogo: 0, cantidad: 1, dificultad:false, precioEditado:false, editando:true});
+  renderTicket();
+}
+
+// Precio transferencia = efectivo x 1,1111 redondeado hacia arriba a múltiplo de 100.
+// (Mismo criterio que el backend en config_extra.calcular_transfer.)
+const calcularTransfer = precioEfvo => Math.ceil((precioEfvo||0) * 1.1111 / 100) * 100;
+
+// Confirma un ítem extra: valida, lo deja fijo y sale del modo edición.
+function guardarItemExtra(l){
+  l.nombre = (l.nombre || "").trim();
+  if(l.nombre === "" || !(l.precio > 0)){ toast("Completá nombre y precio del ítem"); return; }
+  l.precioEditado = true;
+  l.editando = false;
+  renderTicket();
 }
 
 function renderTicket(){
@@ -507,38 +565,45 @@ function renderTicket(){
   if(ticket.length===0){ cont.innerHTML='<p class="muted">Tocá un servicio para empezar.</p>'; }
   ticket.forEach((l,i)=>{
 
-    const row=document.createElement("div"); row.className="linea";
+    const editando = !!l.editando;          // línea de ítem extra abierta para editar
+    const esExtra  = l.item_id === null;     // ítem cargado a mano (ya guardado o en edición)
+    const row=document.createElement("div"); row.className = "linea" + (editando ? " editando" : "");
     row.innerHTML=`
-      ${l.nombre === "" && l.precio <= 0
-        ?`<input class="nombre-item-extra" placeholder="Nombre?">
-          <span class="precio-transfer-vivo" style="min-width:110px;text-align:right;">${fmt(l.precioTransfer)} <span style="color:var(--text-tenue);font-size:11px;">(c/desc </span></span>
-          <input class="precio-item-extra" placeholder="Precio">)
-          <button class="check-item-extra">💾</button>
-          `
+      ${editando
+        ?`<input class="nombre-item-extra" placeholder="Nombre del ítem" value="${esc(l.nombre)}">
+          <div class="precio-extra-box"><span class="pfx">$</span><input class="precio-item-extra" inputmode="numeric" placeholder="Precio efvo." value="${l.precio>0?l.precio:''}"></div>
+          <span class="transfer-vivo">transf ${fmt(l.precioTransfer)}</span>
+          <button class="check-item-extra" title="Guardar ítem">💾</button>`
+        : esExtra
+        ?`<span class="n">${esc(l.nombre)}<button class="edit-item-extra" title="Editar ítem">✏️</button></span>
+          <span style="min-width:110px;text-align:right;">${fmt(l.precioTransfer)} <span style="color:var(--text-tenue);font-size:11px;">(c/desc ${fmt(l.precio)} )</span></span>`
         :`<span class="n">${l.nombre}</span>
-          <span style="min-width:110px;text-align:right;">${fmt(l.precioTransfer)} <span style="color:var(--text-tenue);font-size:11px;">(c/desc ${fmt(l.precio)} )</span></span>
-          `
+          <span style="min-width:110px;text-align:right;">${fmt(l.precioTransfer)} <span style="color:var(--text-tenue);font-size:11px;">(c/desc ${fmt(l.precio)} )</span></span>`
       }
       <button class="dif ${l.dificultad?'on':''}">Dif</button>
       <div class="qty"><button class="menos">−</button><span>${l.cantidad}</span><button class="mas">+</button></div>
       <button class="quitar">×</button>
     `;
 
-    // inputs
-    if(l.nombre === "" && l.precio <= 0){
+    // Ítem extra en edición: inputs de nombre/precio + guardar
+    if(editando){
       const inputnombre = row.querySelector(".nombre-item-extra");
-      inputnombre.oninput=(e) => {ticket[i].nombre = (e.target.value);};
+      inputnombre.oninput = e => { l.nombre = e.target.value; };
 
       const inputprecio = row.querySelector(".precio-item-extra");
-      inputprecio.oninput=(e) => {ticket[i].precio = Number(e.target.value);
-                                  ticket[i].precioTransfer = Math.ceil((Number(e.target.value) * 1.1111 / 100)) * 100;
-                                  row.querySelector(".precio-transfer-vivo").textContent = fmt(ticket[i].precioTransfer) };
-      row.querySelector(".check-item-extra").onclick=()=> {
-        if(ticket[i].nombre.trim() === "" || !(ticket[i].precio > 0)) {toast("Por favor completar ambos campos correctamente"); return;}
-        ticket[i].precioEditado = true; renderTicket()};
-    };
+      inputprecio.oninput = e => {
+        l.precio = Number(e.target.value) || 0;
+        l.precioTransfer = calcularTransfer(l.precio);
+        row.querySelector(".transfer-vivo").textContent = "transf " + fmt(l.precioTransfer);
+      };
+      // Enter en cualquiera de los campos también guarda
+      [inputnombre, inputprecio].forEach(inp => inp.onkeydown = e => { if(e.key === "Enter"){ e.preventDefault(); guardarItemExtra(l); } });
+      row.querySelector(".check-item-extra").onclick = () => guardarItemExtra(l);
+    } else if(esExtra){
+      row.querySelector(".edit-item-extra").onclick = () => { l.editando = true; renderTicket(); };
+    }
 
-    
+
     // onclicks
     row.querySelector(".dif").onclick=()=>{ l.dificultad=!l.dificultad; renderTicket(); };
     row.querySelector(".mas").onclick=()=>{ l.cantidad++; renderTicket(); };
@@ -616,7 +681,11 @@ function restaurarBorrador(){
     const d = JSON.parse(raw);
     if(Date.now() - (d.guardado||0) > 12*3600*1000){ localStorage.removeItem(BORRADOR_KEY); return; }  // más de 12hs: lo descartamos
     if(!d.ticket || d.ticket.length === 0) return;   // nada útil que restaurar
-    ticket = d.ticket;
+    // Un ítem extra sin precio confirmado se restaura en modo edición (no como línea fija en $0).
+    ticket = d.ticket.map(l => {
+      if(l.item_id === null && !(l.precioEditado && l.precio > 0)) l.editando = true;
+      return l;
+    });
     $("#cliente").value = d.cliente || "";
     clienteIdSel = d.clienteIdSel ?? null;
     $("#peluquero").value = d.peluquero || "";
@@ -680,9 +749,10 @@ function actualizarAcciones(){
   bloquearControles(enProgreso);
 }
 
-// El ticket está "listo" para cobrar si tiene al menos un ítem y un cliente cargado.
+// El ticket está "listo" para cobrar si tiene al menos un ítem, un cliente cargado
+// y ningún ítem extra a medio cargar (sin confirmar con 💾).
 function ticketListo(){
-  return ticket.length > 0 && $("#cliente").value.trim() !== "";
+  return ticket.length > 0 && $("#cliente").value.trim() !== "" && !ticket.some(l=>l.editando);
 }
 
 $("#cliente").oninput = actualizarAcciones;
