@@ -185,6 +185,63 @@
 .comp-head .num{ font-weight:var(--fw-strong); }
 .comp-sub{ margin-top:6px; font-size:var(--fs-base); color:var(--text-tenue); }
 
+/* Cabecera en dos grupos: datos (se estira) y acciones (ancho fijo).
+   El badge va al final del grupo de datos con margin-left:auto, así queda
+   siempre en el mismo lugar aunque el nombre o el monto midan distinto.
+   Sin esto, el space-between reparte el sobrante entre TODOS los hijos y
+   cada tarjeta deja el estado en otra altura. */
+.comp-datos{
+  display:flex;
+  align-items:center;
+  gap:var(--sp-4);
+  flex:1;
+  min-width:0;
+}
+.comp-datos > div:first-child{ flex:1; min-width:0; }
+.comp-datos .badge{ flex:0 0 auto; margin-left:auto; }
+
+.comp-acciones{
+  display:flex;
+  align-items:center;
+  gap:var(--sp-3);
+  flex:0 0 auto;
+}
+.comp-acciones .b-del{ min-height:34px; display:inline-flex; align-items:center; }
+
+/* Botón de solo ícono (imprimir): sin el padding ancho de un botón con texto */
+.btn-icono{ padding:5px 9px; font-size:var(--fs-lg); line-height:1.2; }
+
+/* Cifras del comprobante en columnas iguales: los números de cada tarjeta
+   caen en la misma vertical y se pueden comparar de un vistazo. */
+.comp-cifras{
+  display:grid;
+  grid-template-columns:repeat(3, minmax(0,1fr));
+  gap:var(--sp-2);
+  margin-top:10px;
+  padding-top:10px;
+  border-top:1px solid var(--border-sutil);
+}
+.comp-cifras .lbl{
+  display:block;
+  font-size:var(--fs-xs);
+  color:var(--text-tenue);
+  text-transform:uppercase;
+  letter-spacing:.04em;
+}
+.comp-cifras .val{
+  font-size:var(--fs-lg);
+  font-weight:var(--fw-bold);
+  font-variant-numeric:tabular-nums;   /* dígitos de ancho fijo: columnas parejas */
+}
+.comp-cifras .val.deuda{ color:var(--danger); }
+.comp-cifras .val.ok{    color:var(--success); }
+
+/* Pantalla angosta: las acciones bajan a su propio renglón, alineadas a la derecha */
+@media (max-width:560px){
+  .comp-head{ flex-wrap:wrap; }
+  .comp-acciones{ width:100%; justify-content:flex-end; }
+}
+
 /* Detalle desplegable (arranca oculto, el JS lo abre) */
 .detalle-box{
     margin-top:10px;

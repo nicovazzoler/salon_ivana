@@ -39,5 +39,8 @@ function pintarNav(){
 }
 
 function titulo(str){
-  return (str||"").toLowerCase().replace(/\b\p{L}/gu, c => c.toUpperCase());
+  // Ojo: \b de JS es ASCII, así que "maría" caía en "MarÍa" (la í cuenta como
+  // borde de palabra). Marcamos el arranque real: principio, espacio, guion o apóstrofo.
+  return (str||"").toLowerCase()
+    .replace(/(^|[\s'’\-])(\p{L})/gu, (_,sep,letra) => sep + letra.toUpperCase());
 }

@@ -25,7 +25,17 @@
   /* Zonas separadas por línea punteada */
   .abonar-box{ display:none; margin-top:10px; padding-top:10px; border-top:1px dashed var(--border); }
   .editar-box{ display:none; margin-top:12px; padding-top:12px; border-top:1px dashed var(--border); }
-  .acciones{ margin-top:14px; padding-top:12px; border-top:1px dashed var(--border); }
+  /* Acciones del encabezado: grupo pegado a la izquierda y "Eliminar" al fondo */
+  .acciones{
+    display:flex;
+    flex-wrap:wrap;
+    align-items:center;
+    gap:var(--sp-2);
+    margin-top:14px;
+    padding-top:12px;
+    border-top:1px dashed var(--border);
+  }
+  .acciones .b-del{ margin-left:auto; }
 
   /* Formulario de edición del cliente */
   .grid-campos{
@@ -37,7 +47,10 @@
   .campo label{ font-weight:var(--fw-bold); }
   .campo.ancho{ grid-column:1 / -1; }
 
-  .fila{
+  /* Renglones "concepto ← → monto": solo adentro del detalle.
+     Antes esto pisaba TODOS los .fila de la pantalla y desparramaba los
+     botones del encabezado y del panel de abonar. */
+  .detalle-box .fila{
     justify-content:space-between;
     flex-wrap:nowrap;
     font-size:var(--fs-md);
@@ -203,15 +216,23 @@ if($("#btnEliminar")) $("#btnEliminar").onclick=async()=>{
     const efvoTodo = comp.desc_efectivo>0 ? comp.saldo : Math.ceil(comp.saldo * 0.9/100)*100;
     div.innerHTML=`
       <div class="comp-head">
-        <div>
-          <div class="sub">${fecha} · <span class="num">${numTicket(comp.numero)}</span></div>
-          <div class="comp-total">${fmt(comp.ingresado + comp.saldo)} <span class="fp">· ${ORIGEN[comp.forma_origen]||comp.forma_origen}${comp.forma_pago!==ORIGEN[comp.forma_origen]?` → ${comp.forma_pago}`:''}</span></div>
+        <div class="comp-datos">
+          <div>
+            <div class="sub">${fecha} · <span class="num">${numTicket(comp.numero)}</span></div>
+            <div class="comp-total">${fmt(comp.ingresado + comp.saldo)} <span class="fp">· ${ORIGEN[comp.forma_origen]||comp.forma_origen}${comp.forma_pago!==ORIGEN[comp.forma_origen]?` → ${comp.forma_pago}`:''}</span></div>
+          </div>
+          <span class="badge ${comp.estado}">${comp.estado}</span>
         </div>
-        <span class="badge ${comp.estado}">${comp.estado}</span>
-        <a class="btnAbonar" href="/ticket?id=${comp.id}" title="Imprimir" onclick="event.stopPropagation();">🖨️</a>
-        <button class="btnAnular b-del" data-id="${comp.id}">Anular</button>
+        <div class="comp-acciones">
+          <a class="btnAbonar btn-icono" href="/ticket?id=${comp.id}" title="Imprimir">🖨️</a>
+          <button class="btnAnular b-del" data-id="${comp.id}">Anular</button>
+        </div>
       </div>
-      <div class="comp-sub">Total ${fmt(comp.total_final)} · Pagado ${fmt(comp.pagado)} · Saldo <b>${fmt(comp.saldo)}</b></div>
+      <div class="comp-cifras">
+        <div><span class="lbl">Total</span><span class="val">${fmt(comp.total_final)}</span></div>
+        <div><span class="lbl">Pagado</span><span class="val">${fmt(comp.pagado)}</span></div>
+        <div><span class="lbl">Saldo</span><span class="val ${comp.saldo>0?'deuda':'ok'}">${fmt(comp.saldo)}</span></div>
+      </div>
       <button class="btnDetalle b-out" style="margin-top:8px;">Ver detalle</button>
       <div class="detalle-box" style="display:none;"></div>
       ${comp.saldo>0?`<button class="btnAbrir btnAbonar" style="margin-top:10px;">Registrar pago 💵</button>

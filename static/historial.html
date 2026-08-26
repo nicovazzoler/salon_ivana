@@ -17,32 +17,19 @@
   }
   .comp-head .sub{ margin-top:3px; font-size:var(--fs-lg); color:var(--text); }
 
-  /* Grupo izquierdo: los datos ocupan el ancho, el estado queda en columna fija */
-  .comp-datos{
-    display:flex;
-    align-items:center;
-    gap:14px;
-    flex:1;                /* que el grupo se estire y ocupe el espacio */
-  }
-  .comp-datos > div:first-child{
-    flex:1;                /* el bloque de fecha/nombre/monto se estira... */
-    min-width:0;           /* ...y deja que el texto largo se corte en vez de empujar */
-  }
-  .comp-datos .badge{
-    flex:0 0 auto;         /* el badge no se estira ni se encoge: ancho fijo por su contenido */
-    margin-left:auto;      /* lo manda al final del grupo de datos, siempre en el mismo lugar */
-  }
+  /* .comp-datos / .comp-acciones viven en components.css (los comparte con cuenta.html) */
 
-  .comp-acciones{
-    display:flex;
-    align-items:center;
-    gap:12px;
+  /* Acá algunas tarjetas suman el botón "Abonar" y otras no. Si el grupo de
+     acciones cambia de ancho, el badge de estado queda en otra columna en cada
+     renglón. Reservando el ancho, la columna de estado es siempre la misma. */
+  @media (min-width:561px){
+    .comp-acciones{ min-width:236px; justify-content:flex-end; }
   }
-  /* Botón de anular */
-  .comp-acciones .b-del{ min-height:34px; display:inline-flex; align-items:center; }
+  .comp-datos .badge{ min-width:76px; text-align:center; }
 
-  /* Fila del detalle: concepto ← → monto. */
-  .fila{
+  /* Fila del detalle: concepto ← → monto. Solo adentro del detalle, para no
+     pisar los renglones de filtros ni los grupos de botones. */
+  .detalle-box .fila{
     justify-content:space-between;
     flex-wrap:nowrap;
     font-size:var(--fs-md);
@@ -139,7 +126,7 @@ function renderLista(){
         <div class="comp-acciones">
         ${(comp.tipo==="ticket" && comp.saldo>0 && comp.cliente_id)
           ? `<a class="btnAbonar" href="/cuenta?id=${comp.cliente_id}&comp=${comp.id}">Abonar 💵</a>` : ''}
-        <a class="btnAbonar btnPrint" href="/ticket?id=${comp.id}" title="Imprimir ticket">🖨️</a>
+        <a class="btnAbonar btn-icono btnPrint" href="/ticket?id=${comp.id}" title="Imprimir ticket">🖨️</a>
         <button class="btnAnular b-del" data-id="${comp.id}">Anular</button>
         </div>
       </div>
