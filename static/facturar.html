@@ -562,6 +562,7 @@ function guardarItemExtra(l){
 
 function renderTicket(){
   const esEf = formaPago==="efectivo";
+  const esPresu = document.getElementById("btnPresu").classList.contains("on");
   const cont=$("#lineas"); cont.innerHTML="";
 
   if(ticket.length===0){ cont.innerHTML='<p class="muted">Tocá un servicio para empezar.</p>'; }
@@ -570,6 +571,15 @@ function renderTicket(){
     const editando = !!l.editando;          // línea de ítem extra abierta para editar
     const esExtra  = l.item_id === null;     // ítem cargado a mano (ya guardado o en edición)
     const row=document.createElement("div"); row.className = "linea" + (editando ? " editando" : "");
+
+    // En presupuesto, mostrar ambos precios (Lista/Promo); en ticket, solo el de la forma seleccionada
+    const preciosHTML = esPresu && !editando
+      ? `<div style="display:flex;gap:12px;font-size:13px;min-width:130px;text-align:right;">
+           <div><span style="font-size:11px;color:var(--text-tenue);">Lista</span><br>${fmt(l.precioTransfer)}</div>
+           <div><span style="font-size:11px;color:var(--text-tenue);">Promo</span><br>${fmt(l.precio)}</div>
+         </div>`
+      : `<span style="min-width:110px;text-align:right;">${fmt(l.precioTransfer)} <span style="color:var(--text-tenue);font-size:11px;">(c/desc ${fmt(l.precio)} )</span></span>`;
+
     row.innerHTML=`
       ${editando
         ?`<input class="nombre-item-extra" placeholder="Nombre del ítem" value="${esc(l.nombre)}">
@@ -578,9 +588,9 @@ function renderTicket(){
           <button class="check-item-extra" title="Guardar ítem">💾</button>`
         : esExtra
         ?`<span class="n">${esc(l.nombre)}<button class="edit-item-extra" title="Editar ítem">✏️</button></span>
-          <span style="min-width:110px;text-align:right;">${fmt(l.precioTransfer)} <span style="color:var(--text-tenue);font-size:11px;">(c/desc ${fmt(l.precio)} )</span></span>`
+          ${preciosHTML}`
         :`<span class="n">${l.nombre}</span>
-          <span style="min-width:110px;text-align:right;">${fmt(l.precioTransfer)} <span style="color:var(--text-tenue);font-size:11px;">(c/desc ${fmt(l.precio)} )</span></span>`
+          ${preciosHTML}`
       }
       <button class="dif ${l.dificultad?'on':''}">Dif</button>
       <div class="qty"><button class="menos">−</button><span>${l.cantidad}</span><button class="mas">+</button></div>
@@ -622,36 +632,59 @@ function renderTicket(){
   const subTr = totalTr + extra;   // subtotal transfer (el que se ve siempre)
   const subEf = totalEf + extra;   // subtotal efectivo
 
-  // subtotal + extra
-  $("#subtotal").textContent = fmt(subTr);
+  // descuento de catálogo (jubilado, promo, etc.)
+  const hayDescCat = descPct > 0;
+  const descCatTr = hayDescCat ? Math.round(subTr * descPct / 100) : 0;
+  const descCatEf = hayDescCat ? Math.round(subEf * descPct / 100) : 0;
+  const baseCat = esEf ? subEf : subTr;
+  const descCat = hayDescCat ? (esEf ? descCatEf : descCatTr) : 0;
+
+  // En presupuesto, mostrar AMBOS subtotales (Lista/Promo); en ticket, solo el de la forma seleccionada
+  if(esPresu){
+    $("#subtotal").innerHTML = `<div style="display:flex;gap:16px;"><div>Lista<br><strong>${fmt(subTr)}</strong></div><div>Promo<br><strong>${fmt(subEf)}</strong></div></div>`;
+  } else {
+    $("#subtotal").textContent = fmt(subTr);
+  }
+
   $("#rowExtra").style.display = extra>0 ? "flex" : "none";
   if(extra>0) $("#extraMonto").textContent = "+"+fmt(extra);
 
-  // descuento efectivo = diferencia de las 2 listas, solo si la forma es efectivo
+  // descuento efectivo = diferencia de las 2 listas
   const descEfvo = subTr - subEf;
   const pctEfvo = subTr>0 ? (descEfvo/subTr*100) : 0;
-  $("#rowDescEfvo").style.display = (esEf && ticket.length>0) ? "flex" : "none";
-  $("#descEfvoLabel").textContent = `Descuento (${pctEfvo.toFixed(2)}%)`;
+  // En presupuesto, mostrar siempre; en ticket, solo si es efectivo
+  $("#rowDescEfvo").style.display = ((esPresu || esEf) && ticket.length>0) ? "flex" : "none";
+  $("#descEfvoLabel").textContent = esPresu ? `Diferencia` : `Descuento (${pctEfvo.toFixed(2)}%)`;
   $("#descEfvoMonto").textContent = "−"+fmt(descEfvo);
 
-  // base sobre la que corre el descuento de catálogo (efectivo o transfer según la forma)
-  const baseCat = esEf ? subEf : subTr;
+  // subtotal con descuento de catálogo
+  const hayDescCatYPresu = hayDescCat && esPresu;
+  const hayDescCatYEf = hayDescCat && esEf;
+  $("#rowSubEfvo").style.display = (hayDescCatYPresu || hayDescCatYEf) ? "flex" : "none";
+  if(hayDescCatYPresu){
+    document.querySelector("#rowSubEfvo span").textContent = "Subtotal c/desc";
+    $("#subEfvoMonto").innerHTML = `<div style="display:flex;gap:16px;"><div>Lista: ${fmt(subTr - descCatTr)}</div><div>Promo: ${fmt(subEf - descCatEf)}</div></div>`;
+  } else {
+    $("#subEfvoMonto").textContent = fmt(subEf);
+  }
 
-  // la fila "subtotal efectivo" solo tiene sentido si además hay descuento de catálogo
-  const hayDescCat = descPct > 0;
-  $("#rowSubEfvo").style.display = (esEf && hayDescCat) ? "flex" : "none";
-  $("#subEfvoMonto").textContent = fmt(subEf);
-
-  // descuento de catálogo (jubilado, promo, etc.) con su motivo como etiqueta
-  const descCat = hayDescCat ? Math.round(baseCat * descPct / 100) : 0;
-  $("#rowDescCat").style.display = hayDescCat ? "flex" : "none";
+  $("#rowDescCat").style.display = (hayDescCat && ticket.length>0) ? "flex" : "none";
   $("#descCatLabel").textContent = descNombre || "Descuento";
-  $("#descCatMonto").textContent = "−"+fmt(descCat);
+  if(esPresu && hayDescCat){
+    $("#descCatMonto").innerHTML = `<div style="display:flex;gap:16px;"><div>−${fmt(descCatTr)}</div><div>−${fmt(descCatEf)}</div></div>`;
+  } else {
+    $("#descCatMonto").textContent = "−"+fmt(descCat);
+  }
 
   // total
   const total = baseCat - descCat;
-  $("#total").textContent = fmt(total);
-  totalActual = total;          
+  if(esPresu){
+    $("#total").innerHTML = `<div style="display:flex;gap:16px;"><div>Lista<br><strong>${fmt(subTr - descCatTr)}</strong></div><div>Promo<br><strong>${fmt(subEf - descCatEf)}</strong></div></div>`;
+    totalActual = subEf - descCatEf;  // usar total efectivo para operaciones
+  } else {
+    $("#total").textContent = fmt(total);
+    totalActual = total;
+  }          
 
   const vacio = ticket.length===0;
   actualizarAcciones();
