@@ -103,7 +103,7 @@ async function cargar(){
     row.href="/cuenta?id="+c.id;
     row.innerHTML=`
       <span class="id">${clienteId(c.id)}</span>
-      <span class="n cap">${c.nombre||""}</span>
+      <span class="n">${titulo(c.nombre||"")}</span>
       <span class="meta">${c.telefono||"—"}</span>
       <span class="meta">${c.alias||"—"}</span>
       <span>${deben.has(c.id)

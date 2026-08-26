@@ -13,18 +13,147 @@
   .fila{ align-items:flex-end; margin-bottom:10px; }
   .fila > div{ min-width:90px; }
 
-  /* Renglón editable de la lista */
+  /* ----- Cabecera de cada bloque de ajustes ----- */
+  .card{ scroll-margin-top:96px; }        /* que el ancla no quede bajo el header */
+  .card-head{ margin-bottom:var(--sp-4); }
+  .card-head h2{ margin:0; display:flex; align-items:center; gap:var(--sp-2); }
+  .card-head p{
+    margin:var(--sp-1) 0 0;
+    font-size:var(--fs-base);
+    color:var(--text-tenue);
+  }
+  .sub-h{                                  /* subtítulo dentro de una card */
+    margin:0 0 var(--sp-2);
+    font-size:var(--fs-base);
+    font-weight:var(--fw-bold);
+    text-transform:uppercase;
+    letter-spacing:.05em;
+    color:var(--text-tenue);
+  }
+
+  /* ----- Índice de secciones ----- */
+  .indice{
+    position:sticky; top:76px; z-index:var(--z-dropdown);
+    display:flex; flex-wrap:wrap; gap:6px;
+    margin-bottom:var(--sp-4);
+    padding:var(--sp-2);
+    border:1px solid var(--border-sutil);
+    border-radius:var(--r-full);
+    background:var(--bg-header);
+  }
+  .indice a{ text-decoration:none; }
+
+  /* ----- Resumen del catálogo ----- */
+  .kpis{
+    display:grid;
+    grid-template-columns:repeat(auto-fit, minmax(150px, 1fr));
+    gap:var(--sp-3);
+    margin-bottom:var(--sp-5);
+  }
+  .kpi{
+    padding:var(--sp-3) var(--sp-4);
+    border:1px solid var(--border-sutil);
+    border-radius:var(--r-lg);
+    background:var(--bg-sutil);
+  }
+  .kpi .lbl{
+    display:block;
+    font-size:var(--fs-xs); color:var(--text-tenue);
+    text-transform:uppercase; letter-spacing:.04em;
+  }
+  .kpi .val{
+    display:block; margin-top:2px;
+    font-size:var(--fs-2xl); font-weight:var(--fw-black);
+    color:var(--text-titulo);
+  }
+  .kpi .val small{ font-size:var(--fs-md); font-weight:var(--fw-bold); color:var(--text-tenue); }
+
+  /* ----- Gráfico: precio promedio por categoría -----
+     Barras horizontales en HTML. Una sola serie (los nombres de categoría son
+     identidad, no magnitud), así que van todas del mismo dorado y no hace falta
+     leyenda: el título dice qué se está midiendo. El valor va etiquetado en la
+     punta, por eso tampoco hace falta eje. */
+  .barras{ display:grid; gap:var(--sp-2); }
+  .barra{
+    display:grid;
+    grid-template-columns:minmax(0,185px) 1fr auto;
+    align-items:center;
+    gap:var(--sp-3);
+    padding:3px var(--sp-2);
+    border-radius:var(--r-sm);
+  }
+  .barra:hover{ background:var(--bg-hover); }
+  .barra .cat{
+    display:flex; align-items:baseline; gap:4px;
+    min-width:0;
+    font-size:var(--fs-base);
+    color:var(--text-suave);
+  }
+  /* recorta el nombre largo, pero el conteo nunca se pierde */
+  .barra .cat .nom{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .barra .cat i{ flex:0 0 auto; font-style:normal; color:var(--text-tenue); }
+  .barra .track{ display:block; min-width:0; }
+  .barra .fill{
+    display:block;
+    height:14px;                        /* marca fina: la barra no llena el renglón */
+    min-width:2px;
+    border-radius:0 4px 4px 0;          /* punta redondeada, cuadrada en la base */
+    background:#b08f3a;                 /* dorado dentro de la banda oscura */
+  }
+  .barra .val{
+    font-size:var(--fs-base);
+    font-weight:var(--fw-bold);
+    font-variant-numeric:tabular-nums;
+    color:var(--text);
+  }
+  @media (max-width:560px){
+    .barra{ grid-template-columns:1fr auto; row-gap:2px; }
+    .barra .cat{ grid-column:1; }
+    .barra .val{ grid-column:2; }
+    .barra .track{ grid-column:1 / -1; }
+  }
+
+  /* Renglón editable de la lista: grilla para que los botones caigan siempre
+     en la misma columna, midan lo que midan el nombre y las etiquetas. */
   .item-row{
-    display:flex;
+    display:grid;
+    grid-template-columns:minmax(0,2fr) 110px minmax(0,1fr) auto;
     align-items:center;
     gap:var(--sp-2);
     padding:var(--sp-2) 0;
-    border-bottom:1px solid var(--border);
+    border-bottom:1px solid var(--border-sutil);
   }
-  .item-row .n{ flex:2; }
-  .item-row .p{ flex:1; max-width:120px; }
+  .item-row .n{ min-width:0; }
+  .item-row .p{ width:100%; }
+  .item-row .meta{
+    display:flex; align-items:center; gap:6px; flex-wrap:wrap;
+    min-width:0;
+    font-size:var(--fs-sm); color:var(--text-tenue);
+  }
+  .item-row .acc{ display:flex; gap:6px; }
+
+  /* Listas simples (formas de pago, egresos, alias): nombre + eliminar */
+  .item-row.simple{ grid-template-columns:1fr auto; }
+  /* Usuarios: nombre + rol + clave nueva + acciones */
+  .item-row.usuario{ grid-template-columns:minmax(0,1.6fr) 130px minmax(0,1fr) auto; }
+
+  @media (max-width:640px){
+    .item-row, .item-row.simple, .item-row.usuario{ grid-template-columns:1fr auto; row-gap:6px; }
+    .item-row .p, .item-row .uRolEd, .item-row .uClave{ grid-column:1 / -1; }
+    .item-row .meta{ grid-column:1 / -1; }
+    .item-row .acc{ grid-column:2; grid-row:1; }
+  }
+
+  /* Checkbox con su etiqueta al lado (no arriba, como el resto de los campos) */
+  .check{
+    display:flex; align-items:center; gap:6px;
+    flex:0 0 auto; min-width:auto;
+    padding-bottom:9px;
+  }
+  .check input{ width:auto; }
+  .check label{ margin:0; white-space:nowrap; }
 </style>
-</head><body>
+</head>
 <body>
 <header>
   <span>⚙️ Administracion</span>
@@ -40,8 +169,32 @@
 </header>
 <div class="wrap">
 
-  <div class="card">
-    <h2>Servicios y productos</h2>
+  <nav class="indice">
+    <a class="pill" href="#catalogo">✂️ Catálogo</a>
+    <a class="pill" href="#pagos">💳 Formas de pago</a>
+    <a class="pill" href="#dificultad">➕ Dificultad</a>
+    <a class="pill" href="#egresos">📤 Egresos</a>
+    <a class="pill" href="#descuentos">🏷️ Descuentos</a>
+    <a class="pill" href="#usuarios">👥 Usuarios</a>
+    <a class="pill" href="#alias">🏦 Alias</a>
+    <a class="pill" href="#backup">💾 Backup</a>
+  </nav>
+
+  <div class="card" id="resumen">
+    <div class="card-head">
+      <h2>📊 Resumen del catálogo</h2>
+      <p>Cómo está parada la lista de precios hoy.</p>
+    </div>
+    <div class="kpis" id="kpis"></div>
+    <div class="sub-h">Precio promedio por categoría</div>
+    <div class="barras" id="graficoCats"></div>
+  </div>
+
+  <div class="card" id="catalogo">
+    <div class="card-head">
+      <h2>✂️ Servicios y productos</h2>
+      <p>Los ítems que aparecen al facturar. El precio de transferencia se calcula solo.</p>
+    </div>
     <div style="margin-bottom:12px;">
       <input id="buscarItem" placeholder="🔎 Buscar por nombre (en todas las categorías)..." style="width:100%;">
     </div>
@@ -54,21 +207,24 @@
     </div>
     <div id="listaItems"></div>
     <hr>
-    <h2 style="font-size:15px;">Agregar nuevo ítem</h2>
+    <div class="sub-h">Agregar nuevo ítem</div>
     <div class="fila">
       <div><label>Categoría</label><input id="nCat" list="cats" placeholder="existente o nueva"></div>
       <div><label>Nombre</label><input id="nNom" placeholder="Ej: Corte nuevo"></div>
       <div><label>Precio</label><input id="nPre" type="number" placeholder="0"></div>
-      <div style="flex:0;min-width:auto;display:flex;align-items:center;gap:6px;padding-bottom:9px;">
-        <input type="checkbox" id="nProd" style="width:auto;"><label style="margin:0;">Es producto</label>
+      <div class="check">
+        <input type="checkbox" id="nProd"><label for="nProd">Es producto</label>
       </div>
       <button class="b-ok" id="btnAgregar">Agregar</button>
     </div>
     <datalist id="cats"></datalist>
   </div>
 
-  <div class="card">
-    <h2>Formas de pago</h2>
+  <div class="card" id="pagos">
+    <div class="card-head">
+      <h2>💳 Formas de pago</h2>
+      <p>Las opciones que se ofrecen al cobrar un ticket.</p>
+    </div>
     <div id="listaFormas"></div>
     <hr>
     <div class="fila">
@@ -77,16 +233,22 @@
     </div>
   </div>
 
-  <div class="card">
-    <h2>Extra por dificultad</h2>
+  <div class="card" id="dificultad">
+    <div class="card-head">
+      <h2>➕ Extra por dificultad</h2>
+      <p>Se suma al total cada vez que una línea se marca como "Dif".</p>
+    </div>
     <div class="fila">
       <div style="max-width:200px;"><label>Monto que se suma al marcar "Dif"</label><input id="extra" type="number"></div>
       <button class="b-ok" id="btnExtra">Guardar</button>
     </div>
   </div>
 
-  <div class="card">
-    <h2>Tipos de egreso</h2>
+  <div class="card" id="egresos">
+    <div class="card-head">
+      <h2>📤 Tipos de egreso</h2>
+      <p>Las categorías con las que se clasifica lo que sale de la caja.</p>
+    </div>
     <div id="listaTipos"></div>
     <hr>
     <div class="fila">
@@ -95,23 +257,31 @@
     </div>
   </div>
 
-  <div class="card">
-    <h2>Descuentos</h2>
+  <div class="card" id="descuentos">
+    <div class="card-head">
+      <h2>🏷️ Descuentos</h2>
+      <p>Descuentos por porcentaje que se pueden aplicar a un ticket o presupuesto.</p>
+    </div>
     <div id="listaDescuentos"></div>
     <hr>
     <div class="fila">
       <div><label>Nombre</label><input id="nDescNombre" placeholder="Ej: Jubilado"></div>
-      <div><label>Porcentaje</label><input id="nDescPct" type="number" placeholder="10" style="width:80px;"></div>
-      <div><label><input type="checkbox" id="nDescMotivo" style="width:auto;"> Mostrar motivo</label></div>
+      <div style="flex:0;min-width:110px;"><label>Porcentaje</label><input id="nDescPct" type="number" placeholder="10"></div>
+      <div class="check">
+        <input type="checkbox" id="nDescMotivo"><label for="nDescMotivo">Mostrar motivo</label>
+      </div>
       <button class="b-ok" id="btnDesc">Agregar</button>
     </div>
   </div>
 
-  <div class="card">
-    <h2>Usuarios y contraseñas</h2>
+  <div class="card" id="usuarios">
+    <div class="card-head">
+      <h2>👥 Usuarios y contraseñas</h2>
+      <p>Quién entra a la app y con qué permisos. El dueño ve todas las pantallas.</p>
+    </div>
     <div id="listaUsuarios"></div>
     <hr>
-    <h2 style="font-size:15px;">Crear usuario</h2>
+    <div class="sub-h">Crear usuario</div>
     <div class="fila">
       <div><label>Usuario</label><input id="uNom" placeholder="Ej: maria"></div>
       <div><label>Contraseña</label><input id="uPass" type="text" placeholder="clave inicial"></div>
@@ -120,16 +290,18 @@
       <button class="b-ok" id="btnUsuario">Crear</button>
     </div>
     <hr>
-    <h2 style="font-size:15px;">Cambiar mi contraseña</h2>
+    <div class="sub-h">Cambiar mi contraseña</div>
     <div class="fila">
       <div style="max-width:240px;"><label>Nueva contraseña</label><input id="miPass" type="text"></div>
       <button class="b-tinta" id="btnMiPass">Cambiar</button>
     </div>
   </div>
 
-  <div class="card">
-    <h2>Alias de transferencia</h2>
-    <p class="muted">Las cuentas que aparecen como opción al cobrar por transferencia.</p>
+  <div class="card" id="alias">
+    <div class="card-head">
+      <h2>🏦 Alias de transferencia</h2>
+      <p>Las cuentas que aparecen como opción al cobrar por transferencia.</p>
+    </div>
     <div id="listaAlias"></div>
     <hr>
     <div class="fila">
@@ -138,11 +310,16 @@
     </div>
   </div>
 
-</div>
-<div class="card" style="border-left:4px solid var(--bg-header);">
-    <h2>💾 Backup completo</h2>
-    <p class="muted">Descarga un archivo JSON con todos los datos de la app: catálogo, ventas, egresos, usuarios, configuración. Guardalo en un lugar seguro por si algún día necesitás recuperar datos.</p>
+  <div class="card" id="backup">
+    <div class="card-head">
+      <h2>💾 Backup completo</h2>
+      <p>Un archivo JSON con todos los datos de la app: catálogo, ventas, egresos,
+         usuarios y configuración. Guardalo en un lugar seguro por si algún día
+         necesitás recuperar datos.</p>
+    </div>
     <button class="b-tinta" id="btnBackup">Descargar backup</button>
+  </div>
+
 </div>
 <div class="toast" id="toast"></div>
 
@@ -150,6 +327,8 @@
 <script>
 requireDueno(); pintarNav();
 const $=s=>document.querySelector(s);
+const fmt=n=>"$"+(n||0).toLocaleString("es-AR");
+const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 let catActual=null;
 let ITEMS_ALL=[];
 
@@ -161,7 +340,50 @@ async function cargarCats(){
   $("#cats").innerHTML=cats.map(c=>`<option value="${c}">`).join("");
   catActual=$("#selCat").value;
   ITEMS_ALL=await (await authFetch("/api/items/all")).json();
+  renderResumen();
   if($("#buscarItem").value.trim()) filtrarItems(); else cargarItems();
+}
+
+/* ---------- Resumen del catálogo (KPIs + gráfico) ----------
+   Se calcula sobre ITEMS_ALL, que ya está cargado para el buscador:
+   no hace falta pedirle nada más al servidor. */
+function renderResumen(){
+  const items=ITEMS_ALL;
+  const cont=$("#graficoCats"), kpis=$("#kpis");
+  if(!items.length){
+    kpis.innerHTML=""; cont.innerHTML='<p class="muted">Todavía no hay ítems cargados.</p>';
+    return;
+  }
+
+  const productos=items.filter(i=>i.es_producto).length;
+  const promedio=Math.round(items.reduce((a,i)=>a+i.precio,0)/items.length);
+
+  // agrupamos por categoría para el promedio, el conteo y el rango
+  const porCat=new Map();
+  items.forEach(i=>{
+    const g=porCat.get(i.categoria) || {n:0, suma:0, min:Infinity, max:0};
+    g.n++; g.suma+=i.precio;
+    g.min=Math.min(g.min,i.precio); g.max=Math.max(g.max,i.precio);
+    porCat.set(i.categoria,g);
+  });
+
+  kpis.innerHTML=`
+    <div class="kpi"><span class="lbl">Ítems activos</span><span class="val">${items.length}</span></div>
+    <div class="kpi"><span class="lbl">Categorías</span><span class="val">${porCat.size}</span></div>
+    <div class="kpi"><span class="lbl">Servicios / productos</span><span class="val">${items.length-productos} <small>/ ${productos}</small></span></div>
+    <div class="kpi"><span class="lbl">Precio promedio</span><span class="val">${fmt(promedio)}</span></div>`;
+
+  const filas=[...porCat.entries()]
+    .map(([cat,g])=>({cat, n:g.n, prom:Math.round(g.suma/g.n), min:g.min, max:g.max}))
+    .sort((a,b)=>b.prom-a.prom);
+  const tope=filas[0].prom;                      // la barra más larga marca la escala
+
+  cont.innerHTML=filas.map(f=>`
+    <div class="barra" title="${esc(f.cat)}: ${f.n} ${f.n===1?'ítem':'ítems'}, de ${fmt(f.min)} a ${fmt(f.max)}">
+      <span class="cat"><span class="nom">${esc(f.cat)}</span><i>(${f.n})</i></span>
+      <span class="track"><span class="fill" style="width:${(f.prom/tope*100).toFixed(1)}%;"></span></span>
+      <span class="val">${fmt(f.prom)}</span>
+    </div>`).join("");
 }
 $("#selCat").onchange=()=>{catActual=$("#selCat").value;$("#buscarItem").value="";cargarItems();};
 $("#buscarItem").oninput=filtrarItems;
@@ -187,11 +409,15 @@ function renderItems(items, mostrarCat){
     const cat = mostrarCat ? `<span class="tag neutro">${it.categoria}</span>` : "";
     row.innerHTML=`
       <input class="n" value="${it.nombre.replace(/"/g,'&quot;')}">
-      <<input class="p" type="number" value="${it.precio}">
-      <span style="font-size:12px;color:#888;white-space:nowrap;">→ transf ${it.precio_transfer||0}</span>
-      ${cat}${it.es_producto?'<span class="tag">prod</span>':''}
-      <button class="b-tinta guardar">Guardar</button>
-      <button class="b-del borrar">Eliminar</button>`;
+      <input class="p" type="number" value="${it.precio}">
+      <span class="meta">
+        <span style="white-space:nowrap;">→ transf ${fmt(it.precio_transfer||0)}</span>
+        ${cat}${it.es_producto?'<span class="tag">prod</span>':''}
+      </span>
+      <span class="acc">
+        <button class="b-tinta guardar">Guardar</button>
+        <button class="b-del borrar">Eliminar</button>
+      </span>`;
     row.querySelector(".guardar").onclick=async()=>{
       await authFetch(`/api/items/${it.id}`,{method:"PUT",headers:{"Content-Type":"application/json"},
         body:JSON.stringify({nombre:row.querySelector(".n").value,precio:parseInt(row.querySelector(".p").value)})});
@@ -228,7 +454,7 @@ async function cargarFormas(){
   const formas=await (await authFetch("/api/formas")).json();
   const cont=$("#listaFormas");cont.innerHTML="";
   formas.forEach(f=>{
-    const row=document.createElement("div");row.className="item-row";
+    const row=document.createElement("div");row.className="item-row simple";
     row.innerHTML=`<span class="n">${f.nombre}</span><button class="b-del">Eliminar</button>`;
     row.querySelector("button").onclick=async()=>{
       await authFetch(`/api/formas/${f.id}`,{method:"DELETE"});toast("Eliminada");cargarFormas();
@@ -258,7 +484,7 @@ async function cargarTipos(){
   const tipos=await (await authFetch("/api/tipos-egreso")).json();
   const cont=$("#listaTipos");cont.innerHTML="";
   tipos.forEach(t=>{
-    const row=document.createElement("div");row.className="item-row";
+    const row=document.createElement("div");row.className="item-row simple";
     row.innerHTML=`<span class="n">${t.nombre}</span><button class="b-del">Eliminar</button>`;
     row.querySelector("button").onclick=async()=>{await authFetch(`/api/tipos-egreso/${t.id}`,{method:"DELETE"});toast("Eliminado");cargarTipos();};
     cont.appendChild(row);
@@ -278,9 +504,9 @@ async function cargarDescuentos(){
   const cont = $("#listaDescuentos"); cont.innerHTML = "";
   if(ds.length === 0){ cont.innerHTML = '<p class="muted">Todavía no hay descuentos.</p>'; }
   ds.forEach(d => {
-    const row = document.createElement("div"); row.className = "item-row";
-    const motivo = d.mostrar_motivo ? ' · <span class="muted">muestra motivo</span>' : '';
-    row.innerHTML = `<span class="n">${d.nombre} — ${d.porcentaje}%${motivo}</span><button class="b-del">Eliminar</button>`;
+    const row = document.createElement("div"); row.className = "item-row simple";
+    const motivo = d.mostrar_motivo ? ' · <span class="tag neutro">muestra motivo</span>' : '';
+    row.innerHTML = `<span class="n">${esc(d.nombre)} — ${d.porcentaje}%${motivo}</span><button class="b-del">Eliminar</button>`;
     row.querySelector("button").onclick = async () => {
       await authFetch(`/api/descuentos/${d.id}`, {method:"DELETE"});
       toast("Eliminado"); cargarDescuentos();
@@ -306,16 +532,18 @@ async function cargarUsuarios(){
   const us=await (await authFetch("/api/usuarios")).json();
   const cont=$("#listaUsuarios");cont.innerHTML="";
   us.forEach(u=>{
-    const row=document.createElement("div");row.className="item-row";
+    const row=document.createElement("div");row.className="item-row usuario";
     row.innerHTML=`
-      <input class="uNombre" value="${u.usuario}" style="flex:1.4;">
-      <select class="uRolEd" style="max-width:120px;">
+      <input class="uNombre" value="${u.usuario}">
+      <select class="uRolEd">
         <option value="empleado"${u.rol==="empleado"?" selected":""}>Empleado</option>
         <option value="dueno"${u.rol==="dueno"?" selected":""}>Dueño</option>
       </select>
-      <input class="uClave" type="text" placeholder="nueva clave (opcional)" style="max-width:150px;">
-      <button class="b-tinta guardarU">Guardar</button>
-      <button class="b-del borrarU">Eliminar</button>`;
+      <input class="uClave" type="text" placeholder="nueva clave (opcional)">
+      <span class="acc">
+        <button class="b-tinta guardarU">Guardar</button>
+        <button class="b-del borrarU">Eliminar</button>
+      </span>`;
     row.querySelector(".guardarU").onclick=async()=>{
       const cambios={usuario:row.querySelector(".uNombre").value.trim(), rol:row.querySelector(".uRolEd").value};
       const cl=row.querySelector(".uClave").value;
@@ -353,7 +581,7 @@ async function cargarAlias(){
   const cont=$("#listaAlias");cont.innerHTML="";
   if(al.length===0){cont.innerHTML='<p class="muted">Sin alias cargados.</p>';}
   al.forEach(a=>{
-    const row=document.createElement("div");row.className="item-row";
+    const row=document.createElement("div");row.className="item-row simple";
     row.innerHTML=`<span class="n">${a.nombre}</span><button class="b-del">Eliminar</button>`;
     row.querySelector("button").onclick=async()=>{await authFetch(`/api/alias/${a.id}`,{method:"DELETE"});toast("Eliminado");cargarAlias();};
     cont.appendChild(row);

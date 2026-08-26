@@ -4,6 +4,9 @@
 
 
 /* ----- Cap: primera letra mayúscula ----- */
+/* Mayúscula inicial de la FRASE (para servicios y notas: "traer las fotos"
+   → "Traer las fotos"). Para nombres de personas no sirve —deja el apellido
+   en minúscula—: ahí va titulo() de auth.js, que capitaliza cada palabra. */
 .cap{ text-transform:lowercase; display:inline-block; }
 .cap::first-letter{ text-transform:uppercase; }
 
@@ -148,10 +151,12 @@
 .toast.show{ opacity:1; }
 
 /* ----- Textos auxiliares ----- */
+/* Texto secundario: aclaraciones, sublíneas, estados vacíos.
+   Estaba en --fs-xl (18px), más grande que el texto normal, así que competía
+   con los títulos; varias pantallas lo pisaban con font-size:12px a mano. */
 .muted{
   color:var(--text-tenue);
-  font-size:var(--fs-xl);
-
+  font-size:var(--fs-md);
 }
 .vacio{                     /* "no hay nada todavía" */
   padding:var(--sp-6) 0;
