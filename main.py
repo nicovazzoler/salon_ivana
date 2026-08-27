@@ -1,7 +1,7 @@
 from fastapi import FastAPI, Depends, HTTPException, Header
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, StreamingResponse
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 from sqlalchemy import text, inspect, func
 from pydantic import BaseModel
 from datetime import datetime, date, timedelta, timezone
@@ -71,10 +71,9 @@ except Exception as _e:
 app = FastAPI(title="Pelu App")
 
 # ---------- esquemas ----------
-class LineaIn(BaseModel):
-    item_id: int | None = None; cantidad: int = 1; dificultad: bool = False; precio_custom: int | None = None
-class VentaIn(BaseModel):
-    forma_pago: str; alias: str | None = None; cliente: str | None = None; peluquero: str | None = None; lineas: list[LineaIn]
+# Nota: la tabla `ventas` es del diseño viejo, anterior a los comprobantes. Ya no se
+# escribe y sus endpoints se sacaron, pero los modelos quedan para que el backup
+# siga levantando las filas históricas si alguna base todavía las tiene.
 class ClienteIn(BaseModel):
     nombre: str; telefono: str | None = None; alias: str | None = None; notas: str | None = None; direccion: str | None = None; dni: str | None = None
 class ClienteEdit(BaseModel):
@@ -190,7 +189,31 @@ def get_fondo_dia(db, d) -> int:
         return prev.monto
     return get_fondo(db)
 
-def estado_comprobante(db, comp) -> dict:
+def pagos_por_comprobante(db, comps) -> dict:
+    """Todos los pagos de una tanda de comprobantes, en UNA consulta.
+
+    Sin esto, estado_comprobante() pide los pagos de a un comprobante por vez: con
+    1.500 tickets son 1.500 consultas solo para eso (el clásico N+1), y el historial
+    se va a más de un segundo. Acá se traen todos juntos y se indexan en memoria.
+    """
+    ids = [c.id for c in comps]
+    if not ids: return {}
+    agrupados = {}
+    # SQLite tiene un tope de parámetros por consulta, así que se va de a tandas
+    for i in range(0, len(ids), 500):
+        for p in db.query(models.Pago).filter(models.Pago.comprobante_id.in_(ids[i:i+500])):
+            agrupados.setdefault(p.comprobante_id, []).append(p)
+    return agrupados
+
+def con_relaciones(query):
+    """Trae líneas y extras de toda la tanda en una consulta por relación,
+    en vez de una por comprobante."""
+    return query.options(selectinload(models.Comprobante.lineas),
+                         selectinload(models.Comprobante.extras))
+
+def estado_comprobante(db, comp, pagos_precargados=None) -> dict:
+    """pagos_precargados: mapa {comprobante_id: [pagos]} armado con
+    pagos_por_comprobante(). Si viene, no se consulta la base por este comprobante."""
     extra = comp.extra_dificultad or 0
     total_transfer = comp.total_lista                                    # suma en lista transfer
     # Las dos listas llevan el mismo ajuste por línea, así los totales quedan parejos.
@@ -212,7 +235,8 @@ def estado_comprobante(db, comp) -> dict:
     extras_total = sum(e.monto or 0 for e in comp.extras)
     total_final = subtotal - desc_jubilado + extras_total
 
-    pagos = db.query(models.Pago).filter(models.Pago.comprobante_id == comp.id).all()
+    pagos = (pagos_precargados.get(comp.id, []) if pagos_precargados is not None
+             else db.query(models.Pago).filter(models.Pago.comprobante_id == comp.id).all())
     pagado = sum((p.saldado if p.saldado is not None else p.monto) for p in pagos)
     ingresado = sum(p.monto for p in pagos)
     saldo = total_final - pagado
@@ -232,12 +256,13 @@ def estado_comprobante(db, comp) -> dict:
         "pagado": pagado, "ingresado": ingresado, "saldo": saldo, "estado": estado,
     }
 
-def forma_comprobante(db, comp) -> str:
+def forma_comprobante(db, comp, pagos_precargados=None) -> str:
     """Forma de pago mostrada: se DEDUCE de los pagos, no se guarda.
     Sin pagos = a cuenta; una sola forma = esa; varias formas = mixto."""
     if comp.tipo == "presupuesto":
         return "—"
-    pagos = db.query(models.Pago).filter(models.Pago.comprobante_id == comp.id).all()
+    pagos = (pagos_precargados.get(comp.id, []) if pagos_precargados is not None
+             else db.query(models.Pago).filter(models.Pago.comprobante_id == comp.id).all())
     if not pagos:
         return "A cuenta"
     formas = {p.forma_pago for p in pagos}     # set: descarta repetidos
@@ -454,19 +479,21 @@ def deudas_clientes(_ = Depends(usuario_actual), db: Session = Depends(get_db)):
                  func.sum(func.coalesce(models.Pago.saldado, models.Pago.monto)))
           .group_by(models.Pago.comprobante_id).all())
 
-    # 2) todos los tickets con cliente — UNA query
-    tickets = db.query(models.Comprobante).filter(
+    # 2) todos los tickets con cliente — UNA query, con líneas y extras incluidos
+    tickets = con_relaciones(db.query(models.Comprobante).filter(
         models.Comprobante.tipo == "ticket",
         models.Comprobante.activo == True,
-        models.Comprobante.cliente_id != None).all()
+        models.Comprobante.cliente_id != None)).all()
 
-    # 3) filtro barato (total_final NUNCA supera total_lista + extra), cálculo fino solo si hace falta
+    # 3) filtro barato (total_final NUNCA supera total_lista + extra): los que lo pasan
+    # necesitan el cálculo fino, y sus pagos se traen todos juntos, no de a uno.
+    candidatos = [t for t in tickets
+                  if pagado_por_comp.get(t.id, 0) < (t.total_lista or 0) + (t.extra_dificultad or 0)]
+    pagos_map = pagos_por_comprobante(db, candidatos)
+
     deudas = {}
-    for t in tickets:
-        cota = (t.total_lista or 0) + (t.extra_dificultad or 0)
-        if pagado_por_comp.get(t.id, 0) >= cota:
-            continue
-        est = estado_comprobante(db, t)
+    for t in candidatos:
+        est = estado_comprobante(db, t, pagos_map)
         if est["saldo"] > 0:
             deudas[t.cliente_id] = deudas.get(t.cliente_id, 0) + est["saldo"]
 
@@ -505,12 +532,13 @@ def borrar_cliente(cliente_id: int, _ = Depends(solo_dueno), db: Session = Depen
     c = db.get(models.Cliente, cliente_id)
     if not c: raise HTTPException(404, "Cliente no existe")
 
-    comps = db.query(models.Comprobante).filter(
+    comps = con_relaciones(db.query(models.Comprobante).filter(
         models.Comprobante.cliente_id == cliente_id,
         models.Comprobante.tipo == "ticket",
-        models.Comprobante.activo == True).all()
+        models.Comprobante.activo == True)).all()
+    pagos_map = pagos_por_comprobante(db, comps)
     deuda = sum(est["saldo"] for comp in comps
-                if (est := estado_comprobante(db, comp))["saldo"] > 0)
+                if (est := estado_comprobante(db, comp, pagos_map))["saldo"] > 0)
     if deuda > 0:
         raise HTTPException(409, f"No se puede eliminar: {c.nombre} debe ${deuda:,}".replace(",", "."))
 
@@ -522,13 +550,14 @@ def cuenta_cliente(cliente_id: int, _ = Depends(usuario_actual), db: Session = D
     if not cli or not cli.activo: raise HTTPException(404, "Cliente no existe")
     # Trae tickets Y presupuestos. Solo los tickets suman al saldo: un presupuesto
     # todavía no es una deuda, es un precio que se pasó.
-    comps = db.query(models.Comprobante).filter(
+    comps = con_relaciones(db.query(models.Comprobante).filter(
         models.Comprobante.cliente_id == cliente_id,
         models.Comprobante.activo == True
-    ).order_by(models.Comprobante.fecha.desc())
+    )).order_by(models.Comprobante.fecha.desc()).all()
+    pagos_map = pagos_por_comprobante(db, comps)
     out = []; saldo_total = 0
     for comp in comps:
-        est = estado_comprobante(db, comp)
+        est = estado_comprobante(db, comp, pagos_map)
         if comp.tipo == "ticket" and est["saldo"] > 0: saldo_total += est["saldo"]
         conv = None
         if comp.tipo == "presupuesto":
@@ -540,7 +569,7 @@ def cuenta_cliente(cliente_id: int, _ = Depends(usuario_actual), db: Session = D
                     "subtotal": est["subtotal"], "desc_jubilado": est["desc_jubilado"],
                     "total_final": est["total_final"], "pagado": est["pagado"],
                     "ingresado": est["ingresado"], "convertido_a": conv,
-                    "forma_pago": forma_comprobante(db, comp), "forma_origen": comp.forma_pago,
+                    "forma_pago": forma_comprobante(db, comp, pagos_map), "forma_origen": comp.forma_pago,
                     "saldo": est["saldo"], "estado": est["estado"]})
     return {"cliente": _cliente_json(cli),
             "saldo_total": saldo_total, "comprobantes": out}
@@ -617,20 +646,28 @@ def log_stock(db, item, tipo, cambio, motivo, usuario="sistema"):
 # ---------- comprobantes ----------
 @app.get("/api/comprobantes")
 def listar_comprobantes(tipo: str | None = None, _ = Depends(usuario_actual), db: Session = Depends(get_db)):
-    query = db.query(models.Comprobante).filter(models.Comprobante.activo == True)
+    query = con_relaciones(db.query(models.Comprobante).filter(models.Comprobante.activo == True))
     if tipo: query = query.filter(models.Comprobante.tipo == tipo)
+    comps = query.order_by(models.Comprobante.fecha.desc()).all()
+
+    # Todo lo que hace falta para la tanda entera, en tres consultas fijas en vez de
+    # tres por comprobante.
+    pagos_map = pagos_por_comprobante(db, comps)
+    convertidos = {}
+    if any(c.tipo == "presupuesto" for c in comps):
+        for origen, numero in db.query(models.Comprobante.convertido_de, models.Comprobante.numero)\
+                                .filter(models.Comprobante.convertido_de.isnot(None)):
+            convertidos[origen] = numero
+
     out = []
-    for comp in query.order_by(models.Comprobante.fecha.desc()):
-        conv = None
-        if comp.tipo == "presupuesto":
-            t = db.query(models.Comprobante).filter(models.Comprobante.convertido_de == comp.id).first()
-            conv = t.numero if t else None
+    for comp in comps:
+        conv = convertidos.get(comp.id) if comp.tipo == "presupuesto" else None
         out.append({"id": comp.id, "tipo": comp.tipo, "numero": comp.numero,
                     "fecha": comp.fecha.isoformat(), "cliente_nombre": comp.cliente_nombre, "cliente_id": comp.cliente_id,
                     "total_lista": comp.total_lista, "extra_dificultad": comp.extra_dificultad,
-                    "convertido_a": conv, "forma_pago": forma_comprobante(db, comp),
+                    "convertido_a": conv, "forma_pago": forma_comprobante(db, comp, pagos_map),
                      "forma_origen": comp.forma_pago,
-                    **estado_comprobante(db, comp)})
+                    **estado_comprobante(db, comp, pagos_map)})
     return out
 
 @app.get("/api/comprobantes/{comp_id}")
@@ -690,8 +727,10 @@ def crear_comprobante(c: ComprobanteIn, user = Depends(usuario_actual), db: Sess
             cantidad=ln.cantidad, precio_unit=precio, precio_efectivo=item.precio,
             ajuste_pct=ajuste, ajuste_nombre=(ln.ajuste_nombre or None) if ajuste else None,
             dificultad=ln.dificultad, subtotal=sub))
-            # descontar stock si es producto
-            if item.es_producto and item.stock_actual is not None:
+            # El stock se mueve SOLO cuando hay venta. Un presupuesto es un precio
+            # que se pasa, no mercadería que sale: si descontara, cada presupuesto
+            # que no se concreta dejaría el inventario mal para siempre.
+            if c.tipo == "ticket" and item.es_producto and item.stock_actual is not None:
                 log_stock(db, item, "venta", -ln.cantidad, f"Comprobante #{comp.id}", user.get("usuario","?"))
                 item.stock_actual -= ln.cantidad
         else:
@@ -734,13 +773,15 @@ def anular_comprobante(comp_id: int, _ = Depends(usuario_actual), db: Session = 
     if not comp or not comp.activo:
         raise HTTPException(404, "Comprobante no existe")
     db.query(models.Pago).filter(models.Pago.comprobante_id == comp.id).delete()
-    # devolver stock de los productos del comprobante
-    for l in comp.lineas:
-        if l.item_id:
-            it = db.get(models.Item, l.item_id)
-            if it and it.es_producto and it.stock_actual is not None:
-                log_stock(db, it, "anulacion", l.cantidad, f"Anulación comprobante #{comp.id}", "sistema")
-                it.stock_actual += l.cantidad
+    # Se devuelve stock solo de los tickets: el presupuesto nunca lo descontó,
+    # así que devolverlo estaría inventando mercadería.
+    if comp.tipo == "ticket":
+        for l in comp.lineas:
+            if l.item_id:
+                it = db.get(models.Item, l.item_id)
+                if it and it.es_producto and it.stock_actual is not None:
+                    log_stock(db, it, "anulacion", l.cantidad, f"Anulación comprobante #{comp.id}", "sistema")
+                    it.stock_actual += l.cantidad
     comp.activo = False
     db.commit()
     return {"ok": True}
@@ -776,122 +817,22 @@ def convertir_a_ticket(comp_id: int, user = Depends(usuario_actual), db: Session
             dificultad=l.dificultad, subtotal=l.subtotal))
     for e in presu.extras:
         db.add(models.ComprobanteExtra(comprobante_id=ticket.id, concepto=e.concepto, monto=e.monto))
+    # Recién acá sale la mercadería: el presupuesto no había tocado el stock.
+    for l in presu.lineas:
+        if not l.item_id: continue
+        item = db.get(models.Item, l.item_id)
+        if item and item.es_producto and item.stock_actual is not None:
+            log_stock(db, item, "venta", -l.cantidad,
+                      f"Presupuesto P-{presu.numero:05d} → ticket #{ticket.id}", user.get("usuario","?"))
+            item.stock_actual -= l.cantidad
     db.commit(); db.refresh(ticket)
     return {"id": ticket.id, "numero": ticket.numero}
 
 
 # ---------- ventas (cualquier usuario logueado) ----------
-@app.post("/api/ventas")    
-def crear_venta(venta: VentaIn, user = Depends(usuario_actual), db: Session = Depends(get_db)):
-    if not venta.lineas: raise HTTPException(400, "La venta no tiene lineas")
-    v = models.Venta(forma_pago=venta.forma_pago, alias=venta.alias, cliente=venta.cliente, peluquero=venta.peluquero)
-    db.add(v); db.flush(); total = 0
-    extra = get_extra(db)
-    for ln in venta.lineas:
-        item = db.get(models.Item, ln.item_id)
-        if not item: raise HTTPException(404, f"Item {ln.item_id} no existe")
-        precio = ln.precio_custom if ln.precio_custom else item.precio
-        base = precio * ln.cantidad
-        if venta.forma_pago == "Efectivo":
-            base = round(base * 0.9)
-        sub = base + (extra if ln.dificultad else 0)
-        total += sub
-        db.add(models.VentaLinea(venta_id=v.id, item_id=item.id, nombre=item.nombre,
-                                 cantidad=ln.cantidad, precio_unit=precio,
-                                 dificultad=ln.dificultad, subtotal=sub))
-        if item.es_producto and item.stock_actual is not None:
-            log_stock(db, item, "venta", -ln.cantidad, f"Venta #{v.id}", user.get("usuario","?"))
-            item.stock_actual -= ln.cantidad
-    v.total = total; db.commit(); db.refresh(v)
-    return {"id": v.id, "total": v.total, "fecha": v.fecha.isoformat()}
 
-def _venta_detalle(v):
-    return {"id": v.id, "hora": hora_argentina(v.fecha).strftime("%H:%M"), "total": v.total,
-            "forma_pago": v.forma_pago, "alias": v.alias,
-            "cliente": v.cliente, "peluquero": v.peluquero,
-            "lineas": [{"item_id": l.item_id, "nombre": l.nombre, "cantidad": l.cantidad,
-                        "precio_unit": l.precio_unit, "dificultad": l.dificultad,
-                        "subtotal": l.subtotal} for l in v.lineas]}
 
-def _pago_detalle(p):
-    """Detalle de un cobro para la caja: hora, monto, forma de pago y a qué comprobante pertenece."""
-    comp = p.comprobante
-    ref = "—"
-    if comp:
-        pref = "A" if comp.tipo == "ticket" else "P"
-        ref = f"{pref}-{comp.numero:05d}"
-        if comp.cliente_nombre:
-            ref += f" · {comp.cliente_nombre}"
-    return {"id": p.id, "hora": hora_argentina(p.fecha).strftime("%H:%M"), "total": p.monto,
-            "forma_pago": p.forma_pago, "alias": p.alias, "ref": ref,
-            "comprobante_id": comp.id if comp else None}
 
-@app.get("/api/ventas/dia")
-def ventas_dia(_ = Depends(usuario_actual), db: Session = Depends(get_db)):
-    ini, fin = _rango_dia(date.today())
-    vs = db.query(models.Venta).filter(models.Venta.fecha >= ini, models.Venta.fecha < fin
-         ).order_by(models.Venta.id.desc()).all()
-    return [_venta_detalle(v) for v in vs]
-
-@app.delete("/api/ventas/{venta_id}")
-def anular_venta(venta_id: int, user = Depends(usuario_actual), db: Session = Depends(get_db)):
-    v = db.get(models.Venta, venta_id)
-    if not v: raise HTTPException(404, "Venta no existe")
-    if not _puede_modificar(user, v.fecha):
-        raise HTTPException(403, "Solo el dueño puede anular ventas de otros días")
-    for l in v.lineas:  # devolver stock de productos
-        if l.item_id:
-            it = db.get(models.Item, l.item_id)
-            if it and it.es_producto and it.stock_actual is not None:
-                log_stock(db, it, "anulacion", l.cantidad, f"Anulación venta #{venta_id}", user.get("usuario","?"))
-                it.stock_actual += l.cantidad
-    db.delete(v); db.commit()
-    return {"ok": True}
-
-@app.put("/api/ventas/{venta_id}")
-def editar_venta(venta_id: int, venta: VentaIn, user = Depends(usuario_actual), db: Session = Depends(get_db)):
-    v = db.get(models.Venta, venta_id)
-    if not v:
-        raise HTTPException(404, "Venta no existe")
-    if not _puede_modificar(user, v.fecha):
-        raise HTTPException(403, "Solo el dueño puede editar ventas de otros días")
-    extra = int(db.query(models.Config).filter(models.Config.clave=="extra_dificultad").first().valor or 0)
-    # 1) devolver stock de las líneas viejas
-    for l in v.lineas:
-        if l.item_id:
-            it = db.get(models.Item, l.item_id)
-            if it and it.es_producto and it.stock_actual is not None:
-                log_stock(db, it, "anulacion", l.cantidad, f"Edición venta #{venta_id} (revert)", user.get("usuario","?"))
-                it.stock_actual += l.cantidad
-    # 2) borrar líneas viejas
-    for l in v.lineas:
-        db.delete(l)
-    db.flush()
-    # 3) crear líneas nuevas
-    total = 0
-    for ln in venta.lineas:
-        item = db.get(models.Item, ln.item_id)
-        if not item: continue
-        precio = ln.precio_custom if ln.precio_custom else item.precio
-        base = precio * ln.cantidad
-        if venta.forma_pago == "Efectivo":
-            base = round(base * 0.9)
-        sub = base + (extra if ln.dificultad else 0)
-        total += sub
-        db.add(models.VentaLinea(venta_id=v.id, item_id=item.id, nombre=item.nombre,
-                                 cantidad=ln.cantidad, precio_unit=precio,
-                                 dificultad=ln.dificultad, subtotal=sub))
-        if item.es_producto and item.stock_actual is not None:
-            log_stock(db, item, "venta", -ln.cantidad, f"Edición venta #{venta_id}", user.get("usuario","?"))
-            item.stock_actual -= ln.cantidad
-    # 4) actualizar cabecera
-    v.total = total
-    v.forma_pago = venta.forma_pago
-    v.alias = venta.alias
-    v.cliente = venta.cliente
-    v.peluquero = venta.peluquero
-    db.commit()
-    return {"id": v.id, "total": v.total}
 
 # ---------- egresos ----------
 @app.post("/api/egresos")
@@ -933,6 +874,20 @@ def anular_egreso(egreso_id: int, user = Depends(usuario_actual), db: Session = 
 def _rango_dia(d): ini = datetime(d.year, d.month, d.day); return ini, ini + timedelta(days=1)
 def _sv(db, i, f): return sum(p.monto for p in db.query(models.Pago).filter(models.Pago.fecha >= i, models.Pago.fecha < f))
 def _se(db, i, f): return sum((e.monto or 0) for e in db.query(models.Egreso).filter(models.Egreso.fecha >= i, models.Egreso.fecha < f))
+
+def _pago_detalle(p):
+    """Detalle de un cobro para la caja: hora, monto, forma de pago y a qué comprobante pertenece."""
+    comp = p.comprobante
+    ref = "—"
+    if comp:
+        pref = "A" if comp.tipo == "ticket" else "P"
+        ref = f"{pref}-{comp.numero:05d}"
+        if comp.cliente_nombre:
+            ref += f" · {comp.cliente_nombre}"
+    return {"id": p.id, "hora": hora_argentina(p.fecha).strftime("%H:%M"), "total": p.monto,
+            "forma_pago": p.forma_pago, "alias": p.alias, "ref": ref,
+            "comprobante_id": comp.id if comp else None}
+
 
 @app.get("/api/caja/dia")
 def caja_dia(fecha: str | None = None, _ = Depends(usuario_actual), db: Session = Depends(get_db)):
@@ -1046,29 +1001,7 @@ def rep_resumen(dias: int = 30, desde: str | None = None, hasta: str | None = No
     return {"ingresos": ing, "egresos": egr, "neto": ing - egr,
             "ventas": n, "ingresos_por_pago": por_pago}
 
-@app.get("/api/reportes/top-items")
-def rep_top(dias: int = 30, limite: int = 10, desde: str | None = None, hasta: str | None = None,
-            _ = Depends(solo_dueno), db: Session = Depends(get_db)):
-    ini, fin = _ventana(dias, desde, hasta)
-    lineas = _filtrar(db.query(models.VentaLinea).join(models.Venta), models.Venta.fecha, ini, fin).all()
-    agg = {}
-    for l in lineas:
-        a = agg.setdefault(l.nombre, {"nombre": l.nombre, "cantidad": 0, "total": 0})
-        a["cantidad"] += l.cantidad; a["total"] += (l.subtotal or 0)
-    return sorted(agg.values(), key=lambda x: x["total"], reverse=True)[:limite]
 
-@app.get("/api/reportes/por-categoria")
-def rep_categoria(dias: int = 30, desde: str | None = None, hasta: str | None = None,
-                  _ = Depends(solo_dueno), db: Session = Depends(get_db)):
-    ini, fin = _ventana(dias, desde, hasta)
-    q = db.query(models.VentaLinea, models.Item.categoria).join(models.Venta).outerjoin(
-        models.Item, models.VentaLinea.item_id == models.Item.id)
-    lineas = _filtrar(q, models.Venta.fecha, ini, fin).all()
-    agg = {}
-    for l, cat in lineas:
-        cat = cat or "Otros"
-        agg[cat] = agg.get(cat, 0) + (l.subtotal or 0)
-    return sorted([{"categoria": k, "total": v} for k, v in agg.items()], key=lambda x: x["total"], reverse=True)
 
 @app.get("/api/reportes/deuda")
 def rep_deuda(_ = Depends(solo_dueno), db: Session = Depends(get_db)):
@@ -1284,18 +1217,6 @@ def ranking_items(dias: int = 30, limite: int = 8,
     ordenado = sorted(agg.values(), key=lambda x: x["total"], reverse=True)
     return {"filas": ordenado[:limite], "total_general": sum(a["total"] for a in agg.values())}
 
-@app.get("/api/ventas/registro")
-def ventas_registro(desde: str | None = None, hasta: str | None = None,
-                    _ = Depends(solo_dueno), db: Session = Depends(get_db)):
-    ini, fin = _ventana(0, desde, hasta)  # sin rango => desde el origen
-    q = _filtrar(db.query(models.Venta), models.Venta.fecha, ini, fin)
-    vs = q.order_by(models.Venta.fecha.desc()).limit(1000).all()
-    out = []
-    for v in vs:
-        d = _venta_detalle(v)
-        d["fecha"] = hora_argentina(v.fecha).strftime("%d/%m/%Y")
-        out.append(d)
-    return out
 
 @app.get("/api/registro")
 def registro_movimientos(desde: str | None = None, hasta: str | None = None,
@@ -1530,10 +1451,16 @@ def backup_completo(_ = Depends(solo_dueno), db: Session = Depends(get_db)):
                  {"id": l.id, "item_id": l.item_id, "nombre": l.nombre,
                   "cantidad": l.cantidad, "precio_unit": l.precio_unit,
                   "precio_efectivo": l.precio_efectivo, "dificultad": l.dificultad,
+                  "ajuste_pct": l.ajuste_pct, "ajuste_nombre": l.ajuste_nombre,
                   "subtotal": l.subtotal}
                  for l in c.lineas
-             ]}
-            for c in db.query(models.Comprobante).order_by(models.Comprobante.fecha).all()
+             ],
+             "extras": [{"id": e.id, "concepto": e.concepto, "monto": e.monto} for e in c.extras]}
+            for c in con_relaciones(db.query(models.Comprobante)).order_by(models.Comprobante.fecha).all()
+        ],
+        "ajustes_item": [
+            {"id": a.id, "nombre": a.nombre, "porcentaje": a.porcentaje, "activo": a.activo}
+            for a in db.query(models.AjusteItem).all()
         ],
         "pagos": [
             {"id": p.id, "comprobante_id": p.comprobante_id, "fecha": hora_argentina(p.fecha).isoformat(),
