@@ -163,6 +163,7 @@ class Comprobante(Base):
     activo = Column(Boolean, default=True)
     cliente = relationship("Cliente")
     lineas = relationship("ComprobanteLinea", back_populates="comprobante", cascade="all, delete-orphan")
+    extras = relationship("ComprobanteExtra", back_populates="comprobante", cascade="all, delete-orphan")
 
 class ComprobanteLinea(Base):
     __tablename__ = "comprobante_lineas"
@@ -181,6 +182,17 @@ class ComprobanteLinea(Base):
     dificultad = Column(Boolean, default=False)
     subtotal = Column(Integer)
     comprobante = relationship("Comprobante", back_populates="lineas")
+
+class ComprobanteExtra(Base):
+    """Cargo suelto del comprobante (traslado, producto que se lleva, seña...).
+    Se suma DESPUÉS de todos los descuentos: ni la diferencia entre listas ni el
+    descuento de catálogo lo tocan. Siempre se imprime."""
+    __tablename__ = "comprobante_extras"
+    id = Column(Integer, primary_key=True)
+    comprobante_id = Column(Integer, ForeignKey("comprobantes.id"), nullable=False)
+    concepto = Column(String, nullable=False)
+    monto = Column(Integer, nullable=False)
+    comprobante = relationship("Comprobante", back_populates="extras")
 
 class Pago(Base):
     """Un abono a un comprobante. Un comprobante puede tener varios (cuotas)."""

@@ -75,6 +75,13 @@
     <input id="filtroCliente" placeholder="Buscar cliente..." style="flex:1;">
     <input id="filtroNum" placeholder="N° comp." style="width:110px;" inputmode="numeric">
   </div>
+  <div class="pills" id="filtroEstado">
+    <button class="pill on" data-f="todos">Todos</button>
+    <button class="pill" data-f="deuda">Con deuda</button>
+    <button class="pill" data-f="convertidos">Pasados a ticket</button>
+    <button class="pill" data-f="sinconvertir">Sin convertir</button>
+    <span id="resumenFiltro" class="muted" style="margin-left:auto;align-self:center;"></span>
+  </div>
   <div id="lista"></div>
 </div>
 <div class="toast" id="toast"></div>
@@ -86,6 +93,7 @@ const $=s=>document.querySelector(s);
 const fmt=n=>"$"+(n||0).toLocaleString("es-AR");
 let tipo="ticket";
 let todosComps=[];
+let estadoFiltro="todos";   // todos | deuda | convertidos | sinconvertir
 
 function toast(m){const t=$("#toast");t.textContent=m;t.classList.add("show");setTimeout(()=>t.classList.remove("show"),2200);}
 function numComp(t,n){ return (t==="ticket"?"A-":"P-")+String(n).padStart(5,"0"); }
@@ -101,10 +109,29 @@ function renderLista(){
   const comps = todosComps.filter(comp=>{
     if(filtCli && !(comp.cliente_nombre||"").toLowerCase().includes(filtCli)) return false;
     if(filtNum && !String(comp.numero).includes(filtNum)) return false;
+    if(estadoFiltro==="deuda"        && !(comp.saldo>0)) return false;
+    if(estadoFiltro==="convertidos"  && !comp.convertido_a) return false;
+    if(estadoFiltro==="sinconvertir" && comp.convertido_a) return false;
     return true;
   });
+
+  // resumen del filtro activo: cuántos y, si es deuda, cuánto
+  const cajaResumen=$("#resumenFiltro");
+  if(estadoFiltro==="deuda"){
+    const deuda=comps.reduce((a,c)=>a+(c.saldo||0),0);
+    cajaResumen.textContent = comps.length ? `${comps.length} con deuda · ${fmt(deuda)}` : "";
+  } else {
+    cajaResumen.textContent = comps.length!==todosComps.length ? `${comps.length} de ${todosComps.length}` : "";
+  }
+
   const cont=$("#lista"); cont.innerHTML="";
-  if(comps.length===0){ cont.innerHTML='<p class="muted">No hay '+(tipo==="ticket"?"tickets":"presupuestos")+' todavía.</p>'; return; }
+  if(comps.length===0){
+    const porQue = estadoFiltro==="deuda" ? "con deuda"
+                 : estadoFiltro==="convertidos" ? "pasados a ticket"
+                 : estadoFiltro==="sinconvertir" ? "sin convertir" : "";
+    cont.innerHTML=`<p class="muted">No hay ${tipo==="ticket"?"tickets":"presupuestos"} ${porQue} para mostrar.</p>`;
+    return;
+  }
   comps.forEach(comp=>{
     const div=document.createElement("div"); div.className="comp";
     const fecha=new Date(comp.fecha).toLocaleDateString("es-AR");
@@ -230,12 +257,36 @@ function renderLista(){
   
 }
     
-$("#tabTicket").onclick=()=>{ tipo="ticket"; $("#tabTicket").classList.add("on"); $("#tabPresu").classList.remove("on"); cargar(); };
-$("#tabPresu").onclick=()=>{ tipo="presupuesto"; $("#tabPresu").classList.add("on"); $("#tabTicket").classList.remove("on"); cargar(); };
+/* "Con deuda" solo tiene sentido en tickets; "pasados a ticket" / "sin convertir",
+   solo en presupuestos. Se muestran los que aplican a la pestaña abierta. */
+function ajustarFiltros(){
+  const paraTicket = ["todos","deuda"];
+  const paraPresu  = ["todos","convertidos","sinconvertir"];
+  const validos = tipo==="ticket" ? paraTicket : paraPresu;
+  document.querySelectorAll("#filtroEstado .pill").forEach(b=>{
+    b.style.display = validos.includes(b.dataset.f) ? "" : "none";
+  });
+  if(!validos.includes(estadoFiltro)){          // el filtro activo ya no aplica
+    estadoFiltro = "todos";
+    document.querySelectorAll("#filtroEstado .pill").forEach(x=>x.classList.toggle("on", x.dataset.f==="todos"));
+  }
+}
+
+$("#tabTicket").onclick=()=>{ tipo="ticket"; $("#tabTicket").classList.add("on"); $("#tabPresu").classList.remove("on"); ajustarFiltros(); cargar(); };
+$("#tabPresu").onclick=()=>{ tipo="presupuesto"; $("#tabPresu").classList.add("on"); $("#tabTicket").classList.remove("on"); ajustarFiltros(); cargar(); };
 
 $("#filtroCliente").oninput = ()=> renderLista();
 $("#filtroNum").oninput = ()=> renderLista();
 
+document.querySelectorAll("#filtroEstado .pill").forEach(b=>{
+  b.onclick=()=>{
+    estadoFiltro=b.dataset.f;
+    document.querySelectorAll("#filtroEstado .pill").forEach(x=>x.classList.toggle("on", x===b));
+    renderLista();
+  };
+});
+
+ajustarFiltros();
 cargar();
 </script>
 </body></html>

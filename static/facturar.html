@@ -7,56 +7,92 @@
   .wrap{ display:flex; flex-wrap:wrap; align-items:flex-start; gap:18px; }
   .fila{ margin-bottom:10px; }
   .fila label{ min-width:80px; font-size:var(--fs-base); }
+  /* ===== Catálogo =====
+     Pensado para tablet: el dedo necesita blanco alrededor, así que las tarjetas
+     son altas y con poco borde. El rail de categorías no envuelve nunca en
+     apaisada; en angosto se convierte en una franja que se desliza. */
+  /* En tablet el catálogo necesita más ancho que el ticket: si van mitad y mitad,
+     con el rail adentro las tarjetas entran de a una sola por fila. */
+  .wrap > .col:first-child{ flex:1.4 1 430px; }
+  .wrap > .col:nth-child(2){ flex:1 1 330px; }
+
+  .catalogo{ padding:14px; }
+  .catalogo-cuerpo{
+    display:grid;
+    grid-template-columns:150px minmax(0,1fr);
+    gap:var(--sp-3);
+    margin-top:var(--sp-3);
+  }
+  .catalogo-items{ min-width:0; }
+
+  .cat-rail{
+    display:flex; flex-direction:column; gap:4px;
+    max-height:560px; overflow-y:auto;
+    padding-right:4px;
+  }
   .cat-pill{
-    padding:6px 14px;
-    background:var(--bg-hundido);
-    border:1px solid var(--border);
-    border-radius:var(--r-full);
+    display:flex; align-items:center; gap:6px;
+    min-height:44px;                    /* objetivo táctil cómodo */
+    padding:8px 12px;
+    background:transparent;
+    border:1px solid transparent;
+    border-radius:var(--r-md);
     font-size:var(--fs-base);
+    font-weight:var(--fw-medium);
     color:var(--text-suave);
+    text-align:left;
     cursor:pointer;
   }
+  .cat-pill:hover{ background:var(--bg-sutil); color:var(--text); }
   .cat-pill.on{
-    background:var(--acento);
-    border-color:var(--acento);
-    color:var(--text-invertido);
+    background:var(--acento-bg);
+    border-color:var(--acento-border);
+    color:var(--acento);
     font-weight:var(--fw-bold);
   }
+  .cat-pill .cuenta{
+    margin-left:auto;
+    font-size:var(--fs-xs); font-weight:var(--fw-normal);
+    color:var(--text-tenue);
+  }
+
   /* --- grilla del catálogo --- */
   .grid-items{
     display:grid;
-    grid-template-columns:repeat(auto-fill, minmax(140px, 1fr));
+    grid-template-columns:repeat(auto-fill, minmax(152px, 1fr));
     gap:var(--sp-2);
-    margin-top:var(--sp-3);
   }
   .btn-item{
-    display:flex; flex-direction:column; align-items:flex-start; gap:var(--sp-1);
-    padding:10px 12px;
+    display:flex; flex-direction:column; align-items:stretch; gap:6px;
+    min-height:72px;                    /* que el dedo no falle */
+    padding:11px 13px;
     background:var(--blanco-a04);
-    border:1px solid var(--border);
+    border:1px solid var(--border-sutil);
     border-radius:var(--r-lg);
     color:var(--text);
     text-align:left;
     cursor:pointer;
   }
-    .btn-item .n {
+  .btn-item:hover{ background:var(--bg-sutil); border-color:var(--border); }
+  .btn-item:active{ border-color:var(--acento); background:var(--acento-bg); }
+  .btn-item .n{
     font-size:var(--fs-md);
     font-weight:var(--fw-medium);
-    overflow-wrap:anywhere;   /* ← corta nombres largos en vez de desbordar */
+    line-height:1.25;
+    overflow-wrap:anywhere;             /* corta nombres largos en vez de desbordar */
   }
-
-  .btn-item:hover,
-  .btn-item:active{ border-color:var(--acento); }
-  .btn-item .n{ font-size:var(--fs-md); font-weight:var(--fw-medium); }
-  .btn-item .p{ font-size:var(--fs-base); font-weight:var(--fw-strong); color:var(--acento); }
-  .btn-item .precios{ text-align:right; }
-  .btn-item .p-tr{ font-size:var(--fs-md); font-weight:var(--fw-bold); color:var(--acento); }
+  /* Precios: el de lista lleva el peso, el otro queda de apoyo.
+     Antes los dos iban en dorado y negrita y competían entre sí. */
+  .btn-item .precios{
+    display:flex; align-items:baseline; gap:6px;
+    margin-top:auto;                    /* pegado abajo: las tarjetas quedan parejas */
+  }
+  .btn-item .p-tr{ font-size:var(--fs-lg); font-weight:var(--fw-bold); color:var(--text); }
   .btn-item .p-ef{ font-size:var(--fs-xs); color:var(--text-tenue); }
-  .btn-item .cat-mini{ display:block; margin-top:2px; font-size:var(--fs-xs); color:var(--text-tenue); }
+  .btn-item .cat-mini{ font-size:var(--fs-xs); color:var(--text-tenue); }
 
-  .btn-item.cat{                       /* tarjeta de categoría */
+  .btn-item.cat{                       /* tarjeta de categoría (vista de búsqueda) */
     align-items:center; justify-content:center; text-align:center;
-    padding:14px 13px;
     background:var(--acento-bg);
     border-color:var(--acento-border);
   }
@@ -68,8 +104,28 @@
   }
   .btn-item.grupo .n{ color:var(--text-titulo); }
   .btn-item.grupo .hint{
-    display:block; margin-top:2px;
-    font-size:var(--fs-xs); color:var(--text-tenue);
+    display:block; margin-top:2px;      /* los talles van en su renglón, no pegados al nombre */
+    font-size:var(--fs-xs); font-weight:var(--fw-normal);
+    color:var(--text-tenue);
+  }
+
+  /* Tablet en vertical y celular: el rail se acuesta y se desliza de costado,
+     así deja de comerse 5 renglones antes del primer ítem. */
+  @media (max-width:900px){
+    .catalogo-cuerpo{ grid-template-columns:minmax(0,1fr); }
+    .cat-rail{
+      flex-direction:row; flex-wrap:nowrap;
+      max-height:none; overflow-x:auto; overflow-y:hidden;
+      padding-bottom:4px;
+      scrollbar-width:thin;
+    }
+    .cat-pill{
+      flex:0 0 auto;
+      border-radius:var(--r-full);
+      border-color:var(--border-sutil);
+      white-space:nowrap;
+    }
+    .cat-pill .cuenta{ margin-left:4px; }
   }
 
   /* --- líneas del ticket --- */
@@ -171,6 +227,52 @@
     padding:6px 10px; background:transparent;
     border:1px solid var(--border); color:var(--text-suave);
   }
+
+  /* --- Extras: cargos que no toca ningún descuento --- */
+  .extras-box{
+    margin:var(--sp-3) 0;
+    padding:10px 12px;
+    background:var(--bg-sutil);
+    border:1px solid var(--border-sutil);
+    border-radius:var(--r-md);
+  }
+  .extras-box summary{
+    cursor:pointer; list-style:none;
+    font-size:var(--fs-base); font-weight:var(--fw-bold);
+    color:var(--text-suave);
+  }
+  .extras-box summary::-webkit-details-marker{ display:none; }
+  .extras-box summary .aclara{ font-weight:var(--fw-normal); color:var(--text-tenue); }
+  .extras-box .alta-extra{ margin:8px 0 0; gap:6px; }
+  .extras-box .alta-extra input{ min-width:0; }
+  .extras-box #exConcepto{ flex:1 1 120px; }
+  .extras-box .monto-box{
+    display:flex; align-items:center; gap:2px;
+    width:110px; padding:0 8px;
+    background:var(--bg-input); border:1px solid var(--border); border-radius:var(--r-md);
+  }
+  .extras-box .monto-box .pfx{ color:var(--text-tenue); }
+  .extras-box .monto-box input{ width:100%; border:none; background:transparent; padding:8px 0; }
+  .extra-linea{
+    display:flex; align-items:center; gap:8px;
+    padding:6px 0;
+    border-bottom:1px solid var(--border-sutil);
+    font-size:var(--fs-base);
+  }
+  .extra-linea .cn{ flex:1; min-width:0; overflow-wrap:anywhere; }
+  .extra-linea .mt{ font-weight:var(--fw-bold); font-variant-numeric:tabular-nums; }
+  .extra-linea .quitar{ padding:4px 8px; }
+  .tot-extras{ color:var(--text-titulo); }
+
+  /* Caja de egresos plegada */
+  .caja-egreso summary{
+    cursor:pointer;
+    font-weight:var(--fw-strong);
+    color:var(--warn);
+    list-style:none;
+  }
+  .caja-egreso summary::-webkit-details-marker{ display:none; }
+  .caja-egreso[open] summary{ margin-bottom:4px; }
 
   /* precio tachado cuando la línea tiene ajuste */
   .precio-viejo{
@@ -279,14 +381,20 @@
 <div class="wrap">
 
   <div class="col">
-    <div class="card">
-      <input id="buscar" placeholder="🔎 Buscar servicio o producto..." style="width:100%;margin-bottom:12px;">
-      <div id="catPills" class="pills"></div>
-      <div id="barraNav" class="barra-nav" style="display:none;">
-        <button id="volver" class="b-out" style="font-size:13px;">← Volver</button>
-        <span id="tituloCat" class="titulo-cat"></span>
+    <div class="card catalogo">
+      <input id="buscar" placeholder="🔎 Buscar servicio o producto..." style="width:100%;">
+      <div class="catalogo-cuerpo">
+        <!-- Rail de categorías: en tablet apaisada es una columna que no envuelve;
+             en pantalla angosta pasa a ser una franja que se desliza de costado. -->
+        <div id="catPills" class="cat-rail"></div>
+        <div class="catalogo-items">
+          <div id="barraNav" class="barra-nav" style="display:none;">
+            <button id="volver" class="b-out">← Volver</button>
+            <span id="tituloCat" class="titulo-cat"></span>
+          </div>
+          <div class="grid-items" id="items"></div>
+        </div>
       </div>
-      <div class="grid-items" id="items"></div>
     </div>
   </div>
 
@@ -329,14 +437,24 @@
         <label>Descuento:</label>
         <select id="descuento" style="flex:1;"></select>
       </div>
-      <div class="fila">
-      </div>
+
+      <!-- Extras: cargos que ningún descuento toca y siempre salen impresos -->
+      <details class="extras-box" id="extrasBox">
+        <summary>+ Agregar extra <span class="aclara">(no le entra el descuento)</span></summary>
+        <div id="listaExtras"></div>
+        <div class="fila alta-extra">
+          <input id="exConcepto" placeholder="Concepto (ej: traslado)">
+          <div class="monto-box"><span class="pfx">$</span><input id="exMonto" type="number" inputmode="numeric" placeholder="0"></div>
+          <button class="b-ok" id="btnAddExtra">Sumar</button>
+        </div>
+      </details>
 
       <div class="tot-row"><span>Subtotal</span><span id="subtotal">$0</span></div>
       <div class="tot-row tot-extra" id="rowExtra" style="display:none;"><span>Extra dificultad</span><span id="extraMonto">$0</span></div>
       <div class="tot-row tot-desc" id="rowDescEfvo" style="display:none;"><span id="descEfvoLabel">Descuento</span><span id="descEfvoMonto">$0</span></div>
       <div class="tot-row" id="rowSubEfvo" style="display:none;"><span>Subtotal </span><span id="subEfvoMonto">$0</span></div>
       <div class="tot-row tot-desc" id="rowDescCat" style="display:none;"><span id="descCatLabel">Descuento</span><span id="descCatMonto">$0</span></div>
+      <div class="tot-row tot-extras" id="rowExtras" style="display:none;"><span>Extras</span><span id="extrasMonto">$0</span></div>
       <div class="tot-row tot-final"><span>Total</span><span id="total">$0</span></div>
 
       <div id="botsTicket">
@@ -394,10 +512,12 @@
     </div>
   </div>
 
+  <!-- Los egresos no son parte de facturar: van plegados para no competir con la
+       carga del ticket, pero a un toque de distancia. -->
   <div class="col" style="flex:1 1 100%;">
-    <div class="card">
-      <div style="font-weight:700;color:var(--warn);margin-bottom:12px;">↓ Registrar egreso</div>
-      <div class="fila" style="flex-wrap:wrap;align-items:flex-end;">
+    <details class="card caja-egreso">
+      <summary>↓ Registrar egreso</summary>
+      <div class="fila" style="flex-wrap:wrap;align-items:flex-end;margin-top:12px;">
         <div class="campo">
           <label>Tipo</label>
           <input id="egTipo" list="egTipos" placeholder="Proveedor, retiro...">
@@ -421,7 +541,7 @@
         <div id="toggleEgresosHoy" class="muted" style="cursor:pointer;margin-bottom:8px;">Egresos de hoy ▾</div>
         <div id="egresosHoy"></div>
       </div>
-    </div>
+    </details>
   </div>
 
 </div>
@@ -497,33 +617,54 @@ async function init(){
   $("#descuento").innerHTML='<option value="">Sin descuento</option>'+
     DESCUENTOS.map((d,i)=>`<option value="${i}">${d.nombre} ${d.porcentaje}%</option>`).join("");
   AJUSTES=await (await authFetch("/api/ajustes-item")).json();   // descuentos/recargos por línea
+  pintarRail();
   renderCategorias(); restaurarBorrador(); renderTicket(); mostrarBotones(); cargarEgresosHoy();
   const cliParam=new URLSearchParams(location.search).get("cliente");
   if(cliParam){ $("#cliente").value=cliParam; }
 }
 
+// El precio de lista lleva el peso; el de descuento va de apoyo, chiquito al lado.
 function precioBtn(it){
-  return `<span class="precios"><span class="p-tr">transf ${fmt(it.precio_transfer)}</span><br><span class="p-ef">c/desc ${fmt(it.precio)}</span></span>`;
+  return `<span class="precios"><span class="p-tr">${fmt(it.precio_transfer)}</span>`+
+         `<span class="p-ef">c/desc ${fmt(it.precio)}</span></span>`;
 }
 function categorias(){
   const set=[], vistos=new Set();
   CATALOGO.forEach(it=>{ if(!vistos.has(it.categoria)){vistos.add(it.categoria);set.push(it.categoria);} });
   return set.sort((a,b)=>a.localeCompare(b,'es'));
 }
+
+/* El rail se dibuja UNA vez y queda siempre a la vista: desde cualquier lugar
+   (dentro de un grupo, o buscando) se puede saltar a otra categoría sin volver. */
+function pintarRail(){
+  const rail=$("#catPills"); rail.innerHTML="";
+  const cuentas=new Map();
+  CATALOGO.forEach(it=>cuentas.set(it.categoria,(cuentas.get(it.categoria)||0)+1));
+  categorias().forEach(c=>{
+    const b=document.createElement("button");
+    b.className="cat-pill"; b.dataset.cat=c;
+    b.innerHTML=`<span class="nom">${esc(c)}</span><span class="cuenta">${cuentas.get(c)||0}</span>`;
+    b.onclick=()=>{ $("#buscar").value=""; abrirCategoria(c); };
+    rail.appendChild(b);
+  });
+}
+function marcarRail(cat){
+  $("#catPills").querySelectorAll(".cat-pill").forEach(p=>p.classList.toggle("on", p.dataset.cat===cat));
+}
+
 function renderCategorias(){
+  // Sin categoría elegida abrimos la primera: en tablet es un toque menos y la
+  // grilla nunca arranca vacía.
+  const cats=categorias();
+  if(cats.length){ abrirCategoria(cats[0]); return; }
   vista="cats"; catActual=null; grupoActual=null;
   $("#barraNav").style.display="none";
-  const pills=$("#catPills"); pills.style.display="flex"; pills.innerHTML="";
-  categorias().forEach(c=>{
-    const b=document.createElement("button"); b.className="cat-pill"; b.textContent=c;
-    b.onclick=()=>abrirCategoria(c); pills.appendChild(b);
-  });
-  $("#items").innerHTML='<p class="muted" style="grid-column:1/-1;">Elegí una categoría.</p>';
+  $("#items").innerHTML='<p class="muted" style="grid-column:1/-1;">No hay ítems cargados.</p>';
 }
 function abrirCategoria(cat){
   vista="items"; catActual=cat; grupoActual=null;
-  $("#catPills").querySelectorAll(".cat-pill").forEach(p=>p.classList.toggle("on",p.textContent===cat));
-  $("#catPills").style.display="flex"; $("#barraNav").style.display="none";
+  marcarRail(cat);
+  $("#barraNav").style.display="none";
   const items=CATALOGO.filter(i=>i.categoria===cat);
   const grupos=new Map();
   items.forEach(it=>{ const{base,variante}=parseNombre(it.nombre);
@@ -544,7 +685,7 @@ function abrirCategoria(cat){
 }
 function abrirGrupo(base,arr){
   vista="grupo"; grupoActual=base;
-  $("#catPills").style.display="none"; $("#barraNav").style.display="flex";
+  $("#barraNav").style.display="flex";
   $("#volver").textContent="← "+catActual; $("#tituloCat").textContent=base;
   const ordenado=[...arr].sort((a,b)=>ordenVar(a.variante)-ordenVar(b.variante));
   const g=$("#items"); g.innerHTML="";
@@ -556,20 +697,27 @@ function abrirGrupo(base,arr){
 }
 function buscar(q){
   vista="buscar";
-  $("#catPills").style.display="none"; $("#barraNav").style.display="flex";
-  $("#volver").textContent="← Categorías"; $("#tituloCat").textContent=`"${q}"`;
+  marcarRail(null);                        // buscando no hay categoría activa
+  $("#barraNav").style.display="flex";
+  $("#volver").textContent="← Volver"; $("#tituloCat").textContent=`"${q}"`;
   const res=CATALOGO.filter(i=>i.nombre.toLowerCase().includes(q.toLowerCase()));
   const g=$("#items"); g.innerHTML="";
   if(res.length===0){ g.innerHTML='<p class="muted">Nada coincide.</p>'; return; }
   res.forEach(it=>{
     const b=document.createElement("button"); b.className="btn-item";
-    b.innerHTML=`<span class="n">${it.nombre}</span>${precioBtn(it)}`;
+    // al buscar sí conviene ver de qué categoría es cada resultado
+    b.innerHTML=`<span class="n">${esc(it.nombre)}</span>`+
+                `<span class="cat-mini">${esc(it.categoria)}</span>${precioBtn(it)}`;
     b.onclick=()=>agregar(it); g.appendChild(b);
   });
 }
 
 $("#buscar").oninput=e=>{ const q=e.target.value.trim(); if(q.length===0){renderCategorias();return;} buscar(q); };
-$("#volver").onclick=()=>{ $("#buscar").value=""; if(vista==="grupo"){abrirCategoria(catActual);} else {renderCategorias();} };
+$("#volver").onclick=()=>{
+  $("#buscar").value="";
+  // desde un grupo se vuelve a su categoría; desde la búsqueda, a la última abierta
+  abrirCategoria(catActual || categorias()[0]);
+};
 
 function agregar(it){
   // Solo se acumula con una línea SIN ajuste: si la de arriba tiene un descuento
@@ -591,6 +739,34 @@ const precioAjEf = l => conAjuste(l.precio,         l.ajustePct);
 const precioAjTr = l => conAjuste(l.precioTransfer, l.ajustePct);
 let AJUSTES = [];                 // lista configurada en admin
 
+/* --- Extras del comprobante ---
+   Cargos sueltos que se suman al final, después de todos los descuentos, y que
+   siempre salen impresos. No son ítems del catálogo ni llevan cantidad. */
+let EXTRAS = [];                  // [{concepto, monto}]
+
+function renderExtras(){
+  const cont=$("#listaExtras"); cont.innerHTML="";
+  EXTRAS.forEach((e,i)=>{
+    const row=document.createElement("div"); row.className="extra-linea";
+    row.innerHTML=`<span class="cn">${esc(e.concepto)}</span>
+                   <span class="mt">${fmt(e.monto)}</span>
+                   <button class="quitar" title="Quitar">×</button>`;
+    row.querySelector(".quitar").onclick=()=>{ EXTRAS.splice(i,1); renderExtras(); actualizarTotales(); };
+    cont.appendChild(row);
+  });
+}
+
+function agregarExtra(){
+  const concepto=$("#exConcepto").value.trim();
+  const monto=parseInt($("#exMonto").value)||0;
+  if(!concepto){ toast("Poné un concepto"); return; }
+  if(monto<=0){ toast("El monto tiene que ser mayor a 0"); return; }
+  EXTRAS.push({concepto, monto});
+  $("#exConcepto").value=""; $("#exMonto").value="";
+  renderExtras(); actualizarTotales(); guardarBorrador();
+  $("#exConcepto").focus();
+}
+
 const claseAj = aj => aj < 0 ? "aj desc" : aj > 0 ? "aj rec" : "aj";
 const textoAj = aj => aj ? `${aj<0?"−":"+"}${Math.abs(aj)}%` : "%";
 
@@ -609,6 +785,12 @@ function htmlPrecios(l, dosColumnas){
 }
 
 $("#item-extra").onclick=()=>agregarItem();
+
+$("#btnAddExtra").onclick=()=>agregarExtra();
+// Enter en cualquiera de los dos campos también lo suma
+["#exConcepto","#exMonto"].forEach(sel=>{
+  $(sel).onkeydown = e => { if(e.key==="Enter"){ e.preventDefault(); agregarExtra(); } };
+});
 
 function agregarItem(){
   // 'editando:true' marca la línea como "en edición": mientras esté así se muestran
@@ -800,15 +982,20 @@ function actualizarTotales(){
     $("#descCatMonto").textContent = "−"+fmt(descCat);
   }
 
+  // Extras: entran al final, sin que ningún descuento los toque
+  const extrasTotal = EXTRAS.reduce((a,e)=>a+(e.monto||0),0);
+  $("#rowExtras").style.display = extrasTotal>0 ? "flex" : "none";
+  $("#extrasMonto").textContent = "+"+fmt(extrasTotal);
+
   // total
-  const total = baseCat - descCat;
+  const total = baseCat - descCat + extrasTotal;
   if(esPresu){
-    $("#total").innerHTML = `<div style="display:flex;gap:16px;"><div>Lista<br><strong>${fmt(subTr - descCatTr)}</strong></div><div>Con descuento<br><strong>${fmt(subEf - descCatEf)}</strong></div></div>`;
-    totalActual = subEf - descCatEf;  // usar total efectivo para operaciones
+    $("#total").innerHTML = `<div style="display:flex;gap:16px;"><div>Lista<br><strong>${fmt(subTr - descCatTr + extrasTotal)}</strong></div><div>Con descuento<br><strong>${fmt(subEf - descCatEf + extrasTotal)}</strong></div></div>`;
+    totalActual = subEf - descCatEf + extrasTotal;  // usar total efectivo para operaciones
   } else {
     $("#total").textContent = fmt(total);
     totalActual = total;
-  }          
+  }
 
   const vacio = ticket.length===0;
   actualizarAcciones();
@@ -829,7 +1016,8 @@ function guardarBorrador(){
     peluquero: $("#peluquero").value,
     descPct, descNombre,
     descuentoSel: $("#descuento").value,   // el índice elegido en el select de descuento
-    formaPago
+    formaPago,
+    extras: EXTRAS
   }));
 }
 
@@ -851,6 +1039,9 @@ function restaurarBorrador(){
     descPct = d.descPct || 0;
     descNombre = d.descNombre || null;
     $("#descuento").value = d.descuentoSel || "";
+    EXTRAS = Array.isArray(d.extras) ? d.extras : [];
+    renderExtras();
+    if(EXTRAS.length) $("#extrasBox").open = true;   // si hay extras cargados, que se vean
     formaPago = d.formaPago || "efectivo";
     $("#formaPago").value = formaPago;
   }catch(e){ localStorage.removeItem(BORRADOR_KEY); }
@@ -972,7 +1163,8 @@ async function crearComprobante(){
     mostrar_motivo: true,
     lineas: ticket.map(l=>({item_id:l.item_id, nombre: l.nombre, cantidad:l.cantidad, dificultad:l.dificultad,
                             precio_custom: l.precioEditado ? l.precio : null,
-                            ajuste_pct: l.ajustePct || 0, ajuste_nombre: l.ajusteNombre || null}))
+                            ajuste_pct: l.ajustePct || 0, ajuste_nombre: l.ajusteNombre || null})),
+    extras: EXTRAS
   };
   const r=await authFetch("/api/comprobantes",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
   if(!r.ok){ toast("No se pudo crear"); return null; }
@@ -1065,6 +1257,7 @@ function limpiar(){
   ticket=[]; $("#cliente").value=""; clienteIdSel=null; $("#peluquero").value="";
   $("#descuento").value=""; descPct=0; descNombre=null;
   $("#aliasTransfer").value="";
+  EXTRAS=[]; renderExtras(); $("#extrasBox").open=false;
   $("#panelCobro").style.display="none"; compActual=null;
   localStorage.removeItem(BORRADOR_KEY);
   renderTicket();

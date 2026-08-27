@@ -201,6 +201,11 @@ function render(){
       totLista=Math.round(totLista*(100-d.descuento_pct)/100);
       totPromo=Math.round(totPromo*(100-d.descuento_pct)/100);
     }
+    // Los extras van despues del descuento: no los toca
+    (d.extras||[]).forEach(e=>{
+      partes.push(`<div class="fila"><span>+ ${esc(e.concepto)}</span><span class="der">${fmt(e.monto)}</span></div>`);
+      totLista+=e.monto; totPromo+=e.monto;
+    });
     partes.push(`<div class="fila total"><span>Total lista</span><span class="der">${fmt(totLista)}</span></div>`);
     partes.push(`<div class="fila total"><span>Total con descuento</span><span class="der">${fmt(totPromo)}</span></div>`);
     partes.push(`<div class="c chico" style="margin-top:8px;">Presupuesto sin valor fiscal.<br>Precios sujetos a cambio sin previo aviso.</div>`);
@@ -223,6 +228,9 @@ function render(){
     // descuento hecho al momento de pagar (ej: abonó en promo una deuda)
     const descPagos=d.pagos.reduce((a,p)=>a+(p.desc_aplicado||0),0);
     if(descPagos>0) partes.push(`<div class="fila tenue"><span>Descuento (al abonar)</span><span class="der">−${fmt(descPagos)}</span></div>`);
+
+    (d.extras||[]).forEach(e=>
+      partes.push(`<div class="fila"><span>+ ${esc(e.concepto)}</span><span class="der">${fmt(e.monto)}</span></div>`));
 
     const totalCobrado=d.ingresado + Math.max(d.saldo,0);
     partes.push(`<div class="fila total"><span>TOTAL</span><span class="der">${fmt(totalCobrado)}</span></div>`);
@@ -360,6 +368,10 @@ function generarEscpos(){
       totLista=Math.round(totLista*(100-d.descuento_pct)/100);
       totPromo=Math.round(totPromo*(100-d.descuento_pct)/100);
     }
+    (d.extras||[]).forEach(e=>{
+      lin(fila2("+ "+e.concepto, fmtP(e.monto)));
+      totLista+=e.monto; totPromo+=e.monto;
+    });
     negrita(true);
     lin(fila2("Total lista",fmtP(totLista)));
     lin(fila2("Total con descuento",fmtP(totPromo)));
@@ -379,6 +391,7 @@ function generarEscpos(){
     if(d.desc_jubilado>0) lin(fila2((d.descuento_nombre||"Descuento")+" "+d.descuento_pct+"%","-"+fmtP(d.desc_jubilado)));
     const descPagos=d.pagos.reduce((a,p)=>a+(p.desc_aplicado||0),0);
     if(descPagos>0) lin(fila2("Descuento (al abonar)","-"+fmtP(descPagos)));
+    (d.extras||[]).forEach(e=>lin(fila2("+ "+e.concepto, fmtP(e.monto))));
     negrita(true); grande(true);
     lin(fila2("TOTAL",fmtP(d.ingresado+Math.max(d.saldo,0)),24));   // 24 cols: la letra es doble ancho
     grande(false); negrita(false);

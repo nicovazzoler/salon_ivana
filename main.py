@@ -89,11 +89,14 @@ class LineaCompIn(BaseModel):
     item_id: int | None = None; cantidad: int = 1; dificultad: bool = False; precio_custom: int | None = None; nombre: str | None = None
     ajuste_pct: int = 0                      # ajuste de esta línea, con signo: -10 descuenta, +15 recarga
     ajuste_nombre: str | None = None         # motivo, si salió de la lista de ajustes
+class ExtraIn(BaseModel):
+    concepto: str; monto: int
 class ComprobanteIn(BaseModel):
     tipo: str; cliente_id: int | None = None; cliente_nombre: str | None = None; peluquero: str | None = None
     forma_pago: str = "efectivo"
     descuento_pct: int = 0; descuento_nombre: str | None = None; mostrar_motivo: bool = False
     lineas: list[LineaCompIn]
+    extras: list[ExtraIn] = []            # cargos que ningún descuento toca
 class PagoIn(BaseModel):
     monto: int; forma_pago: str; alias: str | None = None; saldado: int | None = None
 class FormaIn(BaseModel):
@@ -204,7 +207,10 @@ def estado_comprobante(db, comp) -> dict:
 
     # El descuento de listado (jubilado) va sobre el subtotal YA con el descuento efectivo restado.
     desc_jubilado = round(subtotal * (comp.descuento_pct or 0) / 100)
-    total_final = subtotal - desc_jubilado
+    # Los extras entran al final, después de TODOS los descuentos: son cargos que
+    # no se negocian (traslado, un producto que se lleva, etc.).
+    extras_total = sum(e.monto or 0 for e in comp.extras)
+    total_final = subtotal - desc_jubilado + extras_total
 
     pagos = db.query(models.Pago).filter(models.Pago.comprobante_id == comp.id).all()
     pagado = sum((p.saldado if p.saldado is not None else p.monto) for p in pagos)
@@ -221,6 +227,7 @@ def estado_comprobante(db, comp) -> dict:
         "desc_efectivo": desc_efectivo,             # diferencia entre listas (0 si no es efectivo)
         "subtotal": subtotal,                       # subtotal ya con el descuento efectivo
         "desc_jubilado": desc_jubilado,             # descuento de listado
+        "extras_total": extras_total,               # cargos que no toca ningún descuento
         "total_final": total_final,                 # lo que paga el cliente
         "pagado": pagado, "ingresado": ingresado, "saldo": saldo, "estado": estado,
     }
@@ -642,6 +649,7 @@ def ver_comprobante(comp_id: int, _ = Depends(usuario_actual), db: Session = Dep
                     "precio_unit_final": precio_con_ajuste(l.precio_unit, l.ajuste_pct),
                     "precio_efectivo_final": precio_con_ajuste(l.precio_efectivo, l.ajuste_pct)}
                    for l in comp.lineas],
+        "extras": [{"concepto": e.concepto, "monto": e.monto} for e in comp.extras],
         "pagos": [{"id": p.id, "fecha": p.fecha.isoformat(), "monto": p.monto, "saldado": p.saldado,
                    "desc_aplicado": p.desc_aplicado, "forma_pago": p.forma_pago, "alias": p.alias}
                   for p in db.query(models.Pago).filter(models.Pago.comprobante_id == comp.id).order_by(models.Pago.fecha)],
@@ -694,6 +702,10 @@ def crear_comprobante(c: ComprobanteIn, user = Depends(usuario_actual), db: Sess
             cantidad=ln.cantidad, precio_unit=precio, precio_efectivo=ln.precio_custom,
             ajuste_pct=ajuste, ajuste_nombre=(ln.ajuste_nombre or None) if ajuste else None,
             dificultad=ln.dificultad, subtotal=sub))
+    for ex in c.extras:
+        concepto = (ex.concepto or "").strip()
+        if not concepto or not ex.monto: continue
+        db.add(models.ComprobanteExtra(comprobante_id=comp.id, concepto=concepto, monto=ex.monto))
     comp.total_lista = total
     comp.extra_dificultad = extra_total
     db.commit(); db.refresh(comp)
@@ -762,6 +774,8 @@ def convertir_a_ticket(comp_id: int, user = Depends(usuario_actual), db: Session
             cantidad=l.cantidad, precio_unit=l.precio_unit, precio_efectivo=l.precio_efectivo,
             ajuste_pct=l.ajuste_pct or 0, ajuste_nombre=l.ajuste_nombre,
             dificultad=l.dificultad, subtotal=l.subtotal))
+    for e in presu.extras:
+        db.add(models.ComprobanteExtra(comprobante_id=ticket.id, concepto=e.concepto, monto=e.monto))
     db.commit(); db.refresh(ticket)
     return {"id": ticket.id, "numero": ticket.numero}
 
