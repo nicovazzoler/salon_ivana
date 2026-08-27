@@ -307,10 +307,50 @@ function fila2(izq,der,w=ANCHO){
   if(izq.length>max) izq=izq.slice(0,max);
   return izq+" ".repeat(w-izq.length-der.length)+der;
 }
-function fila3(a,b,c){                       // detalle | lista | promo (26+11+11)
+
+/* Corta un texto en renglones del ancho del papel SIN partir palabras.
+   El papel tiene 48 columnas: los nombres largos hay que bajarlos de renglón,
+   no recortarlos, o se pierde parte del nombre (y marcas como el * de dificultad). */
+function envolver(txt, w=ANCHO){
+  const palabras = translit(txt).split(/\s+/).filter(Boolean);
+  const lineas = []; let actual = "";
+  palabras.forEach(pal => {
+    if(!actual){ actual = pal; return; }
+    if((actual + " " + pal).length <= w) actual += " " + pal;
+    else { lineas.push(actual); actual = pal; }
+  });
+  if(actual) lineas.push(actual);
+  // una sola palabra más larga que el papel: ahí sí no queda otra que cortarla
+  return lineas.flatMap(l => l.length <= w ? [l] : (l.match(new RegExp(`.{1,${w}}`,"g")) || [l]));
+}
+
+/* Renglón de ítem: el nombre envuelve y el precio se pega a la derecha del
+   último renglón; si no entra, el precio baja a un renglón propio. */
+function filaItem(etiqueta, precio, w=ANCHO){
+  const der = translit(precio);
+  const lineas = envolver(etiqueta, w);
+  const ultima = lineas[lineas.length-1];
+  if(ultima.length + der.length + 1 <= w){
+    lineas[lineas.length-1] = ultima + " ".repeat(w - ultima.length - der.length) + der;
+  } else {
+    lineas.push(" ".repeat(Math.max(0, w - der.length)) + der);
+  }
+  return lineas;
+}
+
+function fila3(a,b,c){                       // detalle | lista | con desc. (26+11+11)
   a=translit(a); b=translit(b); c=translit(c);
   if(a.length>26) a=a.slice(0,26);
   return a+" ".repeat(26-a.length)+b.padStart(11)+c.padStart(11);
+}
+
+/* Fila de 3 columnas cuyo detalle no entra en 26: el nombre sigue abajo,
+   sangrado, en vez de quedar cortado a la mitad. */
+function fila3Larga(a,b,c){
+  const partes = envolver(a, 26);
+  const salida = [fila3(partes[0], b, c)];
+  partes.slice(1).forEach(p => salida.push("  " + p));
+  return salida;
 }
 
 /* Renglón del ajuste de una línea, para la comandera */
@@ -347,15 +387,15 @@ function generarEscpos(){
   centro(false);
   sep();
   lin(fila2((esPresu?"PRESUPUESTO ":"TICKET ")+numComp(d.tipo,d.numero), fechaLocal(d.fecha)));
-  if(d.cliente_nombre) lin("Cliente: "+d.cliente_nombre);
-  if(d.peluquero)      lin("Atendio: "+d.peluquero);
+  if(d.cliente_nombre) envolver("Cliente: "+d.cliente_nombre).forEach(lin);
+  if(d.peluquero)      envolver("Atendio: "+d.peluquero).forEach(lin);
   sep();
 
   if(esPresu){
     lin(fila3("Detalle","Lista","C/desc."));
     d.lineas.forEach(l=>{
-      lin(fila3(l.cantidad+"x "+l.nombre+(l.dificultad?" *":""),
-                fmtP(pu(l)*l.cantidad), fmtP(pe(l)*l.cantidad)));
+      fila3Larga(l.cantidad+"x "+l.nombre+(l.dificultad?" *":""),
+                 fmtP(pu(l)*l.cantidad), fmtP(pe(l)*l.cantidad)).forEach(lin);
       if(l.ajuste_pct) lin(lineaAjuste(l));
     });
     if(d.extra_dificultad>0) lin(fila2("* Extra dificultad","+"+fmtP(d.extra_dificultad)));
@@ -369,7 +409,7 @@ function generarEscpos(){
       totPromo=Math.round(totPromo*(100-d.descuento_pct)/100);
     }
     (d.extras||[]).forEach(e=>{
-      lin(fila2("+ "+e.concepto, fmtP(e.monto)));
+      filaItem("+ "+e.concepto, fmtP(e.monto)).forEach(lin);
       totLista+=e.monto; totPromo+=e.monto;
     });
     negrita(true);
@@ -382,7 +422,7 @@ function generarEscpos(){
     centro(false);
   } else {
     d.lineas.forEach(l=>{
-      lin(fila2(l.cantidad+"x "+l.nombre+(l.dificultad?" *":""), fmtP(pu(l)*l.cantidad)));
+      filaItem(l.cantidad+"x "+l.nombre+(l.dificultad?" *":""), fmtP(pu(l)*l.cantidad)).forEach(lin);
       if(l.ajuste_pct) lin(lineaAjuste(l));
     });
     if(d.extra_dificultad>0) lin(fila2("* Extra dificultad","+"+fmtP(d.extra_dificultad)));
@@ -391,7 +431,7 @@ function generarEscpos(){
     if(d.desc_jubilado>0) lin(fila2((d.descuento_nombre||"Descuento")+" "+d.descuento_pct+"%","-"+fmtP(d.desc_jubilado)));
     const descPagos=d.pagos.reduce((a,p)=>a+(p.desc_aplicado||0),0);
     if(descPagos>0) lin(fila2("Descuento (al abonar)","-"+fmtP(descPagos)));
-    (d.extras||[]).forEach(e=>lin(fila2("+ "+e.concepto, fmtP(e.monto))));
+    (d.extras||[]).forEach(e=>filaItem("+ "+e.concepto, fmtP(e.monto)).forEach(lin));
     negrita(true); grande(true);
     lin(fila2("TOTAL",fmtP(d.ingresado+Math.max(d.saldo,0)),24));   // 24 cols: la letra es doble ancho
     grande(false); negrita(false);
