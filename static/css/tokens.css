@@ -1,122 +1,144 @@
 /* ==========================================================================
    TOKENS — Colores, espaciados y tipografía
+
+   Identidad: papel cálido, tinta oscura y bronce como único acento. La idea es
+   la papelería de un local lindo, no un panel de administración: el color se usa
+   con cuentagotas y el trabajo pesado lo hacen la tipografía y el aire.
    ========================================================================== */
+
+/* Tipografías propias, servidas desde la app: la tablet del local puede quedarse
+   sin internet y el diseño tiene que aguantar igual. Son variables, así que un
+   archivo por familia cubre todos los pesos. */
+@font-face{
+  font-family:"Lora";
+  src:url("/static/fonts/lora.woff2") format("woff2");
+  font-weight:400 700; font-style:normal; font-display:swap;
+}
+@font-face{
+  font-family:"Karla";
+  src:url("/static/fonts/karla.woff2") format("woff2");
+  font-weight:400 700; font-style:normal; font-display:swap;
+}
 
 :root{
 
   /* ======================================================================
-        1. Valores crudos — de más oscuro a más claro
+        1. Valores crudos
      ====================================================================== */
 
-  /* Dorado — color de marca */
-  --oro-100:#e8d5a3;              /* dorado claro, para títulos */
-  --oro-500:#c9a84c;              /* dorado principal */
-  --oro-a08:rgba(201,168,76,.08);
-  --oro-a12:rgba(201,168,76,.12);
-  --oro-a15:rgba(201,168,76,.15);
-  --oro-a25:rgba(201,168,76,.25);
-  --oro-a35:rgba(201,168,76,.35);
+  /* Papel — los fondos, de más claro a más tostado */
+  --papel-100:#fffdf9;            /* tarjeta, lo más claro */
+  --papel-200:#faf6ed;            /* superficie sutil */
+  --papel-300:#f2ece0;            /* fondo de la app */
+  --papel-400:#e9e1d1;            /* hundido: inputs, pestañas apagadas */
+  --papel-500:#ddd2bc;            /* filete marcado */
+  --papel-600:#cfc2a8;            /* borde de campo */
 
-  /* Neutros — de más oscuro a más claro */
-  --gris-900:#1a1a1a;             /* texto sobre dorado */
-  --gris-800:#1f1f1f;             /* header, ticket */
-  --gris-700:#2b2b2b;             /* fondo de la app, inputs */
-  --gris-600:#363636;             /* cards, superficies elevadas */
-  --gris-500:#3a3a3a;             /* bordes */
-  --gris-400:#555;                /* botón deshabilitado */
-  --gris-300:#777;                /* placeholders */
-  --gris-250:#888;                /* texto tenue */
-  --gris-200:#aaa;                /* texto suave */
-  --gris-100:#e0dcd4;             /* texto principal */
+  /* Tinta — los textos, de más oscuro a más suave */
+  --tinta-900:#211c14;            /* títulos y montos */
+  --tinta-700:#3d3629;            /* texto corriente */
+  --tinta-500:#6e6353;            /* texto secundario */
+  --tinta-400:#8d8271;            /* texto tenue, placeholders */
+  --tinta-300:#a89d8a;            /* lo más apagado */
 
-  /* Blancos translúcidos — capas sobre fondo oscuro.
-     Ventaja sobre un gris fijo: se adaptan a lo que tengan debajo. */
-  --blanco-a04:rgba(255,255,255,.04);
-  --blanco-a06:rgba(255,255,255,.06);
-  --blanco-a08:rgba(255,255,255,.08);
-  --blanco-a10:rgba(255,255,255,.10);
+  /* Bronce — el acento, uno solo y bien medido */
+  --bronce-700:#6d5518;           /* texto sobre papel: pasa contraste */
+  --bronce-600:#8a6d1f;           /* etiquetas en versalita */
+  --bronce-500:#a8862f;           /* filetes, bordes activos */
+  --bronce-400:#c9a84c;           /* la marca; relleno de botón principal */
+  --bronce-a08:rgba(138,109,31,.08);
+  --bronce-a15:rgba(138,109,31,.15);
+  --bronce-a30:rgba(138,109,31,.30);
 
-  /* Estados */
-  --rojo-500:#c0392b;             /* error, deuda, anular */
-  --verde-500:#8fcb9b;            /* pagado */
-  --naranja-500:#c0785a;          /* egresos, dificultad */
-
-  /* Estados de comprobante */
-  --est-pend-bg:#4a2c2c;   --est-pend-fg:#e8a3a3;
-  --est-parc-bg:#4a3a24;   --est-parc-fg:#e0b878;
-  --est-pago-bg:#26402c;   --est-pago-fg:#8fcb9b;
-  --est-presu-bg:#2c3a4a;  --est-presu-fg:#9fc0e0;
+  /* Estados — sacados del mismo mundo cálido, nunca colores de semáforo */
+  --verde-700:#2f5d43;            /* pagado, al día */
+  --verde-bg:#e6efe7;
+  --rojo-700:#9a3b26;             /* deuda, anular, egresos */
+  --rojo-bg:#fbe9e3;
+  --ocre-700:#8a5a20;             /* parcial, dificultad, avisos */
+  --ocre-bg:#f8eeda;
+  --azul-700:#3a5570;             /* presupuesto: informativo, no es plata */
+  --azul-bg:#e8edf2;
 
   /* ======================================================================
         2. Semánticos — para usar en la app
      ====================================================================== */
 
-  /* Fondos */
-  --bg-app:        var(--gris-700);
-  --bg-header:     var(--gris-800);
-  --bg-card:       var(--gris-600);
-  --bg-input:      var(--gris-700);
-  --bg-sutil:      var(--blanco-a06);   /* pills, chips, botones secundarios */
-  --bg-sutil-hover:var(--blanco-a10);
-  --bg-hundido:    var(--gris-800);   /* pestañas inactivas, "fondo bajo" */
-  --bg-hover:      var(--blanco-a06); /* filas de lista al pasar el mouse */
+  --bg-app:        var(--papel-300);
+  --bg-header:     var(--papel-100);
+  --bg-card:       var(--papel-100);
+  --bg-input:      var(--papel-100);
+  --bg-sutil:      var(--papel-200);   /* pills, chips, botones secundarios */
+  --bg-sutil-hover:var(--papel-400);
+  --bg-hundido:    var(--papel-400);   /* pestañas inactivas */
+  --bg-hover:      var(--papel-200);   /* filas de lista al pasar el mouse */
 
-  /* Texto */
-  --text:          var(--gris-100);
-  --text-suave:    var(--gris-200);
-  --text-tenue:    var(--gris-250);
-  --text-titulo:   var(--oro-100);
-  --text-marca:    var(--oro-500);
-  --text-invertido: var(--gris-900);   /* texto oscuro ENCIMA del dorado */
+  --text:          var(--tinta-700);
+  --text-suave:    var(--tinta-500);
+  --text-tenue:    var(--tinta-400);
+  --text-titulo:   var(--tinta-900);   /* los títulos son TINTA, no dorados */
+  --text-marca:    var(--bronce-700);
+  --text-invertido:#fffdf9;            /* sobre el bronce lleno */
 
-  /* Bordes */
-  --border:        var(--oro-a35);
-  --border-sutil:  var(--blanco-a06);
-  --border-marca:  var(--oro-a25);
-  --border-focus:  var(--oro-500);
+  /* Bordes: filetes finos y callados. El dorado se reserva para lo activo. */
+  --border:        var(--papel-500);
+  --border-sutil:  var(--papel-400);
+  --border-marca:  var(--bronce-a30);
+  --border-focus:  var(--bronce-500);
 
-  /* Estados semánticos */
-  --danger:        var(--rojo-500);
-  --danger-bg:     rgba(192,57,43,.15);
-  --success:       var(--verde-500);
-  --warn:          var(--naranja-500);
+  --danger:        var(--rojo-700);
+  --danger-bg:     var(--rojo-bg);
+  --success:       var(--verde-700);
+  --warn:          var(--ocre-700);
 
-  /* Acento (lo "seleccionado": pills activas, tabs, forma de pago elegida) */
-  --acento:        var(--oro-500);
-  --acento-bg:     var(--oro-a15);
-  --acento-border: var(--oro-a25);
+  --acento:        var(--bronce-600);
+  --acento-fuerte: var(--bronce-400);  /* relleno del botón principal */
+  --acento-bg:     var(--bronce-a08);
+  --acento-border: var(--bronce-a30);
 
-  /* Deshabilitado */
-  --bg-disabled:   var(--gris-400);
-  --text-disabled: var(--gris-250);
+  --bg-disabled:   var(--papel-400);
+  --text-disabled: var(--tinta-300);
 
+  /* Estados de comprobante */
+  --est-pend-bg:var(--rojo-bg);   --est-pend-fg:var(--rojo-700);
+  --est-parc-bg:var(--ocre-bg);   --est-parc-fg:var(--ocre-700);
+  --est-pago-bg:var(--verde-bg);  --est-pago-fg:var(--verde-700);
+  --est-presu-bg:var(--azul-bg);  --est-presu-fg:var(--azul-700);
+
+  /* Compatibilidad con reglas viejas que todavía nombran la escala de grises
+     o los alfas dorados. Apuntan al equivalente en la paleta nueva. */
+  --gris-900:var(--tinta-900); --gris-800:var(--tinta-700); --gris-700:var(--tinta-500);
+  --gris-600:var(--papel-200); --gris-500:var(--papel-500); --gris-400:var(--papel-400);
+  --gris-300:var(--tinta-400); --gris-250:var(--tinta-400); --gris-200:var(--tinta-500);
+  --gris-100:var(--tinta-700);
+  --oro-100:var(--bronce-700); --oro-500:var(--bronce-600);
+  --oro-a08:var(--bronce-a08); --oro-a12:var(--bronce-a08); --oro-a15:var(--bronce-a15);
+  --oro-a25:var(--bronce-a30); --oro-a35:var(--papel-500);
+  --blanco-a04:var(--papel-200); --blanco-a06:var(--papel-200);
+  --blanco-a08:var(--papel-400); --blanco-a10:var(--papel-400);
 
   /* ======================================================================
-     3. ESCALAS - Espaciado, radios y tipografía
+        3. ESCALAS — Espaciado, radios y tipografía
      ====================================================================== */
 
-  /* Espaciado — todo múltiplo de 4 */
-  --sp-1:4px;
-  --sp-2:8px;
-  --sp-3:12px;
-  --sp-4:16px;
-  --sp-5:20px;
-  --sp-6:24px;
-  --sp-8:32px;
+  --sp-1:4px;  --sp-2:8px;  --sp-3:12px; --sp-4:16px;
+  --sp-5:20px; --sp-6:24px; --sp-8:32px;
 
-  /* Radios */
-  --r-sm:6px;      /* botones chicos, chips */
-  --r-md:8px;      /* inputs, botones */
-  --r-lg:10px;     /* botones grandes, items del catálogo */
-  --r-xl:14px;     /* cards */
-  --r-full:999px;  /* pills */
+  /* Radios chicos: el papel se corta con guillotina, no con molde */
+  --r-sm:4px;
+  --r-md:6px;
+  --r-lg:8px;
+  --r-xl:10px;
+  --r-full:999px;
 
-  /* Tipografía */
-  --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
-  --font-serif: Georgia, 'Times New Roman', serif;   /* la de los botones hoy */
+  /* Tipografía: Lora pone la cara (nombres, títulos, montos) y Karla hace el
+     trabajo denso (campos, tablas, botones), donde una serif cansaría. */
+  --font-display:"Lora", Georgia, "Times New Roman", serif;
+  --font-ui:"Karla", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
 
-  --font-texto:   var(--font-ui);      /* textos, títulos, tablas */
-  --font-control: var(--font-ui);     /* botones e inputs */
+  --font-texto:   var(--font-ui);
+  --font-control: var(--font-ui);
+  --font-serif:   var(--font-display);
 
   --fs-xs:11px;
   --fs-sm:12px;
@@ -129,17 +151,14 @@
   --fw-normal:400;
   --fw-medium:500;
   --fw-bold:600;
-  --fw-strong:700;
-  --fw-black:800;
+  --fw-strong:600;
+  --fw-black:700;
 
-  /* Sombras */
-  --sombra-card: 0 8px 30px rgba(0,0,0,.5);
+  /* Versalita espaciada: la etiqueta chiquita de arriba de cada cosa */
+  --tracking-eti:.14em;
 
-  /* Capas (z-index) — que estén acá evita el z-index:9999 desesperado */
-  --z-header:5;
-  --z-dropdown:20;
-  --z-modal:50;
-  --z-toast:100;
+  /* Sombra apenas insinuada: sobre papel, una sombra fuerte ensucia */
+  --sombra-card: 0 1px 2px rgba(33,28,20,.04), 0 6px 20px -14px rgba(33,28,20,.22);
 
-
+  --z-header:5; --z-dropdown:20; --z-modal:50; --z-toast:100;
 }

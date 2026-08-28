@@ -128,18 +128,45 @@
     .cat-pill .cuenta{ margin-left:4px; }
   }
 
-  /* --- líneas del ticket --- */
+  /* --- líneas del ticket ---
+     Dos renglones fijos: arriba el nombre y el precio, abajo la tira de
+     controles. Antes iba todo en una fila que envolvía distinto en cada línea
+     —en una la × quedaba colgada sola— porque son seis cosas en ~400px. */
   .linea{
-    display:flex; align-items:center; gap:var(--sp-2);
-    padding:var(--sp-2) 0;
+    display:grid;
+    grid-template-columns:minmax(0,1fr) auto;
+    align-items:baseline;
+    gap:2px var(--sp-3);
+    padding:var(--sp-3) 0;
     border-bottom:1px solid var(--border-sutil);
   }
-  .linea .n{ flex:1; font-size:var(--fs-md); }
-  .linea .pin{ width:80px; }
+  .linea .n{
+    font-family:var(--font-display);
+    font-size:var(--fs-lg);
+    color:var(--text-titulo);
+    line-height:1.3;
+    overflow-wrap:anywhere;
+  }
+  .linea .precios-linea{ text-align:right; white-space:nowrap; }
 
-  .linea input{
-  min-width:0;
-}
+  /* El ajuste explica la línea de arriba: sangrado y en su propio renglón,
+     igual que sale en el ticket impreso. */
+  .linea .aj-nota{
+    grid-column:1 / -1;
+    font-size:var(--fs-sm);
+    color:var(--text-suave);
+  }
+
+  /* Tira de controles: ocupa el ancho y se ordena sola. Los de la línea a la
+     izquierda, la cantidad y el quitar a la derecha. */
+  .linea .controles{
+    grid-column:1 / -1;
+    display:flex; align-items:center; gap:6px;
+    margin-top:8px;
+  }
+  .linea .controles .separa{ margin-left:auto; }
+
+  .linea input{ min-width:0; }
 
   /* --- línea de ítem extra (cargado a mano) --- */
   .linea.editando{                      /* resalta la línea mientras se completa */
@@ -303,9 +330,9 @@
     margin-top:var(--sp-2);
     padding-top:var(--sp-2);
     border-top:1px solid var(--border);
-    font-size:20px;
-    font-weight:var(--fw-strong);
-    color:var(--acento);             
+    font-size:22px;
+    font-weight:var(--fw-bold);
+    color:var(--text-titulo);
   }
 
   /* --- botones de acción --- */
@@ -405,7 +432,7 @@
         <button id="btnPresu">Presupuesto</button>
       </div>
       <div class="fila" style="margin-top:8px;">
-        <label>Forma de pago:</label>
+        <label>Forma de pago</label>
         <select id="formaPago" style="flex:1;">
           <option value="efectivo">Efectivo</option>
           <option value="transfer">Transferencia</option>
@@ -414,19 +441,19 @@
         </select>
       </div>
       <div class="fila" id="aliasBox" style="display:none;">
-        <label>Alias:</label>
+        <label>Alias</label>
         <input id="aliasTransfer" list="aliasList" placeholder="¿A qué cuenta se transfiere?" style="flex:1;">
       </div>
 
       <div class="fila">
-        <label>Cliente: <span style="color:var(--danger);">*</span></label>
+        <label>Cliente <span style="color:var(--danger);">*</span></label>
           <div style="position:relative;flex:1;">
           <input id="cliente" autocomplete="off" placeholder="Nombre del cliente (obligatorio)" style="width:100%;">
           <div id="cliDrop" class="cli-drop" style="display:none;"></div>
         </div>
       </div>
       <div class="fila">
-        <label>Peluquero:</label>
+        <label>Peluquero</label>
         <input id="peluquero" placeholder="(opcional)" style="flex:1;">
       </div>
 
@@ -434,7 +461,7 @@
       <button id="item-extra">+ Agregar item extra</button>
 
       <div class="fila" style="margin-top:14px;">
-        <label>Descuento:</label>
+        <label>Descuento</label>
         <select id="descuento" style="flex:1;"></select>
       </div>
 
@@ -479,7 +506,7 @@
           <input id="cobroMonto" type="number" placeholder="Cuánto saldar" style="width:110px;">
         </div>
         <div class="fila" id="cobroAliasBox" style="display:none;">
-          <label>Alias:</label>
+          <label>Alias</label>
           <input id="cobroAlias" list="aliasList" placeholder="¿A qué cuenta?" style="flex:1;">
           <datalist id="aliasList"></datalist>
         </div>
@@ -492,11 +519,11 @@
         <div class="tot-row"><span>Deuda (transfer)</span><span id="mxDeuda">$0</span></div>
         <div id="mxAviso" class="aviso" style="display:none;"></div>
         <div class="fila" style="margin-top:10px;">
-          <label>Efectivo:</label>
+          <label>Efectivo</label>
           <input id="mxEfectivo" type="number" placeholder="Cuánto paga en efectivo" style="flex:1;">
         </div>
         <div class="fila" id="mxAliasBox">
-          <label>Alias:</label>
+          <label>Alias</label>
           <input id="mxAlias" list="aliasList" placeholder="¿A qué cuenta?" style="flex:1;">
         </div>
 
@@ -843,10 +870,13 @@ function renderTicket(){
         :`<span class="n">${l.nombre}</span>
           ${preciosHTML}`
       }
-      ${editando ? "" : `<button class="${ajClase}" title="${ajTitulo}">${ajTexto}</button>`}
-      <button class="dif ${l.dificultad?'on':''}">Dif</button>
-      <div class="qty"><button class="menos">−</button><span>${l.cantidad}</span><button class="mas">+</button></div>
-      <button class="quitar">×</button>
+      ${(!editando && aj) ? `<span class="aj-nota">↳ ${esc(l.ajusteNombre || (aj<0?"Descuento":"Recargo"))} ${aj<0?"−":"+"}${Math.abs(aj)}%</span>` : ""}
+      <div class="controles">
+        ${editando ? "" : `<button class="${ajClase}" title="${ajTitulo}">${ajTexto}</button>`}
+        <button class="dif ${l.dificultad?'on':''}">Dif</button>
+        <div class="qty separa"><button class="menos">−</button><span>${l.cantidad}</span><button class="mas">+</button></div>
+        <button class="quitar">×</button>
+      </div>
       ${l.ajusteAbierto && !editando ? `
       <div class="aj-panel">
         <span class="lbl">Ajuste:</span>

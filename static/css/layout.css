@@ -2,6 +2,8 @@
    LAYOUT — header, nav, contenedores, cards, filas
    ========================================================================== */
 
+/* Cabecera: papel claro separado del fondo por un filete, no por una barra
+   oscura. El nombre de la pantalla va en la serif. */
 header{
   position:sticky; top:0; z-index:var(--z-header);
   display:flex;
@@ -9,11 +11,14 @@ header{
   align-items:center;
   flex-wrap:wrap;
   gap:var(--sp-3);
-  padding:var(--sp-5) var(--sp-8);
+  padding:var(--sp-4) var(--sp-6);
   background:var(--bg-header);
+  border-bottom:1px solid var(--border);
   color:var(--text-titulo);
-  font-size:var(--fs-2xl);
-  font-weight:var(--fw-black);
+  font-family:var(--font-display);
+  font-size:23px;
+  font-weight:var(--fw-bold);
+  letter-spacing:-.01em;
 }
 
 /* ----- EXC Agenda ----- */
@@ -29,22 +34,24 @@ nav.menu{
   gap:var(--sp-2);
 }
 
+/* El menú deja de ser una fila de botones: son enlaces, y el actual se marca
+   con un filete abajo. Mucho menos ruido arriba de cada pantalla. */
 nav.menu a{
   display:inline-block;
-  padding:9px 13px;
-  border-radius:var(--r-lg);
-  background:var(--blanco-a08);
-  color:rgba(255,255,255,.6);
+  padding:6px 2px;
+  border-bottom:2px solid transparent;
+  color:var(--text-suave);
   text-decoration:none;
-  font-size:var(--fs-md);
+  font-family:var(--font-ui);
+  font-size:var(--fs-base);
   font-weight:var(--fw-bold);
+  text-transform:uppercase;
+  letter-spacing:.08em;
+  transition:color .15s ease, border-color .15s ease;
 }
-
-nav.menu a:hover,
-nav.menu a.actual{ 
-  background:var(--acento);
-  color:var(--text-invertido);
-}
+nav.menu{ gap:var(--sp-5); }
+nav.menu a:hover{ color:var(--text-titulo); border-bottom-color:var(--papel-500); }
+nav.menu a.actual{ color:var(--text-marca); border-bottom-color:var(--bronce-500); }
 
 /* ----- Contenedores ----- */
 .wrap{
@@ -57,16 +64,18 @@ nav.menu a.actual{
 .card,
 .panel{
   background:var(--bg-card);
-  border:1px solid var(--border);
+  border:1px solid var(--border-sutil);
   border-radius:var(--r-xl);
-  padding:18px;
+  padding:20px;
   margin-bottom:var(--sp-4);
   color:var(--text);
+  box-shadow:var(--sombra-card);
 }
 
 .card h2,
 .panel-head{
   color:var(--text-titulo);
+  font-family:var(--font-display);
 }
 .panel-head.egr{           /* panel de egresos */
   color:var(--warn);

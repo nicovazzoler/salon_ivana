@@ -14,28 +14,32 @@
 /* ----- Botones con variante ----- */
 
 .b-ok,
-.b-tinta,
 .confirmar{
-  background:var(--acento);
-  color:var(--text-invertido);
+  background:var(--acento-fuerte);
+  color:var(--tinta-900);
 }
+.b-ok:hover,
+.confirmar:hover{ background:var(--bronce-500); color:var(--text-invertido); }
+
+.b-tinta{                            /* acción secundaria con peso: tinta llena */
+  background:var(--tinta-900);
+  color:var(--papel-100);
+}
+.b-tinta:hover{ background:var(--tinta-700); color:var(--papel-100); }
 
 .b-out{                              /* botón "fantasma": solo borde */
   background:transparent;
-  border:1px solid var(--border);
+  border:1px solid var(--papel-600);
   color:var(--text);
 }
-.b-out:hover{ border-color:var(--acento); }
+.b-out:hover{ background:var(--bg-sutil); border-color:var(--tinta-400); color:var(--text-titulo); }
 
 .b-del{                              /* acción destructiva */
   background:transparent;
-  border:1px solid var(--danger);
-  color:var(--danger); 
+  border:1px solid var(--bronce-a30);
+  color:var(--danger);
 }
-.b-del:hover{
-    transform:translateY(-1px);
-    box-shadow:0 3px 10px var(--danger);
-  }
+.b-del:hover{ background:var(--danger-bg); border-color:var(--danger); color:var(--danger); }
 .confirmar{                          /* botón grande de cerrar venta */
   width:100%;
   padding:var(--sp-3);
@@ -48,34 +52,36 @@
     display:inline-flex; align-items:center; justify-content:center; gap:5px;
     min-height:34px;
     padding:5px 12px;
-    background:transparent; color:var(--acento);
-    border:1px solid var(--acento); border-radius:999px;
+    background:transparent; color:var(--text-marca);
+    border:1px solid var(--bronce-a30); border-radius:var(--r-md);
     font-size:var(--fs-sm); font-weight:var(--fw-bold);
     text-decoration:none;
-    transition:transform .1s ease, box-shadow .2s ease;
+    transition:background .15s ease, border-color .15s ease;
   }
 .btnAbonar:hover{
-    transform:translateY(-1px);
-    background:var(--oro-a12);
-    box-shadow:0 3px 10px var(--oro-a35);
+    background:var(--acento-bg);
+    border-color:var(--bronce-500);
   }
 
 /* ----- Pills: filtros de categoría (cápsula) ----- */
 .pill{
   padding:6px 14px;
-  border:1px solid transparent;
+  border:1px solid var(--border-sutil);
   border-radius:var(--r-full);
   background:var(--bg-sutil);
   color:var(--text-suave);
+  font-family:var(--font-ui);
   font-size:var(--fs-base);
+  font-weight:var(--fw-medium);
   cursor:pointer;
-  transition:all .15s;
+  transition:background .15s, border-color .15s, color .15s;
 }
-.pill:hover{ border-color:var(--oro-a25); }
+.pill:hover{ border-color:var(--papel-600); color:var(--text-titulo); }
 .pill.on{
   background:var(--acento-bg);
-  color:var(--acento);
-  border-color:var(--acento-border);
+  color:var(--text-marca);
+  border-color:var(--bronce-a30);
+  font-weight:var(--fw-bold);
 }
 
 /* Contenedor de pills */
@@ -95,36 +101,44 @@
 .seg button{
   flex:1;
   padding:var(--sp-3);
-  background:var(--bg-hundido);      /* ← hundido, no elevado */
-  border:1px solid var(--border);
+  background:transparent;            /* el inactivo se corre al fondo, no es un bloque */
+  border:1px solid var(--border-sutil);
   color:var(--text-suave);
+  font-family:var(--font-ui);
+  text-transform:uppercase;
+  font-size:var(--fs-base);
+  letter-spacing:.08em;
 }
 .seg button.on{
-  background:var(--acento);
-  color:var(--text-invertido);
-  border-color:var(--acento);
+  background:var(--bg-card);
+  color:var(--text-titulo);
+  border-color:var(--bronce-500);
+  box-shadow:inset 0 -2px 0 var(--bronce-500);
 }
 
 /* ----- Tag: etiqueta informativa ----- */
 .tag{
   display:inline-block;
   padding:2px var(--sp-2);
-  border-radius:var(--r-full);
+  border-radius:var(--r-sm);
   background:var(--acento-bg);
-  color:var(--acento);
+  color:var(--text-marca);
   font-size:var(--fs-xs);
+  font-weight:var(--fw-medium);
 }
 
 .tag.neutro{ background:var(--bg-sutil); color:var(--text-tenue); }
 
 /* ----- Badge: estado de un comprobante ----- */
 .badge{
-  padding:3px var(--sp-3);
+  padding:3px var(--sp-2);
   border-radius:var(--r-sm);
+  font-family:var(--font-ui);
   font-size:var(--fs-xs);
   font-weight:var(--fw-bold);
   white-space:nowrap;
-  text-transform:capitalize;
+  text-transform:uppercase;
+  letter-spacing:.08em;
 }
 .badge.pendiente   { background:var(--est-pend-bg);  color:var(--est-pend-fg);  }
 .badge.parcial     { background:var(--est-parc-bg);  color:var(--est-parc-fg);  }
@@ -140,9 +154,10 @@
   transform:translateX(-50%);
   z-index:var(--z-toast);
   padding:var(--sp-3) var(--sp-5);
-  border-radius:var(--r-xl);
-  background:var(--acento);
-  color:var(--text-invertido);
+  border-radius:var(--r-md);
+  background:var(--tinta-900);
+  color:var(--papel-100);
+  box-shadow:0 8px 30px -10px rgba(33,28,20,.5);
   font-weight:var(--fw-bold);
   opacity:0;
   pointer-events:none;      /* invisible al mouse aunque esté ahí */
@@ -170,16 +185,23 @@
   text-align:right;
   font-variant-numeric:tabular-nums;   /* los números no bailan al actualizarse */
 }
+/* Los montos van en la serif: es lo que más se mira en toda la app */
+.comp-total, .fila-total, .tot-final, .num .val, .kpi .val, .saldo-box .val{
+  font-family:var(--font-display);
+  font-variant-numeric:tabular-nums;
+}
 .neto-pos{ color:var(--acento); font-weight:var(--fw-bold); }
 .neto-neg{ color:var(--danger); font-weight:var(--fw-bold); }
 
 /* ----- Comprobante: tarjeta de ticket / presupuesto -----
    Esqueleto para historial.html y cuenta.html */
 .comp{
-  padding:14px;
+  padding:16px;
   margin-bottom:10px;
-  border:1px solid var(--border);
-  border-radius:12px;
+  border:1px solid var(--border-sutil);
+  border-radius:var(--r-lg);
+  background:var(--bg-card);
+  box-shadow:var(--sombra-card);
 }
 .comp-head{
   display:flex;
@@ -250,10 +272,11 @@
 /* Detalle desplegable (arranca oculto, el JS lo abre) */
 .detalle-box{
     margin-top:10px;
-    padding:12px;
-    border:2px solid var(--oro-a35);
-    border-radius:10px;
-    background:var(--oro-a08);
+    padding:14px;
+    border:1px solid var(--border-sutil);
+    border-left:2px solid var(--bronce-500);
+    border-radius:var(--r-md);
+    background:var(--papel-200);
   }
 
 /* ----- Botón "Ver detalle" ----- */

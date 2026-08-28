@@ -1,75 +1,141 @@
 <!DOCTYPE html>
 <html lang="es"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="theme-color" content="#1f1f1f"><title>Ingresar — Peluquería</title>
+<meta name="theme-color" content="#f2ece0"><title>Ingresar — Salón Ivana</title>
 <link rel="stylesheet" href="/static/css/app.css">
 <style>
+  /* La puerta de entrada: es la pantalla que más se mira y la que fija el tono
+     del resto. Todo el peso lo llevan la tipografía y el aire. */
   body{
-    display:flex;
-    align-items:center;
-    justify-content:center;
-    min-height:100vh;
+    display:flex; align-items:center; justify-content:center;
+    min-height:100vh; padding:24px;
+    background:var(--papel-300);
   }
+
   .box{
-    width:300px;
-    padding:var(--sp-8);
-    background:var(--bg-card);
-    border:1px solid var(--border);
-    border-radius:18px;
+    width:100%; max-width:360px;
+    padding:40px 36px 34px;
+    background:var(--papel-100);
+    border:1px solid var(--papel-500);
+    border-radius:var(--r-xl);
     box-shadow:var(--sombra-card);
   }
-  .box h1{ margin:0 0 var(--sp-1); font-size:20px; text-align:center; }
-  .box p{
-    margin:0 0 var(--sp-5);
-    font-size:var(--fs-base);
-    text-align:center;
-    color:var(--text-tenue);
+
+  /* Marca: versalita espaciada arriba, nombre en la serif abajo */
+  .marca{
+    font-family:var(--font-ui);
+    font-size:var(--fs-xs);
+    font-weight:var(--fw-bold);
+    text-transform:uppercase;
+    letter-spacing:.22em;
+    color:var(--bronce-600);
   }
+  .box h1{
+    margin:10px 0 0;
+    font-family:var(--font-display);
+    font-size:38px;
+    font-weight:var(--fw-bold);
+    line-height:1.05;
+    letter-spacing:-.02em;
+    color:var(--tinta-900);
+  }
+  /* El filete corto es la firma que se repite en toda la app */
+  .filete{
+    width:44px; height:2px; margin:18px 0 22px;
+    background:var(--bronce-500);
+  }
+  .box .sub{
+    margin:0 0 26px;
+    font-size:var(--fs-md);
+    color:var(--tinta-500);
+  }
+
+  .campo{ margin-bottom:16px; }
+  .campo label{ display:block; margin-bottom:6px; }
   .box input{
     width:100%;
-    margin:6px 0 14px;
-    padding:11px;
-    border-radius:var(--r-lg);
+    padding:12px 14px;
+    background:var(--papel-200);
+    border:1px solid var(--papel-600);
+    border-radius:var(--r-md);
+    font-size:16px;               /* 16px: evita que el celular haga zoom al enfocar */
   }
+  .box input:focus{ background:var(--papel-100); }
+
   .box button{
     width:100%;
-    padding:13px;
-    border-radius:var(--r-lg);
-    font-size:16px;
-    font-weight:var(--fw-strong);
+    margin-top:8px;
+    padding:14px;
+    border-radius:var(--r-md);
+    background:var(--tinta-900);
+    color:var(--papel-100);
+    font-size:var(--fs-md);
+    font-weight:var(--fw-bold);
+    text-transform:uppercase;
+    letter-spacing:.14em;
   }
+  .box button:hover{ background:var(--tinta-700); color:var(--papel-100); }
+
   .err{
-    margin-top:10px;
+    margin-top:14px;
     min-height:18px;      /* reserva el lugar: el layout no salta al aparecer el error */
     font-size:var(--fs-base);
-    text-align:center;
     color:var(--danger);
   }
+
+  .pie{
+    margin-top:26px; padding-top:18px;
+    border-top:1px solid var(--papel-400);
+    font-family:var(--font-ui);
+    font-size:var(--fs-xs);
+    letter-spacing:.12em;
+    text-transform:uppercase;
+    color:var(--tinta-300);
+  }
 </style>
+</head><body>
 <div class="box">
-  <h1>💈 Salón Ivana </h1>
-  <p>Ingresá para continuar</p>
-  <label>Usuario</label><input id="u" autocomplete="username">
-  <label>Contraseña</label><input id="p" type="password" autocomplete="current-password">
+  <div class="marca">Peluquería</div>
+  <h1>Salón Ivana</h1>
+  <div class="filete"></div>
+  <p class="sub">Ingresá para continuar.</p>
+
+  <div class="campo">
+    <label for="u">Usuario</label>
+    <input id="u" autocomplete="username">
+  </div>
+  <div class="campo">
+    <label for="p">Contraseña</label>
+    <input id="p" type="password" autocomplete="current-password">
+  </div>
+
   <button id="btn">Ingresar</button>
-  <div class="err" id="err"></div>
+  <div class="err" id="err" role="alert"></div>
+
+  <div class="pie">Sistema de gestión</div>
 </div>
 <script>
 async function entrar(){
   const u=document.getElementById("u").value.trim(), p=document.getElementById("p").value;
-  document.getElementById("err").textContent="";
+  const err=document.getElementById("err"), btn=document.getElementById("btn");
+  err.textContent="";
+  if(!u || !p){ err.textContent="Completá usuario y contraseña"; return; }
+  btn.disabled=true; btn.textContent="Ingresando…";
   try{
     const r=await fetch("/api/login",{method:"POST",headers:{"Content-Type":"application/json"},
       body:JSON.stringify({usuario:u,password:p})});
-    if(!r.ok){document.getElementById("err").textContent="Usuario o contraseña incorrectos";return;}
+    if(!r.ok){ err.textContent="Usuario o contraseña incorrectos"; return; }
     const d=await r.json();
     localStorage.setItem("pelu_token",d.token);
     localStorage.setItem("pelu_rol",d.rol);
     localStorage.setItem("pelu_user",d.usuario);
     location.href="/";
-  }catch(e){document.getElementById("err").textContent="No se pudo conectar";}
+  }catch(e){ err.textContent="No se pudo conectar"; }
+  finally{ btn.disabled=false; btn.textContent="Ingresar"; }
 }
 document.getElementById("btn").onclick=entrar;
-document.getElementById("p").addEventListener("keydown",e=>{if(e.key==="Enter")entrar();});
+["u","p"].forEach(id=>document.getElementById(id)
+  .addEventListener("keydown",e=>{ if(e.key==="Enter") entrar(); }));
+document.getElementById("u").focus();
 </script>
 </body></html>

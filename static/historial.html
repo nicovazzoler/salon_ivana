@@ -8,10 +8,7 @@
   .wrap{ max-width:800px; }
 
   /* Tarjeta de comprobante */
-  .comp{
-    background:var(--bg-card);
-    color:var(--text-marca);    
-  }
+  .comp{ background:var(--bg-card); }
   .comp-head{
     cursor:pointer;
   }
@@ -48,12 +45,13 @@
   }
 
   /* Forzar regla */
+  /* El número de comprobante es el dato de identidad: bronce, chico y firme */
   .comp-head .num{
-    background:none;
-    padding:0;
+    background:none; padding:0;
     color:var(--text-marca);
-    font-weight:700;
+    font-weight:var(--fw-bold);
   }
+  .comp-total{ color:var(--text-titulo); }
   
 </style>
 </head><body>

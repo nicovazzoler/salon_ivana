@@ -20,24 +20,34 @@ body{
 h1,h2,h3{
   margin:0 0 var(--sp-3);
   color:var(--text-titulo);
+  font-family:var(--font-display);
   font-weight:var(--fw-bold);
+  letter-spacing:-.01em;
+  text-wrap:balance;
 }
-h2{ font-size:var(--fs-xl); }
+h2{ font-size:21px; line-height:1.25; }
+h3{ font-size:var(--fs-xl); }
 
 /* ----- Formularios ----- */
+/* La etiqueta chiquita de arriba de cada campo: versalita espaciada en bronce.
+   Es el gesto que se repite en toda la app y la ata visualmente. */
 label{
-  color:var(--text-suave);
-  font-size:var(--fs-sm);
+  color:var(--text-marca);
+  font-family:var(--font-ui);
+  font-size:var(--fs-xs);
+  font-weight:var(--fw-bold);
+  text-transform:uppercase;
+  letter-spacing:var(--tracking-eti);
 }
 
 input,select,textarea{
-  padding:9px;
-  border:1px solid var(--border);
+  padding:10px 12px;
+  border:1px solid var(--papel-600);
   border-radius:var(--r-md);
   font-size:var(--fs-lg);
   font-family:var(--font-control);
   background:var(--bg-input);
-  color:var(--text);
+  color:var(--tinta-900);
 }
 input::placeholder,
 textarea::placeholder{
@@ -45,7 +55,13 @@ textarea::placeholder{
 }
 input:focus,select:focus,textarea:focus{
   border-color:var(--border-focus);
-  outline:none;
+  outline:2px solid var(--bronce-a30);
+  outline-offset:1px;
+}
+/* Que el teclado se vea tan bien como el mouse */
+button:focus-visible, a:focus-visible, summary:focus-visible{
+  outline:2px solid var(--bronce-500);
+  outline-offset:2px;
 }
 input:disabled,select:disabled{
   opacity:.5;
@@ -57,13 +73,15 @@ button{
   font-family:var(--font-control);
   font-size:var(--fs-md);
   font-weight:var(--fw-bold);
-  padding:9px 14px;
-  border:none;
+  padding:10px 16px;
+  border:1px solid transparent;
   border-radius:var(--r-md);
   cursor:pointer;
-  background:var(--acento);
-  color:var(--text-invertido);
+  background:var(--acento-fuerte);
+  color:var(--tinta-900);
+  transition:background .15s ease, border-color .15s ease;
 }
+button:hover{ background:var(--bronce-500); color:var(--text-invertido); }
 
 /* ----- Botones deshabilitados ----- */ 
 button:disabled{
@@ -86,11 +104,12 @@ th,td{
   vertical-align:middle;
 }
 th{
-  color:var(--text-marca);
-  font-size:var(--fs-sm);
+  color:var(--text-tenue);
+  font-size:var(--fs-xs);
+  font-weight:var(--fw-bold);
   text-transform:uppercase;
-  letter-spacing:.03em;
-  border-bottom:1px solid var(--blanco-a10);
+  letter-spacing:var(--tracking-eti);
+  border-bottom:1px solid var(--border);
 }
 td{
   border-bottom:1px solid var(--border-sutil);
@@ -104,6 +123,13 @@ hr{
 }
 
 a{ color:var(--text-marca); }
+
+/* Números que se comparan en columna: que no bailen */
+td, .money, .monto{ font-variant-numeric:tabular-nums; }
+
+@media (prefers-reduced-motion:reduce){
+  *{ transition:none !important; animation:none !important; }
+}
 
 /* ----- Scrollbar ----- */
 ::-webkit-scrollbar{ width:8px; height:8px; }

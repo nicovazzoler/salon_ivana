@@ -1,21 +1,115 @@
 <!DOCTYPE html>
 <html lang="es"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="theme-color" content="#1f1f1f"><title>Inventario — Peluquería</title>
+<meta name="theme-color" content="#f2ece0"><title>Inventario — Salón Ivana</title>
 <link rel="stylesheet" href="/static/css/app.css">
 <style>
-  input{ width:70px; padding:7px; font-size:var(--fs-md); }
-  input.buscar{ width:100%; font-size:var(--fs-lg); }
-  th{ font-size:var(--fs-xs); } 
-  /* Entrada de mercadería: cantidad + botón, juntos */
-  .ent{ display:flex; align-items:center; gap:var(--sp-1); }
-  .ent input{ width:60px; }
-  button.sumar{
-    background:transparent;
-    border:1px solid var(--acento);
-    color:var(--acento);
+  .wrap{ max-width:980px; }
+
+  .card-head{ margin-bottom:var(--sp-4); }
+  .card-head h2{ margin:0; }
+  .card-head p{ margin:var(--sp-1) 0 0; font-size:var(--fs-base); color:var(--text-tenue); max-width:64ch; }
+
+  /* ----- Resumen: lo primero es cuánto hay que reponer ----- */
+  .kpis{
+    display:grid; grid-template-columns:repeat(auto-fit, minmax(140px,1fr));
+    gap:var(--sp-3); margin-bottom:var(--sp-5);
   }
-  .ok{ color:var(--text-tenue); font-size:var(--fs-sm); }
+  .kpi{
+    padding:var(--sp-3) var(--sp-4);
+    border:1px solid var(--border-sutil);
+    border-radius:var(--r-lg);
+    background:var(--papel-200);
+  }
+  .kpi .lbl{
+    display:block; font-size:var(--fs-xs); color:var(--text-tenue);
+    text-transform:uppercase; letter-spacing:var(--tracking-eti); font-weight:var(--fw-bold);
+  }
+  .kpi .val{
+    display:block; margin-top:3px;
+    font-family:var(--font-display); font-size:26px; font-weight:var(--fw-bold);
+    color:var(--text-titulo); font-variant-numeric:tabular-nums;
+  }
+  .kpi.urgente{ background:var(--rojo-bg); border-color:rgba(154,59,38,.2); }
+  .kpi.urgente .val{ color:var(--danger); }
+
+  /* ----- Barra de herramientas ----- */
+  .herramientas{ display:flex; flex-wrap:wrap; gap:var(--sp-2); align-items:center; margin-bottom:var(--sp-3); }
+  .herramientas .buscar{ flex:1 1 220px; min-width:0; }
+  .filtros{ display:flex; gap:6px; flex-wrap:wrap; margin-bottom:var(--sp-4); }
+
+  /* ----- Renglón de producto -----
+     Se va la tabla de 6 columnas con 27 botones dorados gritando. Cada producto
+     es una fila con una franja de estado a la izquierda: lo que hay que reponer
+     se ve sin leer una palabra. */
+  .prod{
+    display:grid;
+    grid-template-columns:3px minmax(0,1fr) auto;
+    align-items:center;
+    gap:0 var(--sp-4);
+    padding:0;
+    border:1px solid var(--border-sutil);
+    border-radius:var(--r-md);
+    background:var(--bg-card);
+    margin-bottom:6px;
+    overflow:hidden;
+  }
+  .franja{ align-self:stretch; background:var(--papel-500); }
+  .prod.reponer .franja{ background:var(--danger); }
+  .prod.sinstock .franja{ background:var(--danger); }
+  .prod.ok       .franja{ background:var(--success); }
+
+  .prod-datos{ padding:12px 0 12px var(--sp-3); min-width:0; }
+  .prod-nombre{
+    font-family:var(--font-display); font-size:var(--fs-lg);
+    color:var(--text-titulo); line-height:1.3; overflow-wrap:anywhere;
+  }
+  .prod-estado{
+    margin-top:3px; font-size:var(--fs-sm); color:var(--text-tenue);
+    font-variant-numeric:tabular-nums;
+  }
+  .prod-estado b{ color:var(--danger); font-weight:var(--fw-bold); }
+
+  .prod-campos{
+    display:flex; align-items:flex-end; gap:var(--sp-3);
+    padding:10px var(--sp-3) 10px 0; flex-wrap:wrap;
+  }
+  .campo{ display:flex; flex-direction:column; gap:3px; }
+  .campo label{ font-size:10px; }
+  .campo input{ width:78px; padding:7px 9px; font-size:var(--fs-md); text-align:right; }
+  .campo.entrada{ position:relative; }
+  .campo.entrada input{ width:66px; }
+
+  .prod .acciones{ display:flex; align-items:center; gap:6px; }
+  .prod .guardar{
+    background:transparent; border:1px solid var(--papel-600); color:var(--text);
+    padding:8px 12px; font-size:var(--fs-base);
+  }
+  .prod .guardar:hover{ background:var(--bg-sutil); color:var(--text-titulo); }
+  /* Recién cuando hay algo sin guardar el botón se pone en bronce */
+  .prod.sucio .guardar{ background:var(--acento-fuerte); border-color:var(--acento-fuerte); color:var(--tinta-900); }
+  .prod.sucio .guardar:hover{ background:var(--bronce-500); color:var(--text-invertido); }
+  .prod .sumar{
+    background:transparent; border:1px solid var(--bronce-a30); color:var(--text-marca);
+    padding:8px 11px; font-size:var(--fs-base);
+  }
+  .prod .sumar:hover{ background:var(--acento-bg); border-color:var(--bronce-500); }
+
+  @media (max-width:720px){
+    .prod{ grid-template-columns:3px minmax(0,1fr); }
+    .prod-campos{ grid-column:2; padding-left:var(--sp-3); }
+  }
+
+  /* ----- Historial de movimientos ----- */
+  #historial{ margin-top:var(--sp-4); }
+  #historial .caja{
+    max-height:340px; overflow:auto;
+    border:1px solid var(--border-sutil); border-radius:var(--r-md);
+    background:var(--papel-200); padding:var(--sp-3);
+  }
+  #historial table{ min-width:640px; }
+  .mov-mas{ color:var(--success); font-weight:var(--fw-bold); }
+  .mov-menos{ color:var(--danger); font-weight:var(--fw-bold); }
 </style>
 </head><body>
 <header>
@@ -30,90 +124,168 @@
   <a href="#" onclick="logout();return false;">Salir</a>
   </nav>
 </header>
-<div class="wrap"><div class="card">
-  <p class="ok">Cargá el stock contado en "Stock actual", o usá "Entrada" para sumar lo que llegó sin calcular el total. Cuando el stock llega o baja del mínimo aparece <span class="badge alerta">REPONER</span>. El stock baja solo con cada venta.</p>
-  <input class="buscar" id="buscar" placeholder="🔎 Buscar producto por nombre..." style="margin:8px 0 14px;">
-  <div style="margin-bottom:14px;display:flex;gap:8px;align-items:center;">
-    <button id="btnHist" class="b-out" style="font-size:13px;">📋 Ver historial de movimientos</button>
+<div class="wrap">
+  <div class="card">
+    <div class="card-head">
+      <h2>Productos en stock</h2>
+      <p>Cargá el stock contado en <b>Actual</b>, o usá <b>Entrada</b> para sumar lo que
+         llegó sin hacer la cuenta. Baja solo con cada venta.</p>
+    </div>
+
+    <div class="kpis" id="kpis"></div>
+
+    <div class="herramientas">
+      <input class="buscar" id="buscar" placeholder="🔎 Buscar producto por nombre...">
+      <button id="btnHist" class="b-out">📋 Movimientos</button>
+    </div>
+
+    <div class="filtros" id="filtros">
+      <button class="pill on" data-f="todos">Todos</button>
+      <button class="pill" data-f="reponer">A reponer</button>
+      <button class="pill" data-f="sinstock">Sin stock</button>
+    </div>
+
+    <div id="historial" style="display:none;"></div>
+    <div id="lista"></div>
   </div>
-  <div id="historial" style="display:none;margin-bottom:16px;max-height:300px;overflow-y:auto;"></div>
-  <table><thead><tr><th>Producto</th><th>Stock actual</th><th>Mínimo</th><th>Entrada (+)</th><th>Estado</th><th></th></tr></thead>
-  <tbody id="cuerpo"></tbody></table>
-</div></div>
+</div>
 <div class="toast" id="toast"></div>
 <script src="/static/auth.js"></script>
 <script>
 requireDueno(); pintarNav();
 const $=s=>document.querySelector(s);
+const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 function toast(m){const t=$("#toast");t.textContent=m;t.classList.add("show");setTimeout(()=>t.classList.remove("show"),2000);}
-let PRODS=[];
+
+let PRODS=[], filtro="todos";
 
 async function cargar(){
   PRODS=await (await authFetch("/api/inventario")).json();
   render();
 }
-$("#buscar").oninput=render;
+
+/* Estado de un producto. "Sin stock" es peor que "a reponer" y merece su propio
+   aviso: uno es "pedí pronto", el otro es "hoy no lo podés vender". */
+function estadoDe(p){
+  if((p.stock_actual||0) <= 0) return "sinstock";
+  return p.reponer ? "reponer" : "ok";
+}
 
 function render(){
   const q=$("#buscar").value.trim().toLowerCase();
-  const lista=q ? PRODS.filter(p=>p.nombre.toLowerCase().includes(q)) : PRODS;
-  const tb=$("#cuerpo");tb.innerHTML="";
-  if(lista.length===0){ tb.innerHTML='<tr><td colspan="6" class="ok">Sin productos para mostrar.</td></tr>'; return; }
+
+  // El resumen se calcula sobre TODO, no sobre lo filtrado: si no, buscar
+  // algo cambiaría los números de arriba y no querrían decir nada.
+  const sinStock = PRODS.filter(p=>estadoDe(p)==="sinstock").length;
+  const aReponer = PRODS.filter(p=>estadoDe(p)==="reponer").length;
+  $("#kpis").innerHTML=`
+    <div class="kpi"><span class="lbl">Productos</span><span class="val">${PRODS.length}</span></div>
+    <div class="kpi${aReponer?'':''}"><span class="lbl">A reponer</span><span class="val">${aReponer}</span></div>
+    <div class="kpi${sinStock?' urgente':''}"><span class="lbl">Sin stock</span><span class="val">${sinStock}</span></div>
+    <div class="kpi"><span class="lbl">Unidades</span><span class="val">${PRODS.reduce((a,p)=>a+(p.stock_actual||0),0)}</span></div>`;
+
+  let lista = PRODS;
+  if(filtro!=="todos") lista = lista.filter(p=>estadoDe(p)===filtro);
+  if(q) lista = lista.filter(p=>p.nombre.toLowerCase().includes(q));
+
+  const cont=$("#lista"); cont.innerHTML="";
+  if(lista.length===0){
+    cont.innerHTML = `<p class="muted" style="padding:20px 0;">${
+      PRODS.length===0 ? "No hay productos cargados." :
+      filtro==="sinstock" ? "Ningún producto sin stock. 🎉" :
+      filtro==="reponer"  ? "Nada para reponer. 🎉" : "Ningún producto coincide."}</p>`;
+    return;
+  }
+
   lista.forEach(p=>{
-    const tr=document.createElement("tr");
-    tr.innerHTML=`<td>${p.nombre}</td>
-      <td><input type="number" class="sa" value="${p.stock_actual}"></td>
-      <td><input type="number" class="sm" value="${p.stock_minimo}"></td>
-      <td><div class="ent"><input type="number" class="ent-cant" placeholder="0"><button class="sumar">Sumar</button></div></td>
-      <td>${p.reponer?'<span class="badge alerta">REPONER</span>':'<span class="ok">OK</span>'}</td>
-      <td><button class="guardar">Guardar</button></td>`;
-    const guardar=async(sa,sm)=>{
-      await authFetch(`/api/inventario/${p.id}`,{method:"PUT",headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({stock_actual:sa, stock_minimo:sm})});
+    const est=estadoDe(p);
+    const fila=document.createElement("div");
+    fila.className="prod "+est;
+    const nota = est==="sinstock" ? `<b>Sin stock</b> · mínimo ${p.stock_minimo}`
+               : est==="reponer"  ? `<b>A reponer</b> · quedan ${p.stock_actual}, mínimo ${p.stock_minimo}`
+               : `${p.stock_actual} en stock · mínimo ${p.stock_minimo}`;
+    fila.innerHTML=`
+      <span class="franja"></span>
+      <div class="prod-datos">
+        <div class="prod-nombre">${esc(p.nombre)}</div>
+        <div class="prod-estado">${nota}</div>
+      </div>
+      <div class="prod-campos">
+        <div class="campo"><label>Actual</label><input type="number" class="sa" value="${p.stock_actual}"></div>
+        <div class="campo"><label>Mínimo</label><input type="number" class="sm" value="${p.stock_minimo}"></div>
+        <div class="campo entrada"><label>Entrada</label><input type="number" class="ent" placeholder="0"></div>
+        <div class="acciones">
+          <button class="sumar" title="Sumar lo que entró al stock actual">Sumar</button>
+          <button class="guardar">Guardar</button>
+        </div>
+      </div>`;
+
+    const sa=fila.querySelector(".sa"), sm=fila.querySelector(".sm"), ent=fila.querySelector(".ent");
+
+    // Marca la fila como "sin guardar" apenas se toca algo: el botón se enciende
+    // solo donde hay cambios, en vez de 27 botones dorados todo el tiempo.
+    const marcarSucio=()=>fila.classList.toggle("sucio",
+      (parseInt(sa.value)||0)!==p.stock_actual || (parseInt(sm.value)||0)!==p.stock_minimo);
+    [sa,sm].forEach(i=>i.addEventListener("input", marcarSucio));
+
+    const guardar=async(nuevoSa,nuevoSm)=>{
+      const r=await authFetch(`/api/inventario/${p.id}`,{method:"PUT",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({stock_actual:nuevoSa, stock_minimo:nuevoSm})});
+      return r.ok;
     };
-    tr.querySelector(".guardar").onclick=async()=>{
-      await guardar(parseInt(tr.querySelector(".sa").value)||0, parseInt(tr.querySelector(".sm").value)||0);
-      toast("Guardado"); cargar();
+
+    fila.querySelector(".guardar").onclick=async()=>{
+      if(await guardar(parseInt(sa.value)||0, parseInt(sm.value)||0)){ toast("Guardado"); cargar(); }
+      else toast("No se pudo guardar");
     };
-    tr.querySelector(".sumar").onclick=async()=>{
-      const entra=parseInt(tr.querySelector(".ent-cant").value)||0;
-      if(!entra){ toast("Poné cuánto entró"); return; }
-      const nuevo=(parseInt(tr.querySelector(".sa").value)||0)+entra;
-      await guardar(nuevo, parseInt(tr.querySelector(".sm").value)||0);
-      toast(`+${entra} → ${nuevo}`); cargar();
+    fila.querySelector(".sumar").onclick=async()=>{
+      const entra=parseInt(ent.value)||0;
+      if(!entra){ toast("Poné cuánto entró"); ent.focus(); return; }
+      const nuevo=(parseInt(sa.value)||0)+entra;
+      if(await guardar(nuevo, parseInt(sm.value)||0)){ toast(`+${entra} → ${nuevo} en stock`); cargar(); }
+      else toast("No se pudo guardar");
     };
-    tb.appendChild(tr);
+    ent.addEventListener("keydown",e=>{ if(e.key==="Enter"){ e.preventDefault(); fila.querySelector(".sumar").click(); }});
+
+    cont.appendChild(fila);
   });
 }
-let histAbierto = false;
+
+$("#buscar").oninput=render;
+document.querySelectorAll("#filtros .pill").forEach(b=>{
+  b.onclick=()=>{
+    filtro=b.dataset.f;
+    document.querySelectorAll("#filtros .pill").forEach(x=>x.classList.toggle("on", x===b));
+    render();
+  };
+});
+
+let histAbierto=false;
 $("#btnHist").onclick = async ()=>{
-  histAbierto = !histAbierto;
-  const cont = $("#historial");
-  if(!histAbierto){ cont.style.display="none"; $("#btnHist").textContent="📋 Ver historial de movimientos"; return; }
+  histAbierto=!histAbierto;
+  const cont=$("#historial");
+  if(!histAbierto){ cont.style.display="none"; $("#btnHist").textContent="📋 Movimientos"; return; }
   cont.style.display="block";
-  $("#btnHist").textContent="📋 Ocultar historial";
+  $("#btnHist").textContent="📋 Ocultar movimientos";
   const movs = await (await authFetch("/api/inventario/historial")).json();
-  if(movs.length===0){ cont.innerHTML='<div class="muted" style="padding:10px;">Sin movimientos registrados.</div>'; return; }
-  let h='<table><thead><tr><th>Fecha</th><th>Producto</th><th>Tipo</th><th>Cambio</th><th>Stock</th><th>Motivo</th><th>Usuario</th></tr></thead><tbody>';
+  if(movs.length===0){ cont.innerHTML='<p class="muted">Sin movimientos registrados.</p>'; return; }
+  let h='<div class="caja"><table><thead><tr><th>Fecha</th><th>Producto</th><th>Tipo</th>'+
+        '<th>Cambio</th><th>Stock</th><th>Motivo</th><th>Usuario</th></tr></thead><tbody>';
   movs.forEach(m=>{
-    const prod = PRODS.find(p=>p.id===m.item_id);
-    const nombre = prod ? prod.nombre : "ID "+m.item_id;
-    const fecha = m.fecha.replace("T"," ").slice(0,16);
-    const color = m.cambio > 0 ? "var(--acento)" : "var(--danger)";
-    const signo = m.cambio > 0 ? "+" : "";
-    h+=`<tr>
-      <td>${fecha}</td>
-      <td>${nombre}</td>
-      <td>${m.tipo}</td>
-      <td style="color:${color};font-weight:600;">${signo}${m.cambio}</td>
-      <td>${m.antes} → ${m.despues}</td>
-      <td>${m.motivo||''}</td>
-      <td>${m.usuario||''}</td>
-    </tr>`;
+    const prod=PRODS.find(p=>p.id===m.item_id);
+    const nombre=prod ? prod.nombre : "ID "+m.item_id;
+    const fecha=m.fecha.replace("T"," ").slice(0,16);
+    const clase=m.cambio>0 ? "mov-mas" : "mov-menos";
+    const signo=m.cambio>0 ? "+" : "";
+    h+=`<tr><td>${fecha}</td><td>${esc(nombre)}</td><td>${esc(m.tipo)}</td>
+        <td class="${clase}">${signo}${m.cambio}</td>
+        <td>${m.antes} → ${m.despues}</td>
+        <td>${esc(m.motivo||'')}</td><td>${esc(m.usuario||'')}</td></tr>`;
   });
-  h+='</tbody></table>';
+  h+='</tbody></table></div>';
   cont.innerHTML=h;
 };
+
 cargar();
 </script>
 </body></html>
