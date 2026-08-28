@@ -1,8 +1,9 @@
 <!DOCTYPE html>
 <html lang="es"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="theme-color" content="#1f1f1f"><title>Facturar — Peluquería</title>
+<meta name="theme-color" content="#f2ece0"><title>Facturar — Peluquería</title>
 <link rel="stylesheet" href="/static/css/app.css">
+<script src="/static/tema.js"></script>
 <style>
   .wrap{ display:flex; flex-wrap:wrap; align-items:flex-start; gap:18px; }
   .fila{ margin-bottom:10px; }
@@ -218,7 +219,7 @@
     border:1px solid var(--border);
     color:var(--text-suave);
   }
-  .dif.on{ background:var(--warn); border-color:var(--warn); color:#fff; }
+  .dif.on{ background:var(--warn); border-color:var(--warn); color:var(--text-invertido); }
 
   /* --- ajuste por línea (descuento o recargo de ese ítem solo) --- */
   .aj{                                  /* botón que abre el panel */
@@ -229,7 +230,7 @@
     white-space:nowrap;
   }
   .aj.desc{ background:var(--acento-bg); border-color:var(--acento); color:var(--acento); }
-  .aj.rec { background:var(--warn); border-color:var(--warn); color:#fff; }
+  .aj.rec { background:var(--warn); border-color:var(--warn); color:var(--text-invertido); }
 
   /* El panel ocupa todo el ancho abajo de la línea: la línea envuelve */
   .linea{ flex-wrap:wrap; }

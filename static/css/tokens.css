@@ -55,6 +55,7 @@
   --verde-bg:#e6efe7;
   --rojo-700:#9a3b26;             /* deuda, anular, egresos */
   --rojo-bg:#fbe9e3;
+  --rojo-borde:#eccfc4;           /* filete de la tarjeta de alerta */
   --ocre-700:#8a5a20;             /* parcial, dificultad, avisos */
   --ocre-bg:#f8eeda;
   --azul-700:#3a5570;             /* presupuesto: informativo, no es plata */
@@ -161,4 +162,56 @@
   --sombra-card: 0 1px 2px rgba(33,28,20,.04), 0 6px 20px -14px rgba(33,28,20,.22);
 
   --z-header:5; --z-dropdown:20; --z-modal:50; --z-toast:100;
+}
+
+/* ==========================================================================
+   MODO OSCURO
+
+   No es el claro dado vuelta: sobre fondo oscuro el bronce oscuro desaparece y
+   los fondos de estado se vuelven manchas. Cada valor se eligió aparte,
+   manteniendo el mundo cálido (carbón con marrón adentro, nunca gris de plomo)
+   para que siga siendo la misma marca de noche.
+
+   Solo se redefinen los TOKENS. Los componentes nunca declaran un color adentro
+   de este bloque: si lo hicieran, quedarían sin color en el modo claro.
+   ========================================================================== */
+:root[data-tema="oscuro"]{
+
+  /* Los papeles pasan a ser carbones; el 100 sigue siendo "la superficie de
+     arriba de todo" (las tarjetas), solo que ahora es más clara que el fondo. */
+  --papel-100:#201b14;            /* tarjeta */
+  --papel-200:#282219;            /* superficie sutil */
+  --papel-300:#17130e;            /* fondo de la app */
+  --papel-400:#2f2820;            /* hundido */
+  --papel-500:#3b3226;            /* filete marcado */
+  --papel-600:#4a4031;            /* borde de campo */
+
+  /* Las tintas se aclaran: el 900 sigue siendo "lo que más contrasta". */
+  --tinta-900:#f4efe4;            /* títulos y montos */
+  --tinta-700:#ddd4c4;            /* texto corriente */
+  --tinta-500:#a89d8b;            /* texto secundario */
+  --tinta-400:#8a8071;            /* texto tenue, placeholders */
+  --tinta-300:#6b6254;            /* lo más apagado */
+
+  /* El bronce sube de tono: el #8a6d1f del claro no se ve sobre carbón. */
+  --bronce-700:#e0c07a;
+  --bronce-600:#d4b46a;
+  --bronce-500:#b8933f;
+  --bronce-400:#c9a84c;
+  --bronce-a08:rgba(212,180,106,.08);
+  --bronce-a15:rgba(212,180,106,.15);
+  --bronce-a30:rgba(212,180,106,.32);
+
+  /* Estados: el color del texto se aclara y el fondo se vuelve un tinte apenas
+     separado del carbón, en vez del pastel que funciona sobre papel. */
+  --verde-700:#9ccfa9;  --verde-bg:#1b2a20;
+  --rojo-700:#e5a08c;   --rojo-bg:#33201a;   --rojo-borde:#5a3628;
+  --ocre-700:#dfb06a;   --ocre-bg:#2e2416;
+  --azul-700:#a3bcd6;   --azul-bg:#1d2733;
+
+  /* Sobre el bronce lleno sigue yendo tinta oscura: es lo que más contrasta */
+  --text-invertido:#17130e;
+
+  /* En oscuro la sombra no separa; lo que separa es el filete */
+  --sombra-card: 0 1px 0 rgba(255,255,255,.02);
 }

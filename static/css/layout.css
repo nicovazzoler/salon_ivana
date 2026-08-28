@@ -53,6 +53,22 @@ nav.menu{ gap:var(--sp-5); }
 nav.menu a:hover{ color:var(--text-titulo); border-bottom-color:var(--papel-500); }
 nav.menu a.actual{ color:var(--text-marca); border-bottom-color:var(--bronce-500); }
 
+/* Interruptor de tema: vive en el menú, así aparece en todas las pantallas */
+.btn-tema{
+  display:inline-flex; align-items:center; justify-content:center;
+  width:32px; height:32px;   /* cuadrado: el sol y la luna no tienen el mismo ancho */
+  padding:0;
+  background:transparent;
+  border:1px solid var(--border);
+  border-radius:var(--r-md);
+  color:var(--text-suave);
+}
+.btn-tema:hover{
+  background:var(--bg-sutil);
+  border-color:var(--bronce-500);
+  color:var(--text-marca);
+}
+
 /* ----- Contenedores ----- */
 .wrap{
   max-width:1100px;

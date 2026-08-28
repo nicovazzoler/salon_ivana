@@ -1,8 +1,9 @@
 <!DOCTYPE html>
 <html lang="es"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="theme-color" content="#1f1f1f"><title>Historial — Peluquería</title>
+<meta name="theme-color" content="#f2ece0"><title>Historial — Peluquería</title>
 <link rel="stylesheet" href="/static/css/app.css">
+<script src="/static/tema.js"></script>
 <style>
   /* Única línea angosta */
   .wrap{ max-width:800px; }
@@ -135,7 +136,7 @@ function renderLista(){
     const fecha=new Date(comp.fecha).toLocaleDateString("es-AR");
     const quien=comp.cliente_nombre||"Mostrador";
     const pendiente = (comp.tipo==="ticket" && comp.saldo>0)
-      ? ` · <span style="color:#e0b878;">Pendiente ${fmt(comp.saldo)}</span>`
+      ? ` · <span style="color:var(--warn);">Pendiente ${fmt(comp.saldo)}</span>`
       : "";
     const formas = { efectivo:"Efectivo", transfer:"Transferencia", mixto:"Mixto", cuenta:"A cuenta" };
     const formaTxt = formas[comp.forma_origen] || comp.forma_origen;

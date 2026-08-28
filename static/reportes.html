@@ -1,8 +1,9 @@
 <!DOCTYPE html>
 <html lang="es"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="theme-color" content="#1f1f1f"><title>Reportes — Peluquería</title>
+<meta name="theme-color" content="#f2ece0"><title>Reportes — Peluquería</title>
 <link rel="stylesheet" href="/static/css/app.css">
+<script src="/static/tema.js"></script>
 <style>
   /* ----- Cabecera de cada bloque ----- */
   .card{ scroll-margin-top:96px; }
@@ -284,11 +285,15 @@ const money=n=>"$"+(n||0).toLocaleString("es-AR");
 const fmtNum=n=>(n||0).toLocaleString("es-AR");
 const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 
-/* Colores de las series. El dorado de marca (#c9a84c) queda fuera de la banda de
-   luminosidad para fondo oscuro, así que se usa un paso más oscuro. Para egresos
-   NO sirve el naranja de --warn: contra el dorado quedan casi indistinguibles
-   (y peor todavía con daltonismo). El rojo de --danger separa bien y además es
-   el color que la app ya usa para lo que sale de la caja. */
+/* Colores de las series. NO son tokens a propósito: son los dos únicos colores de
+   la app que tienen que funcionar igual con el tema claro y con el oscuro, y este
+   par lo hace (contraste, banda de luminosidad y separación con daltonismo, medido
+   contra papel #fffdf9 y contra carbón #201b14). Aclararlos para el oscuro los
+   saca de la banda y les come la separación entre sí, así que quedan fijos.
+   El dorado de marca (#c9a84c) tampoco entra en la banda. Para egresos NO sirve
+   el naranja de --warn: contra el dorado quedan casi indistinguibles (y peor
+   todavía con daltonismo). El rojo separa bien y además es el color que la app ya
+   usa para lo que sale de la caja. */
 const COLOR_ING = "#b08f3a";
 const COLOR_EGR = "#c0392b";
 

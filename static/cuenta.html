@@ -1,8 +1,9 @@
 <!DOCTYPE html>
 <html lang="es"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="theme-color" content="#1f1f1f"><title>Cuenta del cliente — Peluquería</title>
+<meta name="theme-color" content="#f2ece0"><title>Cuenta del cliente — Peluquería</title>
 <link rel="stylesheet" href="/static/css/app.css">
+<script src="/static/tema.js"></script>
 <style>
   /* ===== SOLO lo propio de la Cuenta del cliente ===== */
 
@@ -211,7 +212,7 @@ if($("#btnEliminar")) $("#btnEliminar").onclick=async()=>{
       const f=parseISO2(pt.turno.fecha);
       const cuando = pt.turno.es_hoy ? "Hoy" : f.toLocaleDateString("es-AR",{weekday:"long",day:"numeric",month:"long"});
       const box=document.createElement("div"); box.className="card";
-      box.style.cssText="background:#2c3a4a;color:#dbe7f2;border:none;";
+      box.style.cssText="background:var(--azul-bg);color:var(--azul-700);border:none;";
       box.innerHTML=`📅 <b>Próximo turno:</b> ${cuando} ${pt.turno.hora} · ${pt.turno.servicio}`;
       $("#turno").appendChild(box);
     }
