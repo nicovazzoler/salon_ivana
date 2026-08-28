@@ -8,6 +8,11 @@
   /* Única línea angosta */
   .wrap{ max-width:800px; }
 
+  /* Pie de la lista: "Ver más" o el aviso de que ya está completa */
+  .ver-mas{ margin:var(--sp-4) 0 var(--sp-5); text-align:center; }
+  .ver-mas button{ padding:10px 22px; }
+  .ver-mas .muted{ font-weight:var(--fw-normal); }
+
   /* Tarjeta de comprobante */
   .comp{ background:var(--bg-card); }
   .comp-head{
@@ -82,6 +87,7 @@
     <span id="resumenFiltro" class="muted" style="margin-left:auto;align-self:center;"></span>
   </div>
   <div id="lista"></div>
+  <div id="verMas" class="ver-mas"></div>
 </div>
 <div class="toast" id="toast"></div>
 
@@ -93,6 +99,10 @@ const fmt=n=>"$"+(n||0).toLocaleString("es-AR");
 let tipo="ticket";
 let todosComps=[];
 let estadoFiltro="todos";   // todos | deuda | convertidos | sinconvertir
+
+const POR_TRAMO=60;         // cuántos comprobantes se dibujan por vez
+let FILTRADOS=[];           // los que pasan los filtros (todos, aunque no estén dibujados)
+let mostrados=0;            // cuántos de FILTRADOS ya están en pantalla
 
 function toast(m){const t=$("#toast");t.textContent=m;t.classList.add("show");setTimeout(()=>t.classList.remove("show"),2200);}
 function numComp(t,n){ return (t==="ticket"?"A-":"P-")+String(n).padStart(5,"0"); }
@@ -129,9 +139,42 @@ function renderLista(){
                  : estadoFiltro==="convertidos" ? "pasados a ticket"
                  : estadoFiltro==="sinconvertir" ? "sin convertir" : "";
     cont.innerHTML=`<p class="muted">No hay ${tipo==="ticket"?"tickets":"presupuestos"} ${porQue} para mostrar.</p>`;
+    $("#verMas").innerHTML="";
     return;
   }
-  comps.forEach(comp=>{
+  FILTRADOS = comps;
+  mostrados = 0;
+  pintarMas();
+}
+
+/* Dibuja el siguiente tramo de la lista.
+
+   Los comprobantes de un año son más de mil, y dibujarlos todos de una deja
+   veinte mil elementos en la pantalla: la tablet se arrastra para scrollear y
+   cualquier cosa que repinte (cambiar de tema, girar la tablet) se nota. Se
+   filtra sobre TODOS —la búsqueda por cliente y por número sigue mirando el
+   historial completo—, pero se dibuja de a tramos.
+
+   Se agrega al final en vez de rehacer la lista, así lo que ya estaba dibujado
+   ni se toca y el detalle que tengas abierto se queda abierto. */
+function pintarMas(){
+  const cont=$("#lista");
+  const hasta = Math.min(mostrados + POR_TRAMO, FILTRADOS.length);
+  const tanda = document.createDocumentFragment();
+  for(let i=mostrados; i<hasta; i++) tanda.appendChild(crearFila(FILTRADOS[i]));
+  cont.appendChild(tanda);
+  mostrados = hasta;
+
+  const quedan = FILTRADOS.length - mostrados;
+  $("#verMas").innerHTML = quedan>0
+    ? `<button class="b-out" id="btnVerMas">Ver ${Math.min(quedan,POR_TRAMO)} más
+         <span class="muted">· quedan ${quedan}</span></button>`
+    : (FILTRADOS.length>POR_TRAMO ? `<span class="muted">Ya está toda la lista (${FILTRADOS.length}).</span>` : "");
+  const b=$("#btnVerMas");
+  if(b) b.onclick=pintarMas;
+}
+
+function crearFila(comp){
     const div=document.createElement("div"); div.className="comp";
     const fecha=new Date(comp.fecha).toLocaleDateString("es-AR");
     const quien=comp.cliente_nombre||"Mostrador";
@@ -251,9 +294,7 @@ function renderLista(){
         cargar();
       };
     }
-    cont.appendChild(div);
-  });
-  
+    return div;
 }
     
 /* "Con deuda" solo tiene sentido en tickets; "pasados a ticket" / "sin convertir",

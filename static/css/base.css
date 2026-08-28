@@ -131,6 +131,16 @@ td, .money, .monto{ font-variant-numeric:tabular-nums; }
   *{ transition:none !important; animation:none !important; }
 }
 
+/* Mientras se cambia de claro a oscuro. Las transiciones existen para el hover
+   sobre UN botón; cuando cambia el tema cambiarían de color todos los elementos
+   de la pantalla a la vez y en una lista larga eso son tirones. tema.js pone
+   este atributo, cambia el tema y lo saca en el cuadro siguiente. */
+:root[data-cambiando-tema] *,
+:root[data-cambiando-tema] *::before,
+:root[data-cambiando-tema] *::after{
+  transition:none !important;
+}
+
 /* ----- Scrollbar ----- */
 ::-webkit-scrollbar{ width:8px; height:8px; }
 ::-webkit-scrollbar-track{ background:var(--bg-app); }
