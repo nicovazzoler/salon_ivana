@@ -293,15 +293,66 @@
   .extra-linea .quitar{ padding:4px 8px; }
   .tot-extras{ color:var(--text-titulo); }
 
-  /* Caja de egresos plegada */
+  /* ----- Caja de egresos ----- */
   .caja-egreso summary{
+    display:flex; align-items:baseline; gap:var(--sp-3);
     cursor:pointer;
-    font-weight:var(--fw-strong);
-    color:var(--warn);
     list-style:none;
   }
   .caja-egreso summary::-webkit-details-marker{ display:none; }
-  .caja-egreso[open] summary{ margin-bottom:4px; }
+  .caja-egreso summary .tit{ font-weight:var(--fw-strong); color:var(--warn); }
+  /* Total del día, pegado a la derecha: se ve con el bloque abierto o cerrado */
+  .caja-egreso summary .hoy{
+    margin-left:auto;
+    font-size:var(--fs-base);
+    font-variant-numeric:tabular-nums;
+    color:var(--text-tenue);
+  }
+
+  /* Formulario en grilla: los campos caen siempre en el mismo lugar y el
+     concepto se queda con lo que sobra. */
+  .eg-form{
+    display:grid;
+    grid-template-columns:minmax(0,178px) minmax(0,1fr) 118px minmax(0,148px) auto;
+    align-items:end;
+    gap:var(--sp-2);
+    margin-top:var(--sp-3);
+  }
+  .eg-form .campo{ min-width:0; }
+  .eg-form .campo label{
+    display:block; margin-bottom:3px;
+    font-size:var(--fs-xs); color:var(--text-tenue);
+    text-transform:uppercase; letter-spacing:var(--tracking-eti); font-weight:var(--fw-bold);
+  }
+  .eg-form input, .eg-form select{ width:100%; }
+  .eg-form .monto-box{ display:flex; align-items:center; gap:2px; }
+  .eg-form .monto-box .pfx{ color:var(--text-tenue); }
+  @media (max-width:760px){
+    .eg-form{ grid-template-columns:1fr 1fr; }
+    .eg-form .concepto{ grid-column:1 / -1; }
+    .eg-form button{ grid-column:1 / -1; }
+  }
+
+  /* ----- Lo que salió hoy ----- */
+  .eg-hoy{ margin-top:var(--sp-4); }
+  .eg-tit{
+    margin-bottom:6px;
+    font-size:var(--fs-xs); color:var(--text-tenue);
+    text-transform:uppercase; letter-spacing:var(--tracking-eti); font-weight:var(--fw-bold);
+  }
+  .eg-row{
+    display:grid;
+    grid-template-columns:auto minmax(0,1fr) auto auto;
+    align-items:baseline;
+    gap:var(--sp-3);
+    padding:6px 0;
+    border-bottom:1px solid var(--border-sutil);
+  }
+  .eg-row:last-child{ border-bottom:none; }
+  .eg-row .hora{ font-size:var(--fs-sm); color:var(--text-tenue); font-variant-numeric:tabular-nums; }
+  .eg-row .que{ min-width:0; overflow-wrap:anywhere; }
+  .eg-row .det{ color:var(--text-tenue); }
+  .eg-row .monto{ font-weight:var(--fw-bold); color:var(--danger); font-variant-numeric:tabular-nums; }
 
   /* precio tachado cuando la línea tiene ajuste */
   .precio-viejo{
@@ -544,32 +595,38 @@
   <!-- Los egresos no son parte de facturar: van plegados para no competir con la
        carga del ticket, pero a un toque de distancia. -->
   <div class="col" style="flex:1 1 100%;">
-    <details class="card caja-egreso">
-      <summary>↓ Registrar egreso</summary>
-      <div class="fila" style="flex-wrap:wrap;align-items:flex-end;margin-top:12px;">
-        <div class="campo">
-          <label>Tipo</label>
+    <!-- Abierto de entrada: el egreso se carga en el momento en que pasa (llegó
+         el proveedor, se retiró plata), y con el bloque cerrado es un toque más
+         y algo que uno se olvida. Lo que salió hoy se ve sin abrir nada. -->
+    <details class="card caja-egreso" open>
+      <summary>
+        <span class="tit">↓ Registrar egreso</span>
+        <span class="hoy" id="egresoResumen"></span>
+      </summary>
+      <div class="eg-form">
+        <div class="campo tipo">
+          <label for="egTipo">Tipo</label>
           <input id="egTipo" list="egTipos" placeholder="Proveedor, retiro...">
           <datalist id="egTipos"></datalist>
         </div>
-        <div class="campo" style="flex:1;">
-          <label>Concepto</label>
-          <input id="egConcepto" placeholder="Detalle" style="width:100%;">
+        <div class="campo concepto">
+          <label for="egConcepto">Concepto</label>
+          <input id="egConcepto" placeholder="Detalle">
         </div>
-        <div class="campo">
-          <label>Monto</label>
-          <input id="egMonto" type="number" placeholder="0" style="width:110px;">
+        <div class="campo monto">
+          <label for="egMonto">Monto</label>
+          <div class="monto-box"><span class="pfx">$</span>
+            <input id="egMonto" type="number" inputmode="numeric" placeholder="0"></div>
         </div>
-        <div class="campo">
-          <label>Forma de pago</label>
+        <div class="campo pago">
+          <label for="egPago">Forma de pago</label>
           <select id="egPago"></select>
         </div>
-        <button id="btnGuardarEgreso">Registrar</button>
+        <button id="btnGuardarEgreso" class="b-ok">Registrar</button>
       </div>
-      <div style="margin-top:14px;">
-        <div id="toggleEgresosHoy" class="muted" style="cursor:pointer;margin-bottom:8px;">Egresos de hoy ▾</div>
-        <div id="egresosHoy"></div>
-      </div>
+      <!-- Antes esta lista estaba adentro de OTRO desplegable: dos toques para
+           ver lo que salió hoy. Ahora se muestra directo. -->
+      <div class="eg-hoy" id="egresosHoy"></div>
     </details>
   </div>
 
@@ -610,14 +667,24 @@ $("#btnGuardarEgreso").onclick=async()=>{
 async function cargarEgresosHoy(){
   const es=await (await authFetch("/api/egresos/dia")).json();
   const cont=$("#egresosHoy");
-  if(es.length===0){ cont.innerHTML='<div class="muted">Sin egresos hoy.</div>'; return; }
-  cont.innerHTML="";
+
+  /* El total del día va en el encabezado: si el bloque está cerrado, igual
+     sabés cuánto salió sin abrirlo. */
+  const total = es.reduce((a,e)=>a+e.monto, 0);
+  $("#egresoResumen").textContent = es.length
+    ? `${es.length} hoy · ${fmt(total)}`
+    : "";
+
+  if(es.length===0){ cont.innerHTML='<div class="muted">Todavía no salió plata hoy.</div>'; return; }
+  cont.innerHTML='<div class="eg-tit">Egresos de hoy</div>';
   es.forEach(e=>{
-    const row=document.createElement("div"); row.className="linea";
+    const row=document.createElement("div"); row.className="eg-row";
+    const detalle=[e.concepto, e.forma_pago].filter(Boolean).join(" · ");
     row.innerHTML=`
-      <span class="n">${e.hora} · ${e.tipo}${e.concepto?' · '+e.concepto:''} · ${e.forma_pago||''}</span>
-      <span style="min-width:70px;text-align:right;color:var(--danger);">−${fmt(e.monto)}</span>
-      <button class="quitar">×</button>`;
+      <span class="hora">${e.hora}</span>
+      <span class="que"><b>${e.tipo}</b>${detalle?' <span class="det">'+detalle+'</span>':''}</span>
+      <span class="monto">−${fmt(e.monto)}</span>
+      <button class="quitar" title="Anular este egreso">×</button>`;
     row.querySelector(".quitar").onclick=async()=>{
       if(!confirm("¿Anular este egreso?"))return;
       const r=await authFetch("/api/egresos/"+e.id,{method:"DELETE"});
@@ -627,11 +694,6 @@ async function cargarEgresosHoy(){
     cont.appendChild(row);
   });
 }
-
-$("#toggleEgresosHoy").onclick=()=>{
-  const el=$("#egresosHoy");
-  el.style.display = el.style.display==="none" ? "block" : "none";
-};
 
 async function init(){
   const cfg=await (await authFetch("/api/config")).json();

@@ -70,6 +70,34 @@ except Exception as _e:
 
 app = FastAPI(title="Pelu App")
 
+# ---------- caché del navegador ----------
+# Sin una cabecera Cache-Control, el navegador NO pregunta si el archivo cambió:
+# adivina cuánto sigue fresco (suele ser una fracción del tiempo desde la última
+# modificación) y hasta entonces sirve lo que tiene guardado. En la tablet del
+# local, que queda abierta días entre reinicios, eso significa seguir usando el
+# HTML, el CSS y el JS de la versión anterior aunque el servidor ya tenga otra.
+#
+# Se responde distinto según el archivo:
+#   - páginas, CSS y JS: "no-cache" NO quiere decir "no lo guardes", quiere decir
+#     "guardalo pero preguntá siempre". Con el ETag que ya manda StaticFiles, esa
+#     pregunta se contesta con un 304 vacío: es barato y garantiza que un deploy
+#     se ve enseguida.
+#   - tipografías e ícono: no cambian nunca, así que se guardan un año y no se
+#     vuelven a pedir. Si alguna vez cambian, cambia el nombre del archivo.
+CACHE_LARGO = ("/static/fonts/", "/static/favicon")
+
+@app.middleware("http")
+async def cabeceras_de_cache(request, call_next):
+    resp = await call_next(request)
+    ruta = request.url.path
+    if ruta.startswith("/api/"):
+        return resp
+    if ruta.startswith(CACHE_LARGO):
+        resp.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+    elif ruta.startswith("/static/") or resp.headers.get("content-type", "").startswith("text/html"):
+        resp.headers["Cache-Control"] = "no-cache"
+    return resp
+
 # ---------- esquemas ----------
 # Nota: la tabla `ventas` es del diseño viejo, anterior a los comprobantes. Ya no se
 # escribe y sus endpoints se sacaron, pero los modelos quedan para que el backup
