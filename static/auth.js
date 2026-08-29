@@ -35,6 +35,7 @@ function pintarNav(){
     html+=`<a href="${l.href}"${esActual?' class="actual"':''}>${l.txt}</a>`;
   }
   html+=`<a href="#" onclick="logout();return false;">Salir</a>`;
+  // la marca se agrega después, cuando el nav ya está en el DOM
   /* Interruptor, no botón: se ven los dos destinos a la vez y la perilla marca
      en cuál estás. role="switch" para que un lector de pantalla lo anuncie como
      lo que es. */
@@ -42,7 +43,29 @@ function pintarNav(){
       + `<span class="pista">${ICONO_SOL}${ICONO_LUNA}<span class="perilla"></span></span></button>`;
   nav.innerHTML=html;
   pintarBotonTema();
+  marcarBorradorEnMenu();
 }
+
+/* Si quedó un ticket a medio cargar, el link de Facturar lo muestra con un
+   puntito. Se lee del borrador en localStorage, así que la marca aparece en
+   TODAS las pantallas, no solo en facturar: la idea es enterarse mientras
+   estás en otro lado, que es justo cuando uno se olvida. */
+function marcarBorradorEnMenu(){
+  const link = document.querySelector('nav.menu a[href="/"], nav.menu a[href="/facturar"]');
+  if(!link) return;
+  let hay = false, cuantos = 0;
+  try{
+    const d = JSON.parse(localStorage.getItem("ticketBorrador") || "null");
+    // el borrador se descarta solo a las 12 horas; acá se respeta lo mismo
+    if(d && Date.now() - (d.guardado||0) < 12*3600*1000){
+      cuantos = (d.ticket||[]).length;
+      hay = cuantos > 0 || (d.extras||[]).length > 0;
+    }
+  }catch(e){}
+  link.classList.toggle("con-borrador", hay);
+  link.title = hay ? `Ticket en borrador: ${cuantos} ${cuantos===1?"ítem":"ítems"} sin cobrar` : "";
+}
+window.marcarBorradorEnMenu = marcarBorradorEnMenu;
 
 /* Sol y luna dibujados, no en emoji: los ☀/☾ del teclado dependen de la fuente
    que tenga el aparato y en la tablet del local pueden salir como un asterisco

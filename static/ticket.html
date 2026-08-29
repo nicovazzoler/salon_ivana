@@ -67,6 +67,13 @@
   .papel td{ vertical-align:top; padding:1px 0; color:inherit; border-bottom:none; font-size:inherit; }
   .papel td.precio{ text-align:right; white-space:nowrap; padding-left:8px; }
   .papel .gracias{ margin-top:12px; }
+  /* El aviso legal: chico, espaciado y en versalita, para que se lea como un
+     sello y no compita con el detalle. */
+  .papel .legal{
+    font-size:10px;
+    letter-spacing:.06em;
+    color:#555;
+  }
 
   #estado{ margin:20px 0; text-align:center; }
 
@@ -111,6 +118,12 @@ function toast(m){const t=$("#toast");t.textContent=m;t.classList.add("show");se
 
 let COMP=null, NEGOCIO={}, CUENTA=null;
 
+/* El aviso legal va arriba Y abajo, enmarcando todo el papel: así queda claro
+   de entrada y de salida que esto no reemplaza a una factura, mire por donde
+   mire el que lo recibe. Se escribe sin tildes porque el mismo texto se manda
+   a la comandera. */
+const LEGAL_TXT = "DOCUMENTO NO VALIDO COMO FACTURA";
+
 function numComp(t,n){ return (t==="ticket"?"N-":"P-")+String(n).padStart(5,"0"); }
 function fechaLocal(iso){
   // el backend guarda UTC sin zona: agregamos la Z para que el dispositivo la convierta
@@ -139,12 +152,12 @@ async function init(){
   } else if(id){
     try{
       const r=await authFetch("/api/comprobantes/"+id);
-      if(!r.ok){ $("#estado").textContent="No se encontró el comprobante."; return; }
+      if(!r.ok){ $("#estado").textContent="No se encontró el servicio."; return; }
       COMP=await r.json();
     }catch(e){ $("#estado").textContent="No se pudo cargar."; return; }
     render();
   } else {
-    $("#estado").textContent="Falta el numero de comprobante (?id=...)"; return;
+    $("#estado").textContent="Falta el numero de servicio (?id=...)"; return;
   }
   $("#estado").style.display="none";
   $("#papel").style.display="block";
@@ -176,7 +189,9 @@ function render(){
   if(datos.length) partes.push(`<div class="c chico">${datos.map(esc).join("<br>")}</div>`);
 
   partes.push('<hr class="sep">');
-  partes.push(`<div class="fila"><span>${esPresu?"PRESUPUESTO":"COMPROBANTE"} <b>${numComp(d.tipo,d.numero)}</b></span><span class="der chico">${fechaLocal(d.fecha)}</span></div>`);
+  partes.push(`<div class="c legal">${LEGAL_TXT}</div>`);
+  partes.push('<hr class="sep">');
+  partes.push(`<div class="fila"><span>${esPresu?"PRESUPUESTO":"SERVICIO"} <b>${numComp(d.tipo,d.numero)}</b></span><span class="der chico">${fechaLocal(d.fecha)}</span></div>`);
   if(d.cliente_nombre) partes.push(`<div class="fila chico"><span>Cliente: ${esc(d.cliente_nombre)}</span></div>`);
   partes.push('<hr class="sep">');
 
@@ -255,8 +270,9 @@ function render(){
     if(d.saldo>0) partes.push(`<div class="fila pend"><span>PENDIENTE</span><span class="der">${fmt(d.saldo)}</span></div>`);
   }
 
-  if(!esPresu) partes.push(`<div class="c chico" style="margin-top:8px;">Documento no válido como factura.</div>`);
   partes.push(`<div class="c gracias">¡Gracias por su visita! ✂</div>`);
+  partes.push('<hr class="sep">');
+  partes.push(`<div class="c legal">${LEGAL_TXT}</div>`);
   $("#papel").innerHTML=partes.join("");
 }
 
@@ -279,7 +295,7 @@ function renderCuenta(){
   if(conDeuda.length===0){
     partes.push(`<div class="c tenue">Sin deuda pendiente.</div>`);
   } else {
-    partes.push('<table><tr><th>Comprobante</th><th>Total</th><th>Pagado</th><th>Saldo</th></tr>');
+    partes.push('<table><tr><th>Servicio</th><th>Total</th><th>Pagado</th><th>Saldo</th></tr>');
     conDeuda.forEach(comp=>{
       const f=new Date(comp.fecha).toLocaleDateString("es-AR");
       partes.push(`<tr>
@@ -294,9 +310,10 @@ function renderCuenta(){
   partes.push('<hr class="sep">');
   partes.push(`<div class="fila total"><span>SALDO TOTAL</span><span class="der">${fmt(CUENTA.saldo_total)}</span></div>`);
   if(conDeuda.length<comps.filter(x=>x.saldo>0).length){
-    partes.push(`<div class="c tenue chico">Mostrando los primeros 20 comprobantes con deuda.</div>`);
+    partes.push(`<div class="c tenue chico">Mostrando los primeros 20 servicios con deuda.</div>`);
   }
-  partes.push(`<div class="c chico" style="margin-top:8px;">Comprobante sin valor fiscal.</div>`);
+  partes.push('<hr class="sep">');
+  partes.push(`<div class="c legal">${LEGAL_TXT}</div>`);
   $("#papel").innerHTML=partes.join("");
 }
 
@@ -440,7 +457,7 @@ function fechaSinAnio(fecha){        // 27/8
    tabla; si se hiciera por renglón, las columnas bailarían.
 
    Si no entra, se cede de a poco y siempre del lado de la etiqueta: primero el
-   "N-" (la columna ya se llama "Comprobante" y son todos del mismo tipo) y
+   "N-" (la columna ya se llama "Servicio" y son todos del mismo tipo) y
    final el año. Con el año entero "A-00024 27/8/2026" mide 17 contra 16 de
    columna, y el ticket del cliente salía diciendo "27/8/202". */
 function anchosCuenta(comps){
@@ -478,7 +495,9 @@ function generarEscpos(){
     .filter(Boolean).forEach(x=>lin(x));
   centro(false);
   sep();
-  lin(fila2((esPresu?"PRESUPUESTO ":"COMPROBANTE ")+numComp(d.tipo,d.numero), fechaLocal(d.fecha)));
+  centro(true); lin(LEGAL_TXT); centro(false);
+  sep();
+  lin(fila2((esPresu?"PRESUPUESTO ":"SERVICIO ")+numComp(d.tipo,d.numero), fechaLocal(d.fecha)));
   // El peluquero NO va en el papel: es dato interno. Se sigue guardando en el
   // comprobante y se ve en historial y en la cuenta, pero no en lo que se
   // entrega al cliente.
@@ -545,9 +564,9 @@ function generarEscpos(){
     if(d.saldo>0){ negrita(true); lin(fila2("PENDIENTE",fmtP(d.saldo))); negrita(false); }
   }
 
-  lin(); centro(true);
-  if(!esPresu) lin("Documento no válido como factura.");
-  lin("¡Gracias por su visita!"); centro(false);
+  lin(); centro(true); lin("¡Gracias por su visita!"); centro(false);
+  sep();
+  centro(true); lin(LEGAL_TXT); centro(false);
   raw(0x1b,0x64,4);                          // avanzar papel
   raw(0x1d,0x56,0x42,0x00);                  // corte parcial (si la comandera tiene cortador)
   return new Uint8Array(B);
@@ -573,6 +592,8 @@ function generarEscposCuenta(){
     .filter(Boolean).forEach(x=>lin(x));
   centro(false);
   sep();
+  centro(true); lin(LEGAL_TXT); centro(false);
+  sep();
   centro(true); negrita(true); lin("CUENTA CORRIENTE"); negrita(false); centro(false);
   const ahora=new Date();
   lin(fila2("Cliente: "+c.nombre, ahora.toLocaleDateString("es-AR")));
@@ -582,7 +603,7 @@ function generarEscposCuenta(){
     lin("Sin deuda pendiente.");
   } else {
     const an = anchosCuenta(conDeuda);
-    lin(fila4("Comprobante","Total","Pagado","Saldo", an));
+    lin(fila4("Servicio","Total","Pagado","Saldo", an));
     sep();
     conDeuda.forEach(comp=>{
       lin(fila4(an.fmt(comp), fmtP(comp.total_final), fmtP(comp.pagado), fmtP(comp.saldo), an));
@@ -592,7 +613,7 @@ function generarEscposCuenta(){
   negrita(true); grande(true);
   lin(fila2("SALDO TOTAL",fmtP(CUENTA.saldo_total),24));
   grande(false); negrita(false);
-  lin(); centro(true); lin("Comprobante sin valor fiscal."); centro(false);
+  lin(); sep(); centro(true); lin(LEGAL_TXT); centro(false);
   raw(0x1b,0x64,4);
   raw(0x1d,0x56,0x42,0x00);
   return new Uint8Array(B);

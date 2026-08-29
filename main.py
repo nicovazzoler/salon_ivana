@@ -6,7 +6,8 @@ from sqlalchemy import text, inspect, func
 from pydantic import BaseModel
 from datetime import datetime, date, timedelta, timezone
 from openpyxl import Workbook
-import os, bisect, io
+import os
+import re, bisect, io
 
 from database import get_db, engine, Base
 import models
@@ -184,6 +185,25 @@ def hora_argentina(dt):
 def hoy_argentina():
     """La fecha de hoy EN EL LOCAL, no la del servidor."""
     return hora_argentina(fecha_hora_now_utc()).date()
+
+_SEPARA_PALABRA = re.compile(r"([^\W\d_]+)", re.UNICODE)
+
+def nombre_propio(s: str) -> str:
+    """Cada palabra con la inicial en mayúscula y el resto en minúscula.
+
+    Se normaliza al GUARDAR, no solo al mostrar: los nombres se tipean apurado
+    entre cliente y cliente y quedaban como "MARIA lopez" o "maria LOPEZ", y
+    después el mismo cliente aparecía escrito de tres formas distintas.
+
+    No se usa str.title() de Python porque parte también en los apóstrofos:
+    "o'brien" saldría "O'Brien" (bien) pero "d'angelo" sale "D'Angelo" y
+    cualquier palabra con apóstrofo interno queda cortada. Acá se parte solo
+    por letras, así que los guiones y apóstrofos no rompen nada.
+    """
+    if not s:
+        return s
+    limpio = " ".join(s.split())      # de paso, espacios dobles al tipear apurado
+    return _SEPARA_PALABRA.sub(lambda m: m.group(1)[:1].upper() + m.group(1)[1:].lower(), limpio)
 
 # ---------- auth ----------
 def usuario_actual(authorization: str = Header(default="")):
@@ -495,7 +515,7 @@ def listar_clientes(q: str | None = None, _ = Depends(usuario_actual), db: Sessi
 
 @app.post("/api/clientes")
 def crear_cliente(cli: ClienteIn, _ = Depends(usuario_actual), db: Session = Depends(get_db)):
-    nombre = cli.nombre.strip()
+    nombre = nombre_propio(cli.nombre)
     if not nombre:
         raise HTTPException(400, "El nombre no puede estar vacío")
     # ¿ya existe un cliente activo con ese nombre? (sin distinguir mayúsculas)
@@ -554,7 +574,7 @@ def editar_cliente(cliente_id: int, cambios: ClienteEdit, _ = Depends(usuario_ac
     c = db.get(models.Cliente, cliente_id)
     if not c: raise HTTPException(404, "Cliente no existe")
     if cambios.nombre is not None:
-        nombre = cambios.nombre.strip()
+        nombre = nombre_propio(cambios.nombre)
         if not nombre: raise HTTPException(400, "El nombre no puede quedar vacío")
         existe = db.query(models.Cliente).filter(
             func.lower(models.Cliente.nombre) == nombre.lower(),
@@ -746,7 +766,9 @@ def crear_comprobante(c: ComprobanteIn, user = Depends(usuario_actual), db: Sess
         if not cli: raise HTTPException(404, "Cliente no existe")
         nombre_cli = cli.nombre
     elif c.cliente_nombre:
-        nombre_cli = c.cliente_nombre.strip() or None
+        # el nombre que queda en el comprobante también, si no el mismo cliente
+        # aparece escrito distinto en el historial y en el papel impreso
+        nombre_cli = nombre_propio(c.cliente_nombre) or None
     comp = models.Comprobante(
         tipo=c.tipo, numero=siguiente_numero(db, c.tipo),
         cliente_id=c.cliente_id, cliente_nombre=nombre_cli, peluquero=c.peluquero,

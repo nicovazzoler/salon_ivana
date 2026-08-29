@@ -472,7 +472,7 @@ async function loadRanking(s){
 async function loadReg(s){
   const movs=await (await authFetch("/api/registro?"+qbase(s))).json();
   if(movs.length===0){ $("#reg").innerHTML='<p class="muted">Sin movimientos en el período.</p>'; return; }
-  let h='<table><thead><tr><th>Fecha</th><th>Hora</th><th>Tipo</th><th>Comprobante</th><th>Cliente</th><th>Detalle</th><th>Pago</th><th class="money">Monto</th></tr></thead><tbody>';
+  let h='<table><thead><tr><th>Fecha</th><th>Hora</th><th>Tipo</th><th>Servicio</th><th>Cliente</th><th>Detalle</th><th>Pago</th><th class="money">Monto</th></tr></thead><tbody>';
   movs.forEach(m=>{
     const esI = m.clase==="ingreso";
     const etiqueta = esI ? '<span style="color:var(--acento);font-weight:700;">Ingreso</span>'

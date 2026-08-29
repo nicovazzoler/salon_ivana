@@ -99,7 +99,7 @@ async function cargarDia(){
   // detalle de cada venta y egreso del dia (editable por el dueño)
   let html = "";
   if(d.ventas_detalle && d.ventas_detalle.length){
-    html += '<b class="sub-titulo">Cobros del día</b><table style="margin-top:6px;"><thead><tr><th>Hora</th><th>Comprobante</th><th>Pago</th><th>Monto</th><th></th></tr></thead><tbody>';
+    html += '<b class="sub-titulo">Cobros del día</b><table style="margin-top:6px;"><thead><tr><th>Hora</th><th>Servicio</th><th>Pago</th><th>Monto</th><th></th></tr></thead><tbody>';
     d.ventas_detalle.forEach(v=>{
       const al=v.alias?` (${v.alias})`:"";
       html+=`<tr><td>${v.hora}</td><td>${v.ref||'—'}</td><td>${v.forma_pago}${al}</td><td class="money">${money(v.total)}</td>

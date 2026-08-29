@@ -96,7 +96,7 @@
   </div>
   <div style="display:flex;gap:8px;margin:10px 0;">
     <input id="filtroCliente" placeholder="Buscar cliente..." style="flex:1;">
-    <input id="filtroNum" placeholder="N° comp." style="width:110px;" inputmode="numeric">
+    <input id="filtroNum" placeholder="N° serv." style="width:110px;" inputmode="numeric">
   </div>
   <div class="pills" id="filtroEstado">
     <button class="pill on" data-f="todos">Todos</button>
@@ -110,7 +110,7 @@
   <div class="orden" id="orden">
     <span class="eti">Ordenar por</span>
     <button class="pill on" data-o="fecha">Fecha</button>
-    <button class="pill" data-o="numero">N° comprobante</button>
+    <button class="pill" data-o="numero">N° de servicio</button>
     <button class="pill" data-o="cliente">Cliente</button>
     <button class="pill" data-o="monto">Monto</button>
   </div>
@@ -338,9 +338,9 @@ function crearFila(comp){
     div.querySelector(".btnPrint").onclick = e=>e.stopPropagation();   // que no despliegue el detalle
     div.querySelector(".btnAnular").onclick = async (e)=>{
       e.stopPropagation();
-      if(!confirm("¿Anular este comprobante?")) return;
+      if(!confirm("¿Anular este servicio?")) return;
       const r = await authFetch("/api/comprobantes/"+comp.id, {method:"DELETE"});
-      if(r.ok){ toast("Comprobante anulado"); cargar(); }
+      if(r.ok){ toast("Servicio anulado"); cargar(); }
       else { toast("No se pudo anular"); }
     };
     if(comp.tipo==="presupuesto" && !comp.convertido_a){

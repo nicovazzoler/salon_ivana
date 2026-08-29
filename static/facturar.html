@@ -385,6 +385,19 @@
   }
 
   /* --- bloque de totales --- */
+  /* Marca de borrador: informa, no interrumpe. Ocupa un renglón y se va sola
+     cuando se cobra. */
+  .aviso-borrador{
+    margin:var(--sp-3) 0 var(--sp-2);
+    padding:7px 11px;
+    background:var(--ocre-bg);
+    border-left:3px solid var(--warn);
+    border-radius:var(--r-sm);
+    font-size:var(--fs-base);
+    font-weight:var(--fw-bold);
+    color:var(--warn);
+  }
+
   /* ----- Totales -----
      Una sola columna de importes en ticket, dos en presupuesto. Los números van
      a la derecha y en cifras de ancho fijo, así las comas caen alineadas. */
@@ -581,6 +594,8 @@
         <label>Descuento</label>
         <select id="descuento" style="flex:1;"></select>
       </div>
+
+      <div class="aviso-borrador" id="avisoBorrador" style="display:none;"></div>
 
       <!-- Extras: cargos que ningún descuento toca y siempre salen impresos -->
       <details class="extras-box" id="extrasBox">
@@ -1114,6 +1129,7 @@ function actualizarTotales(){
   // Presupuesto: dos columnas de importes. El encabezado dice cuál es cuál, así
   // que cada renglón solo pone los números.
   $("#totales").classList.toggle("presu", esPresu);
+  pintarAvisoBorrador();
   $("#subtotal").textContent  = fmt(subTr);
   $("#subtotal2").textContent = esPresu ? fmt(subEf) : "";
 
@@ -1458,7 +1474,7 @@ async function abrirCobro(){
   $("#cobroMonto").value=saldo>0 ? saldo : "";
   const ab=$("#cobroAbonos");
   ab.innerHTML = pagos.length ? pagos.map(p=>`<div class="muted">✓ ${p.forma_pago} ${fmt(p.monto)}</div>`).join("") : "";
-  $("#cobroCerrar").textContent = saldo<=0 ? "Finalizar comprobante" : "Finalizar (dejar saldo pendiente)";
+  $("#cobroCerrar").textContent = saldo<=0 ? "Finalizar servicio" : "Finalizar (dejar saldo pendiente)";
   if(saldo<=0){  
     ab.innerHTML += '<div style="color:var(--acento);font-weight:700;margin-top:6px;">Saldado ✓</div>';
     $("#cobroRegistrar").style.display="none";
@@ -1578,33 +1594,34 @@ $("#cobroRegistrar").onclick=async()=>{
 
 $("#cobroCerrar").onclick=limpiar;
 
-/* ---- Aviso al salir con un ticket a medio cargar ----
-   El borrador ya sobrevive al cambio de pantalla, pero es fácil irse sin darse
-   cuenta de que había algo cargado y descubrirlo cuando el cliente ya se fue. */
+/* ---- Ticket a medio cargar ----
+
+   Antes acá había dos carteles: el de beforeunload (el del navegador, que no se
+   puede redactar ni sacar con el check de "evitar cuadros de diálogo") y un
+   confirm propio al tocar un link. Los dos preguntaban por una pérdida que no
+   pasa: el borrador se guarda solo en cada cambio y se restaura al volver.
+
+   Un cartel que interrumpe para avisar algo que ya está resuelto es puro
+   ruido, y encima había que contestarlo dos veces. Se reemplaza por un aviso
+   que no pide nada: una marca en la pantalla y otra en el menú, que se ven
+   desde cualquier lado y desaparecen solas al cobrar. */
 function hayTicketSinCobrar(){
   return ticket.length > 0 || EXTRAS.length > 0;
 }
 
-// Salir del sitio (cerrar pestaña, recargar): el navegador muestra su propio cartel
-window.addEventListener("beforeunload", e => {
-  if(!hayTicketSinCobrar()) return;
-  e.preventDefault();
-  e.returnValue = "";        // los navegadores ignoran el texto propio, pero lo piden
-});
-
-// Irse a otra pantalla de la app: acá sí se puede avisar con nuestras palabras
-document.addEventListener("click", e => {
-  const link = e.target.closest("a[href]");
-  if(!link || !hayTicketSinCobrar()) return;
-  const destino = link.getAttribute("href");
-  if(!destino || destino.startsWith("#") || link.target === "_blank") return;
-  if(destino.startsWith("/facturar")) return;                 // se queda acá
-  const cuantos = ticket.length;
-  const detalle = cuantos ? `${cuantos} ${cuantos===1?"ítem":"ítems"}` : "extras";
-  if(!confirm(`Tenés ${detalle} sin cobrar.\n\nSe guardan como borrador y los vas a encontrar al volver, pero el ticket todavía no se creó.\n\n¿Salir igual?`)){
-    e.preventDefault();
-  }
-});
+/* La marca de borrador, arriba del ticket. Se actualiza sola porque
+   actualizarTotales() corre en cada cambio. */
+function pintarAvisoBorrador(){
+  const caja = $("#avisoBorrador");
+  if(!caja) return;
+  const n = ticket.length;
+  caja.style.display = hayTicketSinCobrar() ? "" : "none";
+  caja.textContent = n
+    ? `Borrador guardado · ${n} ${n===1?"ítem":"ítems"} sin cobrar`
+    : "Borrador guardado";
+  // y que el menú lo muestre en todas las pantallas
+  if(window.marcarBorradorEnMenu) window.marcarBorradorEnMenu();
+}
 
 init();
 </script>

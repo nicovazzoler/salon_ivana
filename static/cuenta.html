@@ -341,9 +341,9 @@ function renderComprobantes(){
     }
     div.querySelector(".btnAnular").onclick = async (e)=>{
       e.stopPropagation();
-      if(!confirm("¿Anular este comprobante?")) return;
+      if(!confirm("¿Anular este servicio?")) return;
       const r = await authFetch("/api/comprobantes/"+comp.id, {method:"DELETE"});
-      if(r.ok){ toast("Comprobante anulado"); cargar(); }
+      if(r.ok){ toast("Servicio anulado"); cargar(); }
       else { toast("No se pudo anular"); }
     };
 
