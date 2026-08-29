@@ -183,13 +183,14 @@ function render(){
   const d=COMP, esPresu=d.tipo==="presupuesto";
   const partes=[];
 
+  // El aviso legal abre el papel, antes del nombre del negocio
+  partes.push(`<div class="c legal">${LEGAL_TXT}</div>`);
+  partes.push('<hr class="sep">');
   // encabezado del negocio (los campos vacíos no salen)
   partes.push(`<div class="c marca">${esc(NEGOCIO.nombre||"")}</div>`);
   const datos=[NEGOCIO.direccion, NEGOCIO.telefono&&("Tel: "+NEGOCIO.telefono), NEGOCIO.instagram].filter(Boolean);
   if(datos.length) partes.push(`<div class="c chico">${datos.map(esc).join("<br>")}</div>`);
 
-  partes.push('<hr class="sep">');
-  partes.push(`<div class="c legal">${LEGAL_TXT}</div>`);
   partes.push('<hr class="sep">');
   partes.push(`<div class="fila"><span>${esPresu?"PRESUPUESTO":"SERVICIO"} <b>${numComp(d.tipo,d.numero)}</b></span><span class="der chico">${fechaLocal(d.fecha)}</span></div>`);
   if(d.cliente_nombre) partes.push(`<div class="fila chico"><span>Cliente: ${esc(d.cliente_nombre)}</span></div>`);
@@ -273,6 +274,7 @@ function render(){
   partes.push(`<div class="c gracias">¡Gracias por su visita! ✂</div>`);
   partes.push('<hr class="sep">');
   partes.push(`<div class="c legal">${LEGAL_TXT}</div>`);
+  partes.push('<hr class="sep">');       // la línea que cierra el papel
   $("#papel").innerHTML=partes.join("");
 }
 
@@ -490,12 +492,12 @@ function generarEscpos(){
   raw(0x1b,0x40);                            // reset
   if(ACENTOS) raw(0x1b,0x74,2);              // tabla CP850: acentos del español
   centro(true);
+  lin(LEGAL_TXT);                            // el aviso abre el papel
+  centro(false); sep(); centro(true);
   grande(true); negrita(true); lin(NEGOCIO.nombre||""); negrita(false); grande(false);
   [NEGOCIO.direccion, NEGOCIO.telefono&&("Tel: "+NEGOCIO.telefono), NEGOCIO.instagram]
     .filter(Boolean).forEach(x=>lin(x));
   centro(false);
-  sep();
-  centro(true); lin(LEGAL_TXT); centro(false);
   sep();
   lin(fila2((esPresu?"PRESUPUESTO ":"SERVICIO ")+numComp(d.tipo,d.numero), fechaLocal(d.fecha)));
   // El peluquero NO va en el papel: es dato interno. Se sigue guardando en el
@@ -567,6 +569,7 @@ function generarEscpos(){
   lin(); centro(true); lin("¡Gracias por su visita!"); centro(false);
   sep();
   centro(true); lin(LEGAL_TXT); centro(false);
+  sep();                                     // la línea que cierra el papel
   raw(0x1b,0x64,4);                          // avanzar papel
   raw(0x1d,0x56,0x42,0x00);                  // corte parcial (si la comandera tiene cortador)
   return new Uint8Array(B);
@@ -587,12 +590,12 @@ function generarEscposCuenta(){
   raw(0x1b,0x40);
   if(ACENTOS) raw(0x1b,0x74,2);              // tabla CP850: acentos del español
   centro(true);
+  lin(LEGAL_TXT);
+  centro(false); sep(); centro(true);
   grande(true); negrita(true); lin(NEGOCIO.nombre||""); negrita(false); grande(false);
   [NEGOCIO.direccion, NEGOCIO.telefono&&("Tel: "+NEGOCIO.telefono), NEGOCIO.instagram]
     .filter(Boolean).forEach(x=>lin(x));
   centro(false);
-  sep();
-  centro(true); lin(LEGAL_TXT); centro(false);
   sep();
   centro(true); negrita(true); lin("CUENTA CORRIENTE"); negrita(false); centro(false);
   const ahora=new Date();
@@ -613,7 +616,7 @@ function generarEscposCuenta(){
   negrita(true); grande(true);
   lin(fila2("SALDO TOTAL",fmtP(CUENTA.saldo_total),24));
   grande(false); negrita(false);
-  lin(); sep(); centro(true); lin(LEGAL_TXT); centro(false);
+  lin(); sep(); centro(true); lin(LEGAL_TXT); centro(false); sep();
   raw(0x1b,0x64,4);
   raw(0x1d,0x56,0x42,0x00);
   return new Uint8Array(B);

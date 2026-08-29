@@ -96,9 +96,20 @@ function pintarBotonTema(){
 }
 window.pintarBotonTema = pintarBotonTema;
 
+/* Partículas que van en minúscula dentro de un nombre ("María de los Ángeles").
+   Tiene que coincidir con _PARTICULAS de main.py: el backend normaliza al
+   guardar y esto muestra igual los nombres viejos, que quedaron sin normalizar. */
+const PARTICULAS = new Set(["de","del","la","las","los","y","e","da","das","do",
+                            "dos","van","von","di","der","el"]);
+
 function titulo(str){
   // Ojo: \b de JS es ASCII, así que "maría" caía en "MarÍa" (la í cuenta como
-  // borde de palabra). Marcamos el arranque real: principio, espacio, guion o apóstrofo.
-  return (str||"").toLowerCase()
-    .replace(/(^|[\s'’\-])(\p{L})/gu, (_,sep,letra) => sep + letra.toUpperCase());
+  // borde de palabra). Por eso se parte por letras y no por bordes de palabra.
+  let primera = true;
+  return (str||"").toLowerCase().replace(/\p{L}[\p{L}\p{M}]*/gu, pal => {
+    const arranque = primera; primera = false;
+    // la primera palabra siempre va en mayúscula: "De Luca" como apellido cuenta
+    if(!arranque && PARTICULAS.has(pal)) return pal;
+    return pal.charAt(0).toUpperCase() + pal.slice(1);
+  });
 }

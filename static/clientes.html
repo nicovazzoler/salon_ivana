@@ -37,6 +37,14 @@
   .cli-row .id  { font-size:var(--fs-sm); color:var(--text-tenue); }
   .cli-row .n   { font-weight:var(--fw-bold); }
   .cli-row .meta{ font-size:var(--fs-base); color:var(--text-tenue); }
+  /* La nota: un renglón chico bajo el nombre, para que se lea sin competir */
+  .cli-row .nota{
+    display:block;
+    margin-top:2px;
+    font-size:var(--fs-sm);
+    font-weight:var(--fw-normal);
+    color:var(--text-tenue);
+  }
 
 </style>
 </head><body>
@@ -61,6 +69,7 @@
       <input id="nNombre" placeholder="Nombre y apellido" style="flex:1;min-width:160px;">
       <input id="nTel" placeholder="Teléfono (opcional)">
       <input id="nAlias" placeholder="Alias transferencia (opcional)">
+      <input id="nNotas" placeholder="Nota (ej: mamá de Sofía)" style="flex:1;min-width:180px;">
       <button id="btnNuevo">Agregar</button>
     </div>
   </div>
@@ -91,6 +100,7 @@ let CLIENTES=[], DEUDAS=new Map(), filtro="todos";
 function toast(m){const t=$("#toast");t.textContent=m;t.classList.add("show");setTimeout(()=>t.classList.remove("show"),2200);}
 function clienteId(id){ return "C-"+String(id).padStart(3,"0"); }
 const money=n=>"$"+(n||0).toLocaleString("es-AR");
+const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 
 async function cargar(){
   const q=$("#buscar").value.trim();
@@ -122,9 +132,12 @@ function renderClientes(){
     row.className="cli-row grid-cli";
     row.href="/cuenta?id="+c.id;
     const debe = DEUDAS.get(c.id);
+    // La nota va debajo del nombre, chica: es contexto ("mamá de Sofía"), no
+    // un dato de la fila. Antes esto terminaba metido dentro del nombre.
+    const nota = (c.notas||"").trim();
     row.innerHTML=`
       <span class="id">${clienteId(c.id)}</span>
-      <span class="n">${titulo(c.nombre||"")}</span>
+      <span class="n">${titulo(c.nombre||"")}${nota?`<span class="nota">${esc(nota)}</span>`:""}</span>
       <span class="meta">${c.telefono||"—"}</span>
       <span class="meta">${c.alias||"—"}</span>
       <span>${debe
@@ -147,10 +160,11 @@ document.querySelectorAll("#filtros .pill").forEach(b=>{
 $("#btnNuevo").onclick=async()=>{
   const nombre=$("#nNombre").value.trim();
   if(!nombre){ toast("Poné al menos el nombre"); return; }
-  const body={ nombre, telefono:$("#nTel").value.trim(), alias:$("#nAlias").value.trim() };
+  const body={ nombre, telefono:$("#nTel").value.trim(), alias:$("#nAlias").value.trim(),
+               notas:$("#nNotas").value.trim() };
   const r=await authFetch("/api/clientes",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
   if(!r.ok){ const e=await r.json().catch(()=>({})); toast(e.detail || "No se pudo crear"); return; }
-  $("#nNombre").value=""; $("#nTel").value=""; $("#nAlias").value="";
+  $("#nNombre").value=""; $("#nTel").value=""; $("#nAlias").value=""; $("#nNotas").value="";
   toast("Cliente agregado"); cargar();
 };
 

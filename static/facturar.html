@@ -512,6 +512,20 @@
     cursor:pointer;
   }
   .cli-opt:hover{ background:var(--bg-hover); }
+  /* La nota dentro de la opción: renglón propio, chica y apagada */
+  .cli-opt .cli-nota{
+    display:block;
+    margin-top:2px;
+    font-size:var(--fs-sm);
+    color:var(--text-tenue);
+  }
+  /* Y la del cliente ya elegido, debajo del campo */
+  .nota-cliente{
+    margin-top:4px;
+    font-size:var(--fs-sm);
+    color:var(--text-tenue);
+  }
+  .nota-cliente::before{ content:"↳ "; }
   /* Barra "← Volver | Nombre de categoría" (el display lo maneja el JS) */
   .barra-nav{ align-items:center; gap:10px; margin-bottom:var(--sp-3); }
   .titulo-cat{ font-weight:var(--fw-bold); color:var(--text-titulo); }
@@ -580,6 +594,7 @@
           <div style="position:relative;flex:1;">
           <input id="cliente" autocomplete="off" placeholder="Nombre del cliente (obligatorio)" style="width:100%;">
           <div id="cliDrop" class="cli-drop" style="display:none;"></div>
+          <div id="notaCliente" class="nota-cliente" style="display:none;"></div>
         </div>
       </div>
       <div class="fila">
@@ -1202,6 +1217,7 @@ function guardarBorrador(){
     ticket,
     cliente: $("#cliente").value,
     clienteIdSel,
+    notaCliente: $("#notaCliente").textContent,
     peluquero: $("#peluquero").value,
     descPct, descNombre,
     descuentoSel: $("#descuento").value,   // el índice elegido en el select de descuento
@@ -1224,6 +1240,7 @@ function restaurarBorrador(){
     });
     $("#cliente").value = d.cliente || "";
     clienteIdSel = d.clienteIdSel ?? null;
+    mostrarNotaCliente(d.notaCliente || "");
     $("#peluquero").value = d.peluquero || "";
     descPct = d.descPct || 0;
     descNombre = d.descNombre || null;
@@ -1376,16 +1393,22 @@ let cliTimer;
 
 cliInput.addEventListener("input", ()=>{
   clienteIdSel = null;                          // al tipear se invalida cualquier selección previa
+  mostrarNotaCliente("");                       // y la nota deja de corresponder
   const term = cliInput.value.trim();
   clearTimeout(cliTimer);
   if(!term){ cliDrop.style.display="none"; return; }
   cliTimer = setTimeout(async ()=>{             // debounce: espera 200ms a que dejes de tipear
     const res = await (await authFetch("/api/clientes?q="+encodeURIComponent(term))).json();
     if(!res.length){ cliDrop.style.display="none"; return; }
-    cliDrop.innerHTML = res.slice(0,8).map(c=>
-      `<div class="cli-opt" data-id="${c.id}" data-nom="${c.nombre.replace(/"/g,'&quot;')}">
-        <b>${c.nombre}</b> <span class="muted">#${c.id}${c.telefono? ' · '+c.telefono : ''}</span>
-      </div>`).join("");
+    cliDrop.innerHTML = res.slice(0,8).map(c=>{
+      // La nota se muestra al elegir, en un renglón propio y apagado: sirve para
+      // reconocer al cliente ("mamá de Sofía") sin taparle el nombre.
+      const nota = (c.notas||"").trim();
+      return `<div class="cli-opt" data-id="${c.id}" data-nom="${esc(c.nombre)}"${nota?` data-nota="${esc(nota)}"`:""}>
+        <b>${esc(c.nombre)}</b> <span class="muted">#${c.id}${c.telefono? ' · '+esc(c.telefono) : ''}</span>
+        ${nota ? `<span class="cli-nota">${esc(nota)}</span>` : ""}
+      </div>`;
+    }).join("");
     cliDrop.style.display="block";
   }, 200);
 });
@@ -1395,7 +1418,18 @@ cliDrop.addEventListener("click", e=>{          // elegir una opción → guarda
   clienteIdSel = parseInt(opt.dataset.id);
   cliInput.value = opt.dataset.nom;
   cliDrop.style.display = "none";
+  mostrarNotaCliente(opt.dataset.nota || "");
 });
+
+/* La nota del cliente elegido queda a la vista mientras se arma el ticket, en
+   un renglón chico debajo del campo. No es un cartel ni bloquea nada: si
+   decía algo importante ("no le gusta el secado"), está ahí. */
+function mostrarNotaCliente(nota){
+  const caja = $("#notaCliente");
+  if(!caja) return;
+  caja.textContent = nota;
+  caja.style.display = nota ? "" : "none";
+}
 
 document.addEventListener("click", e=>{         // cerrar si clickeás afuera
   if(!cliInput.contains(e.target) && !cliDrop.contains(e.target)) cliDrop.style.display="none";

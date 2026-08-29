@@ -188,22 +188,38 @@ def hoy_argentina():
 
 _SEPARA_PALABRA = re.compile(r"([^\W\d_]+)", re.UNICODE)
 
+# Partículas que en castellano van en minúscula dentro de un nombre: se escribe
+# "María de los Ángeles", no "María De Los Ángeles". Nunca se aplica a la
+# primera palabra: "De Luca" como apellido sí lleva mayúscula.
+_PARTICULAS = {"de", "del", "la", "las", "los", "y", "e", "da", "das", "do",
+               "dos", "van", "von", "di", "der", "el"}
+
 def nombre_propio(s: str) -> str:
-    """Cada palabra con la inicial en mayúscula y el resto en minúscula.
+    """Cada palabra con la inicial en mayúscula, salvo las partículas.
 
     Se normaliza al GUARDAR, no solo al mostrar: los nombres se tipean apurado
     entre cliente y cliente y quedaban como "MARIA lopez" o "maria LOPEZ", y
     después el mismo cliente aparecía escrito de tres formas distintas.
 
     No se usa str.title() de Python porque parte también en los apóstrofos:
-    "o'brien" saldría "O'Brien" (bien) pero "d'angelo" sale "D'Angelo" y
-    cualquier palabra con apóstrofo interno queda cortada. Acá se parte solo
-    por letras, así que los guiones y apóstrofos no rompen nada.
+    "o'brien" saldría "O'Brien" (bien) pero cualquier palabra con apóstrofo
+    interno queda cortada. Acá se parte solo por letras, así que los guiones y
+    apóstrofos no rompen nada.
     """
     if not s:
         return s
     limpio = " ".join(s.split())      # de paso, espacios dobles al tipear apurado
-    return _SEPARA_PALABRA.sub(lambda m: m.group(1)[:1].upper() + m.group(1)[1:].lower(), limpio)
+    primera = [True]                  # la primera palabra siempre va en mayúscula
+
+    def cap(m):
+        pal = m.group(1)
+        arranque = primera[0]
+        primera[0] = False
+        if not arranque and pal.lower() in _PARTICULAS:
+            return pal.lower()
+        return pal[:1].upper() + pal[1:].lower()
+
+    return _SEPARA_PALABRA.sub(cap, limpio)
 
 # ---------- auth ----------
 def usuario_actual(authorization: str = Header(default="")):
