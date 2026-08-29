@@ -2,6 +2,7 @@
 <html lang="es"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="theme-color" content="#f2ece0"><title>Ticket — Peluquería</title>
+<link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="/static/css/app.css">
 <script src="/static/tema.js"></script>
 <style>
@@ -354,12 +355,23 @@ function fila3Larga(a,b,c){
   return salida;
 }
 
-/* Renglón del ajuste de una línea, para la comandera */
+/* Renglón del ajuste de una línea, para la comandera.
+
+   El porcentaje NO se puede recortar. Con fila2, que corta por la derecha lo de
+   la izquierda, un nombre de ajuste medianamente largo se comía el número:
+   "Cliente frecuente -10%" salía "Cliente frecuente -1" y el ticket del cliente
+   decía 1% en vez de 10%. Un nombre cortado se ve; un porcentaje cortado se lee
+   como si fuera otro.
+
+   filaItem envuelve la etiqueta y baja los precios a un renglón propio si no
+   entran, sin recortar nada. Se sangra 2 para que el "> " marque que el ajuste
+   es de la línea de arriba, y por eso se envuelve contra ANCHO-2. */
 function lineaAjuste(l){
   const desc = l.ajuste_pct < 0;
   const etiqueta = (l.ajuste_nombre || (desc ? "Descuento" : "Recargo"))
                  + ` ${desc?"-":"+"}${Math.abs(l.ajuste_pct)}%`;
-  return fila2("  > "+etiqueta, fmtP(l.precio_unit)+" > "+fmtP(pu(l))+" c/u");
+  const precios = fmtP(l.precio_unit)+" > "+fmtP(pu(l))+" c/u";
+  return filaItem("> "+etiqueta, precios, ANCHO-2).map(x => "  "+x);
 }
 
 /* Un renglón de la tabla de la cuenta corriente, con los anchos que calculó
@@ -438,7 +450,7 @@ function generarEscpos(){
     d.lineas.forEach(l=>{
       fila3Larga(l.cantidad+"x "+l.nombre+(l.dificultad?" *":""),
                  fmtP(pu(l)*l.cantidad), fmtP(pe(l)*l.cantidad)).forEach(lin);
-      if(l.ajuste_pct) lin(lineaAjuste(l));
+      if(l.ajuste_pct) lineaAjuste(l).forEach(lin);
     });
     if(d.extra_dificultad>0) lin(fila2("* Extra dificultad","+"+fmtP(d.extra_dificultad)));
     sep();
@@ -465,7 +477,7 @@ function generarEscpos(){
   } else {
     d.lineas.forEach(l=>{
       filaItem(l.cantidad+"x "+l.nombre+(l.dificultad?" *":""), fmtP(pu(l)*l.cantidad)).forEach(lin);
-      if(l.ajuste_pct) lin(lineaAjuste(l));
+      if(l.ajuste_pct) lineaAjuste(l).forEach(lin);
     });
     if(d.extra_dificultad>0) lin(fila2("* Extra dificultad","+"+fmtP(d.extra_dificultad)));
     sep();
