@@ -9,6 +9,24 @@
   /* Única línea angosta */
   .wrap{ max-width:800px; }
 
+  /* ----- Barra de orden -----
+     Va debajo de los filtros y con la etiqueta adelante, para que se lea como
+     una frase ("Ordenar por: Fecha") y no se confunda con otro filtro. */
+  .orden{
+    display:flex; flex-wrap:wrap; align-items:center; gap:6px;
+    margin-bottom:var(--sp-3);
+  }
+  .orden .eti{
+    margin-right:2px;
+    font-size:var(--fs-xs);
+    font-weight:var(--fw-bold);
+    text-transform:uppercase;
+    letter-spacing:var(--tracking-eti);
+    color:var(--text-tenue);
+  }
+  /* La flecha en tabular para que el botón no cambie de ancho al darla vuelta */
+  .orden .flecha{ font-variant-numeric:tabular-nums; }
+
   /* Pie de la lista: "Ver más" o el aviso de que ya está completa */
   .ver-mas{ margin:var(--sp-4) 0 var(--sp-5); text-align:center; }
   .ver-mas button{ padding:10px 22px; }
@@ -87,6 +105,15 @@
     <button class="pill" data-f="sinconvertir">Sin convertir</button>
     <span id="resumenFiltro" class="muted" style="margin-left:auto;align-self:center;"></span>
   </div>
+
+  <!-- Ordenar. Tocar el que ya está activo da vuelta la dirección. -->
+  <div class="orden" id="orden">
+    <span class="eti">Ordenar por</span>
+    <button class="pill on" data-o="fecha">Fecha</button>
+    <button class="pill" data-o="numero">N° comprobante</button>
+    <button class="pill" data-o="cliente">Cliente</button>
+    <button class="pill" data-o="monto">Monto</button>
+  </div>
   <div id="lista"></div>
   <div id="verMas" class="ver-mas"></div>
 </div>
@@ -100,6 +127,15 @@ const fmt=n=>"$"+(n||0).toLocaleString("es-AR");
 let tipo="ticket";
 let todosComps=[];
 let estadoFiltro="todos";   // todos | deuda | convertidos | sinconvertir
+
+/* Orden. Por defecto fecha de la más nueva a la más vieja: eso es lo que hace
+   que esta pantalla sea un historial y no una lista suelta. Ordenar por otra
+   cosa es algo que elegís, y con un toque volvés. */
+let orden = { campo:"fecha", desc:true };
+
+/* Cada campo arranca en la dirección que uno espera: las fechas y los montos
+   de mayor a menor, los nombres de la A a la Z. */
+const ORDEN_INICIAL = { fecha:true, numero:true, monto:true, cliente:false };
 
 const POR_TRAMO=60;         // cuántos comprobantes se dibujan por vez
 let FILTRADOS=[];           // los que pasan los filtros (todos, aunque no estén dibujados)
@@ -143,9 +179,32 @@ function renderLista(){
     $("#verMas").innerHTML="";
     return;
   }
-  FILTRADOS = comps;
+  FILTRADOS = ordenar(comps);
   mostrados = 0;
   pintarMas();
+}
+
+/* Ordena la lista COMPLETA, no solo lo que está dibujado: si ordenás por monto
+   y hay 1.400 comprobantes, el más caro tiene que quedar arriba de todo, no el
+   más caro de los primeros 60.
+
+   Los nombres van con localeCompare en español, que es el único que ordena bien
+   con acentos y con la ñ: con una comparación común, "Núñez" cae después de
+   "Nuñez" y "Zárate" antes que "Zapata". */
+function ordenar(lista){
+  const dir = orden.desc ? -1 : 1;
+  const cmp = {
+    fecha:   (a,b) => new Date(a.fecha) - new Date(b.fecha),
+    numero:  (a,b) => a.numero - b.numero,
+    monto:   (a,b) => (a.ingresado + a.saldo) - (b.ingresado + b.saldo),
+    // sin cliente es "Mostrador"; se ordena por ese texto, como se ve en pantalla
+    cliente: (a,b) => (a.cliente_nombre || "Mostrador")
+                        .localeCompare(b.cliente_nombre || "Mostrador", "es", {sensitivity:"base"}),
+  }[orden.campo];
+
+  // El desempate siempre es por número, para que el orden sea estable: dos
+  // comprobantes del mismo cliente o del mismo día no se cambian de lugar solos.
+  return [...lista].sort((a,b) => (cmp(a,b) * dir) || (b.numero - a.numero));
 }
 
 /* Dibuja el siguiente tramo de la lista.
@@ -327,6 +386,38 @@ document.querySelectorAll("#filtroEstado .pill").forEach(b=>{
   };
 });
 
+/* Tocar un criterio nuevo lo activa en su dirección natural; tocar el que ya
+   está activo la da vuelta. */
+document.querySelectorAll("#orden .pill").forEach(b=>{
+  b.onclick=()=>{
+    const campo = b.dataset.o;
+    orden = (orden.campo === campo)
+      ? { campo, desc: !orden.desc }
+      : { campo, desc: ORDEN_INICIAL[campo] };
+    pintarOrden();
+    renderLista();
+  };
+});
+
+/* La flecha va solo en el criterio activo: apunta para abajo cuando ordena de
+   mayor a menor (o de la Z a la A). */
+function pintarOrden(){
+  document.querySelectorAll("#orden .pill").forEach(b=>{
+    const activo = b.dataset.o === orden.campo;
+    b.classList.toggle("on", activo);
+    const flecha = b.querySelector(".flecha");
+    if(flecha) flecha.remove();
+    if(activo){
+      const s = document.createElement("span");
+      s.className = "flecha";
+      s.textContent = orden.desc ? " ↓" : " ↑";
+      b.appendChild(s);
+    }
+    b.title = activo ? "Tocá de nuevo para dar vuelta el orden" : "";
+  });
+}
+
+pintarOrden();
 ajustarFiltros();
 cargar();
 </script>
