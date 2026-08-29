@@ -13,7 +13,9 @@ header{
   gap:var(--sp-3);
   padding:var(--sp-4) var(--sp-6);
   background:var(--bg-header);
-  border-bottom:1px solid var(--border);
+  /* Filete de bronce: separa el header del contenido y de paso pone el color de
+     la marca donde se ve siempre, no solo en los precios. */
+  border-bottom:2px solid var(--bronce-500);
   color:var(--text-titulo);
   font-family:var(--font-display);
   font-size:23px;

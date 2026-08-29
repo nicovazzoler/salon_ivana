@@ -26,20 +26,31 @@
         1. Valores crudos
      ====================================================================== */
 
-  /* Papel — los fondos, de más claro a más tostado */
+  /* Papel — los fondos, de más claro a más tostado.
+
+     El fondo de la app está bastante más hundido que la tarjeta a propósito.
+     Antes eran #f2ece0 y #fffdf9: menos de 4% de luminosidad de diferencia, así
+     que técnicamente había dos planos pero el ojo veía uno solo y la pantalla
+     se leía plana. */
   --papel-100:#fffdf9;            /* tarjeta, lo más claro */
   --papel-200:#faf6ed;            /* superficie sutil */
-  --papel-300:#f2ece0;            /* fondo de la app */
-  --papel-400:#e9e1d1;            /* hundido: inputs, pestañas apagadas */
-  --papel-500:#ddd2bc;            /* filete marcado */
-  --papel-600:#cfc2a8;            /* borde de campo */
+  --papel-300:#e6dcc6;            /* fondo de la app */
+  --papel-400:#ded2b9;            /* hundido: inputs, pestañas apagadas */
+  --papel-500:#cdbe9f;            /* filete marcado */
+  --papel-600:#bda98a;            /* borde de campo */
 
-  /* Tinta — los textos, de más oscuro a más suave */
+  /* Tinta — los textos, de más oscuro a más suave.
+
+     Los dos pasos de abajo son más oscuros de lo que uno pondría a ojo, y es a
+     propósito: el "texto tenue" se usa en cosas chicas pero que hay que poder
+     leer (el precio con descuento, "· Efectivo", los placeholders). Con los
+     valores anteriores daba 2,77:1 sobre el fondo de la app y 3,71:1 sobre la
+     tarjeta, cuando el mínimo para texto chico es 4,5:1. */
   --tinta-900:#211c14;            /* títulos y montos */
   --tinta-700:#3d3629;            /* texto corriente */
-  --tinta-500:#6e6353;            /* texto secundario */
-  --tinta-400:#8d8271;            /* texto tenue, placeholders */
-  --tinta-300:#a89d8a;            /* lo más apagado */
+  --tinta-500:#554c3e;            /* texto secundario */
+  --tinta-400:#675d4f;            /* texto tenue, placeholders */
+  --tinta-300:#8a8071;            /* lo más apagado: deshabilitado */
 
   /* Bronce — el acento, uno solo y bien medido */
   --bronce-700:#6d5518;           /* texto sobre papel: pasa contraste */
@@ -79,7 +90,12 @@
   --text-tenue:    var(--tinta-400);
   --text-titulo:   var(--tinta-900);   /* los títulos son TINTA, no dorados */
   --text-marca:    var(--bronce-700);
-  --text-invertido:#fffdf9;            /* sobre el bronce lleno */
+  --text-invertido:#fffdf9;            /* sobre --acento (#8a6d1f), que es oscuro */
+
+  /* Sobre el bronce CLARO (--bronce-400, el de los botones activos) el blanco
+     da 2,25:1 y no se lee. Con tinta oscura son 6,94:1. Es el mismo valor en
+     los dos temas, porque ese bronce no cambia. */
+  --text-sobre-oro:#2a2113;
 
   /* Bordes: filetes finos y callados. El dorado se reserva para lo activo. */
   --border:        var(--papel-500);
@@ -159,7 +175,8 @@
   --tracking-eti:.14em;
 
   /* Sombra apenas insinuada: sobre papel, una sombra fuerte ensucia */
-  --sombra-card: 0 1px 2px rgba(33,28,20,.04), 0 6px 20px -14px rgba(33,28,20,.22);
+  /* Sombra más marcada, para que la tarjeta se despegue del papel hundido */
+  --sombra-card: 0 1px 2px rgba(80,64,38,.07), 0 4px 14px -6px rgba(80,64,38,.13);
 
   --z-header:5; --z-dropdown:20; --z-modal:50; --z-toast:100;
 }
@@ -190,7 +207,7 @@
   --tinta-900:#f4efe4;            /* títulos y montos */
   --tinta-700:#ddd4c4;            /* texto corriente */
   --tinta-500:#a89d8b;            /* texto secundario */
-  --tinta-400:#8a8071;            /* texto tenue, placeholders */
+  --tinta-400:#918777;            /* texto tenue: aclarado para llegar a 4,5:1 */
   --tinta-300:#6b6254;            /* lo más apagado */
 
   /* El bronce sube de tono: el #8a6d1f del claro no se ve sobre carbón. */

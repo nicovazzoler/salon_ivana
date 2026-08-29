@@ -26,6 +26,10 @@ h1,h2,h3{
   text-wrap:balance;
 }
 h2{ font-size:21px; line-height:1.25; }
+/* El título de cada bloque va en bronce: ordena la lectura de arriba a abajo y
+   reparte el color de la marca por la pantalla, en vez de dejarlo solo en los
+   precios. Los h1 (el nombre de la pantalla) siguen en tinta. */
+.card h2, .card-head h2{ color:var(--text-marca); }
 h3{ font-size:var(--fs-xl); }
 
 /* ----- Formularios ----- */

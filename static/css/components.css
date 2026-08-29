@@ -77,10 +77,12 @@
   transition:background .15s, border-color .15s, color .15s;
 }
 .pill:hover{ border-color:var(--papel-600); color:var(--text-titulo); }
+/* Activo = relleno de bronce con tinta oscura encima. El apagado tiene apenas
+   un tinte, así que la diferencia entre puesto y no puesto se ve de lejos. */
 .pill.on{
-  background:var(--acento-bg);
-  color:var(--text-marca);
-  border-color:var(--bronce-a30);
+  background:var(--bronce-400);
+  color:var(--text-sobre-oro);
+  border-color:var(--bronce-500);
   font-weight:var(--fw-bold);
 }
 
@@ -110,10 +112,10 @@
   letter-spacing:.08em;
 }
 .seg button.on{
-  background:var(--bg-card);
-  color:var(--text-titulo);
+  background:var(--bronce-400);
+  color:var(--text-sobre-oro);
   border-color:var(--bronce-500);
-  box-shadow:inset 0 -2px 0 var(--bronce-500);
+  font-weight:var(--fw-bold);
 }
 
 /* ----- Tag: etiqueta informativa ----- */
