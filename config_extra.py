@@ -8,10 +8,10 @@ TIPOS_EGRESO = ["Pago proveedor", "Retiro de caja", "Gasto / insumo", "Sueldo", 
 # Datos del negocio que salen en el encabezado del ticket impreso.
 # Los campos vacíos no se imprimen.
 NEGOCIO = {
-    "nombre": "Salón Ivana",
+    "nombre": "Ivana Salón",
     "telefono": "",       # ej: "351 555-0000"
     "direccion": "",      # ej: "Av. Siempreviva 123, Córdoba"
-    "instagram": "",      # ej: "@salon.ivana"
+    "instagram": "",      # ej: "@ivana.salon"
 }
 
 def calcular_transfer(precio_efectivo: int) -> int:
