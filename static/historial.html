@@ -106,7 +106,7 @@ let FILTRADOS=[];           // los que pasan los filtros (todos, aunque no esté
 let mostrados=0;            // cuántos de FILTRADOS ya están en pantalla
 
 function toast(m){const t=$("#toast");t.textContent=m;t.classList.add("show");setTimeout(()=>t.classList.remove("show"),2200);}
-function numComp(t,n){ return (t==="ticket"?"A-":"P-")+String(n).padStart(5,"0"); }
+function numComp(t,n){ return (t==="ticket"?"N-":"P-")+String(n).padStart(5,"0"); }
 
 async function cargar(){
   todosComps=await (await authFetch("/api/comprobantes?tipo="+tipo)).json();
@@ -203,7 +203,7 @@ function crearFila(comp){
        <div class="detalle-box" style="display:none;"></div>
       ${comp.tipo==="presupuesto"
         ? (comp.convertido_a
-            ? `<div class="muted" style="margin-top:8px;">Convertido → A-${String(comp.convertido_a).padStart(5,"0")}</div>`
+            ? `<div class="muted" style="margin-top:8px;">Convertido → N-${String(comp.convertido_a).padStart(5,"0")}</div>`
             : `<button class="btnConv" style="margin-top:8px;">Convertir a ticket</button>`)
         : ""}`;
     const head=div.querySelector(".comp-head");
@@ -291,7 +291,7 @@ function crearFila(comp){
         const r=await authFetch("/api/comprobantes/"+comp.id+"/convertir",{method:"POST"});
         if(!r.ok){ const er=await r.json(); toast(er.detail||"No se pudo"); return; }
         const d=await r.json();
-        toast("Convertido a A-"+String(d.numero).padStart(5,"0"));
+        toast("Convertido a N-"+String(d.numero).padStart(5,"0"));
         cargar();
       };
     }

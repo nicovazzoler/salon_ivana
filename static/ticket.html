@@ -111,7 +111,7 @@ function toast(m){const t=$("#toast");t.textContent=m;t.classList.add("show");se
 
 let COMP=null, NEGOCIO={}, CUENTA=null;
 
-function numComp(t,n){ return (t==="ticket"?"A-":"P-")+String(n).padStart(5,"0"); }
+function numComp(t,n){ return (t==="ticket"?"N-":"P-")+String(n).padStart(5,"0"); }
 function fechaLocal(iso){
   // el backend guarda UTC sin zona: agregamos la Z para que el dispositivo la convierta
   const d=new Date(iso.endsWith("Z")?iso:iso+"Z");
@@ -176,9 +176,8 @@ function render(){
   if(datos.length) partes.push(`<div class="c chico">${datos.map(esc).join("<br>")}</div>`);
 
   partes.push('<hr class="sep">');
-  partes.push(`<div class="fila"><span>${esPresu?"PRESUPUESTO":"TICKET"} <b>${numComp(d.tipo,d.numero)}</b></span><span class="der chico">${fechaLocal(d.fecha)}</span></div>`);
+  partes.push(`<div class="fila"><span>${esPresu?"PRESUPUESTO":"COMPROBANTE"} <b>${numComp(d.tipo,d.numero)}</b></span><span class="der chico">${fechaLocal(d.fecha)}</span></div>`);
   if(d.cliente_nombre) partes.push(`<div class="fila chico"><span>Cliente: ${esc(d.cliente_nombre)}</span></div>`);
-  if(d.peluquero)      partes.push(`<div class="fila chico"><span>Atendió: ${esc(d.peluquero)}</span></div>`);
   partes.push('<hr class="sep">');
 
   if(esPresu){
@@ -220,6 +219,14 @@ function render(){
     if(d.extra_dificultad>0) partes.push(`<div class="fila tenue"><span>* Extra dificultad</span><span class="der">+${fmt(d.extra_dificultad)}</span></div>`);
     partes.push('<hr class="sep">');
 
+    /* Subtotal antes de cualquier descuento. Se suma de los mismos renglones
+       que se acaban de imprimir, no de un campo aparte: así la cuenta cierra a
+       ojo sobre el papel. */
+    const subtotal = d.lineas.reduce((a,l)=>a+pu(l)*l.cantidad,0) + (d.extra_dificultad||0);
+    const hayDesc = d.desc_efectivo>0 || d.desc_jubilado>0
+                 || d.pagos.reduce((a,p)=>a+(p.desc_aplicado||0),0)>0;
+    if(hayDesc) partes.push(`<div class="fila"><span>Subtotal</span><span class="der">${fmt(subtotal)}</span></div>`);
+
     if(d.desc_efectivo>0){
       const pct=(d.desc_efectivo/d.total_transfer*100).toFixed(2);
       partes.push(`<div class="fila tenue"><span>Descuento ${pct}%</span><span class="der">−${fmt(d.desc_efectivo)}</span></div>`);
@@ -248,6 +255,7 @@ function render(){
     if(d.saldo>0) partes.push(`<div class="fila pend"><span>PENDIENTE</span><span class="der">${fmt(d.saldo)}</span></div>`);
   }
 
+  if(!esPresu) partes.push(`<div class="c chico" style="margin-top:8px;">Documento no válido como factura.</div>`);
   partes.push(`<div class="c gracias">¡Gracias por su visita! ✂</div>`);
   $("#papel").innerHTML=partes.join("");
 }
@@ -275,7 +283,7 @@ function renderCuenta(){
     conDeuda.forEach(comp=>{
       const f=new Date(comp.fecha).toLocaleDateString("es-AR");
       partes.push(`<tr>
-        <td>A-${String(comp.numero).padStart(5,"0")}<br><span class="tenue" style="font-size:10px;">${f}</span></td>
+        <td>N-${String(comp.numero).padStart(5,"0")}<br><span class="tenue" style="font-size:10px;">${f}</span></td>
         <td class="precio">${fmt(comp.total_final)}</td>
         <td class="precio">${fmt(comp.pagado)}</td>
         <td class="precio" style="font-weight:700;">${fmt(comp.saldo)}</td>
@@ -295,12 +303,41 @@ function renderCuenta(){
 /* ---------- ESC/POS para la comandera (80mm = 48 columnas) ---------- */
 const ANCHO=48;
 
-// la comandera no maneja tildes de forma confiable: mandamos ASCII pelado
+/* ---------- acentos en la comandera ----------
+
+   La comandera no habla UTF-8: trabaja con una tabla de 256 caracteres, y la
+   que trae de fábrica es ASCII. Si le mandás la "ó" de "Salón" en crudo,
+   imprime un símbolo cualquiera; por eso antes se mandaba todo sin tildes.
+
+   ESC/POS permite cambiarle la tabla: "ESC t 2" selecciona CP850
+   (multilingüe), que tiene todos los acentos del español. Es la tabla más
+   estándar y la soportan tanto las Epson como los clones genéricos.
+
+   Si esta unidad no la soportara, las palabras con tilde saldrían con
+   símbolos raros. En ese caso poné ACENTOS en false: vuelve a imprimir sin
+   tildes, que es más feo pero se lee siempre. */
+const ACENTOS = true;
+const CP850 = { "á":0xA0,"é":0x82,"í":0xA1,"ó":0xA2,"ú":0xA3,
+                "Á":0xB5,"É":0x90,"Í":0xD6,"Ó":0xE0,"Ú":0xE9,
+                "ñ":0xA4,"Ñ":0xA5,"ü":0x81,"Ü":0x9A,
+                "¿":0xA8,"¡":0xAD,"°":0xF8,"ª":0xA6,"º":0xA7 };
+// un carácter -> su byte en la tabla de la comandera
+const byteDe = ch => (ACENTOS && CP850[ch] !== undefined) ? CP850[ch] : ch.charCodeAt(0);
+
+/* Deja solo lo que la comandera puede imprimir. IMPORTANTE: devuelve UN
+   carácter por posición, nunca dos, porque de este largo dependen todas las
+   columnas. Cada acentuado ocupa un byte en CP850, así que la cuenta da igual
+   con acentos o sin ellos. */
 function translit(s){
-  return String(s).normalize("NFD").replace(/[\u0300-\u036f]/g,"")
+  if(!ACENTOS)
+    return String(s).normalize("NFD").replace(/[\u0300-\u036f]/g,"")
     .replace(/[×]/g,"x").replace(/[−–—]/g,"-").replace(/[·]/g,"-")
     .replace(/[“”]/g,'"').replace(/[’‘]/g,"'").replace(/[✂✓]/g,"")
     .replace(/[^\x20-\x7e\n]/g,"");
+  return String(s)
+    .replace(/[×]/g,"x").replace(/[−–—]/g,"-").replace(/[·]/g,"-")
+    .replace(/[“”]/g,'"').replace(/[’‘]/g,"'").replace(/[✂✓]/g,"")
+    .replace(/[^\x20-\x7e\n]/g, c => (c in CP850) ? c : "");
 }
 function fmtP(n){ return "$"+(n||0).toLocaleString("es-AR"); }
 function fila2(izq,der,w=ANCHO){
@@ -403,7 +440,7 @@ function fechaSinAnio(fecha){        // 27/8
    tabla; si se hiciera por renglón, las columnas bailarían.
 
    Si no entra, se cede de a poco y siempre del lado de la etiqueta: primero el
-   "A-" (la columna ya se llama "Comprobante" y son todos tickets) y recién al
+   "N-" (la columna ya se llama "Comprobante" y son todos del mismo tipo) y
    final el año. Con el año entero "A-00024 27/8/2026" mide 17 contra 16 de
    columna, y el ticket del cliente salía diciendo "27/8/202". */
 function anchosCuenta(comps){
@@ -412,7 +449,7 @@ function anchosCuenta(comps){
   const etiqueta = ANCHO - 3*monto;
 
   const formatos = [
-    c => "A-"+String(c.numero).padStart(5,"0")+" "+fechaCorta(c.fecha),
+    c => "N-"+String(c.numero).padStart(5,"0")+" "+fechaCorta(c.fecha),
     c =>      String(c.numero).padStart(5,"0")+" "+fechaCorta(c.fecha),
     c =>      String(c.numero).padStart(5,"0")+" "+fechaSinAnio(c.fecha),
   ];
@@ -426,7 +463,7 @@ function generarEscpos(){
   const d=COMP, esPresu=d.tipo==="presupuesto";
   const B=[];
   const raw=(...x)=>B.push(...x);
-  const txt=s=>{ for(const ch of translit(s)) B.push(ch.charCodeAt(0)); };
+  const txt=s=>{ for(const ch of translit(s)) B.push(byteDe(ch)); };
   const lin=(s="")=>{ txt(s); raw(10); };
   const centro=on=>raw(0x1b,0x61,on?1:0);
   const negrita=on=>raw(0x1b,0x45,on?1:0);
@@ -434,15 +471,18 @@ function generarEscpos(){
   const sep=()=>lin("-".repeat(ANCHO));
 
   raw(0x1b,0x40);                            // reset
+  if(ACENTOS) raw(0x1b,0x74,2);              // tabla CP850: acentos del español
   centro(true);
   grande(true); negrita(true); lin(NEGOCIO.nombre||""); negrita(false); grande(false);
   [NEGOCIO.direccion, NEGOCIO.telefono&&("Tel: "+NEGOCIO.telefono), NEGOCIO.instagram]
     .filter(Boolean).forEach(x=>lin(x));
   centro(false);
   sep();
-  lin(fila2((esPresu?"PRESUPUESTO ":"TICKET ")+numComp(d.tipo,d.numero), fechaLocal(d.fecha)));
+  lin(fila2((esPresu?"PRESUPUESTO ":"COMPROBANTE ")+numComp(d.tipo,d.numero), fechaLocal(d.fecha)));
+  // El peluquero NO va en el papel: es dato interno. Se sigue guardando en el
+  // comprobante y se ve en historial y en la cuenta, pero no en lo que se
+  // entrega al cliente.
   if(d.cliente_nombre) envolver("Cliente: "+d.cliente_nombre).forEach(lin);
-  if(d.peluquero)      envolver("Atendio: "+d.peluquero).forEach(lin);
   sep();
 
   if(esPresu){
@@ -481,6 +521,11 @@ function generarEscpos(){
     });
     if(d.extra_dificultad>0) lin(fila2("* Extra dificultad","+"+fmtP(d.extra_dificultad)));
     sep();
+    // Subtotal antes de descuentos, sumado de los renglones de arriba
+    const subtotal = d.lineas.reduce((a,l)=>a+pu(l)*l.cantidad,0) + (d.extra_dificultad||0);
+    const hayDesc = d.desc_efectivo>0 || d.desc_jubilado>0
+                 || d.pagos.reduce((a,p)=>a+(p.desc_aplicado||0),0)>0;
+    if(hayDesc) lin(fila2("Subtotal", fmtP(subtotal)));
     if(d.desc_efectivo>0) lin(fila2("Descuento "+(d.desc_efectivo/d.total_transfer*100).toFixed(2)+"%","-"+fmtP(d.desc_efectivo)));
     if(d.desc_jubilado>0) lin(fila2((d.descuento_nombre||"Descuento")+" "+d.descuento_pct+"%","-"+fmtP(d.desc_jubilado)));
     const descPagos=d.pagos.reduce((a,p)=>a+(p.desc_aplicado||0),0);
@@ -500,7 +545,9 @@ function generarEscpos(){
     if(d.saldo>0){ negrita(true); lin(fila2("PENDIENTE",fmtP(d.saldo))); negrita(false); }
   }
 
-  lin(); centro(true); lin("Gracias por su visita!"); centro(false);
+  lin(); centro(true);
+  if(!esPresu) lin("Documento no válido como factura.");
+  lin("¡Gracias por su visita!"); centro(false);
   raw(0x1b,0x64,4);                          // avanzar papel
   raw(0x1d,0x56,0x42,0x00);                  // corte parcial (si la comandera tiene cortador)
   return new Uint8Array(B);
@@ -511,7 +558,7 @@ function generarEscposCuenta(){
   const conDeuda=comps.filter(x=>x.saldo>0).slice(0,20);
   const B=[];
   const raw=(...x)=>B.push(...x);
-  const txt=s=>{ for(const ch of translit(s)) B.push(ch.charCodeAt(0)); };
+  const txt=s=>{ for(const ch of translit(s)) B.push(byteDe(ch)); };
   const lin=(s="")=>{ txt(s); raw(10); };
   const centro=on=>raw(0x1b,0x61,on?1:0);
   const negrita=on=>raw(0x1b,0x45,on?1:0);
@@ -519,6 +566,7 @@ function generarEscposCuenta(){
   const sep=()=>lin("-".repeat(ANCHO));
 
   raw(0x1b,0x40);
+  if(ACENTOS) raw(0x1b,0x74,2);              // tabla CP850: acentos del español
   centro(true);
   grande(true); negrita(true); lin(NEGOCIO.nombre||""); negrita(false); grande(false);
   [NEGOCIO.direccion, NEGOCIO.telefono&&("Tel: "+NEGOCIO.telefono), NEGOCIO.instagram]

@@ -1201,7 +1201,7 @@ async function crearComprobante(){
   const r=await authFetch("/api/comprobantes",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
   if(!r.ok){ toast("No se pudo crear"); return null; }
   const d=await r.json();
-  const pref = d.tipo==="ticket" ? "A-" : "P-";
+  const pref = d.tipo==="ticket" ? "N-" : "P-";
   toast(`${d.tipo} ${pref}${String(d.numero).padStart(5,"0")} creado`);
   // dejar a mano el botón para imprimir el comprobante recién creado
   const pu=$("#printUltimo");

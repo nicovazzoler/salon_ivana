@@ -6,7 +6,7 @@ Aplicación web full-stack para la gestión diaria de una peluquería: facturaci
 
 ## 💡 El problema que resuelve
 
-El comercio llevaba las ventas, los gastos, los turnos y el fiado de forma manual: cuadernos para escribir ventas, mensajes para anotar turnos y mucha memoria de los empleados jaja. Este sistema centraliza todo en una sola herramienta pensada para el día a día del local: cobra, imprime el ticket, agenda, registra deudas de clientes, cierra la caja con arqueo de efectivo y muestra la evolución del negocio en gráficos.
+El comercio llevaba las ventas, los gastos, los turnos y el fiado de forma manual: cuadernos para escribir ventas, mensajes para anotar turnos y mucha memoria de los empleados jaja. Este sistema centraliza todo en una sola herramienta pensada para el día a día del local: cobra, imprime el comprobante, agenda, registra deudas de clientes, cierra la caja con arqueo de efectivo y muestra la evolución del negocio en gráficos.
 
 ---
 
@@ -17,10 +17,12 @@ Catálogo navegable por categorías con buscador. Cada ítem muestra sus dos pre
 
 ![Pantalla de Facturación](docs/facturacion.png)
 
-### Ticket impreso
+### Comprobante impreso
 Vista previa de lo que sale por la comandera térmica de 80mm, calcada al papel real. El mismo botón manda los bytes ESC/POS por Bluetooth; el botón PDF es el plan B por el diálogo del navegador.
 
-![Ticket impreso](docs/ticket.png)
+No es un documento fiscal y el papel lo dice: se titula «Comprobante», el número no usa las letras de las clases de factura y lleva al pie «Documento no válido como factura».
+
+![Comprobante impreso](docs/ticket.png)
 
 ### Cuenta corriente
 Ficha del cliente con sus comprobantes, saldos pendientes y registro de pagos parciales. Desde acá se saldan las deudas y se imprime el resumen de cuenta.
@@ -57,7 +59,7 @@ Resumen por período, evolución de la caja, ranking de lo más vendido, ingreso
 ## ✨ Funcionalidades
 
 - **Facturación** — Catálogo por categorías con buscador en vivo y agrupado por variantes (talles). Dos listas de precios, descuento por comprobante, **descuento o recargo por línea**, **extras que ningún descuento toca**, recargo por dificultad, pago mixto y venta a cuenta. Registro de egresos en la misma pantalla.
-- **Impresión térmica** — Tickets, presupuestos y resúmenes de cuenta por comandera Bluetooth de 80mm (ESC/POS, 48 columnas), con vista previa en pantalla y salida a PDF como alternativa. Ver [`docs/comandera.md`](docs/comandera.md).
+- **Impresión térmica** — Comprobantes, presupuestos y resúmenes de cuenta por comandera Bluetooth de 80mm (ESC/POS, 48 columnas, acentos vía CP850), con vista previa en pantalla y salida a PDF como alternativa. No son documentos fiscales y el papel lo aclara. Ver [`docs/comandera.md`](docs/comandera.md).
 - **Clientes y cuenta corriente** — Alta y búsqueda con teléfono y alias de transferencia, filtro de deudores. Ficha con comprobantes, saldos y pagos parciales: cada cliente tiene su historial completo con lo que debe y lo que pagó.
 - **Historial** — Tickets y presupuestos con estado de pago, búsqueda por cliente y número, y filtros por deuda o conversión.
 - **Presupuestos** — Se emiten con los dos precios a la vista y se convierten a ticket con un botón, descontando el stock recién en ese momento.
@@ -98,12 +100,13 @@ Arquitectura **cliente-servidor desacoplada**: el backend expone una **API REST*
         ├── esquemas Pydantic  (validación de entrada/salida)
         └── SQLAlchemy (models.py) → SQLite / PostgreSQL
 
-  Ticket → bytes ESC/POS → RawBT → comandera Bluetooth 80mm
+  Comprobante → bytes ESC/POS → RawBT → comandera Bluetooth 80mm
 ```
 
 ### Decisiones de diseño destacadas
 
 - **Todo tiene que andar sin internet.** El local se queda sin conexión y la tablet tiene que seguir cobrando. Por eso no hay CDNs: los gráficos de Reportes son SVG dibujados a mano en vez de Chart.js, y las tipografías se sirven desde la app. Es la restricción que más decisiones explica en este proyecto.
+- **El papel no se hace pasar por lo que no es:** el comprobante no es fiscal, así que no se titula "Ticket" (en Argentina es lo que emite un controlador fiscal), el número no arranca con las letras de las clases de factura, y al pie dice "Documento no válido como factura".
 - **Totales calculados en el servidor:** el frontend nunca envía precios; el backend los resuelve contra su propia base. La interfaz muestra, pero el servidor tiene la última palabra (evita manipulación desde el cliente).
 - **Snapshot de precios:** cada línea de venta guarda el nombre y el precio del momento, no solo una referencia al ítem. Cambiar un precio hoy no altera el historial de ventas pasadas.
 - **Una sola lista de precios como fuente de verdad:** el precio efectivo es el base; el de transferencia se deriva con un factor y redondeo. Un solo lugar para cambiar precios, sin inconsistencias.
@@ -177,7 +180,7 @@ salon_ivana/
 │   └── comandera.md   # Cómo conectar la impresora térmica
 └── static/            # Frontend
     ├── facturar.html  # Facturación y cobro
-    ├── ticket.html    # Vista previa e impresión ESC/POS
+    ├── ticket.html    # Vista previa e impresión ESC/POS del comprobante
     ├── clientes.html  # Listado y alta de clientes
     ├── cuenta.html    # Cuenta corriente del cliente
     ├── historial.html # Historial de comprobantes
@@ -200,7 +203,7 @@ salon_ivana/
 
 Funcionalidades en evaluación / desarrollo:
 
-- [x] Impresión de tickets con impresora térmica Bluetooth (ESC/POS, 80mm).
+- [x] Impresión de comprobantes con impresora térmica Bluetooth (ESC/POS, 80mm).
 - [ ] Envío de comprobantes con datos del cliente para contaduría.
 - [ ] Carga de mercadería desde las grillas de los proveedores, en vez de a mano.
 

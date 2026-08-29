@@ -112,8 +112,8 @@ let COMPS=[];                 // tickets y presupuestos del cliente
 let tipoFiltro="todos";       // pestaña elegida: todos | ticket | presupuesto
 
 function toast(m){const t=$("#toast");t.textContent=m;t.classList.add("show");setTimeout(()=>t.classList.remove("show"),2200);}
-function numTicket(n){ return "A-"+String(n).padStart(5,"0"); }
-function numComp(c){ return (c.tipo==="presupuesto"?"P-":"A-")+String(c.numero).padStart(5,"0"); }
+function numTicket(n){ return "N-"+String(n).padStart(5,"0"); }
+function numComp(c){ return (c.tipo==="presupuesto"?"P-":"N-")+String(c.numero).padStart(5,"0"); }
 function parseISO2(s){ const [y,m,d]=s.split("-").map(Number); return new Date(y,m-1,d); }
 
 async function cargar(){
@@ -257,7 +257,7 @@ function renderComprobantes(){
              <div><span class="lbl">Con descuento</span><span class="val">${fmt(comp.subtotal)}</span></div>
            </div>
            ${comp.convertido_a
-              ? `<div class="muted" style="margin-top:8px;">Convertido → A-${String(comp.convertido_a).padStart(5,"0")}</div>`
+              ? `<div class="muted" style="margin-top:8px;">Convertido → N-${String(comp.convertido_a).padStart(5,"0")}</div>`
               : ''}`
         : `<div class="comp-cifras">
              <div><span class="lbl">Total</span><span class="val">${fmt(comp.total_final)}</span></div>
