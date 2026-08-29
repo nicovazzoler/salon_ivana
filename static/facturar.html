@@ -385,17 +385,72 @@
   }
 
   /* --- bloque de totales --- */
-  .tot-row{ display:flex; justify-content:space-between; margin:5px 0; font-size:var(--fs-md); }
+  /* ----- Totales -----
+     Una sola columna de importes en ticket, dos en presupuesto. Los números van
+     a la derecha y en cifras de ancho fijo, así las comas caen alineadas. */
+  .tot-row{
+    display:grid;
+    grid-template-columns:1fr auto;
+    align-items:baseline;
+    gap:0 var(--sp-4);
+    margin:5px 0;
+    font-size:var(--fs-md);
+    text-align:right;
+    font-variant-numeric:tabular-nums;
+  }
+  .tot-row .lbl{ text-align:left; }
+  .tot-row .v2{ display:none; }
+  .tot-cab{ display:none; }
+
+  /* Presupuesto: UNA sola grilla para todo el bloque, con las filas en
+     display:contents. Así las dos columnas de importes se miden contra el
+     contenido más ancho de TODAS las filas y quedan alineadas entre sí, sin
+     tener que adivinar un ancho: con un ancho fijo la fila del Total —que va en
+     cuerpo 22— desbordaba apenas los montos pasaban el millón. */
+  .totales.presu{
+    display:grid;
+    grid-template-columns:minmax(0,1fr) auto auto;
+    column-gap:var(--sp-4);
+    row-gap:5px;
+    align-items:baseline;
+  }
+  .totales.presu .tot-row{ display:contents; }
+  .totales.presu .tot-row .v2{ display:block; }
+  .totales.presu .tot-cab{
+    display:contents;
+    font-size:var(--fs-xs);
+    font-weight:var(--fw-bold);
+    text-transform:uppercase;
+    letter-spacing:var(--tracking-eti);
+    color:var(--text-tenue);
+  }
+  /* Sin caja propia, el filete del total va en cada una de sus celdas */
+  .totales.presu .tot-final > *{
+    margin-top:var(--sp-2);
+    padding-top:var(--sp-2);
+    border-top:1px solid var(--border);
+  }
+  /* El encabezado no lleva el cuerpo grande del total */
+  .totales.presu .tot-final .lbl{ font-size:22px; }
+
   .tot-extra,
   .tot-desc{ color:var(--warn); }
+  /* El subtotal es un número que se lee, no un título: tinta firme */
+  #subtotal, #subEfvoMonto, #subtotal2, #subEfvoMonto2{
+    font-weight:var(--fw-bold);
+    color:var(--text-titulo);
+  }
   .tot-final{
     margin-top:var(--sp-2);
     padding-top:var(--sp-2);
     border-top:1px solid var(--border);
     font-size:22px;
     font-weight:var(--fw-bold);
-    color:var(--text-titulo);
+    /* El total va en bronce, igual que los precios del catálogo: en esta
+       pantalla el dorado quiere decir "esto es plata". */
+    color:var(--text-marca);
   }
+  .tot-final .lbl{ color:var(--text-titulo); }
 
   /* --- botones de acción --- */
   .crear{                             /* acción principal, ancho completo */
@@ -538,13 +593,20 @@
         </div>
       </details>
 
-      <div class="tot-row"><span>Subtotal</span><span id="subtotal">$0</span></div>
-      <div class="tot-row tot-extra" id="rowExtra" style="display:none;"><span>Extra dificultad</span><span id="extraMonto">$0</span></div>
-      <div class="tot-row tot-desc" id="rowDescEfvo" style="display:none;"><span id="descEfvoLabel">Descuento</span><span id="descEfvoMonto">$0</span></div>
-      <div class="tot-row" id="rowSubEfvo" style="display:none;"><span>Subtotal </span><span id="subEfvoMonto">$0</span></div>
-      <div class="tot-row tot-desc" id="rowDescCat" style="display:none;"><span id="descCatLabel">Descuento</span><span id="descCatMonto">$0</span></div>
-      <div class="tot-row tot-extras" id="rowExtras" style="display:none;"><span>Extras</span><span id="extrasMonto">$0</span></div>
-      <div class="tot-row tot-final"><span>Total</span><span id="total">$0</span></div>
+      <!-- En presupuesto cada renglón lleva DOS importes. Los encabezados van una
+           sola vez arriba y las columnas se alinean debajo: antes cada fila
+           repetía "Lista / Con descuento", y en la del Total —que va en cuerpo
+           22— el rótulo se partía en dos renglones. -->
+      <div class="totales" id="totales">
+        <div class="tot-row tot-cab"><span class="lbl"></span><span>Lista</span><span>C/desc.</span></div>
+        <div class="tot-row"><span class="lbl">Subtotal</span><span id="subtotal">$0</span><span class="v2" id="subtotal2"></span></div>
+        <div class="tot-row tot-extra" id="rowExtra" style="display:none;"><span class="lbl">Extra dificultad</span><span id="extraMonto">$0</span><span class="v2" id="extraMonto2"></span></div>
+        <div class="tot-row tot-desc" id="rowDescEfvo" style="display:none;"><span class="lbl" id="descEfvoLabel">Descuento</span><span id="descEfvoMonto">$0</span><span class="v2"></span></div>
+        <div class="tot-row" id="rowSubEfvo" style="display:none;"><span class="lbl">Subtotal</span><span id="subEfvoMonto">$0</span><span class="v2" id="subEfvoMonto2"></span></div>
+        <div class="tot-row tot-desc" id="rowDescCat" style="display:none;"><span class="lbl" id="descCatLabel">Descuento</span><span id="descCatMonto">$0</span><span class="v2" id="descCatMonto2"></span></div>
+        <div class="tot-row tot-extras" id="rowExtras" style="display:none;"><span class="lbl">Extras</span><span id="extrasMonto">$0</span><span class="v2" id="extrasMonto2"></span></div>
+        <div class="tot-row tot-final"><span class="lbl">Total</span><span id="total">$0</span><span class="v2" id="total2"></span></div>
+      </div>
 
       <div id="botsTicket">
         <button class="crear" id="cobrarTodo" disabled>Cobrar todo</button>
@@ -1049,54 +1111,62 @@ function actualizarTotales(){
   const descCat = hayDescCat ? (esEf ? descCatEf : descCatTr) : 0;
 
   // En presupuesto, mostrar AMBOS subtotales (Lista/Descuento); en ticket, solo el de la forma seleccionada
-  if(esPresu){
-    $("#subtotal").innerHTML = `<div style="display:flex;gap:16px;"><div>Lista<br><strong>${fmt(subTr)}</strong></div><div>Con descuento<br><strong>${fmt(subEf)}</strong></div></div>`;
-  } else {
-    $("#subtotal").textContent = fmt(subTr);
-  }
+  // Presupuesto: dos columnas de importes. El encabezado dice cuál es cuál, así
+  // que cada renglón solo pone los números.
+  $("#totales").classList.toggle("presu", esPresu);
+  $("#subtotal").textContent  = fmt(subTr);
+  $("#subtotal2").textContent = esPresu ? fmt(subEf) : "";
 
-  $("#rowExtra").style.display = extra>0 ? "flex" : "none";
-  if(extra>0) $("#extraMonto").textContent = "+"+fmt(extra);
+  $("#rowExtra").style.display = extra>0 ? "" : "none";
+  if(extra>0){ $("#extraMonto").textContent = "+"+fmt(extra);
+                $("#extraMonto2").textContent = "+"+fmt(extra); }
 
   // descuento efectivo = diferencia de las 2 listas
   const descEfvo = subTr - subEf;
   const pctEfvo = subTr>0 ? (descEfvo/subTr*100) : 0;
   // En presupuesto, mostrar siempre; en ticket, solo si es efectivo
-  $("#rowDescEfvo").style.display = ((esPresu || esEf) && ticket.length>0) ? "flex" : "none";
+  $("#rowDescEfvo").style.display = ((esPresu || esEf) && ticket.length>0) ? "" : "none";
   $("#descEfvoLabel").textContent = esPresu ? `Diferencia` : `Descuento (${pctEfvo.toFixed(2)}%)`;
   $("#descEfvoMonto").textContent = "−"+fmt(descEfvo);
 
   // subtotal con descuento de catálogo
   const hayDescCatYPresu = hayDescCat && esPresu;
   const hayDescCatYEf = hayDescCat && esEf;
-  $("#rowSubEfvo").style.display = (hayDescCatYPresu || hayDescCatYEf) ? "flex" : "none";
+  $("#rowSubEfvo").style.display = (hayDescCatYPresu || hayDescCatYEf) ? "" : "none";
   if(hayDescCatYPresu){
-    document.querySelector("#rowSubEfvo span").textContent = "Subtotal c/desc";
-    $("#subEfvoMonto").innerHTML = `<div style="display:flex;gap:16px;"><div>Lista: ${fmt(subTr - descCatTr)}</div><div>Con descuento: ${fmt(subEf - descCatEf)}</div></div>`;
+    document.querySelector("#rowSubEfvo .lbl").textContent = "Subtotal c/desc";
+    $("#subEfvoMonto").textContent  = fmt(subTr - descCatTr);
+    $("#subEfvoMonto2").textContent = fmt(subEf - descCatEf);
   } else {
     $("#subEfvoMonto").textContent = fmt(subEf);
+    $("#subEfvoMonto2").textContent = "";
   }
 
-  $("#rowDescCat").style.display = (hayDescCat && ticket.length>0) ? "flex" : "none";
+  $("#rowDescCat").style.display = (hayDescCat && ticket.length>0) ? "" : "none";
   $("#descCatLabel").textContent = descNombre || "Descuento";
   if(esPresu && hayDescCat){
-    $("#descCatMonto").innerHTML = `<div style="display:flex;gap:16px;"><div>−${fmt(descCatTr)}</div><div>−${fmt(descCatEf)}</div></div>`;
+    $("#descCatMonto").textContent  = "−"+fmt(descCatTr);
+    $("#descCatMonto2").textContent = "−"+fmt(descCatEf);
   } else {
-    $("#descCatMonto").textContent = "−"+fmt(descCat);
+    $("#descCatMonto").textContent  = "−"+fmt(descCat);
+    $("#descCatMonto2").textContent = "";
   }
 
   // Extras: entran al final, sin que ningún descuento los toque
   const extrasTotal = EXTRAS.reduce((a,e)=>a+(e.monto||0),0);
-  $("#rowExtras").style.display = extrasTotal>0 ? "flex" : "none";
-  $("#extrasMonto").textContent = "+"+fmt(extrasTotal);
+  $("#rowExtras").style.display = extrasTotal>0 ? "" : "none";
+  $("#extrasMonto").textContent  = "+"+fmt(extrasTotal);
+  $("#extrasMonto2").textContent = "+"+fmt(extrasTotal);
 
   // total
   const total = baseCat - descCat + extrasTotal;
   if(esPresu){
-    $("#total").innerHTML = `<div style="display:flex;gap:16px;"><div>Lista<br><strong>${fmt(subTr - descCatTr + extrasTotal)}</strong></div><div>Con descuento<br><strong>${fmt(subEf - descCatEf + extrasTotal)}</strong></div></div>`;
+    $("#total").textContent  = fmt(subTr - descCatTr + extrasTotal);
+    $("#total2").textContent = fmt(subEf - descCatEf + extrasTotal);
     totalActual = subEf - descCatEf + extrasTotal;  // usar total efectivo para operaciones
   } else {
     $("#total").textContent = fmt(total);
+    $("#total2").textContent = "";
     totalActual = total;
   }
 
