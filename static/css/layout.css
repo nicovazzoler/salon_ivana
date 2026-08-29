@@ -54,20 +54,55 @@ nav.menu a:hover{ color:var(--text-titulo); border-bottom-color:var(--papel-500)
 nav.menu a.actual{ color:var(--text-marca); border-bottom-color:var(--bronce-500); }
 
 /* Interruptor de tema: vive en el menú, así aparece en todas las pantallas */
-.btn-tema{
-  display:inline-flex; align-items:center; justify-content:center;
-  width:32px; height:32px;   /* cuadrado: el sol y la luna no tienen el mismo ancho */
+/* ----- Interruptor claro / oscuro -----
+   Los dos íconos quedan siempre a la vista y la perilla se corre sobre el que
+   está activo. Es la misma idea que un interruptor de luz: se ve el estado, no
+   hay que interpretarlo. */
+.sw-tema{
+  display:inline-flex; align-items:center;
   padding:0;
-  background:transparent;
+  background:none;
+  border:none;
+  cursor:pointer;
+}
+.sw-tema .pista{
+  position:relative;
+  display:inline-flex; align-items:center; justify-content:space-between;
+  gap:2px;
+  width:60px; height:30px;
+  padding:0 7px;
+  background:var(--bg-hundido);
   border:1px solid var(--border);
-  border-radius:var(--r-md);
-  color:var(--text-suave);
+  border-radius:var(--r-full);
+  transition:background .18s ease, border-color .18s ease;
 }
-.btn-tema:hover{
-  background:var(--bg-sutil);
-  border-color:var(--bronce-500);
-  color:var(--text-marca);
+.sw-tema:hover .pista{ border-color:var(--bronce-500); }
+/* Los íconos van por debajo de la perilla y apagados; el que queda tapado no
+   molesta y el otro señala hacia dónde vas. */
+.sw-tema svg{
+  position:relative; z-index:1;
+  color:var(--text-tenue);
+  transition:color .18s ease;
 }
+.sw-tema .perilla{
+  position:absolute; top:50%; left:3px;
+  width:22px; height:22px;
+  margin-top:-11px;
+  border-radius:50%;
+  background:var(--acento-fuerte);
+  box-shadow:0 1px 3px rgba(0,0,0,.28);
+  transition:transform .2s cubic-bezier(.34,1.4,.64,1);   /* apenas rebota al llegar */
+}
+/* En oscuro la perilla se corre a la derecha, sobre la luna */
+.sw-tema[aria-checked="true"] .perilla{ transform:translateX(28px); }
+.sw-tema[aria-checked="true"] .pista{ background:var(--papel-400); }
+/* El ícono que NO está tapado por la perilla es el que se resalta */
+.sw-tema[aria-checked="false"] svg:last-of-type,
+.sw-tema[aria-checked="true"]  svg:first-of-type{ color:var(--text-suave); }
+
+/* La perilla tiene que seguir deslizándose aunque tema.js apague las
+   transiciones para repintar la pantalla: el movimiento ES el interruptor. */
+:root[data-cambiando-tema] .sw-tema .perilla{ transition:transform .2s cubic-bezier(.34,1.4,.64,1) !important; }
 
 /* ----- Contenedores ----- */
 .wrap{

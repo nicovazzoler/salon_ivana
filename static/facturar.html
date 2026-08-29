@@ -44,6 +44,10 @@
     color:var(--text-suave);
     text-align:left;
     cursor:pointer;
+    /* Siempre en mayúscula. Además empareja los datos: casi todas las categorías
+       están cargadas en mayúscula pero alguna quedó como "Productos". */
+    text-transform:uppercase;
+    letter-spacing:.03em;               /* la versalita necesita aire para respirar */
   }
   .cat-pill:hover{ background:var(--bg-sutil); color:var(--text); }
   .cat-pill.on{
@@ -80,8 +84,11 @@
   .btn-item .n{
     font-size:var(--fs-md);
     font-weight:var(--fw-medium);
-    line-height:1.25;
+    line-height:1.3;
     overflow-wrap:anywhere;             /* corta nombres largos en vez de desbordar */
+    color:var(--text-titulo);           /* tinta firme: el nombre es lo que se busca */
+    text-transform:uppercase;
+    letter-spacing:.02em;
   }
   /* Precios: el de lista lleva el peso, el otro queda de apoyo.
      Antes los dos iban en dorado y negrita y competían entre sí. */
@@ -89,7 +96,8 @@
     display:flex; align-items:baseline; gap:6px;
     margin-top:auto;                    /* pegado abajo: las tarjetas quedan parejas */
   }
-  .btn-item .p-tr{ font-size:var(--fs-lg); font-weight:var(--fw-bold); color:var(--text); }
+  /* El precio en bronce: al facturar rápido el ojo va derecho al número. */
+  .btn-item .p-tr{ font-size:var(--fs-lg); font-weight:var(--fw-bold); color:var(--text-marca); }
   .btn-item .p-ef{ font-size:var(--fs-xs); color:var(--text-tenue); }
   .btn-item .cat-mini{ font-size:var(--fs-xs); color:var(--text-tenue); }
 

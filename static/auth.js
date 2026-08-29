@@ -35,7 +35,11 @@ function pintarNav(){
     html+=`<a href="${l.href}"${esActual?' class="actual"':''}>${l.txt}</a>`;
   }
   html+=`<a href="#" onclick="logout();return false;">Salir</a>`;
-  html+=`<button type="button" class="btn-tema" id="btnTema" title="Cambiar entre claro y oscuro" aria-label="Cambiar tema"></button>`;
+  /* Interruptor, no botón: se ven los dos destinos a la vez y la perilla marca
+     en cuál estás. role="switch" para que un lector de pantalla lo anuncie como
+     lo que es. */
+  html+=`<button type="button" class="sw-tema" id="btnTema" role="switch" aria-label="Modo oscuro">`
+      + `<span class="pista">${ICONO_SOL}${ICONO_LUNA}<span class="perilla"></span></span></button>`;
   nav.innerHTML=html;
   pintarBotonTema();
 }
@@ -55,14 +59,15 @@ const ICONO_LUNA = `<svg viewBox="0 0 24 24" width="16" height="16" fill="none"
   <path d="M20.5 14.6A8.6 8.6 0 0 1 9.4 3.5a8.6 8.6 0 1 0 11.1 11.1Z"/>
 </svg>`;
 
-/* El botón muestra a qué modo vas a pasar, no en cuál estás: de día ofrece la
-   luna, de noche el sol. Se dibuja acá para que aparezca en todas las pantallas
-   sin tocar once archivos. */
+/* En el interruptor los dos íconos están siempre a la vista y lo que se mueve es
+   la perilla: se entiende de un vistazo en cuál de los dos modos estás, sin
+   tener que deducirlo del ícono. Se dibuja acá para que aparezca en todas las
+   pantallas sin tocar once archivos. */
 function pintarBotonTema(){
   const b = document.getElementById("btnTema");
   if(!b) return;
   const oscuro = document.documentElement.getAttribute("data-tema") === "oscuro";
-  b.innerHTML = oscuro ? ICONO_SOL : ICONO_LUNA;
+  b.setAttribute("aria-checked", oscuro ? "true" : "false");
   b.title = oscuro ? "Pasar a modo claro" : "Pasar a modo oscuro";
   b.onclick = () => { if(window.alternarTema) window.alternarTema(); };
 }
