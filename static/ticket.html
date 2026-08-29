@@ -362,10 +362,51 @@ function lineaAjuste(l){
   return fila2("  > "+etiqueta, fmtP(l.precio_unit)+" > "+fmtP(pu(l))+" c/u");
 }
 
-function fila4(a,b,c,d_){
-  a=translit(a); b=translit(b); c=translit(c); d_=translit(d_);
-  if(a.length>16) a=a.slice(0,16);
-  return a+" ".repeat(16-a.length)+b.padStart(10)+c.padStart(11)+d_.padStart(11);
+/* Un renglón de la tabla de la cuenta corriente, con los anchos que calculó
+   anchosCuenta(). La etiqueta se recorta si hace falta; los importes no, nunca. */
+function fila4(etiqueta, b, c, d_, an){
+  let a = translit(etiqueta);
+  if(a.length > an.etiqueta) a = a.slice(0, an.etiqueta);
+  return a + " ".repeat(an.etiqueta - a.length)
+       + translit(b).padStart(ANCHO - an.etiqueta - 2*an.monto)
+       + translit(c).padStart(an.monto)
+       + translit(d_).padStart(an.monto);
+}
+
+function fechaCorta(fecha){          // 27/8/26
+  const f=new Date(fecha);
+  return f.getDate()+"/"+(f.getMonth()+1)+"/"+String(f.getFullYear()).slice(-2);
+}
+function fechaSinAnio(fecha){        // 27/8
+  const f=new Date(fecha);
+  return f.getDate()+"/"+(f.getMonth()+1);
+}
+
+/* Cuánto mide cada columna de la cuenta corriente.
+
+   Los importes NO se recortan nunca: un número mal impreso en la cuenta de un
+   cliente es mucho peor que una fecha corta. Así que se miden los importes de
+   ESTA cuenta, las tres columnas de plata se llevan lo que necesitan y el
+   comprobante se queda con el resto. Se calcula una sola vez para toda la
+   tabla; si se hiciera por renglón, las columnas bailarían.
+
+   Si no entra, se cede de a poco y siempre del lado de la etiqueta: primero el
+   "A-" (la columna ya se llama "Comprobante" y son todos tickets) y recién al
+   final el año. Con el año entero "A-00024 27/8/2026" mide 17 contra 16 de
+   columna, y el ticket del cliente salía diciendo "27/8/202". */
+function anchosCuenta(comps){
+  const montos = comps.flatMap(c=>[fmtP(c.total_final), fmtP(c.pagado), fmtP(c.saldo)]);
+  const monto = Math.max(9, ...montos.map(m=>m.length+1));   // +1 de aire entre columnas
+  const etiqueta = ANCHO - 3*monto;
+
+  const formatos = [
+    c => "A-"+String(c.numero).padStart(5,"0")+" "+fechaCorta(c.fecha),
+    c =>      String(c.numero).padStart(5,"0")+" "+fechaCorta(c.fecha),
+    c =>      String(c.numero).padStart(5,"0")+" "+fechaSinAnio(c.fecha),
+  ];
+  const fmt = formatos.find(f => comps.every(c => f(c).length <= etiqueta))
+           || formatos[formatos.length-1];
+  return {monto, etiqueta, fmt};
 }
 
 function generarEscpos(){
@@ -480,11 +521,11 @@ function generarEscposCuenta(){
   if(conDeuda.length===0){
     lin("Sin deuda pendiente.");
   } else {
-    lin(fila4("Comprobante","Total","Pagado","Saldo"));
+    const an = anchosCuenta(conDeuda);
+    lin(fila4("Comprobante","Total","Pagado","Saldo", an));
     sep();
     conDeuda.forEach(comp=>{
-      const f=new Date(comp.fecha).toLocaleDateString("es-AR");
-      lin(fila4("A-"+String(comp.numero).padStart(5,"0")+" "+f, fmtP(comp.total_final), fmtP(comp.pagado), fmtP(comp.saldo)));
+      lin(fila4(an.fmt(comp), fmtP(comp.total_final), fmtP(comp.pagado), fmtP(comp.saldo), an));
     });
   }
   sep();
