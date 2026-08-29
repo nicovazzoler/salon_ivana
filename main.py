@@ -163,11 +163,27 @@ class NotaIn(BaseModel):
 
 # ---------- Huso horario ----------
 
+"""Zona horaria.
+
+   Todo se guarda en UTC, pero el negocio vive en Argentina: cuando el local
+   dice "hoy", habla del día argentino. Argentina está en UTC-3 todo el año
+   (no tiene horario de verano), así que alcanza con un corrimiento fijo.
+
+   Esto importa más de lo que parece: el servidor corre en UTC, así que a
+   partir de las 21:00 argentinas el servidor YA está en el día siguiente. Un
+   egreso cargado a las 21:23 de un martes se contaba en la caja del miércoles.
+"""
+HORAS_ARG = 3
+
 def fecha_hora_now_utc():
     return datetime.now(timezone.utc)
 
 def hora_argentina(dt):
-    return dt - timedelta(hours=3)
+    return dt - timedelta(hours=HORAS_ARG)
+
+def hoy_argentina():
+    """La fecha de hoy EN EL LOCAL, no la del servidor."""
+    return hora_argentina(fecha_hora_now_utc()).date()
 
 # ---------- auth ----------
 def usuario_actual(authorization: str = Header(default="")):
@@ -307,7 +323,7 @@ def siguiente_numero(db, tipo: str) -> int:
 
 def _puede_modificar(user, fecha) -> bool:
     # el dueño puede modificar cualquier fecha; el empleado solo lo de hoy
-    return user.get("rol") == "dueno" or fecha.date() == date.today()
+    return user.get("rol") == "dueno" or hora_argentina(fecha).date() == hoy_argentina()
 
 @app.post("/api/login")
 def login(datos: LoginIn, db: Session = Depends(get_db)):
@@ -377,7 +393,7 @@ def set_extra(datos: ExtraIn, _ = Depends(solo_dueno), db: Session = Depends(get
 
 @app.put("/api/config/fondo-caja")
 def set_fondo(datos: FondoIn, _ = Depends(solo_dueno), db: Session = Depends(get_db)):
-    iso = (datos.fecha or date.today().isoformat())[:10]
+    iso = (datos.fecha or hoy_argentina().isoformat())[:10]
     f = db.query(models.FondoCaja).filter(models.FondoCaja.fecha == iso).first()
     if not f:
         f = models.FondoCaja(fecha=iso); db.add(f)
@@ -871,7 +887,7 @@ def crear_egreso(e: EgresoIn, _ = Depends(usuario_actual), db: Session = Depends
 
 @app.get("/api/egresos/dia")
 def egresos_dia(_ = Depends(usuario_actual), db: Session = Depends(get_db)):
-    ini, fin = _rango_dia(date.today())
+    ini, fin = _rango_dia(hoy_argentina())
     es = db.query(models.Egreso).filter(models.Egreso.fecha >= ini, models.Egreso.fecha < fin
          ).order_by(models.Egreso.id.desc()).all()
     return [{"id": e.id, "hora": hora_argentina(e.fecha).strftime("%H:%M"), "tipo": e.tipo, "concepto": e.concepto,
@@ -899,7 +915,15 @@ def anular_egreso(egreso_id: int, user = Depends(usuario_actual), db: Session = 
     db.delete(e); db.commit(); return {"ok": True}
 
 # ---------- caja (solo dueño) ----------
-def _rango_dia(d): ini = datetime(d.year, d.month, d.day); return ini, ini + timedelta(days=1)
+def _rango_dia(d):
+    """Ventana en UTC que cubre el día argentino `d`.
+
+    Las fechas se guardan en UTC, así que el día del local —de 00:00 a 24:00 en
+    Argentina— es de 03:00 a 03:00 UTC. Antes esta ventana arrancaba a la
+    medianoche UTC, o sea a las 21:00 argentinas: todo lo cargado de noche caía
+    en el día siguiente."""
+    ini = datetime(d.year, d.month, d.day) + timedelta(hours=HORAS_ARG)
+    return ini, ini + timedelta(days=1)
 def _sv(db, i, f): return sum(p.monto for p in db.query(models.Pago).filter(models.Pago.fecha >= i, models.Pago.fecha < f))
 def _se(db, i, f): return sum((e.monto or 0) for e in db.query(models.Egreso).filter(models.Egreso.fecha >= i, models.Egreso.fecha < f))
 
@@ -919,7 +943,7 @@ def _pago_detalle(p):
 
 @app.get("/api/caja/dia")
 def caja_dia(fecha: str | None = None, _ = Depends(usuario_actual), db: Session = Depends(get_db)):
-    d = date.fromisoformat(fecha) if fecha else date.today()
+    d = date.fromisoformat(fecha) if fecha else hoy_argentina()
     ini, fin = _rango_dia(d)
     pagos = db.query(models.Pago).filter(models.Pago.fecha >= ini, models.Pago.fecha < fin).all()
     egresos = db.query(models.Egreso).filter(models.Egreso.fecha >= ini, models.Egreso.fecha < fin).all()
@@ -941,7 +965,7 @@ def caja_dia(fecha: str | None = None, _ = Depends(usuario_actual), db: Session 
 
 @app.get("/api/caja/diario")
 def caja_diario(dias: int = 14, _ = Depends(solo_dueno), db: Session = Depends(get_db)):
-    hoy = date.today(); out = []
+    hoy = hoy_argentina(); out = []
     for i in range(dias):
         d = hoy - timedelta(days=i); ini, fin = _rango_dia(d)
         ing = _sv(db, ini, fin); egr = _se(db, ini, fin)
@@ -950,10 +974,10 @@ def caja_diario(dias: int = 14, _ = Depends(solo_dueno), db: Session = Depends(g
 
 @app.get("/api/caja/semanal")
 def caja_semanal(semanas: int = 8, _ = Depends(solo_dueno), db: Session = Depends(get_db)):
-    hoy = date.today(); lunes = hoy - timedelta(days=hoy.weekday()); out = []
+    hoy = hoy_argentina(); lunes = hoy - timedelta(days=hoy.weekday()); out = []
     for i in range(semanas):
         ini_d = lunes - timedelta(weeks=i)
-        ini = datetime(ini_d.year, ini_d.month, ini_d.day); fin = ini + timedelta(days=7)
+        ini, _ = _rango_dia(ini_d); fin = ini + timedelta(days=7)
         ing = _sv(db, ini, fin); egr = _se(db, ini, fin)
         out.append({"semana_desde": ini_d.isoformat(), "ingresos": ing, "egresos": egr, "neto": ing - egr})
     return out
@@ -999,8 +1023,8 @@ def _ventana(dias: int, desde: str | None, hasta: str | None):
         fin = (datetime.fromisoformat(hasta) + timedelta(days=1)) if hasta else None
         return ini, fin
     if dias and dias > 0:
-        hoy = datetime(date.today().year, date.today().month, date.today().day)
-        return hoy - timedelta(days=dias - 1), hoy + timedelta(days=1)
+        ini_hoy, fin_hoy = _rango_dia(hoy_argentina())
+        return ini_hoy - timedelta(days=dias - 1), fin_hoy
     return None, None
 
 def _filtrar(query, col, ini, fin):
