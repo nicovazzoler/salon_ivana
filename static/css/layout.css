@@ -4,6 +4,23 @@
 
 /* Cabecera: papel claro separado del fondo por un filete, no por una barra
    oscura. El nombre de la pantalla va en la serif. */
+/* Aviso de contraseña sin cambiar. Va arriba de todo y NO es sticky: si se
+   quedara pegado le comería alto a la pantalla de la tablet en cada scroll.
+   Que esté al abrir cada pantalla alcanza para que nadie lo pase por alto. */
+.aviso-seguridad{
+  display:flex; flex-wrap:wrap; align-items:center; gap:var(--sp-3);
+  padding:var(--sp-3) var(--sp-6);
+  background:var(--danger);
+  color:var(--text-invertido);
+  font-size:var(--fs-base); font-weight:var(--fw-medium);
+}
+.aviso-seguridad a{
+  color:var(--text-invertido);
+  font-weight:var(--fw-bold);
+  text-decoration:underline;
+  white-space:nowrap;
+}
+
 header{
   position:sticky; top:0; z-index:var(--z-header);
   display:flex;

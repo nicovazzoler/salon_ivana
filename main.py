@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends, HTTPException, Header
+from fastapi import FastAPI, Depends, HTTPException, Header, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy.orm import Session, selectinload
@@ -7,7 +7,7 @@ from pydantic import BaseModel
 from datetime import datetime, date, timedelta, timezone
 from openpyxl import Workbook
 import os
-import re, bisect, io
+import re, bisect, io, time, hmac
 
 from database import get_db, engine, Base
 import models
@@ -473,16 +473,94 @@ def _puede_modificar(user, fecha) -> bool:
     # el dueño puede modificar cualquier fecha; el empleado solo lo de hoy
     return user.get("rol") == "dueno" or hora_argentina(fecha).date() == hoy_argentina()
 
+"""Freno a la prueba de contraseñas por fuerza bruta.
+
+   Sin esto, /api/login contesta tan rápido como se le pida: una contraseña de
+   ocho caracteres en minúscula se agota en un rato desde una sola máquina, y no
+   queda registro de que alguien lo intentó.
+
+   Se cuentan los fallos por IP y por usuario a la vez, porque tapan agujeros
+   distintos: por IP frena a uno que prueba contra muchos usuarios, y por
+   usuario frena a muchas IPs probando contra el mismo. Los aciertos limpian el
+   contador, así que a quien se le escapó el dedo una vez no le pasa nada.
+
+   Los dos topes NO son iguales, y la diferencia importa: en el local la tablet,
+   el celular y la computadora salen todos por la misma IP. Con un tope de IP
+   bajo, la empleada que se olvidó su contraseña y probó ocho veces dejaría
+   afuera también a la dueña, que no hizo nada. Así que el tope por usuario es
+   bajo (protege esa cuenta y solo esa) y el de IP es alto: sigue cortando la
+   fuerza bruta, que necesita miles de intentos, sin castigar al de al lado.
+
+   Vive en memoria: se borra al reiniciar y no se comparte si algún día hay más
+   de una instancia. No es un candado perfecto, es sacarle al que prueba la
+   posibilidad de hacer miles de intentos por minuto, que es lo que importa.
+"""
+TOPE = {"ip": 25, "us": 8}
+ESPERA_SEG = 300          # 5 minutos de castigo
+_fallos: dict[str, list[float]] = {}
+
+def _recientes(clave: str) -> list[float]:
+    ahora = time.monotonic()
+    quedan = [t for t in _fallos.get(clave, []) if ahora - t < ESPERA_SEG]
+    if quedan: _fallos[clave] = quedan
+    else: _fallos.pop(clave, None)
+    return quedan
+
+def _frenado(claves) -> int:
+    """Segundos que faltan para poder volver a probar. 0 = puede intentar."""
+    espera = 0
+    for c in claves:
+        intentos = _recientes(c)
+        if len(intentos) >= TOPE[c.split(":")[0]]:
+            espera = max(espera, int(ESPERA_SEG - (time.monotonic() - intentos[0])) + 1)
+    return espera
+
 @app.post("/api/login")
-def login(datos: LoginIn, db: Session = Depends(get_db)):
-    u = db.query(models.Usuario).filter(models.Usuario.usuario == datos.usuario.strip()).first()
-    if not u or u.hash != auth.hash_password(datos.password, u.salt):
+def login(datos: LoginIn, request: Request, db: Session = Depends(get_db)):
+    usuario = datos.usuario.strip()
+    # request.client puede venir vacío detrás de un proxy raro: ahí queda solo el
+    # freno por usuario, que igual sirve.
+    ip = request.client.host if request.client else "?"
+    claves = [f"ip:{ip}", f"us:{usuario.lower()}"]
+
+    faltan = _frenado(claves)
+    if faltan:
+        raise HTTPException(429, f"Demasiados intentos. Probá de nuevo en {faltan//60+1} min.")
+
+    u = db.query(models.Usuario).filter(models.Usuario.usuario == usuario).first()
+    if not u or not hmac.compare_digest(u.hash, auth.hash_password(datos.password, u.salt)):
+        ahora = time.monotonic()
+        for c in claves: _fallos.setdefault(c, []).append(ahora)
+        print(f"Login fallido: usuario={usuario!r} ip={ip}")
         raise HTTPException(401, "Usuario o contraseña incorrectos")
+
+    for c in claves: _fallos.pop(c, None)      # entró bien: se limpia el contador
     return {"token": auth.crear_token(u.usuario, u.rol), "rol": u.rol, "usuario": u.usuario}
 
+# Las contraseñas con las que se crean los usuarios la primera vez. Están en
+# seed_datos.py, que es público como todo el repositorio: mientras alguien siga
+# usando una de estas, no hay contraseña que valga.
+PASSWORDS_DE_FABRICA = {"dueno": "dueno1234", "empleado": "empleado1234"}
+
+def con_password_de_fabrica(db) -> list[str]:
+    """Usuarios que todavía tienen la contraseña con la que se crearon."""
+    flojos = []
+    for u in db.query(models.Usuario):
+        original = PASSWORDS_DE_FABRICA.get(u.usuario)
+        if original and hmac.compare_digest(u.hash, auth.hash_password(original, u.salt)):
+            flojos.append(u.usuario)
+    return flojos
+
 @app.get("/api/yo")
-def yo(user = Depends(usuario_actual)):
-    return user
+def yo(user = Depends(usuario_actual), db: Session = Depends(get_db)):
+    # Se avisa acá, y no en una pantalla suelta, porque /api/yo lo llama cada
+    # pantalla al abrirse: el aviso aparece en toda la app hasta que se arregle.
+    # El empleado ve solo lo suyo; el dueño ve todas las que faltan cambiar.
+    flojos = con_password_de_fabrica(db)
+    mias = user.get("usuario") in flojos
+    return {**user,
+            "password_de_fabrica": mias,
+            "usuarios_sin_cambiar": flojos if user.get("rol") == "dueno" else []}
 
 @app.post("/api/usuarios")
 def crear_usuario(u: UsuarioIn, _ = Depends(solo_dueno), db: Session = Depends(get_db)):

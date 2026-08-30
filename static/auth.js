@@ -44,6 +44,40 @@ function pintarNav(){
   nav.innerHTML=html;
   pintarBotonTema();
   marcarBorradorEnMenu();
+  avisarPasswordDeFabrica();
+}
+
+/* Aviso de contraseña sin cambiar.
+
+   Las contraseñas con las que se crean los usuarios están escritas en
+   seed_datos.py, y el repositorio es público: mientras alguien siga usando una,
+   entrar a la app es cuestión de saber la dirección. El backend lo detecta y lo
+   dice en /api/yo.
+
+   El cartel va arriba de todo, en todas las pantallas, y no se puede cerrar:
+   un aviso que se puede tapar se tapa el primer día y no se lo ve nunca más.
+   Desaparece solo cuando la contraseña se cambia de verdad. */
+async function avisarPasswordDeFabrica(){
+  if(!getToken() || document.getElementById("avisoSeguridad")) return;
+  let yo;
+  try{ yo = await (await authFetch("/api/yo")).json(); }catch(e){ return; }
+
+  const mia = yo.password_de_fabrica;
+  const otros = (yo.usuarios_sin_cambiar || []).filter(u => u !== yo.usuario);
+  if(!mia && !otros.length) return;
+
+  const partes = [];
+  if(mia) partes.push("Tu contraseña sigue siendo la que vino de fábrica.");
+  if(otros.length) partes.push(
+    `${otros.length===1 ? "El usuario" : "Los usuarios"} ${otros.join(", ")} `
+    + `${otros.length===1 ? "sigue" : "siguen"} con la contraseña de fábrica.`);
+
+  const barra = document.createElement("div");
+  barra.id = "avisoSeguridad";
+  barra.className = "aviso-seguridad";
+  barra.innerHTML = `<span>🔓 ${partes.join(" ")} Cualquiera que sepa la dirección de la app puede entrar.</span>`
+    + (getRol()==="dueno" ? ` <a href="/admin#usuarios">Cambiarla ahora</a>` : "");
+  document.body.insertBefore(barra, document.body.firstChild);
 }
 
 /* Si quedó un ticket a medio cargar, el link de Facturar lo muestra con un
