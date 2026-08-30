@@ -38,6 +38,9 @@
     cursor:pointer;
   }
   .comp-head .sub{ margin-top:3px; font-size:var(--fs-lg); color:var(--text); }
+  /* Servicio cargado un día después del que se atendió: se marca en bronce y
+     más chico, para que se lea sin competir con la fecha del servicio. */
+  .comp-head .anotado{ color:var(--text-marca); font-size:var(--fs-sm); }
 
   /* .comp-datos / .comp-acciones viven en components.css (los comparte con cuenta.html) */
 
@@ -120,6 +123,7 @@
 <div class="toast" id="toast"></div>
 
 <script src="/static/auth.js"></script>
+<script src="/static/escpos.js"></script>
 <script>
 requireLogin(); pintarNav();
 const $=s=>document.querySelector(s);
@@ -243,11 +247,16 @@ function crearFila(comp){
       : "";
     const formas = { efectivo:"Efectivo", transfer:"Transferencia", mixto:"Mixto", cuenta:"A cuenta" };
     const formaTxt = formas[comp.forma_origen] || comp.forma_origen;
+    /* Un servicio de otro día se marca acá: la fecha que se lista es la del
+       servicio, así que sin esta aclaración parecería cargado ese mismo día. */
+    const anotado = comp.anotado_despues
+      ? ` · <span class="anotado">anotado el ${new Date(comp.anotado_despues+"Z").toLocaleDateString("es-AR")}</span>`
+      : "";
     div.innerHTML=`
       <div class="comp-head">
         <div class="comp-datos">
           <div>
-            <div class="sub">${fecha} · <span class="num">${numComp(comp.tipo,comp.numero)}</span> · ${titulo(quien)}</div>
+            <div class="sub">${fecha} · <span class="num">${numComp(comp.tipo,comp.numero)}</span> · ${titulo(quien)}${anotado}</div>
             <div class="comp-total">${fmt(comp.ingresado + comp.saldo)} <span class="fp">· ${formaTxt}</span></div>
           </div>
           <span class="badge ${comp.estado}">${comp.estado}</span>
@@ -271,13 +280,19 @@ function crearFila(comp){
       if(box.style.display==="block"){ box.style.display="none"; return; }
       const d=await (await authFetch("/api/comprobantes/"+comp.id)).json();
       const esPresu = d.tipo==="presupuesto";
+      const {pu, pe, hayAjuste, textoAjuste} = EscPos;
+      // el ajuste de cada línea se aclara abajo del renglón (en % o en pesos)
+      const ajuste = l => hayAjuste(l)
+        ? `<div class="fila" style="color:var(--text-tenue);font-size:12px;padding-left:10px;">
+             <span>↳ ${textoAjuste(l)}</span>
+             <span>${fmt(l.precio_unit)} → ${fmt(pu(l))} c/u</span></div>` : "";
       // En presupuesto se muestran las dos listas por línea (transfer y efectivo)
       const lineas=d.lineas.map(l=>
         `<div class="fila"><span>${l.cantidad}× ${l.nombre}${l.dificultad?' (dif)':''}</span>`+
         (esPresu
-          ? `<span style="white-space:nowrap;">${fmt(l.precio_unit*l.cantidad)} <span style="color:var(--text-tenue);font-size:11px;">/ desc. ${fmt(l.precio_efectivo*l.cantidad)}</span></span>`
-          : `<span>${fmt(l.precio_unit*l.cantidad)}</span>`)
-        +`</div>`
+          ? `<span style="white-space:nowrap;">${fmt(pu(l)*l.cantidad)} <span style="color:var(--text-tenue);font-size:11px;">/ desc. ${fmt(pe(l)*l.cantidad)}</span></span>`
+          : `<span>${fmt(pu(l)*l.cantidad)}</span>`)
+        +`</div>` + ajuste(l)
       ).join("");
 
       // Descuento en efectivo: la diferencia entre listas (solo si el comprobante es efectivo)
@@ -313,8 +328,8 @@ function crearFila(comp){
       if(esPresu){
         // Presupuesto: total por cada lista (con el descuento de catálogo aplicado a ambas)
         const ex=d.extra_dificultad||0;
-        let totTr=d.lineas.reduce((a,l)=>a+l.precio_unit*l.cantidad,0)+ex;
-        let totEf=d.lineas.reduce((a,l)=>a+l.precio_efectivo*l.cantidad,0)+ex;
+        let totTr=d.lineas.reduce((a,l)=>a+pu(l)*l.cantidad,0)+ex;
+        let totEf=d.lineas.reduce((a,l)=>a+pe(l)*l.cantidad,0)+ex;
         if(d.descuento_pct>0){
           totTr=Math.round(totTr*(100-d.descuento_pct)/100);
           totEf=Math.round(totEf*(100-d.descuento_pct)/100);

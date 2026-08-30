@@ -148,8 +148,14 @@ class Comprobante(Base):
     __tablename__ = "comprobantes"
     id = Column(Integer, primary_key=True)
     tipo = Column(String, nullable=False)        # "ticket" o "presupuesto"
-    numero = Column(Integer, nullable=False)      
+    numero = Column(Integer, nullable=False)
+    # Cuándo se HIZO el servicio. Es la fecha que manda para la caja y los reportes.
     fecha = Column(DateTime, default=fecha_hora_now_utc)
+    # Cuándo se CARGÓ en el sistema. Normalmente es el mismo momento que `fecha`;
+    # solo difiere cuando se anota un servicio de un día anterior que se pasó por
+    # alto. Que sean dos campos distintos es lo que permite decir en el papel
+    # "servicio anotado el 30/8" sin mentir sobre el día en que se atendió.
+    cargado = Column(DateTime, default=fecha_hora_now_utc)
     cliente_id = Column(Integer, ForeignKey("clientes.id"))  # opcional (puede ser None: mostrador)
     cliente_nombre = Column(String)               # snapshot del nombre al momento
     peluquero = Column(String)                    
@@ -174,11 +180,16 @@ class ComprobanteLinea(Base):
     cantidad = Column(Integer, default=1)
     precio_unit = Column(Integer)      # snapshot del precio transferencia (precio de referencia)
     precio_efectivo = Column(Integer)  # snapshot del precio efectivo de catálogo (para el descuento)
-    # Ajuste de ESTA línea, con signo: -10 = 10% de descuento, +15 = 15% de recargo.
+    # Ajuste de ESTA línea, POR UNIDAD y con signo. Dos formas excluyentes:
+    #   ajuste_pct:   -10 = 10% de descuento, +15 = 15% de recargo
+    #   ajuste_monto: -2000 = $2000 de descuento, +1500 = $1500 de recargo
     # Los precios de arriba quedan como el catálogo los tenía, así el ticket puede
     # mostrar "precio de lista → precio ajustado" por unidad.
     ajuste_pct = Column(Integer, default=0)
+    ajuste_monto = Column(Integer, default=0)
     ajuste_nombre = Column(String)     # snapshot del motivo ("Fidelidad", "Pelo largo"...)
+    # Ya no se usa: el extra por dificultad se sacó. Queda la columna para que los
+    # comprobantes viejos sigan mostrando el mismo total que el día que se cobraron.
     dificultad = Column(Boolean, default=False)
     subtotal = Column(Integer)
     comprobante = relationship("Comprobante", back_populates="lineas")
@@ -218,9 +229,11 @@ class Descuento(Base):
 
 class AjusteItem(Base):
     """Descuentos y recargos que se aplican a UNA línea, no al comprobante entero.
-    El porcentaje va con signo: negativo descuenta, positivo recarga."""
+    Van con signo: negativo descuenta, positivo recarga. Cada ajuste guardado es
+    de un tipo o del otro: si tiene monto, es en pesos; si no, es en porcentaje."""
     __tablename__ = "ajustes_item"
     id = Column(Integer, primary_key=True)
     nombre = Column(String, nullable=False)             # "Fidelidad", "Pelo largo"...
     porcentaje = Column(Integer, nullable=False)        # -10 descuenta, +15 recarga
+    monto = Column(Integer, default=0)                  # -2000 descuenta $2000, +1500 recarga
     activo = Column(Boolean, default=True)

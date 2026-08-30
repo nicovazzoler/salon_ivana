@@ -100,6 +100,7 @@
 <div class="toast" id="toast"></div>
 
 <script src="/static/auth.js"></script>
+<script src="/static/escpos.js"></script>
 <script>
 requireLogin(); pintarNav();
 const $=s=>document.querySelector(s);
@@ -352,12 +353,11 @@ function renderComprobantes(){
     btnDet.onclick=async()=>{
       if(boxDet.style.display==="block"){ boxDet.style.display="none"; return; }
       const d=await (await authFetch("/api/comprobantes/"+comp.id)).json();
-      const pu = l => l.precio_unit_final ?? l.precio_unit ?? 0;
-      const pe = l => l.precio_efectivo_final ?? l.precio_efectivo ?? 0;
-      // el ajuste de cada línea se aclara abajo del renglón
-      const ajuste = l => l.ajuste_pct
+      const {pu, pe, hayAjuste, textoAjuste} = EscPos;
+      // el ajuste de cada línea se aclara abajo del renglón (en % o en pesos)
+      const ajuste = l => hayAjuste(l)
         ? `<div class="fila" style="justify-content:space-between;color:var(--text-tenue);font-size:12px;padding-left:10px;">
-             <span>↳ ${l.ajuste_nombre || (l.ajuste_pct<0?'Descuento':'Recargo')} ${l.ajuste_pct<0?'−':'+'}${Math.abs(l.ajuste_pct)}%</span>
+             <span>↳ ${esc(textoAjuste(l))}</span>
              <span>${fmt(l.precio_unit)} → ${fmt(pu(l))} c/u</span></div>` : "";
       const lineas=d.lineas.map(l=>
         `<div class="fila" style="justify-content:space-between;"><span>${l.cantidad}× ${l.nombre}${l.dificultad?' (dif)':''}</span>`+

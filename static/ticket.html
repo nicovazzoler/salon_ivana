@@ -106,6 +106,7 @@
 <div class="toast" id="toast"></div>
 
 <script src="/static/auth.js"></script>
+<script src="/static/escpos.js"></script>
 <script>
 requireLogin(); pintarNav();
 const $=s=>document.querySelector(s);
@@ -122,14 +123,8 @@ let COMP=null, NEGOCIO={}, CUENTA=null;
    de entrada y de salida que esto no reemplaza a una factura, mire por donde
    mire el que lo recibe. Se escribe sin tildes porque el mismo texto se manda
    a la comandera. */
-const LEGAL_TXT = "DOCUMENTO NO VALIDO COMO FACTURA";
-
-function numComp(t,n){ return (t==="ticket"?"N-":"P-")+String(n).padStart(5,"0"); }
-function fechaLocal(iso){
-  // el backend guarda UTC sin zona: agregamos la Z para que el dispositivo la convierta
-  const d=new Date(iso.endsWith("Z")?iso:iso+"Z");
-  return d.toLocaleDateString("es-AR")+" "+d.toLocaleTimeString("es-AR",{hour:"2-digit",minute:"2-digit",hour12:false});
-}
+const LEGAL_TXT = EscPos.LEGAL_TXT;
+const {numComp, fechaLocal, fechaSolo, hayAjuste, textoAjuste} = EscPos;
 
 async function init(){
   const params=new URLSearchParams(location.search);
@@ -163,18 +158,13 @@ async function init(){
   $("#papel").style.display="block";
 }
 
-/* Precios unitarios de una línea, ya con su ajuste aplicado. El backend los manda
-   calculados; el fallback es por si el comprobante viene de una versión anterior. */
-const pu = l => l.precio_unit_final     ?? l.precio_unit     ?? 0;
-const pe = l => l.precio_efectivo_final ?? l.precio_efectivo ?? 0;
+/* Precios unitarios de una línea, ya con su ajuste aplicado. */
+const {pu, pe} = EscPos;
 
 /* Renglón que explica el ajuste de una línea: cuánto era y cuánto quedó por unidad. */
 function filaAjuste(l){
-  const desc = l.ajuste_pct < 0;
-  const etiqueta = (l.ajuste_nombre ? esc(l.ajuste_nombre) : (desc ? "Descuento" : "Recargo"))
-                 + ` ${desc?"−":"+"}${Math.abs(l.ajuste_pct)}%`;
   return `<div class="fila tenue" style="padding-left:10px;">
-    <span>↳ ${etiqueta}</span>
+    <span>↳ ${esc(textoAjuste(l))}</span>
     <span class="der">${fmt(l.precio_unit)} → ${fmt(pu(l))} c/u</span></div>`;
 }
 
@@ -194,6 +184,9 @@ function render(){
   partes.push('<hr class="sep">');
   partes.push(`<div class="fila"><span>${esPresu?"PRESUPUESTO":"SERVICIO"} <b>${numComp(d.tipo,d.numero)}</b></span><span class="der chico">${fechaLocal(d.fecha)}</span></div>`);
   if(d.cliente_nombre) partes.push(`<div class="fila chico"><span>Cliente: ${esc(d.cliente_nombre)}</span></div>`);
+  // Un servicio que se atendió un día y se anotó otro lo aclara: la fecha de
+  // arriba es la del servicio, y sin esto no se entendería la diferencia.
+  if(d.anotado_despues) partes.push(`<div class="fila chico"><span>Anotado el ${fechaSolo(d.anotado_despues)}</span></div>`);
   partes.push('<hr class="sep">');
 
   if(esPresu){
@@ -204,7 +197,7 @@ function render(){
         <td class="precio">${fmt(pu(l)*l.cantidad)}</td>
         <td class="precio">${fmt(pe(l)*l.cantidad)}</td></tr>`);
       // el ajuste de la línea se detalla abajo, con el precio de lista original
-      if(l.ajuste_pct) partes.push(filaAjuste(l));
+      if(hayAjuste(l)) partes.push(filaAjuste(l));
     });
     partes.push('</table>');
     if(d.extra_dificultad>0) partes.push(`<div class="fila tenue"><span>* Extra dificultad</span><span class="der">+${fmt(d.extra_dificultad)}</span></div>`);
@@ -230,7 +223,7 @@ function render(){
     // ticket de venta: precios de lista + descuentos aplicados
     d.lineas.forEach(l=>{
       partes.push(`<div class="fila"><span>${l.cantidad}× ${esc(l.nombre)}${l.dificultad?" *":""}</span><span class="der">${fmt(pu(l)*l.cantidad)}</span></div>`);
-      if(l.ajuste_pct) partes.push(filaAjuste(l));
+      if(hayAjuste(l)) partes.push(filaAjuste(l));
     });
     if(d.extra_dificultad>0) partes.push(`<div class="fila tenue"><span>* Extra dificultad</span><span class="der">+${fmt(d.extra_dificultad)}</span></div>`);
     partes.push('<hr class="sep">');
@@ -319,308 +312,9 @@ function renderCuenta(){
   $("#papel").innerHTML=partes.join("");
 }
 
-/* ---------- ESC/POS para la comandera (80mm = 48 columnas) ---------- */
-const ANCHO=48;
-
-/* ---------- acentos en la comandera ----------
-
-   La comandera no habla UTF-8: trabaja con una tabla de 256 caracteres, y la
-   que trae de fábrica es ASCII. Si le mandás la "ó" de "Salón" en crudo,
-   imprime un símbolo cualquiera; por eso antes se mandaba todo sin tildes.
-
-   ESC/POS permite cambiarle la tabla: "ESC t 2" selecciona CP850
-   (multilingüe), que tiene todos los acentos del español. Es la tabla más
-   estándar y la soportan tanto las Epson como los clones genéricos.
-
-   Si esta unidad no la soportara, las palabras con tilde saldrían con
-   símbolos raros. En ese caso poné ACENTOS en false: vuelve a imprimir sin
-   tildes, que es más feo pero se lee siempre. */
-const ACENTOS = true;
-const CP850 = { "á":0xA0,"é":0x82,"í":0xA1,"ó":0xA2,"ú":0xA3,
-                "Á":0xB5,"É":0x90,"Í":0xD6,"Ó":0xE0,"Ú":0xE9,
-                "ñ":0xA4,"Ñ":0xA5,"ü":0x81,"Ü":0x9A,
-                "¿":0xA8,"¡":0xAD,"°":0xF8,"ª":0xA6,"º":0xA7 };
-// un carácter -> su byte en la tabla de la comandera
-const byteDe = ch => (ACENTOS && CP850[ch] !== undefined) ? CP850[ch] : ch.charCodeAt(0);
-
-/* Deja solo lo que la comandera puede imprimir. IMPORTANTE: devuelve UN
-   carácter por posición, nunca dos, porque de este largo dependen todas las
-   columnas. Cada acentuado ocupa un byte en CP850, así que la cuenta da igual
-   con acentos o sin ellos. */
-function translit(s){
-  if(!ACENTOS)
-    return String(s).normalize("NFD").replace(/[\u0300-\u036f]/g,"")
-    .replace(/[×]/g,"x").replace(/[−–—]/g,"-").replace(/[·]/g,"-")
-    .replace(/[“”]/g,'"').replace(/[’‘]/g,"'").replace(/[✂✓]/g,"")
-    .replace(/[^\x20-\x7e\n]/g,"");
-  return String(s)
-    .replace(/[×]/g,"x").replace(/[−–—]/g,"-").replace(/[·]/g,"-")
-    .replace(/[“”]/g,'"').replace(/[’‘]/g,"'").replace(/[✂✓]/g,"")
-    .replace(/[^\x20-\x7e\n]/g, c => (c in CP850) ? c : "");
-}
-function fmtP(n){ return "$"+(n||0).toLocaleString("es-AR"); }
-function fila2(izq,der,w=ANCHO){
-  izq=translit(izq); der=translit(der);
-  const max=w-der.length-1;
-  if(izq.length>max) izq=izq.slice(0,max);
-  return izq+" ".repeat(w-izq.length-der.length)+der;
-}
-
-/* Corta un texto en renglones del ancho del papel SIN partir palabras.
-   El papel tiene 48 columnas: los nombres largos hay que bajarlos de renglón,
-   no recortarlos, o se pierde parte del nombre (y marcas como el * de dificultad). */
-function envolver(txt, w=ANCHO){
-  const palabras = translit(txt).split(/\s+/).filter(Boolean);
-  const lineas = []; let actual = "";
-  palabras.forEach(pal => {
-    if(!actual){ actual = pal; return; }
-    if((actual + " " + pal).length <= w) actual += " " + pal;
-    else { lineas.push(actual); actual = pal; }
-  });
-  if(actual) lineas.push(actual);
-  // una sola palabra más larga que el papel: ahí sí no queda otra que cortarla
-  return lineas.flatMap(l => l.length <= w ? [l] : (l.match(new RegExp(`.{1,${w}}`,"g")) || [l]));
-}
-
-/* Renglón de ítem: el nombre envuelve y el precio se pega a la derecha del
-   último renglón; si no entra, el precio baja a un renglón propio. */
-function filaItem(etiqueta, precio, w=ANCHO){
-  const der = translit(precio);
-  const lineas = envolver(etiqueta, w);
-  const ultima = lineas[lineas.length-1];
-  if(ultima.length + der.length + 1 <= w){
-    lineas[lineas.length-1] = ultima + " ".repeat(w - ultima.length - der.length) + der;
-  } else {
-    lineas.push(" ".repeat(Math.max(0, w - der.length)) + der);
-  }
-  return lineas;
-}
-
-function fila3(a,b,c){                       // detalle | lista | con desc. (26+11+11)
-  a=translit(a); b=translit(b); c=translit(c);
-  if(a.length>26) a=a.slice(0,26);
-  return a+" ".repeat(26-a.length)+b.padStart(11)+c.padStart(11);
-}
-
-/* Fila de 3 columnas cuyo detalle no entra en 26: el nombre sigue abajo,
-   sangrado, en vez de quedar cortado a la mitad. */
-function fila3Larga(a,b,c){
-  const partes = envolver(a, 26);
-  const salida = [fila3(partes[0], b, c)];
-  partes.slice(1).forEach(p => salida.push("  " + p));
-  return salida;
-}
-
-/* Renglón del ajuste de una línea, para la comandera.
-
-   El porcentaje NO se puede recortar. Con fila2, que corta por la derecha lo de
-   la izquierda, un nombre de ajuste medianamente largo se comía el número:
-   "Cliente frecuente -10%" salía "Cliente frecuente -1" y el ticket del cliente
-   decía 1% en vez de 10%. Un nombre cortado se ve; un porcentaje cortado se lee
-   como si fuera otro.
-
-   filaItem envuelve la etiqueta y baja los precios a un renglón propio si no
-   entran, sin recortar nada. Se sangra 2 para que el "> " marque que el ajuste
-   es de la línea de arriba, y por eso se envuelve contra ANCHO-2. */
-function lineaAjuste(l){
-  const desc = l.ajuste_pct < 0;
-  const etiqueta = (l.ajuste_nombre || (desc ? "Descuento" : "Recargo"))
-                 + ` ${desc?"-":"+"}${Math.abs(l.ajuste_pct)}%`;
-  const precios = fmtP(l.precio_unit)+" > "+fmtP(pu(l))+" c/u";
-  return filaItem("> "+etiqueta, precios, ANCHO-2).map(x => "  "+x);
-}
-
-/* Un renglón de la tabla de la cuenta corriente, con los anchos que calculó
-   anchosCuenta(). La etiqueta se recorta si hace falta; los importes no, nunca. */
-function fila4(etiqueta, b, c, d_, an){
-  let a = translit(etiqueta);
-  if(a.length > an.etiqueta) a = a.slice(0, an.etiqueta);
-  return a + " ".repeat(an.etiqueta - a.length)
-       + translit(b).padStart(ANCHO - an.etiqueta - 2*an.monto)
-       + translit(c).padStart(an.monto)
-       + translit(d_).padStart(an.monto);
-}
-
-function fechaCorta(fecha){          // 27/8/26
-  const f=new Date(fecha);
-  return f.getDate()+"/"+(f.getMonth()+1)+"/"+String(f.getFullYear()).slice(-2);
-}
-function fechaSinAnio(fecha){        // 27/8
-  const f=new Date(fecha);
-  return f.getDate()+"/"+(f.getMonth()+1);
-}
-
-/* Cuánto mide cada columna de la cuenta corriente.
-
-   Los importes NO se recortan nunca: un número mal impreso en la cuenta de un
-   cliente es mucho peor que una fecha corta. Así que se miden los importes de
-   ESTA cuenta, las tres columnas de plata se llevan lo que necesitan y el
-   comprobante se queda con el resto. Se calcula una sola vez para toda la
-   tabla; si se hiciera por renglón, las columnas bailarían.
-
-   Si no entra, se cede de a poco y siempre del lado de la etiqueta: primero el
-   "N-" (la columna ya se llama "Servicio" y son todos del mismo tipo) y
-   final el año. Con el año entero "A-00024 27/8/2026" mide 17 contra 16 de
-   columna, y el ticket del cliente salía diciendo "27/8/202". */
-function anchosCuenta(comps){
-  const montos = comps.flatMap(c=>[fmtP(c.total_final), fmtP(c.pagado), fmtP(c.saldo)]);
-  const monto = Math.max(9, ...montos.map(m=>m.length+1));   // +1 de aire entre columnas
-  const etiqueta = ANCHO - 3*monto;
-
-  const formatos = [
-    c => "N-"+String(c.numero).padStart(5,"0")+" "+fechaCorta(c.fecha),
-    c =>      String(c.numero).padStart(5,"0")+" "+fechaCorta(c.fecha),
-    c =>      String(c.numero).padStart(5,"0")+" "+fechaSinAnio(c.fecha),
-  ];
-  const fmt = formatos.find(f => comps.every(c => f(c).length <= etiqueta))
-           || formatos[formatos.length-1];
-  return {monto, etiqueta, fmt};
-}
-
-function generarEscpos(){
-  if(CUENTA) return generarEscposCuenta();
-  const d=COMP, esPresu=d.tipo==="presupuesto";
-  const B=[];
-  const raw=(...x)=>B.push(...x);
-  const txt=s=>{ for(const ch of translit(s)) B.push(byteDe(ch)); };
-  const lin=(s="")=>{ txt(s); raw(10); };
-  const centro=on=>raw(0x1b,0x61,on?1:0);
-  const negrita=on=>raw(0x1b,0x45,on?1:0);
-  const grande=on=>raw(0x1d,0x21,on?0x11:0x00);
-  const sep=()=>lin("-".repeat(ANCHO));
-
-  raw(0x1b,0x40);                            // reset
-  if(ACENTOS) raw(0x1b,0x74,2);              // tabla CP850: acentos del español
-  centro(true);
-  lin(LEGAL_TXT);                            // el aviso abre el papel
-  centro(false); sep(); centro(true);
-  grande(true); negrita(true); lin(NEGOCIO.nombre||""); negrita(false); grande(false);
-  [NEGOCIO.direccion, NEGOCIO.telefono&&("Tel: "+NEGOCIO.telefono), NEGOCIO.instagram]
-    .filter(Boolean).forEach(x=>lin(x));
-  centro(false);
-  sep();
-  lin(fila2((esPresu?"PRESUPUESTO ":"SERVICIO ")+numComp(d.tipo,d.numero), fechaLocal(d.fecha)));
-  // El peluquero NO va en el papel: es dato interno. Se sigue guardando en el
-  // comprobante y se ve en historial y en la cuenta, pero no en lo que se
-  // entrega al cliente.
-  if(d.cliente_nombre) envolver("Cliente: "+d.cliente_nombre).forEach(lin);
-  sep();
-
-  if(esPresu){
-    lin(fila3("Detalle","Lista","C/desc."));
-    d.lineas.forEach(l=>{
-      fila3Larga(l.cantidad+"x "+l.nombre+(l.dificultad?" *":""),
-                 fmtP(pu(l)*l.cantidad), fmtP(pe(l)*l.cantidad)).forEach(lin);
-      if(l.ajuste_pct) lineaAjuste(l).forEach(lin);
-    });
-    if(d.extra_dificultad>0) lin(fila2("* Extra dificultad","+"+fmtP(d.extra_dificultad)));
-    sep();
-    const extra=d.extra_dificultad||0;
-    let totLista=d.lineas.reduce((a,l)=>a+pu(l)*l.cantidad,0)+extra;
-    let totPromo=d.lineas.reduce((a,l)=>a+pe(l)*l.cantidad,0)+extra;
-    if(d.descuento_pct>0){
-      lin(fila2((d.descuento_nombre||"Descuento")+" "+d.descuento_pct+"%","aplicado"));
-      totLista=Math.round(totLista*(100-d.descuento_pct)/100);
-      totPromo=Math.round(totPromo*(100-d.descuento_pct)/100);
-    }
-    (d.extras||[]).forEach(e=>{
-      filaItem("+ "+e.concepto, fmtP(e.monto)).forEach(lin);
-      totLista+=e.monto; totPromo+=e.monto;
-    });
-    negrita(true);
-    lin(fila2("Total lista",fmtP(totLista)));
-    lin(fila2("Total con descuento",fmtP(totPromo)));
-    negrita(false);
-    lin(); centro(true);
-    lin("Presupuesto sin valor fiscal.");
-    lin("Precios sujetos a cambio sin previo aviso.");
-    centro(false);
-  } else {
-    d.lineas.forEach(l=>{
-      filaItem(l.cantidad+"x "+l.nombre+(l.dificultad?" *":""), fmtP(pu(l)*l.cantidad)).forEach(lin);
-      if(l.ajuste_pct) lineaAjuste(l).forEach(lin);
-    });
-    if(d.extra_dificultad>0) lin(fila2("* Extra dificultad","+"+fmtP(d.extra_dificultad)));
-    sep();
-    // Subtotal antes de descuentos, sumado de los renglones de arriba
-    const subtotal = d.lineas.reduce((a,l)=>a+pu(l)*l.cantidad,0) + (d.extra_dificultad||0);
-    const hayDesc = d.desc_efectivo>0 || d.desc_jubilado>0
-                 || d.pagos.reduce((a,p)=>a+(p.desc_aplicado||0),0)>0;
-    if(hayDesc) lin(fila2("Subtotal", fmtP(subtotal)));
-    if(d.desc_efectivo>0) lin(fila2("Descuento "+(d.desc_efectivo/d.total_transfer*100).toFixed(2)+"%","-"+fmtP(d.desc_efectivo)));
-    if(d.desc_jubilado>0) lin(fila2((d.descuento_nombre||"Descuento")+" "+d.descuento_pct+"%","-"+fmtP(d.desc_jubilado)));
-    const descPagos=d.pagos.reduce((a,p)=>a+(p.desc_aplicado||0),0);
-    if(descPagos>0) lin(fila2("Descuento (al abonar)","-"+fmtP(descPagos)));
-    (d.extras||[]).forEach(e=>filaItem("+ "+e.concepto, fmtP(e.monto)).forEach(lin));
-    negrita(true); grande(true);
-    lin(fila2("TOTAL",fmtP(d.ingresado+Math.max(d.saldo,0)),24));   // 24 cols: la letra es doble ancho
-    grande(false); negrita(false);
-    if(d.pagos.length){
-      sep();
-      d.pagos.forEach(p=>{
-        const f=new Date(p.fecha.endsWith("Z")?p.fecha:p.fecha+"Z").toLocaleDateString("es-AR");
-        const fp=p.forma_pago ? " ("+p.forma_pago+")" : "";
-        lin(fila2("Recibido "+f+fp, fmtP(p.monto)));
-      });
-    }
-    if(d.saldo>0){ negrita(true); lin(fila2("PENDIENTE",fmtP(d.saldo))); negrita(false); }
-  }
-
-  lin(); centro(true); lin("¡Gracias por su visita!"); centro(false);
-  sep();
-  centro(true); lin(LEGAL_TXT); centro(false);
-  sep();                                     // la línea que cierra el papel
-  raw(0x1b,0x64,4);                          // avanzar papel
-  raw(0x1d,0x56,0x42,0x00);                  // corte parcial (si la comandera tiene cortador)
-  return new Uint8Array(B);
-}
-
-function generarEscposCuenta(){
-  const c=CUENTA.cliente, comps=CUENTA.comprobantes;
-  const conDeuda=comps.filter(x=>x.saldo>0).slice(0,20);
-  const B=[];
-  const raw=(...x)=>B.push(...x);
-  const txt=s=>{ for(const ch of translit(s)) B.push(byteDe(ch)); };
-  const lin=(s="")=>{ txt(s); raw(10); };
-  const centro=on=>raw(0x1b,0x61,on?1:0);
-  const negrita=on=>raw(0x1b,0x45,on?1:0);
-  const grande=on=>raw(0x1d,0x21,on?0x11:0x00);
-  const sep=()=>lin("-".repeat(ANCHO));
-
-  raw(0x1b,0x40);
-  if(ACENTOS) raw(0x1b,0x74,2);              // tabla CP850: acentos del español
-  centro(true);
-  lin(LEGAL_TXT);
-  centro(false); sep(); centro(true);
-  grande(true); negrita(true); lin(NEGOCIO.nombre||""); negrita(false); grande(false);
-  [NEGOCIO.direccion, NEGOCIO.telefono&&("Tel: "+NEGOCIO.telefono), NEGOCIO.instagram]
-    .filter(Boolean).forEach(x=>lin(x));
-  centro(false);
-  sep();
-  centro(true); negrita(true); lin("CUENTA CORRIENTE"); negrita(false); centro(false);
-  const ahora=new Date();
-  lin(fila2("Cliente: "+c.nombre, ahora.toLocaleDateString("es-AR")));
-  sep();
-
-  if(conDeuda.length===0){
-    lin("Sin deuda pendiente.");
-  } else {
-    const an = anchosCuenta(conDeuda);
-    lin(fila4("Servicio","Total","Pagado","Saldo", an));
-    sep();
-    conDeuda.forEach(comp=>{
-      lin(fila4(an.fmt(comp), fmtP(comp.total_final), fmtP(comp.pagado), fmtP(comp.saldo), an));
-    });
-  }
-  sep();
-  negrita(true); grande(true);
-  lin(fila2("SALDO TOTAL",fmtP(CUENTA.saldo_total),24));
-  grande(false); negrita(false);
-  lin(); sep(); centro(true); lin(LEGAL_TXT); centro(false); sep();
-  raw(0x1b,0x64,4);
-  raw(0x1d,0x56,0x42,0x00);
-  return new Uint8Array(B);
-}
+/* ---------- ESC/POS para la comandera ----------
+   El generador vive en /static/escpos.js, compartido con facturar, que imprime
+   solo al terminar de cobrar. Acá quedó únicamente el botón. */
 
 /* ---------- imprimir ---------- */
 // La comandera se maneja con la app RawBT (Play Store): recibe los bytes ESC/POS
@@ -628,9 +322,8 @@ function generarEscposCuenta(){
 $("#btnComandera").onclick=()=>{
   if(!COMP && !CUENTA) return;
   try{
-    const bytes=generarEscpos();
-    let bin=""; bytes.forEach(b=>bin+=String.fromCharCode(b));
-    location.href="rawbt:base64,"+btoa(bin);
+    const bytes = CUENTA ? EscPos.deCuenta(CUENTA, NEGOCIO) : EscPos.deComprobante(COMP, NEGOCIO);
+    location.href = EscPos.urlRawbt(bytes);
     toast("Enviado a la comandera (RawBT)");
   }catch(e){ toast("No se pudo generar la impresión"); }
 };

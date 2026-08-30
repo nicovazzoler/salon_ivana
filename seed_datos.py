@@ -1,7 +1,7 @@
 import json
 from database import engine, SessionLocal, Base
 import models
-from config_extra import FORMAS_PAGO, TIPOS_EGRESO, EXTRA_DIFICULTAD, calcular_transfer
+from config_extra import FORMAS_PAGO, TIPOS_EGRESO, calcular_transfer
 from auth import nuevo_salt, hash_password
 
 def seed():
@@ -24,10 +24,6 @@ def seed():
     if db.query(models.TipoEgreso).count() == 0:
         for t in TIPOS_EGRESO: db.add(models.TipoEgreso(nombre=t))
         db.commit(); print("Tipos de egreso sembrados.")
-
-    if not db.query(models.Config).filter_by(clave="extra_dificultad").first():
-        db.add(models.Config(clave="extra_dificultad", valor=str(EXTRA_DIFICULTAD)))
-        db.commit(); print("Config extra_dificultad sembrada.")
 
     if not db.query(models.Config).filter_by(clave="fondo_caja").first():
         db.add(models.Config(clave="fondo_caja", valor="0"))

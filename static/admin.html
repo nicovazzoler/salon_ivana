@@ -174,7 +174,6 @@
   <nav class="indice">
     <a class="pill" href="#catalogo">✂️ Catálogo</a>
     <a class="pill" href="#pagos">💳 Formas de pago</a>
-    <a class="pill" href="#dificultad">➕ Dificultad</a>
     <a class="pill" href="#egresos">📤 Egresos</a>
     <a class="pill" href="#descuentos">🏷️ Descuentos</a>
     <a class="pill" href="#ajustes">🔧 Ajustes x ítem</a>
@@ -236,17 +235,6 @@
     </div>
   </div>
 
-  <div class="card" id="dificultad">
-    <div class="card-head">
-      <h2>➕ Extra por dificultad</h2>
-      <p>Se suma al total cada vez que una línea se marca como "Dif".</p>
-    </div>
-    <div class="fila">
-      <div style="max-width:200px;"><label>Monto que se suma al marcar "Dif"</label><input id="extra" type="number"></div>
-      <button class="b-ok" id="btnExtra">Guardar</button>
-    </div>
-  </div>
-
   <div class="card" id="egresos">
     <div class="card-head">
       <h2>📤 Tipos de egreso</h2>
@@ -282,7 +270,7 @@
       <h2>🔧 Ajustes por ítem</h2>
       <p>Descuentos y recargos que se aplican a <b>una línea sola</b> del servicio,
          no al total. Al facturar aparecen en un desplegable en cada ítem, y ahí
-         también se puede tipear un porcentaje suelto.</p>
+         también se puede tipear uno suelto.</p>
     </div>
     <div id="listaAjustes"></div>
     <hr>
@@ -295,7 +283,14 @@
           <option value="+">Recargo (+)</option>
         </select>
       </div>
-      <div style="flex:0;min-width:110px;"><label>Porcentaje</label><input id="nAjPct" type="number" min="1" max="100" placeholder="10"></div>
+      <div style="flex:0;min-width:130px;">
+        <label>Unidad</label>
+        <select id="nAjUnidad">
+          <option value="%">Porcentaje (%)</option>
+          <option value="$">Monto fijo ($)</option>
+        </select>
+      </div>
+      <div style="flex:0;min-width:120px;"><label id="nAjLabel">Porcentaje</label><input id="nAjPct" type="number" min="1" max="100" placeholder="10"></div>
       <button class="b-ok" id="btnAjuste">Agregar</button>
     </div>
   </div>
@@ -494,17 +489,6 @@ $("#btnForma").onclick=async()=>{
   $("#nForma").value="";toast("Forma agregada");cargarFormas();
 };
 
-// --- Extra por dificultad ---
-async function cargarExtra(){
-  const cfg=await (await authFetch("/api/config")).json();
-  $("#extra").value=cfg.extra_dificultad;
-}
-$("#btnExtra").onclick=async()=>{
-  await authFetch("/api/config/extra-dificultad",{method:"PUT",headers:{"Content-Type":"application/json"},
-    body:JSON.stringify({valor:parseInt($("#extra").value)||0})});
-  toast("Extra actualizado");
-};
-
 // --- Tipos de egreso ---
 async function cargarTipos(){
   const tipos=await (await authFetch("/api/tipos-egreso")).json();
@@ -560,10 +544,14 @@ async function cargarAjustes(){
   if(ajs.length === 0){ cont.innerHTML = '<p class="muted">Todavía no hay ajustes cargados.</p>'; return; }
   ajs.forEach(a => {
     const row = document.createElement("div"); row.className = "item-row simple";
-    const esDesc = a.porcentaje < 0;
+    // El ajuste es en pesos o en porcentaje, nunca en los dos a la vez.
+    const enPesos = !!a.monto;
+    const valor = enPesos ? a.monto : a.porcentaje;
+    const esDesc = valor < 0;
     const signo = esDesc ? "−" : "+";
+    const cuanto = enPesos ? signo+fmt(Math.abs(a.monto))+" c/u" : signo+Math.abs(a.porcentaje)+"%";
     row.innerHTML = `<span class="n">${esc(a.nombre)}
-        <span class="tag ${esDesc?'neutro':''}">${signo}${Math.abs(a.porcentaje)}%</span>
+        <span class="tag ${esDesc?'neutro':''}">${cuanto}</span>
         <span class="muted">${esDesc?'descuento':'recargo'}</span></span>
       <button class="b-del">Eliminar</button>`;
     row.querySelector("button").onclick = async () => {
@@ -574,15 +562,27 @@ async function cargarAjustes(){
   });
 }
 
+/* El campo del valor cambia de nombre y de tope según la unidad: el porcentaje
+   va de 1 a 100, los pesos no tienen tope. */
+$("#nAjUnidad").onchange = () => {
+  const enPesos = $("#nAjUnidad").value === "$";
+  $("#nAjLabel").textContent = enPesos ? "Monto por unidad" : "Porcentaje";
+  const inp = $("#nAjPct");
+  inp.placeholder = enPesos ? "2000" : "10";
+  if(enPesos) inp.removeAttribute("max"); else inp.max = 100;
+};
+
 $("#btnAjuste").onclick = async () => {
   const nombre = $("#nAjNombre").value.trim();
   const magnitud = parseInt($("#nAjPct").value);
+  const enPesos = $("#nAjUnidad").value === "$";
   if(!nombre){ toast("Falta el nombre"); return; }
-  if(isNaN(magnitud) || magnitud <= 0 || magnitud > 100){ toast("Porcentaje inválido (1 a 100)"); return; }
+  if(isNaN(magnitud) || magnitud <= 0){ toast("Poné un valor mayor a 0"); return; }
+  if(!enPesos && magnitud > 100){ toast("Porcentaje inválido (1 a 100)"); return; }
   // el signo lo pone el desplegable: adentro se guarda negativo si descuenta
-  const porcentaje = $("#nAjSigno").value === "-" ? -magnitud : magnitud;
+  const valor = $("#nAjSigno").value === "-" ? -magnitud : magnitud;
   const r = await authFetch("/api/ajustes-item", {method:"POST", headers:{"Content-Type":"application/json"},
-    body: JSON.stringify({ nombre, porcentaje })});
+    body: JSON.stringify({ nombre, porcentaje: enPesos ? 0 : valor, monto: enPesos ? valor : 0 })});
   if(!r.ok){ const e = await r.json(); toast(e.detail || "No se pudo"); return; }
   $("#nAjNombre").value = ""; $("#nAjPct").value = "";
   toast("Ajuste agregado"); cargarAjustes();
@@ -672,7 +672,7 @@ $("#btnBackup").onclick=async()=>{
   }catch(e){toast("Error: "+e.message);}
   finally{$("#btnBackup").textContent="Descargar backup";$("#btnBackup").disabled=false;}
 };
-cargarCats();cargarFormas();cargarExtra();cargarTipos();cargarUsuarios();cargarAlias();cargarDescuentos();cargarAjustes();
+cargarCats();cargarFormas();cargarTipos();cargarUsuarios();cargarAlias();cargarDescuentos();cargarAjustes();
 
 </script>
 </body>

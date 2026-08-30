@@ -167,6 +167,9 @@
     font-size:var(--fs-sm);
     color:var(--text-suave);
   }
+  /* El renglón se dibuja siempre (así se puede completar mientras se tipea el
+     ajuste, sin redibujar la línea y perder el foco), pero vacío no ocupa. */
+  .linea .aj-nota:empty{ display:none; }
 
   /* Tira de controles: ocupa el ancho y se ordena sola. Los de la línea a la
      izquierda, la cantidad y el quitar a la derecha. */
@@ -223,13 +226,23 @@
   }
   #item-extra:hover{ background:var(--oro-a08); color:var(--text-titulo); }
 
-  .dif{                                 /* recargo por dificultad */
-    padding:6px var(--sp-2);
+  /* Elegir si el ajuste va en porcentaje o en pesos. Dos botones pegados que
+     funcionan como un interruptor: siempre hay uno prendido, así se ve de un
+     vistazo en qué unidad está el número de al lado. */
+  .aj-unidad{ display:flex; }
+  .aj-unidad button{
+    padding:6px 9px;
     background:var(--bg-input);
     border:1px solid var(--border);
     color:var(--text-suave);
+    font-weight:var(--fw-medium);
   }
-  .dif.on{ background:var(--warn); border-color:var(--warn); color:var(--text-invertido); }
+  .aj-unidad button:first-child{ border-radius:var(--r-sm) 0 0 var(--r-sm); }
+  .aj-unidad button:last-child{ border-radius:0 var(--r-sm) var(--r-sm) 0; margin-left:-1px; }
+  .aj-unidad button.on{
+    background:var(--bronce-500); border-color:var(--bronce-500);
+    color:var(--text-sobre-oro); z-index:1;
+  }
 
   /* --- ajuste por línea (descuento o recargo de ese ítem solo) --- */
   .aj{                                  /* botón que abre el panel */
@@ -256,23 +269,42 @@
   .aj-panel select{ flex:1 1 150px; min-width:0; padding:6px 8px; }
   .aj-panel .pct-box{
     display:flex; align-items:center; gap:2px;
-    width:96px; padding:0 8px;
+    /* alcanza para "-2000" mas el sufijo "$/u" en un solo renglon */
+    width:112px; padding:0 8px;
     background:var(--bg-input); border:1px solid var(--border); border-radius:var(--r-md);
   }
   .aj-panel .pct-box input{ width:100%; border:none; background:transparent; padding:6px 0; }
-  .aj-panel .pct-box .sfx{ color:var(--text-tenue); font-size:var(--fs-sm); }
+  .aj-panel .pct-box .sfx{ color:var(--text-tenue); font-size:var(--fs-sm); white-space:nowrap; }
   .aj-panel .quitar-aj{
     padding:6px 10px; background:transparent;
     border:1px solid var(--border); color:var(--text-suave);
   }
 
   /* --- Extras: cargos que no toca ningún descuento --- */
-  .extras-box{
+  .extras-box, .otro-dia{
     margin:var(--sp-3) 0;
     padding:10px 12px;
     background:var(--bg-sutil);
     border:1px solid var(--border-sutil);
     border-radius:var(--r-md);
+  }
+  .otro-dia summary{
+    cursor:pointer; list-style:none;
+    font-size:var(--fs-base); font-weight:var(--fw-bold);
+    color:var(--text-suave);
+  }
+  .otro-dia summary::-webkit-details-marker{ display:none; }
+  .otro-dia summary .aclara{ font-weight:var(--fw-normal); color:var(--text-tenue); }
+  .otro-dia .alta-fecha{ margin:8px 0 0; gap:6px; }
+  /* Cuando la fecha no es la de hoy hay que verlo sin buscarlo: el bloque se
+     marca en bronce aunque esté plegado, porque una venta cargada sin querer en
+     otro día desordena la caja y nadie lo va a ir a revisar. */
+  .otro-dia.activo{ border-color:var(--bronce-500); background:var(--oro-a08); }
+  .otro-dia.activo summary{ color:var(--text-marca); }
+  .nota-otro-dia{
+    margin-top:8px;
+    font-size:var(--fs-sm);
+    color:var(--text-marca);
   }
   .extras-box summary{
     cursor:pointer; list-style:none;
@@ -602,6 +634,19 @@
         <input id="peluquero" placeholder="(opcional)" style="flex:1;">
       </div>
 
+      <!-- Anotar un servicio de otro día. Va plegado porque el 99% de las veces
+           se factura en el momento: abierto, sería un campo más que leer en cada
+           cobro y una fecha más que se puede tocar sin querer. -->
+      <details class="otro-dia" id="otroDiaBox">
+        <summary>Es de otro día <span class="aclara">(se olvidaron de cargarlo)</span></summary>
+        <div class="fila alta-fecha">
+          <label>Fecha del servicio</label>
+          <input id="fechaServicio" type="date" style="flex:1;">
+          <button class="b-out" id="btnHoy" type="button">Hoy</button>
+        </div>
+        <div class="nota-otro-dia" id="notaOtroDia" style="display:none;"></div>
+      </details>
+
       <div id="lineas"></div>
       <button id="item-extra">+ Agregar item extra</button>
 
@@ -630,7 +675,6 @@
       <div class="totales" id="totales">
         <div class="tot-row tot-cab"><span class="lbl"></span><span>Lista</span><span>C/desc.</span></div>
         <div class="tot-row"><span class="lbl">Subtotal</span><span id="subtotal">$0</span><span class="v2" id="subtotal2"></span></div>
-        <div class="tot-row tot-extra" id="rowExtra" style="display:none;"><span class="lbl">Extra dificultad</span><span id="extraMonto">$0</span><span class="v2" id="extraMonto2"></span></div>
         <div class="tot-row tot-desc" id="rowDescEfvo" style="display:none;"><span class="lbl" id="descEfvoLabel">Descuento</span><span id="descEfvoMonto">$0</span><span class="v2"></span></div>
         <div class="tot-row" id="rowSubEfvo" style="display:none;"><span class="lbl">Subtotal</span><span id="subEfvoMonto">$0</span><span class="v2" id="subEfvoMonto2"></span></div>
         <div class="tot-row tot-desc" id="rowDescCat" style="display:none;"><span class="lbl" id="descCatLabel">Descuento</span><span id="descCatMonto">$0</span><span class="v2" id="descCatMonto2"></span></div>
@@ -735,12 +779,13 @@
 <div class="toast" id="toast"></div>
 
 <script src="/static/auth.js"></script>
+<script src="/static/escpos.js"></script>
 <script>
 requireLogin(); pintarNav();
 const $=s=>document.querySelector(s);
 const fmt=n=>"$"+(n||0).toLocaleString("es-AR");
 const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
-let CATALOGO=[], DESCUENTOS=[], CLIENTES=[], ticket=[], extraDif=0;
+let CATALOGO=[], DESCUENTOS=[], CLIENTES=[], ticket=[], NEGOCIO={};
 let tipo="ticket", descPct=0, descNombre=null, formaPago="efectivo";
 let totalActual=0;
 let mxDeudaActual=0;
@@ -798,7 +843,7 @@ async function cargarEgresosHoy(){
 
 async function init(){
   const cfg=await (await authFetch("/api/config")).json();
-  extraDif=cfg.extra_dificultad||0;
+  NEGOCIO=cfg.negocio||{};              // encabezado del papel impreso
   CATALOGO=await (await authFetch("/api/catalogo")).json();
   CLIENTES=await (await authFetch("/api/clientes")).json();
   $("#cobroForma").innerHTML=(cfg.formas_pago||[]).map(f=>`<option>${f}</option>`).join("");
@@ -810,7 +855,7 @@ async function init(){
     DESCUENTOS.map((d,i)=>`<option value="${i}">${d.nombre} ${d.porcentaje}%</option>`).join("");
   AJUSTES=await (await authFetch("/api/ajustes-item")).json();   // descuentos/recargos por línea
   pintarRail();
-  renderCategorias(); restaurarBorrador(); renderTicket(); mostrarBotones(); cargarEgresosHoy();
+  renderCategorias(); restaurarBorrador(); pintarOtroDia(); renderTicket(); mostrarBotones(); cargarEgresosHoy();
   const cliParam=new URLSearchParams(location.search).get("cliente");
   if(cliParam){ $("#cliente").value=cliParam; }
 }
@@ -917,18 +962,28 @@ function agregar(it){
   const ex=ticket.find(l=>l.item_id===it.id && !l.precioEditado && !l.ajustePct);
   if(ex){ ex.cantidad++; } else {
     ticket.push({item_id:it.id, nombre:it.nombre, precio:it.precio, precioTransfer:it.precio_transfer,
-                 precioCatalogo:it.precio, cantidad:1, dificultad:false, precioEditado:false,
-                 ajustePct:0, ajusteNombre:null});
+                 precioCatalogo:it.precio, cantidad:1, precioEditado:false,
+                 ajustePct:0, ajusteMonto:0, ajusteNombre:null});
   }
   renderTicket();
 }
 
 // --- Ajuste por línea ---------------------------------------------------
-// El porcentaje va con signo: -10 descuenta un 10%, +15 recarga un 15%.
-// Mismo criterio que precio_con_ajuste() en el backend.
-const conAjuste = (base, pct) => pct ? Math.round((base||0) * (100 + pct) / 100) : (base||0);
-const precioAjEf = l => conAjuste(l.precio,         l.ajustePct);
-const precioAjTr = l => conAjuste(l.precioTransfer, l.ajustePct);
+// Va POR UNIDAD y con signo, de dos formas excluyentes:
+//   porcentaje: -10 descuenta un 10%, +15 recarga un 15%
+//   monto fijo: -2000 descuenta $2000, +1500 recarga $1500
+// Mismo criterio que precio_con_ajuste() en el backend: si hay monto, manda el
+// monto; el mismo importe se resta de las dos listas y nunca baja de 0.
+const conAjuste = (base, pct, monto) => {
+  base = base || 0;
+  if(monto) return Math.max(base + monto, 0);
+  return pct ? Math.round(base * (100 + pct) / 100) : base;
+};
+const precioAjEf = l => conAjuste(l.precio,         l.ajustePct, l.ajusteMonto);
+const precioAjTr = l => conAjuste(l.precioTransfer, l.ajustePct, l.ajusteMonto);
+// Un ajuste "existe" si tiene porcentaje o monto. Se pregunta en varios lados,
+// así que va una sola vez acá.
+const hayAj = l => !!(l.ajustePct || l.ajusteMonto);
 let AJUSTES = [];                 // lista configurada en admin
 
 /* --- Extras del comprobante ---
@@ -959,14 +1014,42 @@ function agregarExtra(){
   $("#exConcepto").focus();
 }
 
-const claseAj = aj => aj < 0 ? "aj desc" : aj > 0 ? "aj rec" : "aj";
-const textoAj = aj => aj ? `${aj<0?"−":"+"}${Math.abs(aj)}%` : "%";
+/* Cómo se lee un ajuste de la lista de admin en el desplegable. */
+const etiquetaAj = a => a.monto
+  ? `${a.monto<0?"−":"+"}${fmt(Math.abs(a.monto))} c/u`
+  : `${a.porcentaje<0?"−":"+"}${Math.abs(a.porcentaje)}%`;
+
+/* Si la línea tiene puesto exactamente este ajuste de la lista. */
+const coincideAj = (l, a) => l.ajusteNombre === a.nombre
+  && (l.ajusteMonto||0) === (a.monto||0)
+  && (l.ajustePct||0)   === (a.monto ? 0 : a.porcentaje);
+
+/* El botón del ajuste muestra lo que está aplicado: "−10%", "−$2.000" o, si no
+   hay nada, el símbolo del tipo que se usó la última vez. */
+function claseAj(l){
+  const v = l.ajusteMonto || l.ajustePct || 0;
+  return v < 0 ? "aj desc" : v > 0 ? "aj rec" : "aj";
+}
+function textoAj(l){
+  if(l.ajusteMonto) return `${l.ajusteMonto<0?"−":"+"}${fmt(Math.abs(l.ajusteMonto))}`;
+  if(l.ajustePct)   return `${l.ajustePct<0?"−":"+"}${Math.abs(l.ajustePct)}%`;
+  return "%";
+}
+
+/* Cómo se describe el ajuste en palabras, para el renglón de abajo de la línea. */
+function detalleAj(l){
+  const neg = (l.ajusteMonto || l.ajustePct) < 0;
+  const cuanto = l.ajusteMonto
+    ? `${neg?"−":"+"}${fmt(Math.abs(l.ajusteMonto))} c/u`
+    : `${neg?"−":"+"}${Math.abs(l.ajustePct)}%`;
+  return `${l.ajusteNombre || (neg ? "Descuento" : "Recargo")} ${cuanto}`;
+}
 
 /* Precios de una línea listos para pintar. Está aparte del render completo porque
    mientras se tipea un porcentaje hay que refrescarlos sin volver a dibujar la
    línea entera (si no, el input pierde el foco a mitad de lo que estás cargando). */
 function htmlPrecios(l, dosColumnas){
-  const aj = l.ajustePct || 0;
+  const aj = hayAj(l);
   const tachado = base => aj ? `<span class="precio-viejo">${fmt(base)}</span> ` : "";
   return dosColumnas
     ? `<span style="display:flex;gap:12px;font-size:13px;min-width:130px;text-align:right;">
@@ -988,8 +1071,8 @@ function agregarItem(){
   // 'editando:true' marca la línea como "en edición": mientras esté así se muestran
   // los inputs y no se puede cobrar. Recién al tocar 💾 pasa a false y queda fija.
   ticket.push({item_id: null, nombre: "", precio: 0, precioTransfer: 0,
-              precioCatalogo: 0, cantidad: 1, dificultad:false, precioEditado:false, editando:true,
-              ajustePct:0, ajusteNombre:null});
+              precioCatalogo: 0, cantidad: 1, precioEditado:false, editando:true,
+              ajustePct:0, ajusteMonto:0, ajusteNombre:null});
   renderTicket();
 }
 
@@ -1018,10 +1101,11 @@ function renderTicket(){
     const esExtra  = l.item_id === null;     // ítem cargado a mano (ya guardado o en edición)
     const row=document.createElement("div"); row.className = "linea" + (editando ? " editando" : "");
 
-    const aj = l.ajustePct || 0;
+    const aj = hayAj(l);
     const preciosHTML = `<span class="precios-linea">${htmlPrecios(l, esPresu && !editando)}</span>`;
-    const ajClase = claseAj(aj), ajTexto = textoAj(aj);
+    const ajClase = claseAj(l), ajTexto = textoAj(l);
     const ajTitulo = aj ? esc(l.ajusteNombre || "Ajuste manual") : "Descuento o recargo de este ítem";
+    const enPesos = !!l.ajusteMonto || l.ajusteUnidad === "$";
 
     row.innerHTML=`
       ${editando
@@ -1035,10 +1119,9 @@ function renderTicket(){
         :`<span class="n">${l.nombre}</span>
           ${preciosHTML}`
       }
-      ${(!editando && aj) ? `<span class="aj-nota">↳ ${esc(l.ajusteNombre || (aj<0?"Descuento":"Recargo"))} ${aj<0?"−":"+"}${Math.abs(aj)}%</span>` : ""}
+      ${editando ? "" : `<span class="aj-nota">${aj ? "↳ "+esc(detalleAj(l)) : ""}</span>`}
       <div class="controles">
         ${editando ? "" : `<button class="${ajClase}" title="${ajTitulo}">${ajTexto}</button>`}
-        <button class="dif ${l.dificultad?'on':''}">Dif</button>
         <div class="qty separa"><button class="menos">−</button><span>${l.cantidad}</span><button class="mas">+</button></div>
         <button class="quitar">×</button>
       </div>
@@ -1047,10 +1130,19 @@ function renderTicket(){
         <span class="lbl">Ajuste:</span>
         <select class="aj-sel">
           <option value="">Sin ajuste</option>
-          ${AJUSTES.map(a=>`<option value="${a.id}"${l.ajusteNombre===a.nombre && l.ajustePct===a.porcentaje?" selected":""}>${esc(a.nombre)} (${a.porcentaje<0?"−":"+"}${Math.abs(a.porcentaje)}%)</option>`).join("")}
+          ${AJUSTES.map(a=>`<option value="${a.id}"${coincideAj(l,a)?" selected":""}>${esc(a.nombre)} (${etiquetaAj(a)})</option>`).join("")}
           <option value="libre"${aj && !l.ajusteNombre?" selected":""}>Otro…</option>
         </select>
-        <div class="pct-box"><input class="aj-pct" type="number" min="-100" max="100" placeholder="0" value="${aj||''}"><span class="sfx">%</span></div>
+        <div class="aj-unidad">
+          <button class="u-pct${enPesos?"":" on"}" type="button" title="Ajuste en porcentaje">%</button>
+          <button class="u-mon${enPesos?" on":""}" type="button" title="Ajuste en pesos">$</button>
+        </div>
+        <div class="pct-box">
+          <input class="aj-valor" type="number" inputmode="numeric"
+                 ${enPesos?"":'min="-100" max="100"'} placeholder="0"
+                 value="${(enPesos ? l.ajusteMonto : l.ajustePct) || ''}">
+          <span class="sfx">${enPesos?"$/u":"%"}</span>
+        </div>
         <span class="lbl">(negativo descuenta)</span>
         <button class="quitar-aj">Listo</button>
       </div>` : ""}
@@ -1080,27 +1172,52 @@ function renderTicket(){
     }
     if(l.ajusteAbierto && !editando){
       const sel = row.querySelector(".aj-sel");
-      const inp = row.querySelector(".aj-pct");
+      const inp = row.querySelector(".aj-valor");
       sel.onchange = () => {
-        if(sel.value === ""){ l.ajustePct = 0; l.ajusteNombre = null; }
+        if(sel.value === ""){ l.ajustePct = 0; l.ajusteMonto = 0; l.ajusteNombre = null; }
         else if(sel.value === "libre"){ l.ajusteNombre = null; }   // deja lo tipeado
         else {
           const a = AJUSTES.find(x => String(x.id) === sel.value);
-          if(a){ l.ajustePct = a.porcentaje; l.ajusteNombre = a.nombre; }
+          if(a){
+            // El ajuste guardado trae su propia unidad: si es en pesos, el panel
+            // se pasa a pesos solo.
+            l.ajusteMonto = a.monto || 0;
+            l.ajustePct   = a.monto ? 0 : a.porcentaje;
+            l.ajusteUnidad = a.monto ? "$" : "%";
+            l.ajusteNombre = a.nombre;
+          }
         }
         renderTicket();
       };
+      // Cambiar de % a $ (o al revés) arranca de cero: convertir "−10%" a un
+      // monto daría un número distinto por cada línea y sería peor que empezar
+      // de nuevo. Se recuerda la unidad elegida para la próxima vez.
+      const cambiarUnidad = u => {
+        l.ajusteUnidad = u; l.ajustePct = 0; l.ajusteMonto = 0; l.ajusteNombre = null;
+        renderTicket();
+        // el input del panel recién dibujado queda listo para tipear
+        const nuevo = document.querySelectorAll(".linea")[i]?.querySelector(".aj-valor");
+        if(nuevo) nuevo.focus();
+      };
+      row.querySelector(".u-pct").onclick = () => cambiarUnidad("%");
+      row.querySelector(".u-mon").onclick = () => cambiarUnidad("$");
+
       inp.oninput = () => {
         let v = parseInt(inp.value);
         if(isNaN(v)) v = 0;
-        v = Math.max(-100, Math.min(100, v));
-        l.ajustePct = v;
+        if(enPesos){
+          l.ajusteMonto = v; l.ajustePct = 0;
+        } else {
+          l.ajustePct = Math.max(-100, Math.min(100, v)); l.ajusteMonto = 0;
+        }
         l.ajusteNombre = null;          // si lo tipea a mano, ya no es uno de la lista
         // Refrescamos a mano lo que cambia, en vez de redibujar: así el input
         // conserva el foco y el cursor mientras se sigue escribiendo.
         sel.value = v ? "libre" : "";
         const btn = row.querySelector(".aj");
-        btn.className = claseAj(v); btn.textContent = textoAj(v);
+        btn.className = claseAj(l); btn.textContent = textoAj(l);
+        const nota = row.querySelector(".aj-nota");
+        if(nota) nota.textContent = hayAj(l) ? "↳ " + detalleAj(l) : "";
         row.querySelector(".precios-linea").innerHTML = htmlPrecios(l, esPresu && !editando);
         actualizarTotales();
       };
@@ -1108,7 +1225,6 @@ function renderTicket(){
     }
 
     // onclicks
-    row.querySelector(".dif").onclick=()=>{ l.dificultad=!l.dificultad; renderTicket(); };
     row.querySelector(".mas").onclick=()=>{ l.cantidad++; renderTicket(); };
     row.querySelector(".menos").onclick=()=>{ l.cantidad--; if(l.cantidad<=0) ticket.splice(i,1); renderTicket(); };
     row.querySelector(".quitar").onclick=()=>{ ticket.splice(i,1); renderTicket(); };
@@ -1129,9 +1245,8 @@ function actualizarTotales(){
   // --- subtotales base (ya con el ajuste de cada línea aplicado) ---
   const totalEf = ticket.reduce((a,l)=>a+precioAjEf(l)*l.cantidad,0);     // a precio efectivo
   const totalTr = ticket.reduce((a,l)=>a+precioAjTr(l)*l.cantidad,0);     // a precio transfer
-  const extra   = ticket.reduce((a,l)=>a+(l.dificultad?extraDif:0),0);    // extra dificultad
-  const subTr = totalTr + extra;   // subtotal transfer (el que se ve siempre)
-  const subEf = totalEf + extra;   // subtotal efectivo
+  const subTr = totalTr;           // subtotal transfer (el que se ve siempre)
+  const subEf = totalEf;           // subtotal efectivo
 
   // descuento de catálogo (jubilado, promo, etc.)
   const hayDescCat = descPct > 0;
@@ -1147,10 +1262,6 @@ function actualizarTotales(){
   pintarAvisoBorrador();
   $("#subtotal").textContent  = fmt(subTr);
   $("#subtotal2").textContent = esPresu ? fmt(subEf) : "";
-
-  $("#rowExtra").style.display = extra>0 ? "" : "none";
-  if(extra>0){ $("#extraMonto").textContent = "+"+fmt(extra);
-                $("#extraMonto2").textContent = "+"+fmt(extra); }
 
   // descuento efectivo = diferencia de las 2 listas
   const descEfvo = subTr - subEf;
@@ -1220,6 +1331,7 @@ function guardarBorrador(){
     notaCliente: $("#notaCliente").textContent,
     peluquero: $("#peluquero").value,
     descPct, descNombre,
+    fechaServicio: $("#fechaServicio").value,
     descuentoSel: $("#descuento").value,   // el índice elegido en el select de descuento
     formaPago,
     extras: EXTRAS
@@ -1244,6 +1356,7 @@ function restaurarBorrador(){
     $("#peluquero").value = d.peluquero || "";
     descPct = d.descPct || 0;
     descNombre = d.descNombre || null;
+    $("#fechaServicio").value = d.fechaServicio || "";
     $("#descuento").value = d.descuentoSel || "";
     EXTRAS = Array.isArray(d.extras) ? d.extras : [];
     renderExtras();
@@ -1334,6 +1447,69 @@ $("#descuento").onchange=e=>{
 };
 
 let compActual=null;
+let fechaCompActual=null;   // fecha del servicio en curso, si es de otro día
+
+/* ---- Servicio de otro día ----
+
+   Cuando se olvidan de cargar algo, se anota con la fecha en que se hizo: así
+   la venta y la plata caen en la caja de ESE día, que es donde tienen que
+   estar. El comprobante guarda además cuándo se lo cargó, y con eso el papel
+   puede decir "anotado el 30/8" sin mentir sobre el día que se atendió.
+
+   Un servicio de otro día NO se imprime: el cliente ya se fue. */
+function fechaHoyLocal(){
+  // el input date quiere AAAA-MM-DD en hora local, no el ISO en UTC
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+}
+
+// La fecha elegida, o null si es hoy (que es lo mismo que no mandar nada).
+function fechaElegida(){
+  const v = $("#fechaServicio").value;
+  return (v && v !== fechaHoyLocal()) ? v : null;
+}
+const esDeOtroDia = () => fechaElegida() !== null;
+
+function pintarOtroDia(){
+  const f = fechaElegida();
+  $("#otroDiaBox").classList.toggle("activo", !!f);
+  const nota = $("#notaOtroDia");
+  nota.style.display = f ? "" : "none";
+  if(f){
+    const [a,m,d] = f.split("-");
+    nota.textContent = `Se va a anotar como servicio del ${Number(d)}/${Number(m)}/${a}. `
+                     + `Entra en la caja de ese día y no se imprime.`;
+    $("#otroDiaBox").open = true;   // si quedó una fecha vieja, que se vea
+  }
+  actualizarAcciones();
+}
+
+$("#fechaServicio").onchange = () => { pintarOtroDia(); guardarBorrador(); };
+$("#btnHoy").onclick = () => { $("#fechaServicio").value = fechaHoyLocal(); pintarOtroDia(); guardarBorrador(); };
+
+/* ---- Impresión ----
+
+   Antes había que crear el comprobante, encontrar el botón de imprimir y
+   tocarlo. Ahora sale solo al terminar de cobrar: el papel se arma con el
+   MISMO generador que usa la pantalla de impresión (/static/escpos.js), así
+   que lo que sale al cobrar y lo que sale al reimprimir son idénticos.
+
+   Se llama SIEMPRE después de limpiar la pantalla. El esquema rawbt: es una
+   navegación: si el celular no tiene RawBT instalado, se va de la página. Con
+   el ticket ya guardado y la pantalla limpia, eso no cuesta nada; al revés,
+   costaría el borrador. */
+async function imprimirComprobante(id){
+  try{
+    const r = await authFetch("/api/comprobantes/"+id);
+    if(!r.ok) throw new Error("no se pudo leer el comprobante");
+    const comp = await r.json();
+    location.href = EscPos.urlRawbt(EscPos.deComprobante(comp, NEGOCIO));
+  }catch(e){
+    // Que falle la impresión no puede tapar que el cobro sí salió: se avisa y
+    // queda el botón de arriba para mandarlo a mano.
+    toast("Cobrado, pero no se pudo imprimir — usá el botón de imprimir");
+  }
+}
 
 // Valida el cliente (obligatorio) y crea el comprobante. Devuelve el objeto creado o null.
 async function crearComprobante(){
@@ -1367,13 +1543,22 @@ async function crearComprobante(){
     descuento_pct: descPct,
     descuento_nombre: descNombre,
     mostrar_motivo: true,
-    lineas: ticket.map(l=>({item_id:l.item_id, nombre: l.nombre, cantidad:l.cantidad, dificultad:l.dificultad,
+    fecha: fechaElegida(),
+    lineas: ticket.map(l=>({item_id:l.item_id, nombre: l.nombre, cantidad:l.cantidad,
                             precio_custom: l.precioEditado ? l.precio : null,
-                            ajuste_pct: l.ajustePct || 0, ajuste_nombre: l.ajusteNombre || null})),
+                            ajuste_pct: l.ajustePct || 0, ajuste_monto: l.ajusteMonto || 0,
+                            ajuste_nombre: l.ajusteNombre || null})),
     extras: EXTRAS
   };
   const r=await authFetch("/api/comprobantes",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
-  if(!r.ok){ toast("No se pudo crear"); return null; }
+  if(!r.ok){
+    // El backend rechaza fechas futuras o demasiado viejas: conviene decir cuál
+    // fue el motivo y no un "no se pudo" que no explica nada.
+    let motivo = "No se pudo crear";
+    try{ motivo = (await r.json()).detail || motivo; }catch(e){}
+    toast(motivo);
+    return null;
+  }
   const d=await r.json();
   const pref = d.tipo==="ticket" ? "N-" : "P-";
   toast(`${d.tipo} ${pref}${String(d.numero).padStart(5,"0")} creado`);
@@ -1437,6 +1622,7 @@ document.addEventListener("click", e=>{         // cerrar si clickeás afuera
 
 $("#cobrarTodo").onclick=async()=>{
   disableBotones(true);
+  const otroDia = esDeOtroDia();
   const d=await crearComprobante();
   if(!d){ renderTicket(); return; }
   const c=await (await authFetch("/api/comprobantes/"+d.id)).json();
@@ -1445,14 +1631,16 @@ $("#cobrarTodo").onclick=async()=>{
   const monto = c.saldo;            // el total ya trae el descuento: se salda 1:1
 
   const r=await authFetch("/api/comprobantes/"+d.id+"/pagos",{method:"POST",headers:{"Content-Type":"application/json"},
-    body:JSON.stringify({monto, saldado:monto, forma_pago:forma, alias:null})});
+    body:JSON.stringify({monto, saldado:monto, forma_pago:forma, alias:null, fecha:fechaElegida()})});
   if(r.ok){ toast("Cobrado ✓"); } else { toast("Se creó, pero el cobro falló — cobralo desde la cuenta"); }
   limpiar();
+  if(r.ok && !otroDia) imprimirComprobante(d.id);
 };
 
 // Cobrar una parte: NO crea nada todavía; el comprobante se crea en el primer pago.
 $("#cobrarParte").onclick=async()=>{
   disableBotones(true);
+  fechaCompActual = fechaElegida();   // el panel de cobro la necesita para cada abono
   const d=await crearComprobante();
   if(!d){ renderTicket(); return; }
   compActual=d.id; abrirCobro();     // ← esta línea es la que setea compActual
@@ -1462,22 +1650,32 @@ $("#cobrarParte").onclick=async()=>{
 $("#dejarCuenta").onclick=async()=>{
   if(!ticketListo()) return;
   disableBotones(true);
+  const otroDia = esDeOtroDia();
   const nom=$("#cliente").value.trim();
   const d=await crearComprobante();
   if(!d){ renderTicket(); return; }
   toast("Queda a cuenta de "+nom);
   limpiar();
+  // Se imprime igual: el papel dice PENDIENTE y es el respaldo de lo que debe.
+  if(!otroDia) imprimirComprobante(d.id);
 };
 
 $("#crearPresu").onclick=async()=>{
   disableBotones(true);
+  const otroDia = esDeOtroDia();
   const d=await crearComprobante();
   if(!d){ renderTicket(); return; }
   limpiar();
+  // El presupuesto también sale solo: es justamente el papel que se lleva el
+  // cliente para pensarlo.
+  if(!otroDia) imprimirComprobante(d.id);
 };
 
 function limpiar(){
+  // La fecha vuelve a hoy sí o sí. Si quedara pegada, el servicio siguiente se
+  // cargaría sin querer en el día viejo y a nadie se le ocurriría mirar ahí.
   ticket=[]; $("#cliente").value=""; clienteIdSel=null; $("#peluquero").value="";
+  $("#fechaServicio").value=""; fechaCompActual=null; $("#otroDiaBox").open=false; pintarOtroDia();
   $("#descuento").value=""; descPct=0; descNombre=null;
   $("#aliasTransfer").value="";
   EXTRAS=[]; renderExtras(); $("#extrasBox").open=false;
@@ -1520,11 +1718,21 @@ async function abrirCobro(){
   actualizarAcciones();   // bloquea los botones de arriba mientras hay cobro en curso
 }
 
-// Total efectivo REAL de un comprobante
+/* Total efectivo REAL de un comprobante.
+
+   Tiene que dar exactamente lo mismo que estado_comprobante() en el backend, o
+   el panel de cobro pide una plata distinta de la que el servidor va a aceptar.
+   Dos cosas que hay que respetar y antes no se respetaban:
+     - se usa precio_efectivo_final, que ya trae el ajuste de la línea; con
+       precio_efectivo pelado, un ítem con "−10%" se cobraba sin el descuento;
+     - los extras se suman al final, DESPUÉS del descuento, igual que allá; sin
+       eso, un ticket con un extra cargado mostraba de menos. */
 function totalEfectivoComp(c){
-  const base = c.lineas.reduce((a,l)=>a + l.precio_efectivo*l.cantidad, 0) + (c.extra_dificultad||0);
+  const base = c.lineas.reduce((a,l)=>a + (l.precio_efectivo_final ?? l.precio_efectivo)*l.cantidad, 0)
+             + (c.extra_dificultad||0);          // el extra solo existe en comprobantes viejos
   const desc = Math.round(base * (c.descuento_pct||0) / 100);
-  return base - desc;
+  const extras = (c.extras||[]).reduce((a,e)=>a+(e.monto||0), 0);
+  return base - desc + extras;
 }
 
 async function abrirMixto(){
@@ -1585,7 +1793,9 @@ $("#mxRegistrar").onclick=async()=>{
   const E = parseInt($("#mxEfectivo").value)||0;     
   const alias = $("#mxAlias").value.trim() || null;
 
-  const d = await crearComprobante();              
+  const otroDia = esDeOtroDia();
+  const fecha = fechaElegida();
+  const d = await crearComprobante();
   if(!d){ $("#mxRegistrar").disabled=false; return; }
 
 
@@ -1598,17 +1808,18 @@ $("#mxRegistrar").onclick=async()=>{
   // Pago 1: transferencia 
   if(T > 0){
     const r1 = await authFetch("/api/comprobantes/"+d.id+"/pagos",{method:"POST",headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({ monto:T, saldado:T, forma_pago:"Transferencia", alias })});
+      body:JSON.stringify({ monto:T, saldado:T, forma_pago:"Transferencia", alias, fecha })});
     if(!r1.ok){ toast("Falló la parte transferencia — quedó a cuenta"); $("#panelMixto").style.display="none"; limpiar(); return; }
   }
 
   // Pago 2: efectivo (monto = plata real; saldado = deuda que cubre)
   const r2 = await authFetch("/api/comprobantes/"+d.id+"/pagos",{method:"POST",headers:{"Content-Type":"application/json"},
-    body:JSON.stringify({ monto:E, saldado:efvoBruto, forma_pago:"Efectivo", alias:null })});
+    body:JSON.stringify({ monto:E, saldado:efvoBruto, forma_pago:"Efectivo", alias:null, fecha })});
   toast(r2.ok ? "Pago mixto registrado ✓" : "Falló la parte efectivo — quedó saldo a cuenta");
 
   $("#panelMixto").style.display="none";
   limpiar();
+  if(!otroDia) imprimirComprobante(d.id);
 };
 
 
@@ -1618,7 +1829,8 @@ $("#cobroRegistrar").onclick=async()=>{
   if(saldado<=0){ toast("Poné un monto válido"); return; }
   const forma=$("#cobroForma").value;
   const body={ monto:saldado, saldado, forma_pago:forma,      // 1:1
-               alias: (forma==="Transferencia") ? ($("#cobroAlias").value.trim()||null) : null };
+               alias: (forma==="Transferencia") ? ($("#cobroAlias").value.trim()||null) : null,
+               fecha: fechaCompActual };
   const r=await authFetch("/api/comprobantes/"+compActual+"/pagos",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
   if(!r.ok){ const e=await r.json(); toast(e.detail||"No se pudo"); return; }
   const est=await r.json();
@@ -1626,7 +1838,13 @@ $("#cobroRegistrar").onclick=async()=>{
   abrirCobro();
 };
 
-$("#cobroCerrar").onclick=limpiar;
+/* "Finalizar" cierra el cobro parcial. Se imprime acá y no en cada abono:
+   el papel tiene que salir una sola vez y con todos los pagos ya anotados. */
+$("#cobroCerrar").onclick=()=>{
+  const id = compActual, otroDia = !!fechaCompActual;
+  limpiar();
+  if(id && !otroDia) imprimirComprobante(id);
+};
 
 /* ---- Ticket a medio cargar ----
 

@@ -11,7 +11,7 @@ import re, bisect, io
 
 from database import get_db, engine, Base
 import models
-from config_extra import EXTRA_DIFICULTAD, TIPOS_EGRESO, NEGOCIO
+from config_extra import TIPOS_EGRESO, NEGOCIO
 import auth
 
 Base.metadata.create_all(engine)
@@ -44,6 +44,13 @@ def migrar():
     if "ajuste_nombre" not in lcols:
         with engine.begin() as con:
             con.execute(text("ALTER TABLE comprobante_lineas ADD COLUMN ajuste_nombre VARCHAR"))
+    if "ajuste_monto" not in lcols:
+        with engine.begin() as con:
+            con.execute(text("ALTER TABLE comprobante_lineas ADD COLUMN ajuste_monto INTEGER DEFAULT 0"))
+    acols = [c["name"] for c in insp.get_columns("ajustes_item")]
+    if "monto" not in acols:
+        with engine.begin() as con:
+            con.execute(text("ALTER TABLE ajustes_item ADD COLUMN monto INTEGER DEFAULT 0"))
     pcols = [c["name"] for c in insp.get_columns("pagos")]
     if "saldado" not in pcols:
         with engine.begin() as con:
@@ -52,6 +59,12 @@ def migrar():
     if "forma_pago" not in ccols:
         with engine.begin() as con:
             con.execute(text("ALTER TABLE comprobantes ADD COLUMN forma_pago VARCHAR"))
+    if "cargado" not in ccols:
+        with engine.begin() as con:
+            con.execute(text("ALTER TABLE comprobantes ADD COLUMN cargado TIMESTAMP"))
+            # En los que ya existen, se cargó el mismo día que se hizo: sin esto
+            # todos los comprobantes viejos parecerían "anotados después".
+            con.execute(text("UPDATE comprobantes SET cargado = fecha WHERE cargado IS NULL"))
     clcols = [c["name"] for c in insp.get_columns("clientes")]
     if "direccion" not in clcols:
         with engine.begin() as con:
@@ -114,8 +127,9 @@ class ItemEdit(BaseModel):
 class RenombrarCat(BaseModel):
     viejo: str; nuevo: str
 class LineaCompIn(BaseModel):
-    item_id: int | None = None; cantidad: int = 1; dificultad: bool = False; precio_custom: int | None = None; nombre: str | None = None
+    item_id: int | None = None; cantidad: int = 1; precio_custom: int | None = None; nombre: str | None = None
     ajuste_pct: int = 0                      # ajuste de esta línea, con signo: -10 descuenta, +15 recarga
+    ajuste_monto: int = 0                    # o en pesos por unidad: -2000 descuenta, +1500 recarga
     ajuste_nombre: str | None = None         # motivo, si salió de la lista de ajustes
 class ExtraIn(BaseModel):
     concepto: str; monto: int
@@ -123,16 +137,19 @@ class ComprobanteIn(BaseModel):
     tipo: str; cliente_id: int | None = None; cliente_nombre: str | None = None; peluquero: str | None = None
     forma_pago: str = "efectivo"
     descuento_pct: int = 0; descuento_nombre: str | None = None; mostrar_motivo: bool = False
+    fecha: str | None = None              # 'YYYY-MM-DD' argentino: para anotar un servicio de otro día
     lineas: list[LineaCompIn]
     extras: list[ExtraIn] = []            # cargos que ningún descuento toca
 class PagoIn(BaseModel):
     monto: int; forma_pago: str; alias: str | None = None; saldado: int | None = None
+    fecha: str | None = None              # 'YYYY-MM-DD' argentino: solo al anotar un servicio de otro día
 class FormaIn(BaseModel):
     nombre: str
 class DescuentoIn(BaseModel):
     nombre: str; porcentaje: int; mostrar_motivo: bool = False
 class AjusteItemIn(BaseModel):
-    nombre: str; porcentaje: int          # con signo: negativo descuenta, positivo recarga
+    nombre: str; porcentaje: int = 0      # con signo: negativo descuenta, positivo recarga
+    monto: int = 0                        # o en pesos por unidad, también con signo
 class DescuentoEdit(BaseModel):
     nombre: str | None = None; porcentaje: int | None = None
     mostrar_motivo: bool | None = None; activo: bool | None = None
@@ -151,8 +168,6 @@ class UsuarioEdit(BaseModel):
     usuario: str | None = None; password: str | None = None; rol: str | None = None
 class PasswordIn(BaseModel):
     nueva: str
-class ExtraIn(BaseModel):
-    valor: int
 class FondoIn(BaseModel):
     valor: int; fecha: str | None = None
 class NombreIn(BaseModel):
@@ -221,6 +236,50 @@ def nombre_propio(s: str) -> str:
 
     return _SEPARA_PALABRA.sub(cap, limpio)
 
+# Un paréntesis AL FINAL del nombre: "Mónica (mamá de Sofía)" → "Mónica" + "mamá de Sofía".
+_COLA_PARENTESIS = re.compile(r"\s*\(([^()]*)\)\s*$")
+
+def migrar_notas_entre_parentesis():
+    """Saca del nombre el aclarador entre paréntesis y lo pasa a las notas.
+
+    Hasta que existió el campo de notas, la única forma de anotar "es la mamá de
+    Sofía" era meterlo adentro del nombre. Eso ensucia el buscador, el historial y
+    el papel impreso, que terminan diciendo "Mónica (mamá de Sofía)".
+
+    Corre UNA sola vez y deja la marca en config: si después alguien escribe un
+    paréntesis a propósito, el próximo reinicio no se lo borra. Solo mueve el
+    paréntesis que está al final y solo si no está ya en las notas, así que
+    volver a correrla no duplica nada.
+    """
+    MARCA = "migro_notas_parentesis"
+    from sqlalchemy.orm import Session as _S
+    with _S(engine) as db:
+        if db.query(models.Config).filter_by(clave=MARCA).first():
+            return
+        movidos = 0
+        for cli in db.query(models.Cliente).filter(models.Cliente.nombre.like("%(%")):
+            m = _COLA_PARENTESIS.search(cli.nombre or "")
+            if not m:
+                continue
+            aclaracion = m.group(1).strip()
+            limpio = _COLA_PARENTESIS.sub("", cli.nombre).strip()
+            if not aclaracion or not limpio:
+                continue          # "(sin nombre)" o similar: mejor no tocarlo
+            previas = (cli.notas or "").strip()
+            if aclaracion.lower() not in previas.lower():
+                cli.notas = f"{previas} · {aclaracion}".strip(" ·") if previas else aclaracion
+            cli.nombre = nombre_propio(limpio)
+            movidos += 1
+        db.add(models.Config(clave=MARCA, valor=str(movidos)))
+        db.commit()
+        if movidos:
+            print(f"Migración: {movidos} cliente(s) con el paréntesis pasado a notas.")
+
+try:
+    migrar_notas_entre_parentesis()
+except Exception as _e:
+    print("Aviso: no se pudo migrar los nombres entre paréntesis:", _e)
+
 # ---------- auth ----------
 def usuario_actual(authorization: str = Header(default="")):
     token = authorization.replace("Bearer ", "").strip()
@@ -234,22 +293,30 @@ def solo_dueno(user = Depends(usuario_actual)):
         raise HTTPException(403, "Requiere rol dueño")
     return user
 
-def get_extra(db) -> int:
-    c = db.query(models.Config).filter_by(clave="extra_dificultad").first()
-    return int(c.valor) if c else 0
-
 def calcular_transfer(precio_efectivo: int) -> int:
     """Precio de transferencia = efectivo x 1.1111, redondeado PARA ARRIBA a múltiplo de 100."""
     import math
     bruto = precio_efectivo * 1.1111
     return math.ceil(bruto / 100) * 100
 
-def precio_con_ajuste(base: int, pct: int | None) -> int:
+def precio_con_ajuste(base: int, pct: int | None, monto: int | None = 0) -> int:
     """Precio unitario con el ajuste de la línea aplicado.
-    El pct va con signo: -10 descuenta un 10%, +15 recarga un 15%."""
+
+    El ajuste es POR UNIDAD y viene de dos formas, con signo en las dos:
+      - porcentaje: -10 descuenta un 10%, +15 recarga un 15%
+      - monto fijo: -2000 descuenta $2000, +1500 recarga $1500
+
+    Son excluyentes; si por lo que sea vinieran los dos, manda el monto fijo,
+    que es el que alguien escribió a mano. El monto se resta igual de las dos
+    listas (efectivo y transferencia): son $2000 de descuento, no un porcentaje
+    disfrazado, así que la diferencia entre listas no se mueve. Nunca baja de 0.
+    """
+    base = base or 0
+    if monto:
+        return max(base + monto, 0)
     if not pct:
-        return base or 0
-    return round((base or 0) * (100 + pct) / 100)
+        return base
+    return round(base * (100 + pct) / 100)
 
 def get_fondo(db) -> int:
     c = db.query(models.Config).filter_by(clave="fondo_caja").first()
@@ -294,10 +361,12 @@ def con_relaciones(query):
 def estado_comprobante(db, comp, pagos_precargados=None) -> dict:
     """pagos_precargados: mapa {comprobante_id: [pagos]} armado con
     pagos_por_comprobante(). Si viene, no se consulta la base por este comprobante."""
+    # El extra por dificultad se sacó; los comprobantes nuevos lo tienen en 0.
+    # Se sigue sumando para que los viejos den el mismo total de siempre.
     extra = comp.extra_dificultad or 0
     total_transfer = comp.total_lista                                    # suma en lista transfer
     # Las dos listas llevan el mismo ajuste por línea, así los totales quedan parejos.
-    total_efectivo = sum(precio_con_ajuste(l.precio_efectivo, l.ajuste_pct) * l.cantidad
+    total_efectivo = sum(precio_con_ajuste(l.precio_efectivo, l.ajuste_pct, l.ajuste_monto) * l.cantidad
                          for l in comp.lineas)
 
     # El comprobante se precia según su forma: efectivo usa lista efectivo; cualquier otra, transfer.
@@ -349,6 +418,47 @@ def forma_comprobante(db, comp, pagos_precargados=None) -> str:
     if len(formas) == 1:
         return next(iter(formas))              # "Efectivo" o "Transferencia"
     return "Pago mixto"
+
+# Hasta acá se puede retroceder al anotar un servicio olvidado. No es una regla
+# contable: es un freno para el error de tipeo (un año mal puesto mandaría la
+# venta a una caja de 2024 y nadie la vería nunca más).
+DIAS_ATRAS_MAX = 60
+
+def fecha_del_servicio(iso: str | None, ahora):
+    """Instante UTC que hay que guardar para un servicio hecho el día `iso`.
+
+    Sin `iso` (el caso normal) es simplemente ahora. Con `iso`, se guarda el
+    mediodía argentino de ese día: cae con holgura adentro de la ventana que la
+    caja usa para agrupar (03:00 a 03:00 UTC), así que no hay forma de que por
+    un par de horas la venta termine contada en el día de al lado.
+    """
+    if not iso:
+        return ahora
+    try:
+        d = date.fromisoformat(iso[:10])
+    except ValueError:
+        raise HTTPException(400, "Fecha inválida (se espera AAAA-MM-DD)")
+    hoy = hoy_argentina()
+    if d > hoy:
+        raise HTTPException(400, "No se puede anotar un servicio con fecha futura")
+    if (hoy - d).days > DIAS_ATRAS_MAX:
+        raise HTTPException(400, f"No se puede retroceder más de {DIAS_ATRAS_MAX} días")
+    if d == hoy:
+        return ahora
+    return datetime(d.year, d.month, d.day, 12, 0) + timedelta(hours=HORAS_ARG)
+
+def anotado_despues(comp) -> str | None:
+    """Fecha ISO en que se anotó el comprobante, SOLO si no es la del servicio.
+
+    Devuelve None en el caso normal (se cargó el mismo día que se atendió), así
+    que quien lo lee puede preguntar simplemente "¿hay algo acá?" para saber si
+    corresponde aclarar "servicio anotado el ...".
+    """
+    if not comp.cargado or not comp.fecha:
+        return None
+    if hora_argentina(comp.cargado).date() == hora_argentina(comp.fecha).date():
+        return None
+    return comp.cargado.isoformat()
 
 def siguiente_numero(db, tipo: str) -> int:
     """Devuelve el próximo número de la secuencia para ese tipo de comprobante."""
@@ -416,16 +526,8 @@ def config(_ = Depends(usuario_actual), db: Session = Depends(get_db)):
     formas = [f.nombre for f in db.query(models.FormaPago).filter(models.FormaPago.activo == True)]
     tipos = [t.nombre for t in db.query(models.TipoEgreso).filter(models.TipoEgreso.activo == True)]
     alias = [a.nombre for a in db.query(models.Alias).filter(models.Alias.activo == True)]
-    return {"extra_dificultad": get_extra(db), "formas_pago": formas, "tipos_egreso": tipos, "alias": alias,
+    return {"formas_pago": formas, "tipos_egreso": tipos, "alias": alias,
             "negocio": NEGOCIO}
-
-@app.put("/api/config/extra-dificultad")
-def set_extra(datos: ExtraIn, _ = Depends(solo_dueno), db: Session = Depends(get_db)):
-    c = db.query(models.Config).filter_by(clave="extra_dificultad").first()
-    if not c:
-        c = models.Config(clave="extra_dificultad"); db.add(c)
-    c.valor = str(datos.valor); db.commit()
-    return {"ok": True}
 
 @app.put("/api/config/fondo-caja")
 def set_fondo(datos: FondoIn, _ = Depends(solo_dueno), db: Session = Depends(get_db)):
@@ -746,7 +848,7 @@ def listar_comprobantes(tipo: str | None = None, _ = Depends(usuario_actual), db
                     "fecha": comp.fecha.isoformat(), "cliente_nombre": comp.cliente_nombre, "cliente_id": comp.cliente_id,
                     "total_lista": comp.total_lista, "extra_dificultad": comp.extra_dificultad,
                     "convertido_a": conv, "forma_pago": forma_comprobante(db, comp, pagos_map),
-                     "forma_origen": comp.forma_pago,
+                     "forma_origen": comp.forma_pago, "anotado_despues": anotado_despues(comp),
                     **estado_comprobante(db, comp, pagos_map)})
     return out
 
@@ -755,6 +857,7 @@ def ver_comprobante(comp_id: int, _ = Depends(usuario_actual), db: Session = Dep
     comp = db.get(models.Comprobante, comp_id)
     if not comp or not comp.activo: raise HTTPException(404, "Comprobante no existe")
     return {"id": comp.id, "tipo": comp.tipo, "numero": comp.numero, "fecha": comp.fecha.isoformat(),
+        "anotado_despues": anotado_despues(comp),
         "cliente_id": comp.cliente_id, "cliente_nombre": comp.cliente_nombre, "peluquero": comp.peluquero,
         "descuento_pct": comp.descuento_pct, "descuento_nombre": comp.descuento_nombre,
         "mostrar_motivo": comp.mostrar_motivo, "forma_pago": comp.forma_pago, "total_lista": comp.total_lista, "extra_dificultad": comp.extra_dificultad,
@@ -762,9 +865,10 @@ def ver_comprobante(comp_id: int, _ = Depends(usuario_actual), db: Session = Dep
         # ajuste de la línea, así el ticket puede imprimir los dos y mostrar el descuento.
         "lineas": [{"nombre": l.nombre, "cantidad": l.cantidad, "precio_unit": l.precio_unit,
                     "precio_efectivo": l.precio_efectivo, "dificultad": l.dificultad, "subtotal": l.subtotal,
-                    "ajuste_pct": l.ajuste_pct or 0, "ajuste_nombre": l.ajuste_nombre,
-                    "precio_unit_final": precio_con_ajuste(l.precio_unit, l.ajuste_pct),
-                    "precio_efectivo_final": precio_con_ajuste(l.precio_efectivo, l.ajuste_pct)}
+                    "ajuste_pct": l.ajuste_pct or 0, "ajuste_monto": l.ajuste_monto or 0,
+                    "ajuste_nombre": l.ajuste_nombre,
+                    "precio_unit_final": precio_con_ajuste(l.precio_unit, l.ajuste_pct, l.ajuste_monto),
+                    "precio_efectivo_final": precio_con_ajuste(l.precio_efectivo, l.ajuste_pct, l.ajuste_monto)}
                    for l in comp.lineas],
         "extras": [{"concepto": e.concepto, "monto": e.monto} for e in comp.extras],
         "pagos": [{"id": p.id, "fecha": p.fecha.isoformat(), "monto": p.monto, "saldado": p.saldado,
@@ -785,30 +889,34 @@ def crear_comprobante(c: ComprobanteIn, user = Depends(usuario_actual), db: Sess
         # el nombre que queda en el comprobante también, si no el mismo cliente
         # aparece escrito distinto en el historial y en el papel impreso
         nombre_cli = nombre_propio(c.cliente_nombre) or None
+    ahora = fecha_hora_now_utc().replace(tzinfo=None)
     comp = models.Comprobante(
         tipo=c.tipo, numero=siguiente_numero(db, c.tipo),
+        fecha=fecha_del_servicio(c.fecha, ahora), cargado=ahora,
         cliente_id=c.cliente_id, cliente_nombre=nombre_cli, peluquero=c.peluquero,
         forma_pago=c.forma_pago,
         descuento_pct=c.descuento_pct or 0, descuento_nombre=c.descuento_nombre, mostrar_motivo=c.mostrar_motivo)
     db.add(comp); db.flush()
-    extra = get_extra(db); total = 0; extra_total = 0
+    total = 0
     for ln in c.lineas:
-        if ln.dificultad: extra_total += extra
         # El precio guardado es el del catálogo; el subtotal ya lleva el ajuste de la línea,
         # así el ticket puede mostrar "precio de lista → precio ajustado" por unidad.
-        ajuste = ln.ajuste_pct or 0
+        # El ajuste es porcentaje O monto fijo, nunca los dos.
+        ajuste = 0 if ln.ajuste_monto else (ln.ajuste_pct or 0)
+        aj_monto = ln.ajuste_monto or 0
+        hay_ajuste = bool(ajuste or aj_monto)
+        motivo = (ln.ajuste_nombre or None) if hay_ajuste else None
         if(ln.item_id):
             item = db.get(models.Item, ln.item_id)
             if not item: raise HTTPException(404, f"Item {ln.item_id} no existe")
             # El comprobante se ancla SIEMPRE al precio transferencia (precio de referencia).
             # El descuento por efectivo se aplica al cobrar, no acá.
             precio = item.precio_transfer
-            sub = precio_con_ajuste(precio, ajuste) * ln.cantidad
+            sub = precio_con_ajuste(precio, ajuste, aj_monto) * ln.cantidad
             total += sub
             db.add(models.ComprobanteLinea(comprobante_id=comp.id, item_id=item.id, nombre=item.nombre,
             cantidad=ln.cantidad, precio_unit=precio, precio_efectivo=item.precio,
-            ajuste_pct=ajuste, ajuste_nombre=(ln.ajuste_nombre or None) if ajuste else None,
-            dificultad=ln.dificultad, subtotal=sub))
+            ajuste_pct=ajuste, ajuste_monto=aj_monto, ajuste_nombre=motivo, subtotal=sub))
             # El stock se mueve SOLO cuando hay venta. Un presupuesto es un precio
             # que se pasa, no mercadería que sale: si descontara, cada presupuesto
             # que no se concreta dejaría el inventario mal para siempre.
@@ -817,20 +925,20 @@ def crear_comprobante(c: ComprobanteIn, user = Depends(usuario_actual), db: Sess
                 item.stock_actual -= ln.cantidad
         else:
             precio = calcular_transfer(ln.precio_custom)
-            sub = precio_con_ajuste(precio, ajuste) * ln.cantidad
+            sub = precio_con_ajuste(precio, ajuste, aj_monto) * ln.cantidad
             total += sub
             db.add(models.ComprobanteLinea(comprobante_id=comp.id, item_id=None, nombre=ln.nombre,
             cantidad=ln.cantidad, precio_unit=precio, precio_efectivo=ln.precio_custom,
-            ajuste_pct=ajuste, ajuste_nombre=(ln.ajuste_nombre or None) if ajuste else None,
-            dificultad=ln.dificultad, subtotal=sub))
+            ajuste_pct=ajuste, ajuste_monto=aj_monto, ajuste_nombre=motivo, subtotal=sub))
     for ex in c.extras:
         concepto = (ex.concepto or "").strip()
         if not concepto or not ex.monto: continue
         db.add(models.ComprobanteExtra(comprobante_id=comp.id, concepto=concepto, monto=ex.monto))
     comp.total_lista = total
-    comp.extra_dificultad = extra_total
+    comp.extra_dificultad = 0        # el extra por dificultad ya no existe
     db.commit(); db.refresh(comp)
-    return {"id": comp.id, "numero": comp.numero, "tipo": comp.tipo}
+    return {"id": comp.id, "numero": comp.numero, "tipo": comp.tipo,
+            "fecha": comp.fecha.isoformat(), "anotado_despues": anotado_despues(comp)}
 
 @app.post("/api/comprobantes/{comp_id}/pagos")
 def registrar_pago(comp_id: int, pago: PagoIn, _ = Depends(usuario_actual), db: Session = Depends(get_db)):
@@ -845,7 +953,14 @@ def registrar_pago(comp_id: int, pago: PagoIn, _ = Depends(usuario_actual), db: 
     if saldado <= 0: raise HTTPException(400, "Lo saldado debe ser positivo")
     if saldado > est["saldo"]: raise HTTPException(400, f"Supera el saldo pendiente (${est['saldo']})")
     desc = saldado - pago.monto   # descuento en pesos (0 si no hubo)
+    # La caja se arma con la fecha de los PAGOS, no la del comprobante. Por eso el
+    # pago lleva fecha propia y por eso el que cobra una deuda vieja NO manda
+    # ninguna: esa plata entra hoy y en la caja de hoy tiene que estar. La fecha
+    # solo viaja cuando se está anotando un servicio de otro día completo, cobro
+    # incluido, y ahí el pago tiene que caer el mismo día que el servicio.
+    ahora = fecha_hora_now_utc().replace(tzinfo=None)
     db.add(models.Pago(comprobante_id=comp.id, monto=pago.monto, saldado=saldado,
+                       fecha=fecha_del_servicio(pago.fecha, ahora),
                        forma_pago=pago.forma_pago, alias=pago.alias, desc_aplicado=desc))
     db.commit(); return estado_comprobante(db, comp)
 
@@ -895,8 +1010,8 @@ def convertir_a_ticket(comp_id: int, user = Depends(usuario_actual), db: Session
         # por pago en efectivo sale mal calculado.
         db.add(models.ComprobanteLinea(comprobante_id=ticket.id, item_id=l.item_id, nombre=l.nombre,
             cantidad=l.cantidad, precio_unit=l.precio_unit, precio_efectivo=l.precio_efectivo,
-            ajuste_pct=l.ajuste_pct or 0, ajuste_nombre=l.ajuste_nombre,
-            dificultad=l.dificultad, subtotal=l.subtotal))
+            ajuste_pct=l.ajuste_pct or 0, ajuste_monto=l.ajuste_monto or 0,
+            ajuste_nombre=l.ajuste_nombre, dificultad=l.dificultad, subtotal=l.subtotal))
     for e in presu.extras:
         db.add(models.ComprobanteExtra(comprobante_id=ticket.id, concepto=e.concepto, monto=e.monto))
     # Recién acá sale la mercadería: el presupuesto no había tocado el stock.
@@ -1432,16 +1547,19 @@ def borrar_descuento(desc_id: int, _ = Depends(solo_dueno), db: Session = Depend
 # ---------- ajustes por ítem (descuento o recargo de UNA línea) ----------
 @app.get("/api/ajustes-item")
 def listar_ajustes_item(_ = Depends(usuario_actual), db: Session = Depends(get_db)):
-    return [{"id": a.id, "nombre": a.nombre, "porcentaje": a.porcentaje}
+    return [{"id": a.id, "nombre": a.nombre, "porcentaje": a.porcentaje, "monto": a.monto or 0}
             for a in db.query(models.AjusteItem).filter(models.AjusteItem.activo == True)
                        .order_by(models.AjusteItem.porcentaje, models.AjusteItem.nombre)]
 
 @app.post("/api/ajustes-item")
 def crear_ajuste_item(a: AjusteItemIn, _ = Depends(solo_dueno), db: Session = Depends(get_db)):
-    if a.porcentaje == 0: raise HTTPException(400, "El porcentaje no puede ser 0")
+    # Un ajuste guardado es de un tipo o del otro, nunca de los dos: si fuera
+    # "-10% y -$2000" nadie sabría en qué orden se aplican.
+    if a.porcentaje and a.monto: raise HTTPException(400, "Poné porcentaje o monto, no los dos")
+    if not a.porcentaje and not a.monto: raise HTTPException(400, "El ajuste no puede ser 0")
     if a.porcentaje < -100 or a.porcentaje > 100: raise HTTPException(400, "Porcentaje inválido (-100 a 100)")
     if not a.nombre.strip(): raise HTTPException(400, "Falta el nombre")
-    nuevo = models.AjusteItem(nombre=a.nombre.strip(), porcentaje=a.porcentaje)
+    nuevo = models.AjusteItem(nombre=a.nombre.strip(), porcentaje=a.porcentaje, monto=a.monto)
     db.add(nuevo); db.commit(); db.refresh(nuevo); return {"id": nuevo.id}
 
 @app.delete("/api/ajustes-item/{aj_id}")
@@ -1531,6 +1649,7 @@ def backup_completo(_ = Depends(solo_dueno), db: Session = Depends(get_db)):
         ],
         "comprobantes": [
             {"id": c.id, "tipo": c.tipo, "numero": c.numero, "fecha": hora_argentina(c.fecha).isoformat(),
+             "cargado": hora_argentina(c.cargado).isoformat() if c.cargado else None,
              "cliente_id": c.cliente_id, "cliente_nombre": c.cliente_nombre,
              "peluquero": c.peluquero, "total_lista": c.total_lista,
              "extra_dificultad": c.extra_dificultad, "descuento_pct": c.descuento_pct,
@@ -1541,15 +1660,16 @@ def backup_completo(_ = Depends(solo_dueno), db: Session = Depends(get_db)):
                  {"id": l.id, "item_id": l.item_id, "nombre": l.nombre,
                   "cantidad": l.cantidad, "precio_unit": l.precio_unit,
                   "precio_efectivo": l.precio_efectivo, "dificultad": l.dificultad,
-                  "ajuste_pct": l.ajuste_pct, "ajuste_nombre": l.ajuste_nombre,
-                  "subtotal": l.subtotal}
+                  "ajuste_pct": l.ajuste_pct, "ajuste_monto": l.ajuste_monto,
+                  "ajuste_nombre": l.ajuste_nombre, "subtotal": l.subtotal}
                  for l in c.lineas
              ],
              "extras": [{"id": e.id, "concepto": e.concepto, "monto": e.monto} for e in c.extras]}
             for c in con_relaciones(db.query(models.Comprobante)).order_by(models.Comprobante.fecha).all()
         ],
         "ajustes_item": [
-            {"id": a.id, "nombre": a.nombre, "porcentaje": a.porcentaje, "activo": a.activo}
+            {"id": a.id, "nombre": a.nombre, "porcentaje": a.porcentaje,
+             "monto": a.monto, "activo": a.activo}
             for a in db.query(models.AjusteItem).all()
         ],
         "pagos": [

@@ -58,7 +58,7 @@ Resumen por período, evolución de la caja, ranking de lo más vendido, ingreso
 
 ## ✨ Funcionalidades
 
-- **Facturación** — Catálogo por categorías con buscador en vivo y agrupado por variantes (talles). Dos listas de precios, descuento por comprobante, **descuento o recargo por línea**, **extras que ningún descuento toca**, recargo por dificultad, pago mixto y venta a cuenta. Registro de egresos en la misma pantalla.
+- **Facturación** — Catálogo por categorías con buscador en vivo y agrupado por variantes (talles). Dos listas de precios, descuento por comprobante, **descuento o recargo por línea** (en porcentaje o en pesos), **extras que ningún descuento toca**, pago mixto y venta a cuenta. **Imprime el papel solo al terminar de cobrar**, y permite anotar un servicio de un día anterior sin desordenar la caja. Registro de egresos en la misma pantalla.
 - **Impresión térmica** — Comprobantes, presupuestos y resúmenes de cuenta por comandera Bluetooth de 80mm (ESC/POS, 48 columnas, acentos vía CP850), con vista previa en pantalla y salida a PDF como alternativa. No son documentos fiscales y el papel lo aclara. Ver [`docs/comandera.md`](docs/comandera.md).
 - **Clientes y cuenta corriente** — Alta y búsqueda con teléfono y alias de transferencia, filtro de deudores. Ficha con comprobantes, saldos y pagos parciales: cada cliente tiene su historial completo con lo que debe y lo que pagó.
 - **Historial** — Tickets y presupuestos con estado de pago, búsqueda por cliente y número, y filtros por deuda o conversión.
