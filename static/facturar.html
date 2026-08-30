@@ -274,7 +274,23 @@
     background:var(--bg-input); border:1px solid var(--border); border-radius:var(--r-md);
   }
   .aj-panel .pct-box input{ width:100%; border:none; background:transparent; padding:6px 0; }
+  /* El $ va adelante del número y el % atrás, como se escriben. */
+  .aj-panel .pct-box .pfx,
   .aj-panel .pct-box .sfx{ color:var(--text-tenue); font-size:var(--fs-sm); white-space:nowrap; }
+
+  /* Campos con prefijo o sufijo adentro: el que se ve como campo es la caja, no
+     el input pelado que tiene adentro. Así que el anillo del foco va en la caja.
+     Sin esto quedaban dos anillos, uno dentro del otro, y el "$" pisado. */
+  .linea .precio-extra-box:focus-within,
+  .aj-panel .pct-box:focus-within,
+  .extras-box .monto-box:focus-within{
+    border-color:var(--border-focus);
+    outline:2px solid var(--bronce-a30);
+    outline-offset:1px;
+  }
+  .linea .precio-extra-box input:focus,
+  .aj-panel .pct-box input:focus,
+  .extras-box .monto-box input:focus{ outline:none; }
   .aj-panel .quitar-aj{
     padding:6px 10px; background:transparent;
     border:1px solid var(--border); color:var(--text-suave);
@@ -1134,14 +1150,15 @@ function renderTicket(){
           <option value="libre"${aj && !l.ajusteNombre?" selected":""}>Otro…</option>
         </select>
         <div class="aj-unidad">
-          <button class="u-pct${enPesos?"":" on"}" type="button" title="Ajuste en porcentaje">%</button>
-          <button class="u-mon${enPesos?" on":""}" type="button" title="Ajuste en pesos">$</button>
+          <button class="u-pct${enPesos?"":" on"}" type="button" title="Ajuste en porcentaje">Porc. %</button>
+          <button class="u-mon${enPesos?" on":""}" type="button" title="Ajuste en pesos">Pesos</button>
         </div>
         <div class="pct-box">
+          ${enPesos ? '<span class="pfx">$</span>' : ""}
           <input class="aj-valor" type="number" inputmode="numeric"
                  ${enPesos?"":'min="-100" max="100"'} placeholder="0"
                  value="${(enPesos ? l.ajusteMonto : l.ajustePct) || ''}">
-          <span class="sfx">${enPesos?"$/u":"%"}</span>
+          ${enPesos ? "" : '<span class="sfx">%</span>'}
         </div>
         <span class="lbl">(negativo descuenta)</span>
         <button class="quitar-aj">Listo</button>
@@ -1447,7 +1464,7 @@ $("#descuento").onchange=e=>{
 };
 
 let compActual=null;
-let fechaCompActual=null;   // fecha del servicio en curso, si es de otro día
+let compEsDeOtroDia=false;   // el servicio en curso es de un día anterior (no se imprime)
 
 /* ---- Servicio de otro día ----
 
@@ -1631,7 +1648,7 @@ $("#cobrarTodo").onclick=async()=>{
   const monto = c.saldo;            // el total ya trae el descuento: se salda 1:1
 
   const r=await authFetch("/api/comprobantes/"+d.id+"/pagos",{method:"POST",headers:{"Content-Type":"application/json"},
-    body:JSON.stringify({monto, saldado:monto, forma_pago:forma, alias:null, fecha:fechaElegida()})});
+    body:JSON.stringify({monto, saldado:monto, forma_pago:forma, alias:null, del_servicio:true})});
   if(r.ok){ toast("Cobrado ✓"); } else { toast("Se creó, pero el cobro falló — cobralo desde la cuenta"); }
   limpiar();
   if(r.ok && !otroDia) imprimirComprobante(d.id);
@@ -1640,7 +1657,7 @@ $("#cobrarTodo").onclick=async()=>{
 // Cobrar una parte: NO crea nada todavía; el comprobante se crea en el primer pago.
 $("#cobrarParte").onclick=async()=>{
   disableBotones(true);
-  fechaCompActual = fechaElegida();   // el panel de cobro la necesita para cada abono
+  compEsDeOtroDia = esDeOtroDia();    // se recuerda: al finalizar decide si imprime
   const d=await crearComprobante();
   if(!d){ renderTicket(); return; }
   compActual=d.id; abrirCobro();     // ← esta línea es la que setea compActual
@@ -1675,7 +1692,7 @@ function limpiar(){
   // La fecha vuelve a hoy sí o sí. Si quedara pegada, el servicio siguiente se
   // cargaría sin querer en el día viejo y a nadie se le ocurriría mirar ahí.
   ticket=[]; $("#cliente").value=""; clienteIdSel=null; $("#peluquero").value="";
-  $("#fechaServicio").value=""; fechaCompActual=null; $("#otroDiaBox").open=false; pintarOtroDia();
+  $("#fechaServicio").value=""; compEsDeOtroDia=false; $("#otroDiaBox").open=false; pintarOtroDia();
   $("#descuento").value=""; descPct=0; descNombre=null;
   $("#aliasTransfer").value="";
   EXTRAS=[]; renderExtras(); $("#extrasBox").open=false;
@@ -1794,7 +1811,6 @@ $("#mxRegistrar").onclick=async()=>{
   const alias = $("#mxAlias").value.trim() || null;
 
   const otroDia = esDeOtroDia();
-  const fecha = fechaElegida();
   const d = await crearComprobante();
   if(!d){ $("#mxRegistrar").disabled=false; return; }
 
@@ -1808,13 +1824,13 @@ $("#mxRegistrar").onclick=async()=>{
   // Pago 1: transferencia 
   if(T > 0){
     const r1 = await authFetch("/api/comprobantes/"+d.id+"/pagos",{method:"POST",headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({ monto:T, saldado:T, forma_pago:"Transferencia", alias, fecha })});
+      body:JSON.stringify({ monto:T, saldado:T, forma_pago:"Transferencia", alias, del_servicio:true })});
     if(!r1.ok){ toast("Falló la parte transferencia — quedó a cuenta"); $("#panelMixto").style.display="none"; limpiar(); return; }
   }
 
   // Pago 2: efectivo (monto = plata real; saldado = deuda que cubre)
   const r2 = await authFetch("/api/comprobantes/"+d.id+"/pagos",{method:"POST",headers:{"Content-Type":"application/json"},
-    body:JSON.stringify({ monto:E, saldado:efvoBruto, forma_pago:"Efectivo", alias:null, fecha })});
+    body:JSON.stringify({ monto:E, saldado:efvoBruto, forma_pago:"Efectivo", alias:null, del_servicio:true })});
   toast(r2.ok ? "Pago mixto registrado ✓" : "Falló la parte efectivo — quedó saldo a cuenta");
 
   $("#panelMixto").style.display="none";
@@ -1830,7 +1846,7 @@ $("#cobroRegistrar").onclick=async()=>{
   const forma=$("#cobroForma").value;
   const body={ monto:saldado, saldado, forma_pago:forma,      // 1:1
                alias: (forma==="Transferencia") ? ($("#cobroAlias").value.trim()||null) : null,
-               fecha: fechaCompActual };
+               del_servicio: true };
   const r=await authFetch("/api/comprobantes/"+compActual+"/pagos",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
   if(!r.ok){ const e=await r.json(); toast(e.detail||"No se pudo"); return; }
   const est=await r.json();
@@ -1841,7 +1857,7 @@ $("#cobroRegistrar").onclick=async()=>{
 /* "Finalizar" cierra el cobro parcial. Se imprime acá y no en cada abono:
    el papel tiene que salir una sola vez y con todos los pagos ya anotados. */
 $("#cobroCerrar").onclick=()=>{
-  const id = compActual, otroDia = !!fechaCompActual;
+  const id = compActual, otroDia = compEsDeOtroDia;
   limpiar();
   if(id && !otroDia) imprimirComprobante(id);
 };

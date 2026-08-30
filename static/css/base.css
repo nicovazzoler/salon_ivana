@@ -54,6 +54,17 @@ input::placeholder,
 textarea::placeholder{
   color:var(--gris-300);
 }
+
+/* Las flechitas de los campos numéricos, afuera.
+   Suman o restan de a 1, que en una app de plata no le sirve a nadie: un
+   precio no se corrige de a un peso. Y en la tablet son dos blancos de tres
+   milímetros pegados al borde del campo, justo donde cae el dedo al ir a
+   escribir: se toca una sin querer y el número queda cambiado sin que se note.
+   Se sigue tipeando igual, y `type=number` sigue dando el teclado numérico con
+   el signo menos, que hace falta para los descuentos. */
+input[type="number"]{ -moz-appearance:textfield; appearance:textfield; }
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button{ -webkit-appearance:none; margin:0; }
 input:focus,select:focus,textarea:focus{
   border-color:var(--border-focus);
   outline:2px solid var(--bronce-a30);

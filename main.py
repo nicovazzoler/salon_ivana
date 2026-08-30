@@ -142,7 +142,9 @@ class ComprobanteIn(BaseModel):
     extras: list[ExtraIn] = []            # cargos que ningún descuento toca
 class PagoIn(BaseModel):
     monto: int; forma_pago: str; alias: str | None = None; saldado: int | None = None
-    fecha: str | None = None              # 'YYYY-MM-DD' argentino: solo al anotar un servicio de otro día
+    # True = este abono cierra la venta, así que la plata pertenece al día del
+    # servicio. False = está saldando una deuda vieja, y entra el día de hoy.
+    del_servicio: bool = False
 class FormaIn(BaseModel):
     nombre: str
 class DescuentoIn(BaseModel):
@@ -953,14 +955,26 @@ def registrar_pago(comp_id: int, pago: PagoIn, _ = Depends(usuario_actual), db: 
     if saldado <= 0: raise HTTPException(400, "Lo saldado debe ser positivo")
     if saldado > est["saldo"]: raise HTTPException(400, f"Supera el saldo pendiente (${est['saldo']})")
     desc = saldado - pago.monto   # descuento en pesos (0 si no hubo)
-    # La caja se arma con la fecha de los PAGOS, no la del comprobante. Por eso el
-    # pago lleva fecha propia y por eso el que cobra una deuda vieja NO manda
-    # ninguna: esa plata entra hoy y en la caja de hoy tiene que estar. La fecha
-    # solo viaja cuando se está anotando un servicio de otro día completo, cobro
-    # incluido, y ahí el pago tiene que caer el mismo día que el servicio.
-    ahora = fecha_hora_now_utc().replace(tzinfo=None)
+
+    """Qué día de caja le toca a esta plata.
+
+    La caja se arma con la fecha de los PAGOS, no con la del comprobante, y eso
+    está bien: son dos preguntas distintas y hay que poder contestar las dos.
+
+      - Un abono que CIERRA la venta pertenece al día del servicio. Si se anota
+        un servicio del martes que se había pasado por alto, esa plata entró el
+        martes y en la caja del martes tiene que aparecer.
+      - Un abono que SALDA una deuda vieja pertenece a hoy. El servicio fue hace
+        dos semanas, pero la plata entra hoy y hoy hay que arquearla.
+
+    Cuál de los dos es lo dice quien cobra, con del_servicio. La fecha sale
+    después de `comp.fecha`, nunca de algo que mande el cliente: así no hay
+    forma de mandar plata a un día arbitrario ni de errarle por pasar mal una
+    fecha desde una pantalla.
+    """
+    fecha_pago = comp.fecha if pago.del_servicio else fecha_hora_now_utc().replace(tzinfo=None)
     db.add(models.Pago(comprobante_id=comp.id, monto=pago.monto, saldado=saldado,
-                       fecha=fecha_del_servicio(pago.fecha, ahora),
+                       fecha=fecha_pago,
                        forma_pago=pago.forma_pago, alias=pago.alias, desc_aplicado=desc))
     db.commit(); return estado_comprobante(db, comp)
 

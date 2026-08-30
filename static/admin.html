@@ -15,6 +15,18 @@
   .fila{ align-items:flex-end; margin-bottom:10px; }
   .fila > div{ min-width:90px; }
 
+  /* ----- Listas largas: 5 filas y el resto se desliza adentro ----- */
+  .lista-scroll{
+    overflow-y:auto;
+    -webkit-overflow-scrolling:touch;      /* que quede la inercia al deslizar */
+    padding-right:6px;                     /* que la barra no se coma el borde */
+    /* Un degradé al pie avisa que sigue: sin eso la lista parece terminar justo
+       ahí y nadie prueba deslizarla. Se apaga al llegar al final. */
+    -webkit-mask-image:linear-gradient(to bottom, #000 calc(100% - 26px), transparent);
+            mask-image:linear-gradient(to bottom, #000 calc(100% - 26px), transparent);
+  }
+  .lista-scroll.al-fin{ -webkit-mask-image:none; mask-image:none; }
+
   /* ----- Cabecera de cada bloque de ajustes ----- */
   .card{ scroll-margin-top:96px; }        /* que el ancla no quede bajo el header */
   .card-head{ margin-bottom:var(--sp-4); }
@@ -672,6 +684,63 @@ $("#btnBackup").onclick=async()=>{
   }catch(e){toast("Error: "+e.message);}
   finally{$("#btnBackup").textContent="Descargar backup";$("#btnBackup").disabled=false;}
 };
+/* ---- Listas largas ----
+
+   Admin creció: con veintipico de categorías, más los tipos de egreso, los
+   usuarios y el resto, había que barrer media pantalla con el dedo para llegar
+   de una tarjeta a la siguiente. Pasando las 5 filas, la lista se queda de ese
+   alto y el resto se desliza adentro.
+
+   El alto NO es un número fijo: se mide dónde arranca la fila 6 y se corta ahí.
+   Las filas no miden todas lo mismo (la de un usuario tiene inputs, la de un
+   alias es un renglón), así que un max-height a ojo mostraría 4 filas y media
+   en una lista y 7 en otra.
+
+   Se deja el encadenado del scroll como viene de fábrica: con el dedo sobre la
+   lista se mueve la lista, y cuando llega al final sigue la página. Cortarlo
+   (overscroll-behavior: contain) obligaría a sacar el dedo de la lista para
+   poder seguir bajando, que es justo lo molesto. */
+const TOPE_FILAS = 5;
+
+/* Se corta unos píxeles DESPUÉS de la fila 5, así asoma el principio de la 6.
+   Con el corte justo al ras, en las listas de filas altas (usuarios, ajustes)
+   la última entraba completa y el degradé caía sobre el espacio en blanco de
+   abajo: la lista parecía terminar ahí y nadie iba a probar deslizarla. Ver un
+   pedazo de la fila siguiente no se puede malinterpretar. */
+const ASOMO = 18;
+
+function acotar(cont){
+  cont.classList.remove("lista-scroll", "al-fin");
+  cont.style.maxHeight = "";
+  const filas = [...cont.children];
+  if(filas.length <= TOPE_FILAS) return;
+  const cinco = filas[TOPE_FILAS].offsetTop - filas[0].offsetTop;
+  cont.style.maxHeight = (cinco + ASOMO) + "px";
+  cont.classList.add("lista-scroll");
+  marcarFin(cont);
+}
+
+// El degradé del pie dice "hay más abajo". Al llegar al final sobra, y encima
+// deja la última fila medio borrosa, así que ahí se apaga.
+function marcarFin(cont){
+  const fin = cont.scrollTop + cont.clientHeight >= cont.scrollHeight - 2;
+  cont.classList.toggle("al-fin", fin);
+}
+
+["#graficoCats","#listaItems","#listaFormas","#listaTipos",
+ "#listaDescuentos","#listaAjustes","#listaUsuarios","#listaAlias"].forEach(sel=>{
+  const cont = $(sel);
+  if(!cont) return;
+  // Se escucha el cambio de contenido en vez de llamar a acotar() desde cada
+  // función que dibuja: así una pantalla nueva o un renglón que se agrega sin
+  // recargar la lista entera no se olvida de acotarse.
+  new MutationObserver(()=>acotar(cont)).observe(cont, {childList:true});
+  cont.addEventListener("scroll", ()=>marcarFin(cont), {passive:true});
+  acotar(cont);
+});
+// al girar la tablet cambian los anchos y las filas altas cambian de alto
+addEventListener("resize", ()=>document.querySelectorAll(".lista-scroll").forEach(acotar));
+
 cargarCats();cargarFormas();cargarTipos();cargarUsuarios();cargarAlias();cargarDescuentos();cargarAjustes();
 
 </script>
