@@ -1,0 +1,157 @@
+  /* Pantalla de formularios */
+  label{ display:block; margin-bottom:var(--sp-1); }
+  input,select{ width:100%; padding:9px 10px; }
+  .fila{ align-items:flex-end; margin-bottom:10px; }
+  .fila > div{ min-width:90px; }
+
+  /* ----- Listas largas: 5 filas y el resto se desliza adentro ----- */
+  .lista-scroll{
+    overflow-y:auto;
+    -webkit-overflow-scrolling:touch;      /* que quede la inercia al deslizar */
+    padding-right:6px;                     /* que la barra no se coma el borde */
+    /* Un degradé al pie avisa que sigue: sin eso la lista parece terminar justo
+       ahí y nadie prueba deslizarla. Se apaga al llegar al final. */
+    -webkit-mask-image:linear-gradient(to bottom, #000 calc(100% - 26px), transparent);
+            mask-image:linear-gradient(to bottom, #000 calc(100% - 26px), transparent);
+  }
+  .lista-scroll.al-fin{ -webkit-mask-image:none; mask-image:none; }
+
+  /* ----- Cabecera de cada bloque de ajustes ----- */
+  .card{ scroll-margin-top:96px; }        /* que el ancla no quede bajo el header */
+  .card-head{ margin-bottom:var(--sp-4); }
+  .card-head h2{ margin:0; display:flex; align-items:center; gap:var(--sp-2); }
+  .card-head p{
+    margin:var(--sp-1) 0 0;
+    font-size:var(--fs-base);
+    color:var(--text-tenue);
+  }
+  .sub-h{                                  /* subtítulo dentro de una card */
+    margin:0 0 var(--sp-2);
+    font-size:var(--fs-base);
+    font-weight:var(--fw-bold);
+    text-transform:uppercase;
+    letter-spacing:.05em;
+    color:var(--text-tenue);
+  }
+
+  /* ----- Índice de secciones ----- */
+  .indice{
+    position:sticky; top:76px; z-index:var(--z-dropdown);
+    display:flex; flex-wrap:wrap; gap:6px;
+    margin-bottom:var(--sp-4);
+    padding:var(--sp-2);
+    border:1px solid var(--border-sutil);
+    border-radius:var(--r-full);
+    background:var(--bg-header);
+  }
+  .indice a{ text-decoration:none; }
+
+  /* ----- Resumen del catálogo ----- */
+  .kpis{
+    display:grid;
+    grid-template-columns:repeat(auto-fit, minmax(150px, 1fr));
+    gap:var(--sp-3);
+    margin-bottom:var(--sp-5);
+  }
+  .kpi{
+    padding:var(--sp-3) var(--sp-4);
+    border:1px solid var(--border-sutil);
+    border-radius:var(--r-lg);
+    background:var(--bg-sutil);
+  }
+  .kpi .lbl{
+    display:block;
+    font-size:var(--fs-xs); color:var(--text-tenue);
+    text-transform:uppercase; letter-spacing:.04em;
+  }
+  .kpi .val{
+    display:block; margin-top:2px;
+    font-size:var(--fs-2xl); font-weight:var(--fw-black);
+    color:var(--text-titulo);
+  }
+  .kpi .val small{ font-size:var(--fs-md); font-weight:var(--fw-bold); color:var(--text-tenue); }
+
+  /* ----- Gráfico: precio promedio por categoría -----
+     Barras horizontales en HTML. Una sola serie (los nombres de categoría son
+     identidad, no magnitud), así que van todas del mismo dorado y no hace falta
+     leyenda: el título dice qué se está midiendo. El valor va etiquetado en la
+     punta, por eso tampoco hace falta eje. */
+  .barras{ display:grid; gap:var(--sp-2); }
+  .barra{
+    display:grid;
+    grid-template-columns:minmax(0,185px) 1fr auto;
+    align-items:center;
+    gap:var(--sp-3);
+    padding:3px var(--sp-2);
+    border-radius:var(--r-sm);
+  }
+  .barra:hover{ background:var(--bg-hover); }
+  .barra .cat{
+    display:flex; align-items:baseline; gap:4px;
+    min-width:0;
+    font-size:var(--fs-base);
+    color:var(--text-suave);
+  }
+  /* recorta el nombre largo, pero el conteo nunca se pierde */
+  .barra .cat .nom{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .barra .cat i{ flex:0 0 auto; font-style:normal; color:var(--text-tenue); }
+  .barra .track{ display:block; min-width:0; }
+  .barra .fill{
+    display:block;
+    height:14px;                        /* marca fina: la barra no llena el renglón */
+    min-width:2px;
+    border-radius:0 4px 4px 0;          /* punta redondeada, cuadrada en la base */
+    background:#b08f3a;                 /* fijo: medido contra el papel y el carbón */
+  }
+  .barra .val{
+    font-size:var(--fs-base);
+    font-weight:var(--fw-bold);
+    font-variant-numeric:tabular-nums;
+    color:var(--text);
+  }
+  @media (max-width:560px){
+    .barra{ grid-template-columns:1fr auto; row-gap:2px; }
+    .barra .cat{ grid-column:1; }
+    .barra .val{ grid-column:2; }
+    .barra .track{ grid-column:1 / -1; }
+  }
+
+  /* Renglón editable de la lista: grilla para que los botones caigan siempre
+     en la misma columna, midan lo que midan el nombre y las etiquetas. */
+  .item-row{
+    display:grid;
+    grid-template-columns:minmax(0,2fr) 110px minmax(0,1fr) auto;
+    align-items:center;
+    gap:var(--sp-2);
+    padding:var(--sp-2) 0;
+    border-bottom:1px solid var(--border-sutil);
+  }
+  .item-row .n{ min-width:0; }
+  .item-row .p{ width:100%; }
+  .item-row .meta{
+    display:flex; align-items:center; gap:6px; flex-wrap:wrap;
+    min-width:0;
+    font-size:var(--fs-sm); color:var(--text-tenue);
+  }
+  .item-row .acc{ display:flex; gap:6px; }
+
+  /* Listas simples (formas de pago, egresos, alias): nombre + eliminar */
+  .item-row.simple{ grid-template-columns:1fr auto; }
+  /* Usuarios: nombre + rol + clave nueva + acciones */
+  .item-row.usuario{ grid-template-columns:minmax(0,1.6fr) 130px minmax(0,1fr) auto; }
+
+  @media (max-width:640px){
+    .item-row, .item-row.simple, .item-row.usuario{ grid-template-columns:1fr auto; row-gap:6px; }
+    .item-row .p, .item-row .uRolEd, .item-row .uClave{ grid-column:1 / -1; }
+    .item-row .meta{ grid-column:1 / -1; }
+    .item-row .acc{ grid-column:2; grid-row:1; }
+  }
+
+  /* Checkbox con su etiqueta al lado (no arriba, como el resto de los campos) */
+  .check{
+    display:flex; align-items:center; gap:6px;
+    flex:0 0 auto; min-width:auto;
+    padding-bottom:9px;
+  }
+  .check input{ width:auto; }
+  .check label{ margin:0; white-space:nowrap; }

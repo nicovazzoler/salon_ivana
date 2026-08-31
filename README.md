@@ -191,10 +191,16 @@ salon_ivana/
     ├── admin.html
     ├── login.html
     ├── auth.js        # Lógica de sesión compartida
+    ├── escpos.js      # Generador ESC/POS de la comandera (lo usan ticket y facturar)
     ├── tema.js        # Modo claro / oscuro
     ├── favicon.svg
     ├── fonts/         # Tipografías propias (para andar sin internet)
+    ├── js/            # El JavaScript de las pantallas más grandes
+    │   ├── facturar.js
+    │   └── admin.js
     └── css/           # tokens.css → base.css → layout.css → components.css → app.css
+        ├── facturar.css   # (se cargan después de app.css, en la propia pantalla)
+        └── admin.css
 ```
 
 ---
