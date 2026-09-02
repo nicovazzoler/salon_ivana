@@ -1,0 +1,22 @@
+{
+  "tipo": "ticket",
+  "numero": 103,
+  "fecha": "2026-08-20T10:00:00",
+  "cliente_nombre": "Laura Gómez",
+  "lineas": [
+    { "cantidad": 1, "nombre": "Coloración raíz", "precio_unit_final": 18000, "precio_efectivo_final": 16200 }
+  ],
+  "extra_dificultad": 0,
+  "desc_efectivo": 0,
+  "desc_jubilado": 0,
+  "total_transfer": 18000,
+  "extras": [
+    { "concepto": "Ampolla reparadora", "monto": 3500 },
+    { "concepto": "Café", "monto": 800 }
+  ],
+  "pagos": [
+    { "monto": 22300, "fecha": "2026-08-20T10:10:00", "forma_pago": "Efectivo", "desc_aplicado": 0 }
+  ],
+  "ingresado": 22300,
+  "saldo": 0
+}

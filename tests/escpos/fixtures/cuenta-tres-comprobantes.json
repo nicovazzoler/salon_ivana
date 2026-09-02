@@ -1,0 +1,9 @@
+{
+  "cliente": { "nombre": "Patricia Núñez" },
+  "comprobantes": [
+    { "numero": 90, "fecha": "2026-07-10T10:00:00", "total_final": 15000, "pagado": 5000, "saldo": 10000 },
+    { "numero": 95, "fecha": "2026-07-25T11:30:00", "total_final": 22000, "pagado": 12000, "saldo": 10000 },
+    { "numero": 99, "fecha": "2026-08-05T09:15:00", "total_final": 8000, "pagado": 0, "saldo": 8000 }
+  ],
+  "saldo_total": 28000
+}

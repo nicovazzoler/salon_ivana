@@ -1,0 +1,24 @@
+{
+  "tipo": "ticket",
+  "numero": 101,
+  "fecha": "2026-08-15T14:30:00",
+  "cliente_nombre": "Marcela Fernández",
+  "lineas": [
+    {
+      "cantidad": 1,
+      "nombre": "Corte de cabello con lavado, secado y brushing profesional para evento especial",
+      "precio_unit_final": 25000,
+      "precio_efectivo_final": 22500
+    }
+  ],
+  "extra_dificultad": 0,
+  "desc_efectivo": 0,
+  "desc_jubilado": 0,
+  "total_transfer": 25000,
+  "extras": [],
+  "pagos": [
+    { "monto": 25000, "fecha": "2026-08-15T14:35:00", "forma_pago": "Transferencia", "desc_aplicado": 0 }
+  ],
+  "ingresado": 25000,
+  "saldo": 0
+}

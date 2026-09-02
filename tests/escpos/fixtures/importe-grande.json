@@ -1,0 +1,24 @@
+{
+  "tipo": "ticket",
+  "numero": 102,
+  "fecha": "2026-08-18T09:00:00",
+  "cliente_nombre": "Empresa Beauty SRL",
+  "lineas": [
+    {
+      "cantidad": 3,
+      "nombre": "Pack tratamiento anual",
+      "precio_unit_final": 1234500,
+      "precio_efectivo_final": 1110000
+    }
+  ],
+  "extra_dificultad": 0,
+  "desc_efectivo": 0,
+  "desc_jubilado": 0,
+  "total_transfer": 3703500,
+  "extras": [],
+  "pagos": [
+    { "monto": 3703500, "fecha": "2026-08-18T09:10:00", "forma_pago": "Transferencia", "desc_aplicado": 0 }
+  ],
+  "ingresado": 3703500,
+  "saldo": 0
+}

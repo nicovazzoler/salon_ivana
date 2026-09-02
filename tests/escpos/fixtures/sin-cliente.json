@@ -1,0 +1,18 @@
+{
+  "tipo": "ticket",
+  "numero": 106,
+  "fecha": "2026-08-28T13:00:00",
+  "lineas": [
+    { "cantidad": 1, "nombre": "Corte dama", "precio_unit_final": 12000, "precio_efectivo_final": 10800 }
+  ],
+  "extra_dificultad": 0,
+  "desc_efectivo": 0,
+  "desc_jubilado": 0,
+  "total_transfer": 12000,
+  "extras": [],
+  "pagos": [
+    { "monto": 12000, "fecha": "2026-08-28T13:05:00", "forma_pago": "Efectivo", "desc_aplicado": 0 }
+  ],
+  "ingresado": 12000,
+  "saldo": 0
+}

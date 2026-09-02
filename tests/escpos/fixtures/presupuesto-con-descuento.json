@@ -1,0 +1,24 @@
+{
+  "tipo": "presupuesto",
+  "numero": 104,
+  "fecha": "2026-08-22T16:00:00",
+  "cliente_nombre": "Rocío Pérez",
+  "lineas": [
+    {
+      "cantidad": 1,
+      "nombre": "Alisado con keratina y tratamiento de brillo profundo",
+      "precio_unit": 33000,
+      "precio_unit_final": 30000,
+      "precio_efectivo_final": 27000,
+      "ajuste_pct": -10,
+      "ajuste_nombre": "Cliente frecuente"
+    },
+    { "cantidad": 1, "nombre": "Corte punta", "precio_unit_final": 6000, "precio_efectivo_final": 5400 }
+  ],
+  "extra_dificultad": 500,
+  "descuento_pct": 5,
+  "descuento_nombre": "Seña ya abonada",
+  "extras": [
+    { "concepto": "Protector térmico", "monto": 2000 }
+  ]
+}
