@@ -1,0 +1,19 @@
+{
+  "tipo": "ticket",
+  "numero": 105,
+  "fecha": "2026-08-25T11:00:00",
+  "cliente_nombre": "Diego Torres",
+  "lineas": [
+    { "cantidad": 2, "nombre": "Corte caballero", "precio_unit_final": 8000, "precio_efectivo_final": 7200 }
+  ],
+  "extra_dificultad": 0,
+  "desc_efectivo": 0,
+  "desc_jubilado": 0,
+  "total_transfer": 16000,
+  "extras": [],
+  "pagos": [
+    { "monto": 10000, "fecha": "2026-08-25T11:05:00", "forma_pago": "Efectivo", "desc_aplicado": 0 }
+  ],
+  "ingresado": 10000,
+  "saldo": 6000
+}
