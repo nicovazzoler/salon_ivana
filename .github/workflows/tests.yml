@@ -42,17 +42,38 @@ jobs:
       - name: Correr los tests de escpos.js
         run: node --test "tests/escpos/**/*.test.js"
 
-  # Achá va a ir, más adelante, un segundo job para los tests de pytest
-  # (el backend de FastAPI). Se agrega como otra clave acá abajo, al mismo
-  # nivel que "escpos" (no adentro), para que corra en paralelo con este:
-  #
-  # pytest:
-  #   name: Tests de backend (pytest)
-  #   runs-on: ubuntu-latest
-  #   steps:
-  #     - uses: actions/checkout@v4
-  #     - uses: actions/setup-python@v5
-  #       with:
-  #         python-version: "3.x"
-  #     - run: pip install -r requirements.txt
-  #     - run: pytest
+  # Este es el job de los tests de pytest (la aritmética de plata del
+  # backend). Va como otra clave acá, al mismo nivel que "escpos" (no
+  # adentro), así los dos jobs corren en paralelo.
+  pytest:
+    name: Tests de backend (pytest)
+    runs-on: ubuntu-latest   # la máquina virtual donde corre: Ubuntu con lo básico ya instalado
+
+    steps:
+      # Paso 1: traer el código del repo a la máquina virtual. Sin esto no
+      # hay archivos con los que trabajar; es casi siempre el primer paso.
+      - name: Descargar el código
+        uses: actions/checkout@v4
+
+      # Paso 2: instalar Python. Se pinea "3.12" en vez de "3.x" por la misma
+      # razón que Node queda en "22": una versión puntual no se te mueve de
+      # abajo un día porque salió una versión nueva del lenguaje. Las
+      # versiones de las dependencias en requirements.txt/requirements-dev.txt
+      # están fijadas pensando en una versión de Python como esta, no en la
+      # última que exista.
+      - name: Instalar Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # Paso 3: instalar dependencias. requirements-dev.txt (no
+      # requirements.txt) porque agrega pytest, que hace falta acá pero no
+      # en producción.
+      - name: Instalar dependencias
+        run: pip install -r requirements-dev.txt
+
+      # Paso 4: correr los tests. Si algún test falla, pytest devuelve un
+      # código de salida distinto de cero y este paso (y con él, el job y
+      # el chequeo del PR) queda marcado como fallido.
+      - name: Correr los tests de plata
+        run: pytest tests/test_plata.py
