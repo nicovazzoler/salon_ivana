@@ -77,3 +77,4 @@ jobs:
       # el chequeo del PR) queda marcado como fallido.
       - name: Correr los tests de plata
         run: pytest tests/test_plata.py
+
