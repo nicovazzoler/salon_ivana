@@ -34,13 +34,13 @@ jobs:
       - name: Instalar Node
         uses: actions/setup-node@v4
         with:
-          node-version: "lts/*"
+          node-version: "22"
 
       # Paso 3: correr los tests. Si algún test falla, node --test devuelve
       # un código de salida distinto de cero y este paso (y con él, el job y
       # el chequeo del PR) queda marcado como fallido.
       - name: Correr los tests de escpos.js
-        run: node --test tests/escpos/
+        run: node --test "tests/escpos/**/*.test.js"
 
   # Achá va a ir, más adelante, un segundo job para los tests de pytest
   # (el backend de FastAPI). Se agrega como otra clave acá abajo, al mismo
