@@ -1,0 +1,58 @@
+# Nombre que ves en la pestaña "Actions" de GitHub y en el chequeo de cada PR.
+name: Pruebas automáticas
+
+# "on" dice CUÁNDO se dispara este workflow.
+on:
+  pull_request:
+    branches: [main]   # cualquier PR que apunte a main, sin importar de qué rama salga
+  push:
+    branches: [main]   # y también cuando algo se pushea directo a main (por si se saltea el PR)
+
+# "jobs" es la lista de trabajos que corren. Cada uno arranca en una máquina
+# virtual limpia, en paralelo con los demás (a menos que uno dependa de otro).
+jobs:
+  # Este es el job de los tests de escpos.js. El nombre de la clave (escpos)
+  # es interno; "name" es lo que se muestra en la interfaz de GitHub.
+  escpos:
+    name: Tests de ESC/POS (Node)
+    runs-on: ubuntu-latest   # la máquina virtual donde corre: Ubuntu con lo básico ya instalado
+
+    # "steps" son los pasos del job, uno después del otro. Si uno falla, se
+    # corta ahí y el job entero queda en rojo.
+    steps:
+      # Paso 1: traer el código del repo a la máquina virtual. Sin esto no
+      # hay archivos con los que trabajar; es casi siempre el primer paso.
+      - name: Descargar el código
+        uses: actions/checkout@v4
+
+      # Paso 2: instalar Node. actions/setup-node es la acción oficial para
+      # esto; "lts/*" significa "la última versión LTS disponible", así el
+      # workflow no queda atado a una versión puntual que un día se vuelve
+      # vieja. No hace falta un paso de "instalar dependencias" (npm install)
+      # porque no hay package.json: los tests solo usan node:test, que viene
+      # incluido en Node.
+      - name: Instalar Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "lts/*"
+
+      # Paso 3: correr los tests. Si algún test falla, node --test devuelve
+      # un código de salida distinto de cero y este paso (y con él, el job y
+      # el chequeo del PR) queda marcado como fallido.
+      - name: Correr los tests de escpos.js
+        run: node --test tests/escpos/
+
+  # Achá va a ir, más adelante, un segundo job para los tests de pytest
+  # (el backend de FastAPI). Se agrega como otra clave acá abajo, al mismo
+  # nivel que "escpos" (no adentro), para que corra en paralelo con este:
+  #
+  # pytest:
+  #   name: Tests de backend (pytest)
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #     - uses: actions/setup-python@v5
+  #       with:
+  #         python-version: "3.x"
+  #     - run: pip install -r requirements.txt
+  #     - run: pytest
