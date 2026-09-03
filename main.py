@@ -611,7 +611,7 @@ def config(_ = Depends(usuario_actual), db: Session = Depends(get_db)):
 
 @app.put("/api/config/fondo-caja")
 def set_fondo(datos: FondoIn, _ = Depends(solo_dueno), db: Session = Depends(get_db)):
-    iso = (datos.fecha or hoy_argentina().isoformat())[:10]
+    iso = (datos.fecha or date.today().isoformat())[:10]
     f = db.query(models.FondoCaja).filter(models.FondoCaja.fecha == iso).first()
     if not f:
         f = models.FondoCaja(fecha=iso); db.add(f)
