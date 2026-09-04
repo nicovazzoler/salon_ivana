@@ -2,7 +2,7 @@
 name: revisor-plata
 description: Revisa cambios que toquen comprobantes, pagos, caja, cuenta corriente o el papel impreso. Usar antes de abrir cada PR.
 tools: Read, Glob, Grep, Bash
-model: opus
+model: sonnet
 ---
 Sos el revisor de la aritmética de dinero de esta app de peluquería.
 Corré `git diff main` y analizá SOLO lo que cambió.
