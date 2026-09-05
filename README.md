@@ -1,4 +1,4 @@
-# Ivana Salón — Sistema de gestión para comercios
+# Ivana Salón — Sistema de gestión para peluquería
 
 Aplicación web full-stack para la gestión diaria de una peluquería: facturación con cuenta corriente, clientes, agenda de turnos, caja, inventario, reportes y administración. **En producción y en uso diario real** desde una tablet en el local.
 
