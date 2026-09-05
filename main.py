@@ -192,6 +192,10 @@ class NotaIn(BaseModel):
    egreso cargado a las 21:23 de un martes se contaba en la caja del miércoles.
 """
 HORAS_ARG = 3
+# El huso, para cuando hay que ESCRIBIR una fecha argentina con su offset a la
+# vista. hora_argentina() resta las horas pero no toca el tzinfo, que es lo que
+# quiere casi todo el código; acá el -03:00 tiene que quedar escrito.
+ARGENTINA = timezone(timedelta(hours=-HORAS_ARG))
 
 def fecha_hora_now_utc():
     return datetime.now(timezone.utc)
@@ -1661,21 +1665,46 @@ def borrar_ajuste_item(aj_id: int, _ = Depends(solo_dueno), db: Session = Depend
     a.activo = False; db.commit(); return {"ok": True}
 
 # ---------- backup completo (solo dueño) ----------
+# Versión del formato del JSON. La 1 guardaba las fechas ya convertidas a hora
+# argentina y sin offset, así que al restaurarla había que acordarse de sumarle
+# las 3 horas: si alguien se olvidaba, la caja de todos los días quedaba corrida
+# (los servicios de después de las 21:00 se iban al día siguiente). Desde la 2
+# las fechas salen en UTC con el "+00:00" escrito, que es como están guardadas.
+# `restaurar_backup.py` mira este número para saber cuál de las dos leyó.
+BACKUP_VERSION = 2
+
+def _iso_utc(dt):
+    """Fecha en ISO con el offset explícito, o None. Lo que hay en la base es
+    UTC sin marcar, así que a lo naive se le pone el UTC que ya tenía."""
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc).isoformat()
+
 @app.get("/api/backup")
 def backup_completo(_ = Depends(solo_dueno), db: Session = Depends(get_db)):
     """Descarga un JSON con TODAS las tablas para backup offline."""
     import json as _json
 
     data = {
-        "fecha_backup": hora_argentina(fecha_hora_now_utc()).isoformat(),
+        "version": BACKUP_VERSION,
+        # Informativa: la mira una persona, no el importador, así que va en hora
+        # argentina. Con el -03:00 puesto de verdad: hora_argentina() resta las
+        # tres horas pero deja el tzinfo en UTC, y eso acá saldría escrito como
+        # un "+00:00" que miente sobre lo que dice el número.
+        "fecha_backup": fecha_hora_now_utc().astimezone(ARGENTINA).isoformat(),
         "items": [
             {"id": i.id, "categoria": i.categoria, "nombre": i.nombre, "precio": i.precio,
+             # Va guardado y no recalculado al restaurar: calcular_transfer da el
+             # valor de catálogo, pero este puede haberse editado a mano.
+             "precio_transfer": i.precio_transfer,
              "es_producto": i.es_producto, "stock_actual": i.stock_actual,
              "stock_minimo": i.stock_minimo, "activo": i.activo}
             for i in db.query(models.Item).all()
         ],
         "ventas": [
-            {"id": v.id, "fecha": hora_argentina(v.fecha).isoformat(), "forma_pago": v.forma_pago,
+            {"id": v.id, "fecha": _iso_utc(v.fecha), "forma_pago": v.forma_pago,
              "alias": v.alias, "cliente": v.cliente, "peluquero": v.peluquero, "total": v.total,
              "lineas": [
                  {"id": l.id, "item_id": l.item_id, "nombre": l.nombre,
@@ -1686,7 +1715,7 @@ def backup_completo(_ = Depends(solo_dueno), db: Session = Depends(get_db)):
             for v in db.query(models.Venta).order_by(models.Venta.fecha).all()
         ],
         "egresos": [
-            {"id": e.id, "fecha": hora_argentina(e.fecha).isoformat(), "tipo": e.tipo,
+            {"id": e.id, "fecha": _iso_utc(e.fecha), "tipo": e.tipo,
              "concepto": e.concepto, "monto": e.monto,
              "forma_pago": e.forma_pago, "notas": e.notas}
             for e in db.query(models.Egreso).order_by(models.Egreso.fecha).all()
@@ -1717,13 +1746,20 @@ def backup_completo(_ = Depends(solo_dueno), db: Session = Depends(get_db)):
             for a in db.query(models.Alias).all()
         ],
         "turnos": [
-            {"id": t.id, "fecha": t.fecha, "hora": t.hora, "cliente": t.cliente,
-             "servicio": t.servicio, "peluquero": t.peluquero, "notas": t.notas,
-             "activo": t.activo}
+            # cliente_id es el vínculo al cliente registrado; `cliente` es solo el
+            # nombre suelto. Sin el id, al restaurar los turnos quedaban huérfanos.
+            {"id": t.id, "fecha": t.fecha, "hora": t.hora, "cliente_id": t.cliente_id,
+             "cliente": t.cliente, "servicio": t.servicio, "peluquero": t.peluquero,
+             "notas": t.notas, "activo": t.activo}
             for t in db.query(models.Turno).order_by(models.Turno.fecha, models.Turno.hora).all()
         ],
+        "notas_diarias": [
+            {"id": n.id, "fecha": n.fecha, "texto": n.texto,
+             "creada": _iso_utc(n.creada), "activo": n.activo}
+            for n in db.query(models.NotaDiaria).order_by(models.NotaDiaria.fecha).all()
+        ],
         "movimientos_stock": [
-            {"id": m.id, "item_id": m.item_id, "fecha": hora_argentina(m.fecha).isoformat(),
+            {"id": m.id, "item_id": m.item_id, "fecha": _iso_utc(m.fecha),
              "tipo": m.tipo, "antes": m.antes, "despues": m.despues,
              "cambio": m.cambio, "motivo": m.motivo, "usuario": m.usuario}
             for m in db.query(models.MovimientoStock).order_by(models.MovimientoStock.fecha).all()
@@ -1731,7 +1767,7 @@ def backup_completo(_ = Depends(solo_dueno), db: Session = Depends(get_db)):
         "clientes": [
             {"id": c.id, "nombre": c.nombre, "telefono": c.telefono, "alias": c.alias,
              "notas": c.notas, "direccion": c.direccion, "dni": c.dni,
-             "activo": c.activo, "creado": hora_argentina(c.creado).isoformat() if c.creado else None}
+             "activo": c.activo, "creado": _iso_utc(c.creado)}
             for c in db.query(models.Cliente).all()
         ],
         "descuentos": [
@@ -1740,8 +1776,8 @@ def backup_completo(_ = Depends(solo_dueno), db: Session = Depends(get_db)):
             for d in db.query(models.Descuento).all()
         ],
         "comprobantes": [
-            {"id": c.id, "tipo": c.tipo, "numero": c.numero, "fecha": hora_argentina(c.fecha).isoformat(),
-             "cargado": hora_argentina(c.cargado).isoformat() if c.cargado else None,
+            {"id": c.id, "tipo": c.tipo, "numero": c.numero, "fecha": _iso_utc(c.fecha),
+             "cargado": _iso_utc(c.cargado),
              "cliente_id": c.cliente_id, "cliente_nombre": c.cliente_nombre,
              "peluquero": c.peluquero, "total_lista": c.total_lista,
              "extra_dificultad": c.extra_dificultad, "descuento_pct": c.descuento_pct,
@@ -1765,7 +1801,7 @@ def backup_completo(_ = Depends(solo_dueno), db: Session = Depends(get_db)):
             for a in db.query(models.AjusteItem).all()
         ],
         "pagos": [
-            {"id": p.id, "comprobante_id": p.comprobante_id, "fecha": hora_argentina(p.fecha).isoformat(),
+            {"id": p.id, "comprobante_id": p.comprobante_id, "fecha": _iso_utc(p.fecha),
              "monto": p.monto, "saldado": p.saldado, "forma_pago": p.forma_pago,
              "alias": p.alias, "desc_aplicado": p.desc_aplicado}
             for p in db.query(models.Pago).order_by(models.Pago.fecha).all()
