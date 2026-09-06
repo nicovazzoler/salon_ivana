@@ -30,7 +30,10 @@ jobs:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
 
     steps:
-      - uses: actions/checkout@v4
+      # v7 corre en node24. Las v4 corrían en node20, que GitHub saca de los
+      # runners el 16/09/2026: ya venían forzadas a node24 con un aviso, y
+      # después de esa fecha directamente dejan de andar.
+      - uses: actions/checkout@v7
 
       - name: Instalar el pg_dump que corresponde al servidor
         run: |
@@ -85,7 +88,7 @@ jobs:
             "postgresql://postgres:verificar@127.0.0.1:55432/postgres"
 
       - name: Guardar el backup
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ steps.dump.outputs.nombre }}
           path: ${{ steps.dump.outputs.archivo }}
