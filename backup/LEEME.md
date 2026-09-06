@@ -4,23 +4,36 @@ La base de la peluquería tiene los comprobantes, los pagos, la cuenta corriente
 de cada cliente y el stock. Si se pierde, no hay de dónde sacarla de nuevo: el
 papel que se imprime no vuelve para atrás.
 
-Hay tres copias, y son tres a propósito, porque cada una falla distinto.
+Hay tres copias y son tres a propósito, porque cada una falla distinto. Dos
+corren solas; la tercera es un botón.
 
-## 1. Los backups de Railway
+| | Qué es | Cada cuánto | De qué NO te salva |
+|---|---|---|---|
+| 1 | Backups de Railway | — | **no disponible en el plan Hobby** |
+| 2 | `pg_dump` en la PC → Drive | diario, 22:30 | si la PC está apagada, ese día no hay |
+| 3 | GitHub Actions → artifact privado | diario, 00:00 arg. | si se pierde la cuenta de GitHub |
 
-Los hace Railway solo, no hay nada que programar. En el servicio de Postgres,
-pestaña **Backups**: snapshots del volumen, y Point-in-Time Recovery, que
-permite volver a un momento exacto y no solo al último snapshot. Al restaurar,
-Railway crea un servicio nuevo al lado (`<origen>-restored-AAAAMMDD-HHMM`), así
-que no pisa la base que está en uso.
+Las capas 2 y 3 son independientes a propósito: distinta máquina, distinta
+cuenta, distinto lugar donde queda el archivo. Que se caigan las dos el mismo
+día es mucho más difícil que que se caiga una.
 
-Es lo que salva del susto común: se borró algo sin querer, una migración salió
-mal. **Andá al panel y confirmá que están habilitados**, según el plan cambia
-qué hay disponible.
+## 1. Los backups de Railway — HOY NO LOS TENEMOS
 
-Lo que NO cubre: vive adentro de Railway. Si se pierde el acceso a la cuenta, si
-se cae la tarjeta, si hay un problema de facturación, se pierden los backups
-junto con la base. Por eso hay una segunda copia.
+Railway tiene snapshots del volumen y Point-in-Time Recovery (volver a un
+momento exacto, no solo al último snapshot), pero **PITR es exclusivo del plan
+Pro** y el proyecto está en Hobby.
+
+O sea que del lado del proveedor no hay red. **Las otras dos capas no son un
+extra: son todo lo que hay.** Por eso son dos y automáticas las dos, y por eso
+cada una avisa fuerte cuando falla.
+
+Si algún día se pasa a Pro, esto se habilita desde el panel del servicio de
+Postgres, pestaña Backups, y conviene hacerlo: es la única capa que puede
+recuperar un borrado de hace veinte minutos sin perder lo del resto del día.
+
+Aun con Pro, seguiría haciendo falta una copia propia: los backups de Railway
+viven adentro de Railway. Si se pierde el acceso a la cuenta, si se cae la
+tarjeta, si hay un problema de facturación, se pierden junto con la base.
 
 ## 2. El backup automático a tu PC y a Drive
 
@@ -62,10 +75,65 @@ Un backup que falla callado es peor que no tener backup, porque uno se queda
 tranquilo. Por eso los avisos son archivos en la carpeta de Drive y no una línea
 en un log que nadie abre.
 
-## 3. El JSON desde la app
+## 3. El backup automático en GitHub Actions
+
+El mismo `pg_dump`, pero corriendo en GitHub en vez de en tu PC. Es la copia que
+sigue andando aunque la PC esté apagada, de viaje o rota.
+
+Antes de darlo por bueno **restaura el dump en un Postgres descartable y compara
+contra la base**: cantidad de comprobantes, de pagos y la suma de la plata. Si
+no coinciden, la corrida falla. Un backup que nunca restauraste no es un backup,
+es un archivo.
+
+### Instalarlo (una sola vez)
+
+1. **Crear un repositorio nuevo y PRIVADO** en GitHub, por ejemplo
+   `salon_ivana_backups`.
+
+   Tiene que ser privado. Los artifacts de un repo público los baja cualquiera,
+   y el dump tiene datos de los clientes y los hash de las contraseñas.
+
+2. **Copiar tres archivos** de `backup/github-actions/` de este repo:
+
+   ```
+   .github/workflows/backup.yml   <- backup.yml
+   scripts/hacer_backup.sh        <- hacer_backup.sh
+   scripts/verificar_restore.sh   <- verificar_restore.sh
+   ```
+
+   Que los `.sh` queden ejecutables: `git update-index --chmod=+x scripts/*.sh`
+
+3. **Cargar la URL de la base** en ese repo: *Settings → Secrets and variables →
+   Actions → New repository secret*.
+
+   - Nombre: `DATABASE_URL`
+   - Valor: el `DATABASE_PUBLIC_URL` de Railway (el mismo del backup de la PC)
+
+4. **Probarlo**: pestaña *Actions* → *Backup de la base* → *Run workflow*.
+
+   Si sale verde, en la portada del repo aparece `ULTIMO_BACKUP.md` con la fecha,
+   y el `.dump` queda en los artifacts de esa corrida.
+
+### Cómo bajar un backup
+
+Pestaña **Actions** → entrar a la corrida del día que se busca → abajo de todo,
+en **Artifacts**, está el `.dump`. Se guardan 90 días.
+
+### Dos cosas para no dejar pasar
+
+**Si el workflow falla, GitHub te manda un mail.** No lo ignores: significa que
+esa noche no hubo copia, o —peor— que el backup salió pero no restaura bien.
+
+**GitHub apaga los workflows programados en repos sin actividad durante 60
+días.** Por eso cada corrida commitea `ULTIMO_BACKUP.md`, que además de dejar la
+fecha a la vista genera actividad. Igual, si alguna vez llega el mail avisando
+que lo va a desactivar, hay que entrar y reactivarlo.
+
+## 4. El JSON desde la app
 
 En **Admin → Backup completo → Descargar backup** baja un `.json` con todas las
-tablas. Es manual, pero tiene algo que el `.dump` no: se abre y se lee con
+tablas. Es el único manual, y no reemplaza a los otros dos. Pero tiene algo que
+el `.dump` no: se abre y se lee con
 cualquier cosa, sin tener PostgreSQL instalado. Sirve para consultar un dato de
 apuro, o para restaurar si alguna vez no hay a mano un Postgres.
 
@@ -122,3 +190,25 @@ Antes de dar esto por bueno, sobre la app real:
 - Restauración en PostgreSQL y después un `INSERT`, para confirmar que las
   secuencias quedan donde tienen que quedar. Sin eso la base restaurada arranca
   dando `id` 1 y el primer ticket que se cobra revienta por clave duplicada.
+
+Del backup de GitHub Actions, contra un PostgreSQL de verdad:
+
+- `hacer_backup.sh` en el caso bueno y en los cuatro de falla: sin
+  `DATABASE_URL`, base inexistente, dump corrupto (truncado a propósito) y dump
+  con menos tablas de las que corresponden. En todos, sale con error y **no deja
+  archivo**.
+- `verificar_restore.sh` en los dos sentidos: contra una copia sana da todo
+  igual, y cuando se le mete un pago a la base después de hacer el dump, lo
+  detecta y falla.
+- El dump que genera el workflow, restaurado y comparado tabla por tabla contra
+  el original: idéntico.
+
+Probando eso apareció un error real: `pg_dump` **crea el archivo antes** de
+conectarse, así que un intento fallido dejaba un `.dump` de cero bytes en la
+carpeta, y si caía en el mismo minuto pisaba al bueno. Ahora los dos scripts
+escriben en un temporal y recién mueven el archivo a su lugar cuando pasó todas
+las verificaciones.
+
+Lo único que no se pudo probar acá: los dos `.ps1` (no hay Windows en el entorno
+donde se escribieron) y el paso del workflow que levanta el Postgres descartable
+con Docker. La lógica que corre adentro de ese paso sí está probada.

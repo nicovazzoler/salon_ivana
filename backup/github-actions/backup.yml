@@ -1,0 +1,123 @@
+# Backup diario de la base, corriendo en GitHub y no en la PC.
+#
+# Va en un repositorio PRIVADO, nunca en el de la app: el de la app es público y
+# los artifacts de un repo público los baja cualquiera. El dump tiene DNI,
+# teléfonos y direcciones de los clientes, y los hash de las contraseñas.
+#
+# Instrucciones de instalación en backup/LEEME.md del repo de la app.
+
+name: Backup de la base
+
+on:
+  schedule:
+    # 03:00 UTC son las 00:00 en Argentina (UTC-3): el local ya cerró y lo que
+    # se guarda es el día completo.
+    - cron: "0 3 * * *"
+  workflow_dispatch:   # para poder dispararlo a mano cuando haga falta
+
+permissions:
+  contents: write   # solo para dejar la constancia del último backup en el repo
+
+concurrency:
+  group: backup-base
+  cancel-in-progress: false   # nunca cancelar un backup a mitad de camino
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Instalar el pg_dump que corresponde al servidor
+        run: |
+          set -euo pipefail
+          if [ -z "${DATABASE_URL:-}" ]; then
+            echo "Falta el secret DATABASE_URL. Ver LEEME.md." >&2
+            exit 1
+          fi
+          # Un psql viejo SÍ puede hablar con un servidor nuevo; pg_dump no, se
+          # niega si el servidor es más nuevo que él. Por eso se le pregunta la
+          # versión al servidor usando el psql que ya trae el runner, y recién
+          # ahí se instala el cliente que hace falta. Así, el día que Railway
+          # actualice Postgres, esto se adapta solo en vez de empezar a fallar.
+          NUM=$(psql "$DATABASE_URL" -tAc "SHOW server_version_num")
+          MAYOR=$((NUM / 10000))
+          echo "El servidor es PostgreSQL $MAYOR"
+
+          sudo install -d /usr/share/postgresql-common/pgdg
+          sudo curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc \
+            -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" \
+            | sudo tee /etc/apt/sources.list.d/pgdg.list > /dev/null
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq "postgresql-client-$MAYOR"
+
+          echo "/usr/lib/postgresql/$MAYOR/bin" >> "$GITHUB_PATH"
+          echo "MAYOR=$MAYOR" >> "$GITHUB_ENV"
+
+      - name: Hacer el backup
+        id: dump
+        run: ./scripts/hacer_backup.sh backups
+
+      - name: Probar que se puede restaurar
+        env:
+          ARCHIVO: ${{ steps.dump.outputs.archivo }}
+        run: |
+          set -euo pipefail
+          # Un backup que nunca restauraste no es un backup, es un archivo. Se
+          # levanta un Postgres descartable de la misma versión, se restaura ahí
+          # y se compara: cantidad de comprobantes, de pagos, y la suma de la
+          # plata. Si algo no da, la corrida falla y llega el mail.
+          docker run -d --name verificacion \
+            -e POSTGRES_PASSWORD=verificar -p 55432:5432 "postgres:$MAYOR"
+          for i in $(seq 1 40); do
+            pg_isready -h 127.0.0.1 -p 55432 -q && break
+            sleep 2
+          done
+          ./scripts/verificar_restore.sh "$ARCHIVO" \
+            "postgresql://postgres:verificar@127.0.0.1:55432/postgres"
+
+      - name: Guardar el backup
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.dump.outputs.nombre }}
+          path: ${{ steps.dump.outputs.archivo }}
+          # 90 días es el máximo que da GitHub sin configurar nada más. La copia
+          # de la PC guarda los últimos 30 y no se pisan entre las dos.
+          retention-days: 90
+          if-no-files-found: error
+
+      - name: Dejar constancia del último backup
+        env:
+          NOMBRE: ${{ steps.dump.outputs.nombre }}
+          KB: ${{ steps.dump.outputs.kb }}
+          TABLAS: ${{ steps.dump.outputs.tablas }}
+        run: |
+          set -euo pipefail
+          FECHA=$(TZ=America/Argentina/Buenos_Aires date '+%d/%m/%Y %H:%M')
+          # Queda escrito en la portada del repo. Es la misma idea que el
+          # _ULTIMO_BACKUP.txt de la carpeta de Drive: que se vea de un vistazo
+          # si esto sigue corriendo, sin tener que entrar a mirar logs.
+          {
+            echo "# Último backup"
+            echo
+            echo "- **Fecha:** $FECHA (hora argentina)"
+            echo "- **Archivo:** ${NOMBRE}.dump"
+            echo "- **Tamaño:** ${KB} KB"
+            echo "- **Tablas:** ${TABLAS}"
+            echo "- **Restauración probada:** sí"
+            echo
+            echo "El archivo se baja desde la pestaña **Actions**, en los artifacts de esa corrida."
+            echo
+            echo "> Si esta fecha quedó vieja, el backup dejó de correr."
+          } > ULTIMO_BACKUP.md
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add ULTIMO_BACKUP.md
+          git diff --staged --quiet || git commit -m "Backup del $FECHA"
+          git push

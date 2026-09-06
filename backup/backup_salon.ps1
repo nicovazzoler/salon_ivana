@@ -60,6 +60,10 @@ function Escribir($msg) {
 # falla en silencio es peor que no tener backup, porque uno se queda tranquilo.
 function Morir($msg) {
     Escribir "ERROR: $msg"
+    # El temporal a medio escribir no tiene por qué sobrevivir al fallo.
+    if ($script:temporal -and (Test-Path $script:temporal)) {
+        Remove-Item $script:temporal -Force -ErrorAction SilentlyContinue
+    }
     @(
         "El backup automático viene fallando."
         ""
