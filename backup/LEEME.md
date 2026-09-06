@@ -93,13 +93,19 @@ es un archivo.
    Tiene que ser privado. Los artifacts de un repo público los baja cualquiera,
    y el dump tiene datos de los clientes y los hash de las contraseñas.
 
-2. **Copiar tres archivos** de `backup/github-actions/` de este repo:
+2. **Copiar cuatro archivos** de `backup/github-actions/` de este repo:
 
    ```
    .github/workflows/backup.yml   <- backup.yml
    scripts/hacer_backup.sh        <- hacer_backup.sh
    scripts/verificar_restore.sh   <- verificar_restore.sh
+   .gitattributes                 <- .gitattributes
    ```
+
+   El `.gitattributes` no es opcional: sin él, git puede subir los `.sh` con
+   finales de línea de Windows y en el runner de Linux fallan con
+   `$'\r': command not found`, un error que no menciona en ningún lado que el
+   problema sean los finales de línea.
 
 
 3. **Cargar la URL de la base** en ese repo: *Settings → Secrets and variables →
