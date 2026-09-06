@@ -5,3 +5,9 @@ pelu.db
 .env
 pendientes_salon_ivana_v2.md
 css_referencia.md
+# Backups de la base: tienen DNI, telefonos y direcciones de clientes, y los
+# hash de las contrasenas. El repositorio es publico.
+*.dump
+*.sql
+backup_pelu_*.json
+salon_ivana_*.dump
