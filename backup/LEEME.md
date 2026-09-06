@@ -101,7 +101,6 @@ es un archivo.
    scripts/verificar_restore.sh   <- verificar_restore.sh
    ```
 
-   Que los `.sh` queden ejecutables: `git update-index --chmod=+x scripts/*.sh`
 
 3. **Cargar la URL de la base** en ese repo: *Settings → Secrets and variables →
    Actions → New repository secret*.

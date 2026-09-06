@@ -61,7 +61,10 @@ jobs:
 
       - name: Hacer el backup
         id: dump
-        run: ./scripts/hacer_backup.sh backups
+        # Se invocan con 'bash ...' y no como ./script: así no importa si el bit
+        # de ejecución se perdió al subir los archivos desde Windows, que es lo
+        # normal, y que falla con un 'Permission denied' que no dice nada.
+        run: bash ./scripts/hacer_backup.sh backups
 
       - name: Probar que se puede restaurar
         env:
@@ -78,7 +81,7 @@ jobs:
             pg_isready -h 127.0.0.1 -p 55432 -q && break
             sleep 2
           done
-          ./scripts/verificar_restore.sh "$ARCHIVO" \
+          bash ./scripts/verificar_restore.sh "$ARCHIVO" \
             "postgresql://postgres:verificar@127.0.0.1:55432/postgres"
 
       - name: Guardar el backup
