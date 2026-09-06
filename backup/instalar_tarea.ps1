@@ -1,4 +1,4 @@
-<#
+﻿<#
 Deja el backup andando solo. Se corre UNA vez, con botón derecho sobre el
 archivo -> "Ejecutar con PowerShell".
 

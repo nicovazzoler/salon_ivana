@@ -1,4 +1,4 @@
-<#
+﻿<#
 Backup automático de la base de la peluquería, para correr en la PC con Windows.
 
 Hace un pg_dump de la base de Railway y lo deja en una carpeta sincronizada con
