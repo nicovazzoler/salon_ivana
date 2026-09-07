@@ -26,6 +26,9 @@ static/
   css/           tokens → base → layout → components → app  (el orden importa)
   js/            El JS de facturar y admin, que son las grandes
   auth.js        Sesión, menú y helpers compartidos
+  js/listas.js   Las cinco listas configurables (formas de pago, tipos de egreso,
+                 descuentos, ajustes por ítem, alias): un solo dibujante que usan
+                 Admin y el panel del lapicito de facturar
   escpos.js      Generador del papel de la comandera (ticket.html y facturar.js)
 ```
 
@@ -128,6 +131,25 @@ tiene que poder correr muchas veces sin romper nada.
 Para migrar DATOS (no esquema), dejar una marca en la tabla `config` para que
 corra una sola vez; si no, cada reinicio le pisa al usuario lo que haya editado
 a mano después.
+
+**Las listas configurables se editan donde están.** Las cinco viven en
+`static/js/listas.js` con un solo dibujante: fila editable, lo nuevo arriba y los
+rótulos de esa primera fila haciendo de encabezado de las columnas. Lo usan Admin
+y el panel que abre el lapicito al lado de cada desplegable en facturar, para no
+tener que irse de un cobro a medio hacer. **Si son dos dibujantes, un día se
+agrega un campo en Admin y el panel sigue sin pedirlo.**
+
+Renombrar arrastra o no según qué sea el nombre: los tipos de egreso, los alias
+y las formas de pago son una CLASIFICACIÓN y se arrastran a lo ya cargado (si no,
+la caja muestra dos renglones para lo mismo); los descuentos y los ajustes por
+ítem son lo que se le DIJO al cliente y salieron impresos, así que no se tocan
+hacia atrás.
+
+**"Efectivo" y "Transferencia" no se renombran ni se borran.** No son dos
+opciones de una lista: el arqueo suma comparando `pago.forma_pago == "Efectivo"`
+y facturar guarda ese texto exacto al cobrar. Sin ellas los pagos salen con la
+forma vacía y el arqueo dice que hay más plata de la que hay, sin avisar. Por eso
+`FORMAS_FIJAS` en `main.py` y el candado en la lista.
 
 **El historial se pide de a páginas.** `/api/comprobantes` no devuelve todo: se
 le pasa ventana de fechas, búsqueda, filtro, orden y `limite`/`offset`, y

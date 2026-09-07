@@ -108,6 +108,30 @@ async function init(){
   NEGOCIO=cfg.negocio||{};              // encabezado del papel impreso
   CATALOGO=await (await authFetch("/api/catalogo")).json();
   CLIENTES=await (await authFetch("/api/clientes")).json();
+  await cargarListas(cfg);
+  ponerLapices();
+  pintarRail();
+  renderCategorias(); restaurarBorrador(); pintarOtroDia(); renderTicket(); mostrarBotones();
+  cargarEgresosHoy(); avisoEgresoPrivado();
+  const cliParam=new URLSearchParams(location.search).get("cliente");
+  if(cliParam){ $("#cliente").value=cliParam; }
+}
+
+/* ---------- Las listas configurables ----------
+
+   Formas de pago, tipos de egreso, descuentos, ajustes por ítem y alias salen
+   de listas que se editan. Se cargan de una acá, y se vuelven a cargar cuando
+   alguien las toca desde el panel del lapicito: si cargaste un descuento nuevo
+   y el desplegable sigue mostrando los de antes, el viaje no sirvió de nada.
+
+   Se guarda y se repone lo que estaba elegido. Cambiar la lista no tiene por
+   qué cambiar el ticket que estás armando. */
+async function cargarListas(cfg){
+  if(!cfg) cfg = await (await authFetch("/api/config")).json();
+  const eraPago   = $("#egPago").value;
+  const eraCobro  = $("#cobroForma").value;
+  const eraDesc   = descNombre;
+
   $("#cobroForma").innerHTML=(cfg.formas_pago||[]).map(f=>`<option>${f}</option>`).join("");
   $("#egPago").innerHTML=(cfg.formas_pago||[]).map(f=>`<option>${f}</option>`).join("");
   $("#egTipos").innerHTML=(cfg.tipos_egreso||[]).map(t=>`<option value="${t}">`).join("");
@@ -115,13 +139,54 @@ async function init(){
   $("#aliasList").innerHTML=(cfg.alias||[]).map(a=>`<option value="${a}">`).join("");
   DESCUENTOS=await (await authFetch("/api/descuentos")).json();
   $("#descuento").innerHTML='<option value="">Sin descuento</option>'+
-    DESCUENTOS.map((d,i)=>`<option value="${i}">${d.nombre} ${d.porcentaje}%</option>`).join("");
+    DESCUENTOS.map((d,i)=>`<option value="${i}">${esc(d.nombre)} ${d.porcentaje}%</option>`).join("");
   AJUSTES=await (await authFetch("/api/ajustes-item")).json();   // descuentos/recargos por línea
-  pintarRail();
-  renderCategorias(); restaurarBorrador(); pintarOtroDia(); renderTicket(); mostrarBotones();
-  cargarEgresosHoy(); avisoEgresoPrivado();
-  const cliParam=new URLSearchParams(location.search).get("cliente");
-  if(cliParam){ $("#cliente").value=cliParam; }
+
+  // reponer lo que estaba elegido, si sigue existiendo
+  if(eraPago  && [...$("#egPago").options].some(o=>o.value===eraPago))       $("#egPago").value = eraPago;
+  if(eraCobro && [...$("#cobroForma").options].some(o=>o.value===eraCobro))  $("#cobroForma").value = eraCobro;
+  if(eraDesc){
+    const i = DESCUENTOS.findIndex(d => d.nombre === eraDesc);
+    if(i >= 0){ $("#descuento").value = String(i); descPct = DESCUENTOS[i].porcentaje; }
+    else { descPct = 0; descNombre = null; }   // lo borraron mientras tanto
+  }
+}
+
+/* El lapicito al lado de cada desplegable que sale de una lista.
+
+   Es la respuesta a algo que pasaba todos los días: estás cobrando, falta un
+   descuento o el alias de una cuenta nueva, y la única forma de cargarlo era
+   irse a Admin, buscarlo entre seis tarjetas y volver con el ticket a medio
+   hacer. Ahora se abre la lista ahí mismo.
+
+   Se ponen desde acá y no en el HTML para no repetir seis veces la misma
+   envoltura, y porque el campo tiene que quedar adentro de un contenedor
+   flexible junto al botón. */
+function ponerLapiz(selCampo, cualLista){
+  const campo = $(selCampo);
+  if(!campo || campo.parentElement.classList.contains("con-lapiz")) return;
+  const caja = document.createElement("span");
+  caja.className = "con-lapiz";
+  // El campo puede traer un flex del HTML; ahora ese flex es de la caja.
+  caja.style.flex = campo.style.flex || "";
+  campo.style.flex = "";
+  campo.parentElement.insertBefore(caja, campo);
+  caja.appendChild(campo);
+  caja.appendChild(Listas.botonEditar(cualLista, async hubo => {
+    if(!hubo) return;
+    await cargarListas();
+    renderTicket();              // el descuento puede haber cambiado el total
+    avisoEgresoPrivado();        // y un tipo puede haber pasado a privado
+  }));
+}
+
+function ponerLapices(){
+  ponerLapiz("#descuento",     "descuentos");
+  ponerLapiz("#aliasTransfer", "alias");
+  ponerLapiz("#cobroAlias",    "alias");
+  ponerLapiz("#egTipo",        "tipos");
+  ponerLapiz("#egPago",        "formas");
+  ponerLapiz("#cobroForma",    "formas");
 }
 
 // El precio de lista lleva el peso; el de descuento va de apoyo, chiquito al lado.

@@ -67,7 +67,7 @@ Resumen por período, evolución de la caja, ranking de lo más vendido, ingreso
 - **Caja** — Cierre diario con ingresos/egresos por forma de pago, arqueo de efectivo con fondo por día (con arrastre), y edición/anulación sin salir de la pantalla.
 - **Reportes** — Resumen por período, ranking de más vendidos, evolución temporal, deuda total y exportación a Excel.
 - **Inventario** — Stock con alertas de reposición y carga de entradas de mercadería.
-- **Administración** — ABM de productos, categorías, precios, descuentos, ajustes por ítem, formas de pago, alias, tipos de egreso y usuarios. Backup completo en JSON. Las listas del día a día las maneja también el empleado; los usuarios y el backup, solo la dueña.
+- **Administración** — ABM de productos, categorías, precios, descuentos, ajustes por ítem, formas de pago, alias, tipos de egreso y usuarios. Backup completo en JSON. Las listas del día a día las maneja también el empleado; los usuarios y el backup, solo la dueña. Cada lista se edita fila por fila, y también desde el lapicito que hay al lado del desplegable donde se usa: si falta un descuento en medio de un cobro, se carga ahí sin salir de Facturación.
 - **Modo claro / oscuro** — Se elige por dispositivo y queda guardado; sin elección propia, sigue al sistema operativo.
 
 ---

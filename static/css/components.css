@@ -341,3 +341,178 @@
   border-top:1px solid var(--border);
   padding-top:6px;
 }
+
+/* ==========================================================================
+   Listas editables
+   Las comparten Admin (una abajo de la otra) y el panel que abre Facturar.
+   ========================================================================== */
+.lista-scroll{
+  overflow-y:auto;
+  -webkit-overflow-scrolling:touch;      /* que quede la inercia al deslizar */
+  padding-right:6px;                     /* que la barra no se coma el borde */
+  /* Un degradé al pie avisa que sigue: sin eso la lista parece terminar justo
+     ahí y nadie prueba deslizarla. Se apaga al llegar al final. */
+  -webkit-mask-image:linear-gradient(to bottom, #000 calc(100% - 26px), transparent);
+          mask-image:linear-gradient(to bottom, #000 calc(100% - 26px), transparent);
+}
+.lista-scroll.al-fin{ -webkit-mask-image:none; mask-image:none; }
+
+/* ----- Listas editables -----
+
+   Las cinco listas de Admin comparten esta forma. La primera fila es la de
+   cargar algo nuevo y es la única que lleva rótulos: esos rótulos hacen de
+   encabezado de las columnas de abajo, que se alinean con ella. Por eso las
+   dos usan la MISMA grilla, que arma el JS con los anchos de cada campo. */
+.fila-lista{
+  display:grid;
+  align-items:center;
+  gap:var(--sp-2);
+  padding:var(--sp-2) 0;
+  border-bottom:1px solid var(--border-sutil);
+}
+.fila-lista .celda{ display:flex; flex-direction:column; gap:3px; min-width:0; }
+.fila-lista .celda input[type="text"],
+.fila-lista .celda input[type="number"],
+.fila-lista .celda select{ width:100%; }
+/* La casilla se pega a la izquierda de su columna, justo debajo del rótulo que
+   le corresponde. Sin el align-self quedaba estirada a lo ancho de la celda y
+   el navegador la dibujaba en el medio, lejos de su propio encabezado. */
+.fila-lista .celda input[type="checkbox"]{ width:auto; margin:0; align-self:flex-start; }
+/* El grupo de botones reserva SIEMPRE el mismo ancho, aunque arriba diga
+   "Agregar" (uno) y abajo "Guardar / Eliminar" (dos). Sin eso, esa columna
+   mide distinto en cada fila y, como el resto de la grilla se acomoda a lo
+   que sobra, las columnas de la fila de arriba dejan de caer sobre las de
+   abajo: los rótulos ya no serían el encabezado de nada. */
+/* La columna de los botones mide SIEMPRE lo mismo, aunque arriba diga
+   "Agregar" (uno) y abajo "Guardar / Eliminar" (dos). Es ancho fijo y no
+   min-width porque los botones miden lo que mida la tipografía: con un
+   mínimo, el par de abajo se pasaba 16px y, como el resto de la grilla se
+   acomoda a lo que sobra, las columnas de la fila de arriba dejaban de caer
+   sobre las de abajo y los rótulos ya no eran el encabezado de nada.
+
+   Los botones se reparten ese ancho, así que arriba "Agregar" queda ancho de
+   punta a punta: es la acción principal de esa fila y se lee como tal. */
+.fila-lista .acc{
+  display:flex; gap:6px; align-items:center; justify-content:flex-end;
+  width:190px;
+}
+.fila-lista .acc button{ flex:1 1 auto; min-width:0; padding-left:0; padding-right:0; }
+
+/* La fila de arriba se despega de las demás: es de otra naturaleza (carga)
+   y conviene que no se lea como una fila más de la lista. */
+.fila-lista.nueva{
+  align-items:end;
+  margin-bottom:var(--sp-2);
+  padding-bottom:var(--sp-3);
+  border-bottom:2px solid var(--border);
+}
+.fila-lista.nueva label{ display:block; }
+/* En las filas ya cargadas el rótulo está en el HTML pero no se muestra: para
+   eso está el encabezado de la fila de arriba, que cae justo sobre la columna.
+   Vuelve a aparecer en angosto, donde la grilla se desarma (ver más abajo). */
+.fila-lista:not(.nueva) .celda label{ display:none; }
+
+/* Fila que no se puede tocar (las formas de pago con las que la caja hace
+   cuentas). Se muestra igual, pero apagada y con el candado. */
+.fila-lista.trabada input, .fila-lista.trabada select{
+  background:var(--bg-sutil); color:var(--text-tenue); cursor:not-allowed;
+}
+.fila-lista .candado{ font-size:var(--fs-base); opacity:.55; cursor:help; }
+
+/* Fila tocada y todavía sin guardar. El botón se enciende solo donde hay algo
+   pendiente, en vez de que todos los renglones griten "Guardar" todo el
+   tiempo, y el filete de la izquierda se ve sin leer una palabra. */
+.fila-lista.sucia{
+  box-shadow:inset 3px 0 0 var(--acento);
+  padding-left:var(--sp-2);
+}
+.fila-lista.sucia .guardar{ background:var(--acento); color:var(--tinta-900); border-color:var(--acento); }
+
+.filas .fila-lista:last-child{ border-bottom:none; }
+.sin-nada{ margin:var(--sp-3) 0 0; }
+
+/* El bloque de agregar del catálogo, que ahora también va arriba de la lista */
+.fila-agregar{ margin-bottom:var(--sp-3); padding-bottom:var(--sp-3); border-bottom:2px solid var(--border); }
+
+@media (max-width:640px){
+  /* En angosto la grilla por columnas no entra: cada campo pasa a ocupar el
+     renglón entero y los botones quedan juntos abajo. */
+  .fila-lista{ grid-template-columns:1fr !important; row-gap:6px; }
+  .fila-lista .acc{ width:100%; }
+  /* Un campo por renglón: acá el encabezado de la fila de arriba ya no cae
+     sobre nada, así que cada campo dice lo suyo. */
+  .fila-lista:not(.nueva) .celda label{ display:block; }
+}
+
+
+/* ==========================================================================
+   Panel de lista
+   Abre una de las listas configurables encima de la pantalla en la que estás,
+   para no tener que irse a Admin en medio de un cobro. Lo dibuja listas.js.
+   ========================================================================== */
+.panel-lista-fondo{
+  position:fixed; inset:0; z-index:60;
+  display:flex; align-items:center; justify-content:center;
+  padding:var(--sp-4);
+  background:rgba(0,0,0,.42);
+  /* Que el panel no herede el ancho de la tarjeta que lo abrió */
+  overscroll-behavior:contain;
+}
+/* Con el panel abierto la página de atrás no se mueve: en la tablet, deslizar
+   adentro del panel arrastraba también lo de abajo y al cerrar habías perdido
+   el lugar donde estabas facturando. */
+body.con-panel{ overflow:hidden; }
+
+.panel-lista{
+  width:min(760px, 100%);
+  max-height:min(80vh, 100%);
+  display:flex; flex-direction:column;
+  background:var(--bg-card);
+  border:1px solid var(--border);
+  border-radius:var(--r-lg);
+  box-shadow:0 18px 48px rgba(0,0,0,.28);
+  overflow:hidden;
+}
+.panel-lista-cab{
+  display:flex; align-items:flex-start; justify-content:space-between; gap:var(--sp-3);
+  padding:var(--sp-4);
+  border-bottom:1px solid var(--border-sutil);
+  background:var(--bg-header);
+}
+.panel-lista-cab h2{ margin:0; font-size:var(--fs-xl); }
+.panel-lista-cab p{ margin:3px 0 0; font-size:var(--fs-base); color:var(--text-tenue); }
+/* La X va discreta: la acción principal del panel es "Agregar", y un botón de
+   cerrar en dorado lleno le ganaba de lejos en la primera mirada. */
+.panel-lista-cab .cerrar{
+  flex:0 0 auto;
+  width:34px; height:34px; padding:0;
+  font-size:14px; line-height:1;
+  color:var(--text-tenue);
+  border-radius:var(--r-full);
+}
+.panel-lista-cuerpo{ padding:var(--sp-4); overflow-y:auto; }
+
+/* El campo y su lapicito, juntos: el campo se queda con todo el ancho que sobra
+   y el botón mide lo suyo. Envuelve al campo desde JS, así el HTML no tiene que
+   repetir la misma cajita seis veces. */
+.con-lapiz{ display:flex; align-items:center; gap:6px; min-width:0; }
+.con-lapiz > :first-child{ flex:1 1 auto; min-width:0; }
+
+/* El lapicito que abre el panel, al lado del desplegable del que sale la lista.
+   Chico y en bronce: es una salida de emergencia, no una acción de todos los
+   días, y no tiene que competir con el campo que está al lado. */
+.editar-lista{
+  flex:0 0 auto;
+  width:34px; height:34px; padding:0;
+  font-size:15px; line-height:1;
+  color:var(--text-marca);
+  background:var(--bg-sutil);
+  border:1px solid var(--border-sutil);
+  border-radius:var(--r-md);
+}
+.editar-lista:hover{ background:var(--bg-sutil-hover); }
+
+@media (max-width:560px){
+  .panel-lista-fondo{ padding:0; align-items:flex-end; }
+  .panel-lista{ max-height:88vh; border-radius:var(--r-lg) var(--r-lg) 0 0; }
+}
