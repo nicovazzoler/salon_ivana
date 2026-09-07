@@ -8,11 +8,15 @@ Hace tres cosas:
   3. corre un backup de prueba para que no te enteres dentro de seis meses de
      que nunca funcionó.
 
-    .\instalar_tarea.ps1                 # todos los días a las 22:30
-    .\instalar_tarea.ps1 -Hora "01:00"   # a otra hora
+    .\instalar_tarea.ps1                          # 14:00 y 23:30
+    .\instalar_tarea.ps1 -Horas "23:30"           # una sola vez por día
+    .\instalar_tarea.ps1 -Horas "09:00","21:00"   # a otros horarios
 #>
 param(
-    [string]$Hora = "22:30",
+    # Dos por día y no una: sin los backups de Railway (son del plan Pro), estas
+    # copias son todo lo que hay, y con una sola corrida el peor caso es perder
+    # un día entero de tickets. Con la del mediodía, medio día.
+    [string[]]$Horas = @("14:00", "23:30"),
     [string]$NombreTarea = "Backup Salon Ivana"
 )
 
@@ -68,7 +72,10 @@ if (-not (Test-Path $ConfigPath)) {
 $accion = New-ScheduledTaskAction -Execute "powershell.exe" `
     -Argument "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$Script`""
 
-$disparador = New-ScheduledTaskTrigger -Daily -At $Hora
+# Un disparador por horario. Register-ScheduledTask acepta un array en -Trigger,
+# así que las dos corridas viven en la misma tarea en vez de en dos tareas
+# separadas que después hay que acordarse de mantener juntas.
+$disparadores = @($Horas | ForEach-Object { New-ScheduledTaskTrigger -Daily -At $_ })
 
 # StartWhenAvailable es la opción que importa: si a las 22:30 la PC estaba
 # apagada, el backup corre igual la próxima vez que se prenda, en vez de saltear
@@ -79,12 +86,12 @@ $opciones = New-ScheduledTaskSettingsSet `
     -ExecutionTimeLimit (New-TimeSpan -Hours 1) `
     -MultipleInstances IgnoreNew
 
-Register-ScheduledTask -TaskName $NombreTarea -Action $accion -Trigger $disparador `
+Register-ScheduledTask -TaskName $NombreTarea -Action $accion -Trigger $disparadores `
     -Settings $opciones -Description "Copia diaria de la base de la peluqueria a la nube." `
     -Force | Out-Null
 
 Write-Host ""
-Write-Host "Tarea '$NombreTarea' agendada todos los días a las $Hora." -ForegroundColor Green
+Write-Host "Tarea '$NombreTarea' agendada todos los días a las $($Horas -join ' y las ')." -ForegroundColor Green
 
 # ---------- 3. probarla ahora ----------
 

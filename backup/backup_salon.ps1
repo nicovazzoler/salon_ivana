@@ -41,7 +41,9 @@ $DiasGuardar = 30
 if ($cfg["DIAS_A_GUARDAR"]) { $DiasGuardar = [int]$cfg["DIAS_A_GUARDAR"] }
 # Nunca se borran los últimos N aunque sean viejos: si la PC estuvo un mes
 # apagada, la limpieza por antigüedad se llevaría puesto el único backup que hay.
-$MinimosAConservar = 7
+# Son 14 y no 7 porque la tarea corre DOS veces por día: lo que se quiere
+# conservar es una semana de backups, no una cantidad de archivos.
+$MinimosAConservar = 14
 
 if (-not $UrlBase)  { Write-Error "Falta DATABASE_URL en $ConfigPath"; exit 1 }
 if (-not $Carpeta)  { Write-Error "Falta CARPETA_DESTINO en $ConfigPath"; exit 1 }
