@@ -52,10 +52,7 @@
       </div>
       <button class="b-out" id="btnRenombrar">Renombrar categoría</button>
     </div>
-    <div id="listaItems"></div>
-    <hr>
-    <div class="sub-h">Agregar nuevo ítem</div>
-    <div class="fila">
+    <div class="fila fila-agregar">
       <div><label>Categoría</label><input id="nCat" list="cats" placeholder="existente o nueva"></div>
       <div><label>Nombre</label><input id="nNom" placeholder="Ej: Corte nuevo"></div>
       <div><label>Precio</label><input id="nPre" type="number" placeholder="0"></div>
@@ -64,6 +61,7 @@
       </div>
       <button class="b-ok" id="btnAgregar">Agregar</button>
     </div>
+    <div id="listaItems"></div>
     <datalist id="cats"></datalist>
   </div>
 
@@ -73,11 +71,6 @@
       <p>Las opciones que se ofrecen al cobrar un ticket.</p>
     </div>
     <div id="listaFormas"></div>
-    <hr>
-    <div class="fila">
-      <div><label>Nueva forma de pago</label><input id="nForma" placeholder="Ej: Cuenta DNI"></div>
-      <button class="b-ok" id="btnForma">Agregar</button>
-    </div>
   </div>
 
   <div class="card" id="egresos">
@@ -89,11 +82,6 @@
          su caja.</span></p>
     </div>
     <div id="listaTipos"></div>
-    <hr>
-    <div class="fila">
-      <div><label>Nuevo tipo de egreso</label><input id="nTipo" placeholder="Ej: Alquiler"></div>
-      <button class="b-ok" id="btnTipo">Agregar</button>
-    </div>
   </div>
 
   <div class="card" id="descuentos">
@@ -102,15 +90,6 @@
       <p>Descuentos por porcentaje que se pueden aplicar a un ticket o presupuesto.</p>
     </div>
     <div id="listaDescuentos"></div>
-    <hr>
-    <div class="fila">
-      <div><label>Nombre</label><input id="nDescNombre" placeholder="Ej: Jubilado"></div>
-      <div style="flex:0;min-width:110px;"><label>Porcentaje</label><input id="nDescPct" type="number" placeholder="10"></div>
-      <div class="check">
-        <input type="checkbox" id="nDescMotivo"><label for="nDescMotivo">Mostrar motivo</label>
-      </div>
-      <button class="b-ok" id="btnDesc">Agregar</button>
-    </div>
   </div>
 
   <div class="card" id="ajustes">
@@ -121,26 +100,6 @@
          también se puede tipear uno suelto.</p>
     </div>
     <div id="listaAjustes"></div>
-    <hr>
-    <div class="fila">
-      <div><label>Nombre</label><input id="nAjNombre" placeholder="Ej: Pelo largo"></div>
-      <div style="flex:0;min-width:150px;">
-        <label>Tipo</label>
-        <select id="nAjSigno">
-          <option value="-">Descuento (−)</option>
-          <option value="+">Recargo (+)</option>
-        </select>
-      </div>
-      <div style="flex:0;min-width:130px;">
-        <label>Unidad</label>
-        <select id="nAjUnidad">
-          <option value="%">Porcentaje (%)</option>
-          <option value="$">Monto fijo ($)</option>
-        </select>
-      </div>
-      <div style="flex:0;min-width:120px;"><label id="nAjLabel">Porcentaje</label><input id="nAjPct" type="number" min="1" max="100" placeholder="10"></div>
-      <button class="b-ok" id="btnAjuste">Agregar</button>
-    </div>
   </div>
 
   <div class="card" id="alias">
@@ -149,11 +108,6 @@
       <p>Las cuentas que aparecen como opción al cobrar por transferencia.</p>
     </div>
     <div id="listaAlias"></div>
-    <hr>
-    <div class="fila">
-      <div><label>Nuevo alias</label><input id="nAlias" placeholder="Ej: pelu.mp"></div>
-      <button class="b-ok" id="btnAlias">Agregar</button>
-    </div>
   </div>
 
   <!-- Cambiar la propia contraseña lo tiene que poder hacer cualquiera: el cartel

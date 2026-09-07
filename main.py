@@ -187,8 +187,14 @@ class EgresoIn(BaseModel):
 class EgresoEdit(BaseModel):
     tipo: str | None = None; concepto: str | None = None; monto: int | None = None
     forma_pago: str | None = None; notas: str | None = None; privado: bool | None = None
+class TipoEgresoIn(BaseModel):
+    nombre: str; privado: bool = False    # privado solo lo puede pedir la dueña
 class TipoEgresoEdit(BaseModel):
-    privado: bool | None = None
+    nombre: str | None = None; privado: bool | None = None
+class NombreEdit(BaseModel):
+    nombre: str
+class AjusteItemEdit(BaseModel):
+    nombre: str | None = None; porcentaje: int | None = None; monto: int | None = None
 class StockIn(BaseModel):
     stock_actual: int; stock_minimo: int = 0
 class LoginIn(BaseModel):
@@ -773,7 +779,7 @@ def listar_tipos(user = Depends(usuario_actual), db: Session = Depends(get_db)):
             for t in tipos_visibles(db, user)]
 
 @app.post("/api/tipos-egreso")
-def crear_tipo(t: NombreIn, user = Depends(usuario_actual), db: Session = Depends(get_db)):
+def crear_tipo(t: TipoEgresoIn, user = Depends(usuario_actual), db: Session = Depends(get_db)):
     existe = db.query(models.TipoEgreso).filter(models.TipoEgreso.nombre == t.nombre.strip()).first()
     if existe:
         # Si el empleado tipeó justo el nombre de un tipo privado, se lo trata
@@ -782,14 +788,27 @@ def crear_tipo(t: NombreIn, user = Depends(usuario_actual), db: Session = Depend
         if existe.privado and not es_dueno(user):
             return {"id": existe.id}
         existe.activo = True; db.commit(); return {"id": existe.id}
-    nuevo = models.TipoEgreso(nombre=t.nombre.strip())
+    # Se puede crear ya marcado privado, para no tener que cargarlo y después
+    # acordarse de tildarlo. Solo la dueña: el empleado no crea nada privado.
+    nuevo = models.TipoEgreso(nombre=t.nombre.strip(), privado=bool(t.privado) and es_dueno(user))
     db.add(nuevo); db.commit(); db.refresh(nuevo); return {"id": nuevo.id}
 
 @app.put("/api/tipos-egreso/{tipo_id}")
-def editar_tipo(tipo_id: int, cambios: TipoEgresoEdit, _ = Depends(solo_dueno), db: Session = Depends(get_db)):
+def editar_tipo(tipo_id: int, cambios: TipoEgresoEdit, user = Depends(usuario_actual), db: Session = Depends(get_db)):
     t = db.get(models.TipoEgreso, tipo_id)
-    if not t: raise HTTPException(404, "Tipo no existe")
-    if cambios.privado is not None: t.privado = cambios.privado
+    if not t or (t.privado and not es_dueno(user)): raise HTTPException(404, "Tipo no existe")
+    if cambios.nombre is not None:
+        nombre = cambios.nombre.strip()
+        if not nombre: raise HTTPException(400, "Falta el nombre")
+        otro = db.query(models.TipoEgreso).filter(models.TipoEgreso.nombre == nombre,
+                                                  models.TipoEgreso.id != tipo_id).first()
+        if otro: raise HTTPException(400, "Ya hay un tipo de egreso con ese nombre")
+        # Arrastra: es una clasificación, no lo que se le dijo a nadie.
+        _renombrar_en(db, models.Egreso.tipo, t.nombre, nombre)
+        t.nombre = nombre
+    # La marca de privado sigue siendo solo de la dueña, aunque el nombre lo
+    # pueda cambiar cualquiera.
+    if cambios.privado is not None and es_dueno(user): t.privado = cambios.privado
     db.commit(); return {"ok": True, "privado": bool(t.privado)}
 
 @app.delete("/api/tipos-egreso/{tipo_id}")
@@ -841,6 +860,21 @@ def crear_alias(a: NombreIn, _ = Depends(usuario_actual), db: Session = Depends(
         existe.activo = True; db.commit(); return {"id": existe.id}
     nuevo = models.Alias(nombre=a.nombre.strip())
     db.add(nuevo); db.commit(); db.refresh(nuevo); return {"id": nuevo.id}
+
+@app.put("/api/alias/{alias_id}")
+def editar_alias(alias_id: int, cambios: NombreEdit, _ = Depends(usuario_actual), db: Session = Depends(get_db)):
+    a = db.get(models.Alias, alias_id)
+    if not a: raise HTTPException(404, "Alias no existe")
+    nombre = cambios.nombre.strip()
+    if not nombre: raise HTTPException(400, "Falta el alias")
+    otro = db.query(models.Alias).filter(models.Alias.nombre == nombre,
+                                         models.Alias.id != alias_id).first()
+    if otro: raise HTTPException(400, "Ya hay un alias con ese nombre")
+    # Arrastra: es la cuenta a la que entró la plata, y si cambia el alias uno
+    # quiere ver el nombre nuevo también en los cobros de antes.
+    _renombrar_en(db, models.Pago.alias, a.nombre, nombre)
+    a.nombre = nombre
+    db.commit(); return {"ok": True}
 
 @app.delete("/api/alias/{alias_id}")
 def borrar_alias(alias_id: int, _ = Depends(usuario_actual), db: Session = Depends(get_db)):
@@ -1037,23 +1071,89 @@ def renombrar_categoria(datos: RenombrarCat, _ = Depends(usuario_actual), db: Se
     db.commit(); return {"actualizados": n}
 
 # ---------- formas de pago ----------
+"""Las dos formas de pago que no se tocan.
+
+   "Efectivo" y "Transferencia" no son dos opciones más de una lista: son los
+   dos nombres con los que la app hace cuentas. El arqueo suma "lo que entró en
+   efectivo" comparando `pago.forma_pago == "Efectivo"`, y al cobrar se guarda
+   ese texto exacto. Si alguien las renombra o las borra desde Admin, el
+   desplegable de cobro se queda sin la opción, los pagos salen con la forma
+   vacía y el arqueo empieza a decir que hay más plata en el cajón de la que
+   hay. Y no avisa: la app sigue andando perfecto.
+
+   Se podían borrar desde antes de que existiera este candado. Se agrega ahora
+   porque a la lista se le suma poder renombrar, que es la misma trampa con un
+   botón más a mano.
+
+   Agregar formas nuevas ("Cuenta DNI", "Débito") sigue siendo libre: esas no
+   entran en ninguna cuenta, solo se muestran.
+"""
+FORMAS_FIJAS = ("Efectivo", "Transferencia")
+
 @app.get("/api/formas")
 def listar_formas(_ = Depends(usuario_actual), db: Session = Depends(get_db)):
-    return [{"id": f.id, "nombre": f.nombre}
+    return [{"id": f.id, "nombre": f.nombre, "fija": f.nombre in FORMAS_FIJAS}
             for f in db.query(models.FormaPago).filter(models.FormaPago.activo == True)]
 
 @app.post("/api/formas")
 def crear_forma(forma: FormaIn, _ = Depends(usuario_actual), db: Session = Depends(get_db)):
-    existe = db.query(models.FormaPago).filter(models.FormaPago.nombre == forma.nombre.strip()).first()
+    nombre = forma.nombre.strip()
+    if not nombre: raise HTTPException(400, "Falta el nombre")
+    existe = db.query(models.FormaPago).filter(models.FormaPago.nombre == nombre).first()
     if existe: existe.activo = True; db.commit(); return {"id": existe.id}
-    nueva = models.FormaPago(nombre=forma.nombre.strip())
+    nueva = models.FormaPago(nombre=nombre)
     db.add(nueva); db.commit(); db.refresh(nueva); return {"id": nueva.id}
+
+@app.put("/api/formas/{forma_id}")
+def editar_forma(forma_id: int, cambios: NombreEdit, _ = Depends(usuario_actual), db: Session = Depends(get_db)):
+    f = db.get(models.FormaPago, forma_id)
+    if not f: raise HTTPException(404, "Forma no existe")
+    if f.nombre in FORMAS_FIJAS:
+        raise HTTPException(400, f'"{f.nombre}" no se puede renombrar: la caja hace cuentas con ese nombre.')
+    nombre = cambios.nombre.strip()
+    if not nombre: raise HTTPException(400, "Falta el nombre")
+    if nombre in FORMAS_FIJAS:
+        raise HTTPException(400, f'"{nombre}" está reservado.')
+    otra = db.query(models.FormaPago).filter(models.FormaPago.nombre == nombre,
+                                             models.FormaPago.id != forma_id).first()
+    if otra: raise HTTPException(400, "Ya hay una forma de pago con ese nombre")
+    # Se arrastra a los pagos ya cobrados: la forma de pago es una clasificación,
+    # y con dos nombres para lo mismo el desglose de la caja queda partido en dos.
+    _renombrar_en(db, models.Pago.forma_pago, f.nombre, nombre)
+    _renombrar_en(db, models.Egreso.forma_pago, f.nombre, nombre)
+    f.nombre = nombre
+    db.commit(); return {"ok": True}
 
 @app.delete("/api/formas/{forma_id}")
 def borrar_forma(forma_id: int, _ = Depends(usuario_actual), db: Session = Depends(get_db)):
     f = db.get(models.FormaPago, forma_id)
     if not f: raise HTTPException(404, "Forma no existe")
+    if f.nombre in FORMAS_FIJAS:
+        raise HTTPException(400, f'"{f.nombre}" no se puede eliminar: sin ella el arqueo de caja deja de dar.')
     f.activo = False; db.commit(); return {"ok": True}
+
+"""Renombrar una de estas listas: ¿qué pasa con lo ya cargado?
+
+   Los nombres se guardan copiados en cada movimiento (`egresos.tipo`,
+   `pagos.alias`, `comprobantes.descuento_nombre`...), así que renombrar en la
+   lista no cambia el pasado por sí solo. Hay que decidir caso por caso, y la
+   respuesta no es la misma para todos:
+
+     - Los tipos de egreso y los alias son una CLASIFICACIÓN. Si "Gasto /
+       insumo" pasa a llamarse "Insumos", uno espera que la caja diga "Insumos"
+       en todo, no que aparezcan dos renglones para lo mismo. Se arrastra, igual
+       que ya hacía renombrar una categoría del catálogo.
+
+     - Los descuentos y los ajustes por ítem son lo que se le DIJO al cliente.
+       El papel que se imprimió el año pasado decía "Jubilado 10%", y volver a
+       imprimirlo tiene que seguir diciendo eso. No se arrastra: el nombre nuevo
+       vale para lo que se cobre de acá en adelante.
+"""
+def _renombrar_en(db, columna, viejo: str, nuevo: str) -> int:
+    """Cambia el nombre copiado en los movimientos ya cargados."""
+    if viejo == nuevo: return 0
+    return db.query(columna.class_).filter(columna == viejo).update(
+        {columna: nuevo}, synchronize_session=False)
 
 # ---------- log de stock ----------
 def log_stock(db, item, tipo, cambio, motivo, usuario="sistema"):
@@ -2000,6 +2100,24 @@ def crear_ajuste_item(a: AjusteItemIn, _ = Depends(usuario_actual), db: Session 
     if not a.nombre.strip(): raise HTTPException(400, "Falta el nombre")
     nuevo = models.AjusteItem(nombre=a.nombre.strip(), porcentaje=a.porcentaje, monto=a.monto)
     db.add(nuevo); db.commit(); db.refresh(nuevo); return {"id": nuevo.id}
+
+@app.put("/api/ajustes-item/{aj_id}")
+def editar_ajuste_item(aj_id: int, cambios: AjusteItemEdit, _ = Depends(usuario_actual), db: Session = Depends(get_db)):
+    a = db.get(models.AjusteItem, aj_id)
+    if not a: raise HTTPException(404, "Ajuste no existe")
+    pct = a.porcentaje if cambios.porcentaje is None else cambios.porcentaje
+    monto = a.monto if cambios.monto is None else cambios.monto
+    # Las mismas reglas que al crearlo: uno o el otro, nunca los dos, nunca cero.
+    if pct and monto: raise HTTPException(400, "Poné porcentaje o monto, no los dos")
+    if not pct and not monto: raise HTTPException(400, "El ajuste no puede ser 0")
+    if pct < -100 or pct > 100: raise HTTPException(400, "Porcentaje inválido (-100 a 100)")
+    if cambios.nombre is not None:
+        if not cambios.nombre.strip(): raise HTTPException(400, "Falta el nombre")
+        # NO se arrastra: el nombre del ajuste sale impreso en el ticket, así que
+        # es lo que se le dijo al cliente ese día. Ver el criterio de arriba.
+        a.nombre = cambios.nombre.strip()
+    a.porcentaje = pct; a.monto = monto
+    db.commit(); return {"ok": True}
 
 @app.delete("/api/ajustes-item/{aj_id}")
 def borrar_ajuste_item(aj_id: int, _ = Depends(usuario_actual), db: Session = Depends(get_db)):

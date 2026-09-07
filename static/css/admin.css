@@ -46,6 +46,87 @@
   }
   .indice a{ text-decoration:none; }
 
+  /* ----- Listas editables -----
+
+     Las cinco listas de Admin comparten esta forma. La primera fila es la de
+     cargar algo nuevo y es la única que lleva rótulos: esos rótulos hacen de
+     encabezado de las columnas de abajo, que se alinean con ella. Por eso las
+     dos usan la MISMA grilla, que arma el JS con los anchos de cada campo. */
+  .fila-lista{
+    display:grid;
+    align-items:center;
+    gap:var(--sp-2);
+    padding:var(--sp-2) 0;
+    border-bottom:1px solid var(--border-sutil);
+  }
+  .fila-lista .celda{ display:flex; flex-direction:column; gap:3px; min-width:0; }
+  .fila-lista .celda input[type="text"],
+  .fila-lista .celda input[type="number"],
+  .fila-lista .celda select{ width:100%; }
+  /* La casilla se pega a la izquierda de su columna, justo debajo del rótulo que
+     le corresponde. Sin el align-self quedaba estirada a lo ancho de la celda y
+     el navegador la dibujaba en el medio, lejos de su propio encabezado. */
+  .fila-lista .celda input[type="checkbox"]{ width:auto; margin:0; align-self:flex-start; }
+  /* El grupo de botones reserva SIEMPRE el mismo ancho, aunque arriba diga
+     "Agregar" (uno) y abajo "Guardar / Eliminar" (dos). Sin eso, esa columna
+     mide distinto en cada fila y, como el resto de la grilla se acomoda a lo
+     que sobra, las columnas de la fila de arriba dejan de caer sobre las de
+     abajo: los rótulos ya no serían el encabezado de nada. */
+  /* La columna de los botones mide SIEMPRE lo mismo, aunque arriba diga
+     "Agregar" (uno) y abajo "Guardar / Eliminar" (dos). Es ancho fijo y no
+     min-width porque los botones miden lo que mida la tipografía: con un
+     mínimo, el par de abajo se pasaba 16px y, como el resto de la grilla se
+     acomoda a lo que sobra, las columnas de la fila de arriba dejaban de caer
+     sobre las de abajo y los rótulos ya no eran el encabezado de nada.
+
+     Los botones se reparten ese ancho, así que arriba "Agregar" queda ancho de
+     punta a punta: es la acción principal de esa fila y se lee como tal. */
+  .fila-lista .acc{
+    display:flex; gap:6px; align-items:center; justify-content:flex-end;
+    width:190px;
+  }
+  .fila-lista .acc button{ flex:1 1 auto; min-width:0; padding-left:0; padding-right:0; }
+
+  /* La fila de arriba se despega de las demás: es de otra naturaleza (carga)
+     y conviene que no se lea como una fila más de la lista. */
+  .fila-lista.nueva{
+    align-items:end;
+    margin-bottom:var(--sp-2);
+    padding-bottom:var(--sp-3);
+    border-bottom:2px solid var(--border);
+  }
+  .fila-lista.nueva label{ display:block; }
+
+  /* Fila que no se puede tocar (las formas de pago con las que la caja hace
+     cuentas). Se muestra igual, pero apagada y con el candado. */
+  .fila-lista.trabada input, .fila-lista.trabada select{
+    background:var(--bg-sutil); color:var(--text-tenue); cursor:not-allowed;
+  }
+  .fila-lista .candado{ font-size:var(--fs-base); opacity:.55; cursor:help; }
+
+  /* Fila tocada y todavía sin guardar. El botón se enciende solo donde hay algo
+     pendiente, en vez de que todos los renglones griten "Guardar" todo el
+     tiempo, y el filete de la izquierda se ve sin leer una palabra. */
+  .fila-lista.sucia{
+    box-shadow:inset 3px 0 0 var(--acento);
+    padding-left:var(--sp-2);
+  }
+  .fila-lista.sucia .guardar{ background:var(--acento); color:var(--tinta-900); border-color:var(--acento); }
+
+  .filas .fila-lista:last-child{ border-bottom:none; }
+  .sin-nada{ margin:var(--sp-3) 0 0; }
+
+  /* El bloque de agregar del catálogo, que ahora también va arriba de la lista */
+  .fila-agregar{ margin-bottom:var(--sp-3); padding-bottom:var(--sp-3); border-bottom:2px solid var(--border); }
+
+  @media (max-width:640px){
+    /* En angosto la grilla por columnas no entra: cada campo pasa a ocupar el
+       renglón entero y los botones quedan juntos abajo. */
+    .fila-lista{ grid-template-columns:1fr !important; row-gap:6px; }
+    .fila-lista .acc{ width:100%; }
+    .fila-lista:not(.nueva) .celda input[type="checkbox"]{ margin-top:4px; }
+  }
+
   /* Renglón editable de la lista: grilla para que los botones caigan siempre
      en la misma columna, midan lo que midan el nombre y las etiquetas. */
   .item-row{
