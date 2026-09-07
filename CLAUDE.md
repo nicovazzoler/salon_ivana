@@ -79,6 +79,25 @@ servicio de un día anterior, y de ahí sale el "Anotado el x/x" del papel.
 pasa, no mercadería que sale. Al anular un ticket el stock vuelve; al anular un
 presupuesto no, porque nunca salió.
 
+**Hay dos roles y un usuario de cada uno.** La dueña ve todo; el empleado ve
+todo menos reportes, usuarios, backup, el fondo de caja y la corrección de stock
+(el inventario lo lee, no lo edita). Las listas de Admin con las que se factura
+todos los días —catálogo, formas de pago, tipos de egreso, descuentos, ajustes
+por ítem, alias— las maneja también el empleado. La pantalla esconde lo que no
+corresponde marcando el elemento con `data-dueno` o `data-empleado` y llamando a
+`ajustarPorRol()`; eso es para no mostrar lo que no sirve, **nunca** el control:
+el que frena de verdad es el backend, con `solo_dueno` o `es_dueno(user)`.
+
+**Los egresos privados no existen para el empleado.** El alquiler y los sueldos
+se anotan igual que todo, con `privado` puesto: no salen en su lista ni suman en
+los totales de su caja (ni en el desglose ni en el arqueo). Se marcan por la
+casilla al cargarlos o porque el tipo de egreso está marcado privado, que además
+lo saca del desplegable de facturar. Un egreso que cargó el empleado **nunca** es
+privado, aunque tipee un nombre de tipo reservado: esconderle lo que él mismo
+anotó le deja el arqueo sin explicación. Y ojo con el `privado != True` a secas:
+en SQL el NULL no entra, y `restaurar_backup.py` levantando un backup viejo
+escribe NULL — por eso está `_no_privado()`.
+
 **Los extras no los toca ningún descuento.** Entran al final, después de todo.
 
 **Ajuste por línea: porcentaje O monto fijo**, nunca los dos. Va por unidad y

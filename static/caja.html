@@ -19,6 +19,12 @@
   .celda-input[readonly]{ border-color:transparent; background:transparent; cursor:default; }
   .mini{ padding:6px 9px; font-size:var(--fs-sm); border-radius:7px; }
   .sub-titulo{ display:block; margin-top:14px; color:var(--text-titulo); }
+  /* Egreso que el empleado no ve. Solo aparece en la caja de la dueña: el
+     backend ni siquiera se los manda a los demás. */
+  .tag-privado{
+    font-size:var(--fs-xs); color:var(--text-marca);
+    text-transform:uppercase; letter-spacing:var(--tracking-eti);
+  }
 </style>
 </head><body>
 <header>
@@ -110,8 +116,11 @@ async function cargarDia(){
   if(d.egresos_detalle && d.egresos_detalle.length){
     html += '<b class="sub-titulo">Egresos del día</b><table style="margin-top:6px;"><thead><tr><th>Hora</th><th>Tipo</th><th>Concepto</th><th>Monto</th><th></th></tr></thead><tbody>';
     d.egresos_detalle.forEach(e=>{
+      // El empleado directamente no recibe los privados; la dueña los ve marcados,
+      // para saber cuál de los egresos del día no está en la caja del otro.
+      const marca = e.privado ? ' <span class="tag-privado" title="El empleado no ve este egreso">privado</span>' : '';
       html+=`<tr data-tipo="${e.tipo||''}" data-conc="${e.concepto||''}" data-monto="${e.monto}">
-        <td>${e.hora}</td>
+        <td>${e.hora}${marca}</td>
         <td><input id="ec_tipo_${e.id}" value="${e.tipo||''}" class="celda-input" readonly></td>
         <td><input id="ec_conc_${e.id}" value="${e.concepto||''}" class="celda-input" readonly></td>
         <td><span id="ec_montotxt_${e.id}">${money(e.monto)}</span>

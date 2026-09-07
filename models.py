@@ -57,6 +57,10 @@ class Egreso(Base):
     monto = Column(Integer)
     forma_pago = Column(String)
     notas = Column(String)
+    # Egreso que el empleado no ve. La dueña anota el alquiler y los sueldos en
+    # la misma pantalla que todo lo demás, pero eso no es asunto de quien atiende:
+    # ni aparece en su lista ni entra en los totales de su caja.
+    privado = Column(Boolean, default=False)
 
 class FormaPago(Base):
     __tablename__ = "formas_pago"
@@ -77,6 +81,10 @@ class TipoEgreso(Base):
     id = Column(Integer, primary_key=True)
     nombre = Column(String, unique=True, nullable=False)
     activo = Column(Boolean, default=True)
+    # Tipo reservado para la dueña ("Alquiler", "Sueldo"): no se le ofrece al
+    # empleado y, cuando la dueña lo elige, el egreso nace privado sin que haya
+    # que acordarse de tildar nada.
+    privado = Column(Boolean, default=False)
 
 class Config(Base):
     __tablename__ = "config"

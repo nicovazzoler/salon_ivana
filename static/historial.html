@@ -80,6 +80,19 @@
     font-weight:var(--fw-bold);
   }
   .comp-total{ color:var(--text-titulo); }
+
+  /* Encabezado del detalle: "Detalle" a la izquierda y cuándo se facturó a la
+     derecha, en tenue. La hora completa va acá y no en el rótulo de arriba para
+     que el renglón de la lista siga entrando de un vistazo. */
+  .detalle-cab{
+    display:flex; justify-content:space-between; align-items:baseline;
+    gap:var(--sp-2);
+    font-weight:700; margin-bottom:6px;
+  }
+  .detalle-cab .cuando{
+    font-weight:var(--fw-normal); font-size:var(--fs-sm);
+    color:var(--text-tenue); font-variant-numeric:tabular-nums;
+  }
   
 </style>
 </head><body>
@@ -238,9 +251,31 @@ function pintarMas(){
   if(b) b.onclick=pintarMas;
 }
 
+/* Fecha y hora de facturación.
+
+   La hora es el dato que faltaba para reconocer un ticket entre los cinco del
+   mismo cliente en el mismo día. Sale del mismo campo que el papel impreso.
+
+   Ojo con los servicios anotados de otro día: ahí `fecha` no es un momento sino
+   un día, y el backend le pone las 12:00 para que caiga en la caja correcta.
+   Mostrar "12:00" sería inventar una hora de atención, así que en esos va la
+   fecha sola y la aclaración de cuándo se anotó, que ya estaba. */
+function fechaHora(comp){
+  // La "Z" no es un detalle: el backend guarda UTC sin marcar la zona, y sin
+  // ella el navegador lee "2026-09-07T23:40" como hora local argentina. La fecha
+  // salía corrida para todo lo facturado después de las 21:00 (que en UTC ya es
+  // el día siguiente) y la hora habría salido tres horas adelantada siempre. Es
+  // el mismo truco que usa escpos.js para el papel.
+  const iso = comp.fecha.endsWith("Z") ? comp.fecha : comp.fecha + "Z";
+  const d = new Date(iso);
+  const dia = d.toLocaleDateString("es-AR");
+  if(comp.anotado_despues) return dia;
+  return dia + " " + d.toLocaleTimeString("es-AR",{hour:"2-digit",minute:"2-digit",hour12:false});
+}
+
 function crearFila(comp){
     const div=document.createElement("div"); div.className="comp";
-    const fecha=new Date(comp.fecha).toLocaleDateString("es-AR");
+    const fecha=fechaHora(comp);
     const quien=comp.cliente_nombre||"Mostrador";
     const pendiente = (comp.tipo==="ticket" && comp.saldo>0)
       ? ` · <span style="color:var(--warn);">Pendiente ${fmt(comp.saldo)}</span>`
@@ -312,7 +347,7 @@ function crearFila(comp){
         ? `<div class="fila" style="color:var(--text-tenue);"><span>Extra dificultad</span><span>+${fmt(d.extra_dificultad)}</span></div>` : "";
 
       const pagos=d.pagos.length
-        ? d.pagos.map(p=>{const f=new Date(p.fecha).toLocaleDateString("es-AR");
+        ? d.pagos.map(p=>{const f=new Date(p.fecha.endsWith("Z")?p.fecha:p.fecha+"Z").toLocaleDateString("es-AR");
             return `<div class="fila" style="color:var(--text-tenue);"><span>✓ ${f} · ${p.forma_pago}${p.alias?' ('+p.alias+')':''}</span><span>${fmt(p.monto)}</span></div>`;
           }).join("")
         : (d.tipo==="ticket"?'<div class="muted">Sin pagos.</div>':'');
@@ -343,7 +378,8 @@ function crearFila(comp){
         totales=`<div class="fila fila-total"><span>Total</span><span>${fmt(d.ingresado + d.saldo)}</span></div>`;
       }
 
-      box.innerHTML=`<div style="font-weight:700;margin-bottom:6px;">Detalle</div>
+      box.innerHTML=`<div class="detalle-cab">Detalle
+          <span class="cuando">${fechaHora(d)}</span></div>
         ${lineas}${extra}${esPresu?'':filaDescEf+filaSubtotal+filaDescEfvoReal+filaDescJub}
         ${totales}
         ${d.tipo==="ticket"?`<div style="font-weight:700;margin:10px 0 6px;">Pagos</div>${pagos}${filaPendiente}`:''}

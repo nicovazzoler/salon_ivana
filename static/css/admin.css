@@ -46,76 +46,6 @@
   }
   .indice a{ text-decoration:none; }
 
-  /* ----- Resumen del catálogo ----- */
-  .kpis{
-    display:grid;
-    grid-template-columns:repeat(auto-fit, minmax(150px, 1fr));
-    gap:var(--sp-3);
-    margin-bottom:var(--sp-5);
-  }
-  .kpi{
-    padding:var(--sp-3) var(--sp-4);
-    border:1px solid var(--border-sutil);
-    border-radius:var(--r-lg);
-    background:var(--bg-sutil);
-  }
-  .kpi .lbl{
-    display:block;
-    font-size:var(--fs-xs); color:var(--text-tenue);
-    text-transform:uppercase; letter-spacing:.04em;
-  }
-  .kpi .val{
-    display:block; margin-top:2px;
-    font-size:var(--fs-2xl); font-weight:var(--fw-black);
-    color:var(--text-titulo);
-  }
-  .kpi .val small{ font-size:var(--fs-md); font-weight:var(--fw-bold); color:var(--text-tenue); }
-
-  /* ----- Gráfico: precio promedio por categoría -----
-     Barras horizontales en HTML. Una sola serie (los nombres de categoría son
-     identidad, no magnitud), así que van todas del mismo dorado y no hace falta
-     leyenda: el título dice qué se está midiendo. El valor va etiquetado en la
-     punta, por eso tampoco hace falta eje. */
-  .barras{ display:grid; gap:var(--sp-2); }
-  .barra{
-    display:grid;
-    grid-template-columns:minmax(0,185px) 1fr auto;
-    align-items:center;
-    gap:var(--sp-3);
-    padding:3px var(--sp-2);
-    border-radius:var(--r-sm);
-  }
-  .barra:hover{ background:var(--bg-hover); }
-  .barra .cat{
-    display:flex; align-items:baseline; gap:4px;
-    min-width:0;
-    font-size:var(--fs-base);
-    color:var(--text-suave);
-  }
-  /* recorta el nombre largo, pero el conteo nunca se pierde */
-  .barra .cat .nom{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-  .barra .cat i{ flex:0 0 auto; font-style:normal; color:var(--text-tenue); }
-  .barra .track{ display:block; min-width:0; }
-  .barra .fill{
-    display:block;
-    height:14px;                        /* marca fina: la barra no llena el renglón */
-    min-width:2px;
-    border-radius:0 4px 4px 0;          /* punta redondeada, cuadrada en la base */
-    background:#b08f3a;                 /* fijo: medido contra el papel y el carbón */
-  }
-  .barra .val{
-    font-size:var(--fs-base);
-    font-weight:var(--fw-bold);
-    font-variant-numeric:tabular-nums;
-    color:var(--text);
-  }
-  @media (max-width:560px){
-    .barra{ grid-template-columns:1fr auto; row-gap:2px; }
-    .barra .cat{ grid-column:1; }
-    .barra .val{ grid-column:2; }
-    .barra .track{ grid-column:1 / -1; }
-  }
-
   /* Renglón editable de la lista: grilla para que los botones caigan siempre
      en la misma columna, midan lo que midan el nombre y las etiquetas. */
   .item-row{
@@ -140,8 +70,20 @@
   /* Usuarios: nombre + rol + clave nueva + acciones */
   .item-row.usuario{ grid-template-columns:minmax(0,1.6fr) 130px minmax(0,1fr) auto; }
 
+  /* Tipos de egreso: entre el nombre y el botón se cuela la marca de "privado",
+     que solo existe para la dueña. La fila tiene dos formas y cada una declara
+     sus columnas: sin la marca sigue siendo la lista simple de siempre. */
+  .item-row.simple.con-marca{ grid-template-columns:1fr auto auto; }
+  .marca-privado{
+    display:flex; align-items:center; gap:5px;
+    font-size:var(--fs-sm); color:var(--text-tenue);
+    white-space:nowrap; cursor:pointer;
+  }
+  .marca-privado input{ width:auto; margin:0; }
+
   @media (max-width:640px){
-    .item-row, .item-row.simple, .item-row.usuario{ grid-template-columns:1fr auto; row-gap:6px; }
+    .item-row, .item-row.simple, .item-row.simple.con-marca, .item-row.usuario{ grid-template-columns:1fr auto; row-gap:6px; }
+    .item-row .marca-privado{ grid-column:1; }
     .item-row .p, .item-row .uRolEd, .item-row .uClave{ grid-column:1 / -1; }
     .item-row .meta{ grid-column:1 / -1; }
     .item-row .acc{ grid-column:2; grid-row:1; }

@@ -1,8 +1,9 @@
-requireLogin(); pintarNav();
+requireLogin(); pintarNav(); ajustarPorRol();
 const $=s=>document.querySelector(s);
 const fmt=n=>"$"+(n||0).toLocaleString("es-AR");
 const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 let CATALOGO=[], DESCUENTOS=[], CLIENTES=[], ticket=[], NEGOCIO={};
+let TIPOS_PRIVADOS=new Set();   // tipos de egreso que son privados siempre (vacío para el empleado)
 let tipo="ticket", descPct=0, descNombre=null, formaPago="efectivo";
 let totalActual=0;
 let mxDeudaActual=0;
@@ -20,12 +21,53 @@ $("#btnGuardarEgreso").onclick=async()=>{
   const tipo=$("#egTipo").value.trim();
   const monto=parseInt($("#egMonto").value);
   if(!tipo || !monto){ toast("Completá tipo y monto"); return; }
+  const privado = !!($("#egPrivado") && $("#egPrivado").checked);
   await authFetch("/api/tipos-egreso",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({nombre:tipo})});
   await authFetch("/api/egresos",{method:"POST",headers:{"Content-Type":"application/json"},
-    body:JSON.stringify({tipo, concepto:$("#egConcepto").value, monto, forma_pago:$("#egPago").value})});
+    body:JSON.stringify({tipo, concepto:$("#egConcepto").value, monto, forma_pago:$("#egPago").value, privado})});
   $("#egTipo").value=""; $("#egConcepto").value=""; $("#egMonto").value="";
-  toast("Egreso registrado"); cargarEgresosHoy();
+  toast("Egreso registrado"); avisoEgresoPrivado(); cargarEgresosHoy();
 };
+
+/* Un tipo marcado privado en Admin ("Alquiler", "Sueldo") lo es siempre: el
+   backend fuerza la marca aunque la casilla venga destildada. Acá se refleja eso
+   —tildada y trabada— en vez de dejar una casilla que se puede destildar y no
+   hace nada. */
+function ajustarCasillaPrivado(){
+  const chk = $("#egPrivado");
+  if(!chk) return;
+  const forzado = TIPOS_PRIVADOS.has(($("#egTipo").value||"").trim().toLowerCase());
+  chk.disabled = forzado;
+  if(forzado) chk.checked = true;
+  chk.closest("label").title = forzado
+    ? "Este tipo de egreso está marcado como privado en Admin: siempre lo es."
+    : "";
+}
+
+/* Aviso del arqueo.
+
+   Un egreso privado en EFECTIVO le deja el arqueo mal al empleado: la plata sale
+   del cajón, pero como él no ve el egreso, la app le va a decir que tendría que
+   haber más de lo que hay. No se prohíbe —a veces el alquiler se paga con la
+   plata del cajón y listo—, pero tiene que estar dicho antes de guardarlo, no
+   descubrirse al cerrar la caja.
+
+   Se recalcula al tocar cualquiera de los tres campos que lo definen: la
+   casilla, la forma de pago y el tipo. */
+function avisoEgresoPrivado(){
+  ajustarCasillaPrivado();
+  const caja = $("#egAvisoPrivado");
+  if(!caja) return;                       // el empleado no tiene ni la casilla
+  const privado = $("#egPrivado") && $("#egPrivado").checked;
+  const efectivo = ($("#egPago").value || "").toLowerCase() === "efectivo";
+  caja.style.display = (privado && efectivo) ? "" : "none";
+  if(privado && efectivo)
+    caja.textContent = "Sale plata del cajón y el empleado no lo va a ver: al cerrar, "
+                     + "su arqueo le va a dar de más por este monto.";
+}
+if($("#egPrivado")) $("#egPrivado").onchange = avisoEgresoPrivado;
+$("#egPago").addEventListener("change", avisoEgresoPrivado);
+$("#egTipo").addEventListener("input", avisoEgresoPrivado);
 
 async function cargarEgresosHoy(){
   const es=await (await authFetch("/api/egresos/dia")).json();
@@ -43,9 +85,12 @@ async function cargarEgresosHoy(){
   es.forEach(e=>{
     const row=document.createElement("div"); row.className="eg-row";
     const detalle=[e.concepto, e.forma_pago].filter(Boolean).join(" · ");
+    // La dueña ve los suyos mezclados con los del local: sin la marca no hay
+    // forma de saber cuál de los de hoy es el que el empleado no está viendo.
+    const marca = e.privado ? '<span class="privado" title="El empleado no ve este egreso">privado</span>' : '';
     row.innerHTML=`
       <span class="hora">${e.hora}</span>
-      <span class="que"><b>${e.tipo}</b>${detalle?' <span class="det">'+detalle+'</span>':''}</span>
+      <span class="que"><b>${e.tipo}</b>${marca}${detalle?' <span class="det">'+detalle+'</span>':''}</span>
       <span class="monto">−${fmt(e.monto)}</span>
       <button class="quitar" title="Anular este egreso">×</button>`;
     row.querySelector(".quitar").onclick=async()=>{
@@ -66,13 +111,15 @@ async function init(){
   $("#cobroForma").innerHTML=(cfg.formas_pago||[]).map(f=>`<option>${f}</option>`).join("");
   $("#egPago").innerHTML=(cfg.formas_pago||[]).map(f=>`<option>${f}</option>`).join("");
   $("#egTipos").innerHTML=(cfg.tipos_egreso||[]).map(t=>`<option value="${t}">`).join("");
+  TIPOS_PRIVADOS = new Set((cfg.tipos_privados||[]).map(t=>t.toLowerCase()));
   $("#aliasList").innerHTML=(cfg.alias||[]).map(a=>`<option value="${a}">`).join("");
   DESCUENTOS=await (await authFetch("/api/descuentos")).json();
   $("#descuento").innerHTML='<option value="">Sin descuento</option>'+
     DESCUENTOS.map((d,i)=>`<option value="${i}">${d.nombre} ${d.porcentaje}%</option>`).join("");
   AJUSTES=await (await authFetch("/api/ajustes-item")).json();   // descuentos/recargos por línea
   pintarRail();
-  renderCategorias(); restaurarBorrador(); pintarOtroDia(); renderTicket(); mostrarBotones(); cargarEgresosHoy();
+  renderCategorias(); restaurarBorrador(); pintarOtroDia(); renderTicket(); mostrarBotones();
+  cargarEgresosHoy(); avisoEgresoPrivado();
   const cliParam=new URLSearchParams(location.search).get("cliente");
   if(cliParam){ $("#cliente").value=cliParam; }
 }
@@ -549,7 +596,7 @@ function guardarBorrador(){
     notaCliente: $("#notaCliente").textContent,
     peluquero: $("#peluquero").value,
     descPct, descNombre,
-    fechaServicio: $("#fechaServicio").value,
+    fechaServicio: hayOtroDia() ? $("#fechaServicio").value : "",
     descuentoSel: $("#descuento").value,   // el índice elegido en el select de descuento
     formaPago,
     extras: EXTRAS
@@ -574,7 +621,7 @@ function restaurarBorrador(){
     $("#peluquero").value = d.peluquero || "";
     descPct = d.descPct || 0;
     descNombre = d.descNombre || null;
-    $("#fechaServicio").value = d.fechaServicio || "";
+    if(hayOtroDia()) $("#fechaServicio").value = d.fechaServicio || "";
     $("#descuento").value = d.descuentoSel || "";
     EXTRAS = Array.isArray(d.extras) ? d.extras : [];
     renderExtras();
@@ -681,14 +728,22 @@ function fechaHoyLocal(){
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
 }
 
+/* Para el empleado el bloque entero no está en la pantalla (ajustarPorRol lo
+   borró), así que todo lo de acá abajo tiene que aguantar que el campo no
+   exista. Sin fecha elegida el comprobante sale con la de hoy, que es
+   exactamente lo que tiene que pasar. */
+const hayOtroDia = () => !!$("#fechaServicio");
+
 // La fecha elegida, o null si es hoy (que es lo mismo que no mandar nada).
 function fechaElegida(){
+  if(!hayOtroDia()) return null;
   const v = $("#fechaServicio").value;
   return (v && v !== fechaHoyLocal()) ? v : null;
 }
 const esDeOtroDia = () => fechaElegida() !== null;
 
 function pintarOtroDia(){
+  if(!hayOtroDia()){ actualizarAcciones(); return; }
   const f = fechaElegida();
   $("#otroDiaBox").classList.toggle("activo", !!f);
   const nota = $("#notaOtroDia");
@@ -702,8 +757,10 @@ function pintarOtroDia(){
   actualizarAcciones();
 }
 
-$("#fechaServicio").onchange = () => { pintarOtroDia(); guardarBorrador(); };
-$("#btnHoy").onclick = () => { $("#fechaServicio").value = fechaHoyLocal(); pintarOtroDia(); guardarBorrador(); };
+if(hayOtroDia()){
+  $("#fechaServicio").onchange = () => { pintarOtroDia(); guardarBorrador(); };
+  $("#btnHoy").onclick = () => { $("#fechaServicio").value = fechaHoyLocal(); pintarOtroDia(); guardarBorrador(); };
+}
 
 /* ---- Impresión ----
 
@@ -893,7 +950,9 @@ function limpiar(){
   // La fecha vuelve a hoy sí o sí. Si quedara pegada, el servicio siguiente se
   // cargaría sin querer en el día viejo y a nadie se le ocurriría mirar ahí.
   ticket=[]; $("#cliente").value=""; clienteIdSel=null; $("#peluquero").value="";
-  $("#fechaServicio").value=""; compEsDeOtroDia=false; $("#otroDiaBox").open=false; pintarOtroDia();
+  compEsDeOtroDia=false;
+  if(hayOtroDia()){ $("#fechaServicio").value=""; $("#otroDiaBox").open=false; }
+  pintarOtroDia();
   $("#descuento").value=""; descPct=0; descNombre=null;
   $("#aliasTransfer").value="";
   EXTRAS=[]; renderExtras(); $("#extrasBox").open=false;

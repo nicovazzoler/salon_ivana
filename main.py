@@ -2,7 +2,7 @@ from fastapi import FastAPI, Depends, HTTPException, Header, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy.orm import Session, selectinload
-from sqlalchemy import text, inspect, func
+from sqlalchemy import text, inspect, func, or_
 from pydantic import BaseModel
 from datetime import datetime, date, timedelta, timezone
 from openpyxl import Workbook
@@ -65,6 +65,21 @@ def migrar():
             # En los que ya existen, se cargó el mismo día que se hizo: sin esto
             # todos los comprobantes viejos parecerían "anotados después".
             con.execute(text("UPDATE comprobantes SET cargado = fecha WHERE cargado IS NULL"))
+    ecols = [c["name"] for c in insp.get_columns("egresos")]
+    if "privado" not in ecols:
+        with engine.begin() as con:
+            # FALSE y no 0: PostgreSQL no acepta un entero como default de un
+            # boolean, y SQLite entiende la palabra igual desde hace años.
+            con.execute(text("ALTER TABLE egresos ADD COLUMN privado BOOLEAN DEFAULT FALSE"))
+            # Los que ya estaban los cargó la dueña sola (el empleado no se usaba
+            # todavía), pero igual quedan a la vista: esconder de golpe egresos
+            # viejos le cambiaría la caja de días ya cerrados a quien la mire.
+            con.execute(text("UPDATE egresos SET privado = FALSE WHERE privado IS NULL"))
+    tecols = [c["name"] for c in insp.get_columns("tipos_egreso")]
+    if "privado" not in tecols:
+        with engine.begin() as con:
+            con.execute(text("ALTER TABLE tipos_egreso ADD COLUMN privado BOOLEAN DEFAULT FALSE"))
+            con.execute(text("UPDATE tipos_egreso SET privado = FALSE WHERE privado IS NULL"))
     clcols = [c["name"] for c in insp.get_columns("clientes")]
     if "direccion" not in clcols:
         with engine.begin() as con:
@@ -157,9 +172,12 @@ class DescuentoEdit(BaseModel):
     mostrar_motivo: bool | None = None; activo: bool | None = None
 class EgresoIn(BaseModel):
     tipo: str; concepto: str | None = None; monto: int; forma_pago: str | None = None; notas: str | None = None
+    privado: bool = False                 # solo lo puede pedir la dueña
 class EgresoEdit(BaseModel):
     tipo: str | None = None; concepto: str | None = None; monto: int | None = None
-    forma_pago: str | None = None; notas: str | None = None
+    forma_pago: str | None = None; notas: str | None = None; privado: bool | None = None
+class TipoEgresoEdit(BaseModel):
+    privado: bool | None = None
 class StockIn(BaseModel):
     stock_actual: int; stock_minimo: int = 0
 class LoginIn(BaseModel):
@@ -298,6 +316,28 @@ def solo_dueno(user = Depends(usuario_actual)):
     if user.get("rol") != "dueno":
         raise HTTPException(403, "Requiere rol dueño")
     return user
+
+def es_dueno(user) -> bool:
+    """Si el que pide es la dueña.
+
+    Casi todo lo de Admin lo maneja también el empleado (el catálogo, las formas
+    de pago, los descuentos): es la parte que cambia sola con el día a día y
+    esperar a que la dueña la toque era el cuello de botella. Lo que queda
+    reservado es lo que no tiene vuelta atrás o no es asunto suyo: los usuarios,
+    el backup, el fondo de caja, los reportes y el stock.
+    """
+    return (user or {}).get("rol") == "dueno"
+
+def _no_privado(col):
+    """Condición SQL para "esto NO es privado", contando el NULL como que no.
+
+    No alcanza con `col != True`: en SQL, NULL != True da NULL, o sea que la fila
+    no entra. Y filas con NULL las hay: `restaurar_backup.py` levantando un
+    backup viejo, de antes de que la columna existiera, escribe None. Con el
+    filtro ingenuo, esos egresos desaparecían de la caja del empleado sin que
+    nadie los hubiera marcado privados, y la cuenta le daba mal.
+    """
+    return or_(col == False, col.is_(None))
 
 def calcular_transfer(precio_efectivo: int) -> int:
     """Precio de transferencia = efectivo x 1.1111, redondeado PARA ARRIBA a múltiplo de 100."""
@@ -566,10 +606,39 @@ def yo(user = Depends(usuario_actual), db: Session = Depends(get_db)):
             "password_de_fabrica": mias,
             "usuarios_sin_cambiar": flojos if user.get("rol") == "dueno" else []}
 
+"""Un usuario por rol.
+
+   El local es uno solo: hay una dueña y hay una persona atendiendo. Con varias
+   cuentas del mismo rol, "lo que anotó el empleado" deja de querer decir algo
+   —¿cuál de los tres?— y la contraseña termina siendo la misma para todos, que
+   es peor que tener una cuenta compartida y saberlo.
+
+   El tope se controla al crear y al cambiar el rol, no al arrancar: si alguna
+   base quedó con dos, nadie pierde el acceso de golpe; simplemente no se puede
+   sumar otro hasta borrar uno.
+"""
+ROLES = ("dueno", "empleado")
+
+def _rol_ocupado(db, rol: str, salvo_id: int | None = None):
+    q = db.query(models.Usuario).filter(models.Usuario.rol == rol)
+    if salvo_id is not None:
+        q = q.filter(models.Usuario.id != salvo_id)
+    return q.first()
+
+def _chequear_rol_libre(db, rol: str, salvo_id: int | None = None):
+    if rol not in ROLES:
+        raise HTTPException(400, "Rol inválido")
+    ya = _rol_ocupado(db, rol, salvo_id)
+    if ya:
+        comose = "dueña" if rol == "dueno" else "empleado"
+        raise HTTPException(400, f"Ya hay un usuario {comose} ({ya.usuario}). "
+                                 f"Cambiale la contraseña a ese, o borralo antes de crear otro.")
+
 @app.post("/api/usuarios")
 def crear_usuario(u: UsuarioIn, _ = Depends(solo_dueno), db: Session = Depends(get_db)):
     if db.query(models.Usuario).filter(models.Usuario.usuario == u.usuario.strip()).first():
         raise HTTPException(400, "Ese usuario ya existe")
+    _chequear_rol_libre(db, u.rol)
     s = auth.nuevo_salt()
     db.add(models.Usuario(usuario=u.usuario.strip(), salt=s, hash=auth.hash_password(u.password, s), rol=u.rol))
     db.commit(); return {"ok": True}
@@ -592,7 +661,7 @@ def items(categoria: str, _ = Depends(usuario_actual), db: Session = Depends(get
     return [{"id": i.id, "nombre": i.nombre, "precio": i.precio, "precio_transfer": i.precio_transfer, "es_producto": i.es_producto} for i in q]
 
 @app.get("/api/items/all")
-def items_all(_ = Depends(solo_dueno), db: Session = Depends(get_db)):
+def items_all(_ = Depends(usuario_actual), db: Session = Depends(get_db)):
     q = db.query(models.Item).filter(models.Item.activo == True).order_by(models.Item.nombre)
     return [{"id": i.id, "nombre": i.nombre, "precio": i.precio, "categoria": i.categoria, "precio_transfer": i.precio_transfer,
              "es_producto": i.es_producto} for i in q]
@@ -606,12 +675,16 @@ def catalogo(_ = Depends(usuario_actual), db: Session = Depends(get_db)):
              "es_producto": i.es_producto} for i in q]
 
 @app.get("/api/config")
-def config(_ = Depends(usuario_actual), db: Session = Depends(get_db)):
+def config(user = Depends(usuario_actual), db: Session = Depends(get_db)):
     formas = [f.nombre for f in db.query(models.FormaPago).filter(models.FormaPago.activo == True)]
-    tipos = [t.nombre for t in db.query(models.TipoEgreso).filter(models.TipoEgreso.activo == True)]
+    # Los tipos privados no entran acá: este es el desplegable de facturar, y es
+    # justo donde el empleado leería "Alquiler" y ataría cabos.
+    tipos = [t.nombre for t in tipos_visibles(db, user)]
     alias = [a.nombre for a in db.query(models.Alias).filter(models.Alias.activo == True)]
     return {"formas_pago": formas, "tipos_egreso": tipos, "alias": alias,
-            "negocio": NEGOCIO}
+            "negocio": NEGOCIO,
+            "tipos_privados": [t.nombre for t in db.query(models.TipoEgreso).filter(
+                models.TipoEgreso.activo == True, models.TipoEgreso.privado == True)] if es_dueno(user) else []}
 
 @app.put("/api/config/fondo-caja")
 def set_fondo(datos: FondoIn, _ = Depends(solo_dueno), db: Session = Depends(get_db)):
@@ -634,23 +707,48 @@ def recalcular_transfer(_ = Depends(solo_dueno), db: Session = Depends(get_db)):
     return {"recalculados": len(items)}
 
 # tipos de egreso
+def tipos_visibles(db, user):
+    """Los tipos de egreso que le corresponde ver a quien pregunta.
+
+    Un tipo marcado privado ("Alquiler", "Sueldo") no se le ofrece al empleado:
+    ni en el desplegable de facturar ni en la lista de Admin. Si lo viera, el
+    dato que se quiso esconder se deduce igual del nombre del tipo.
+    """
+    q = db.query(models.TipoEgreso).filter(models.TipoEgreso.activo == True)
+    if not es_dueno(user):
+        q = q.filter(_no_privado(models.TipoEgreso.privado))
+    return q.order_by(models.TipoEgreso.id).all()
+
 @app.get("/api/tipos-egreso")
-def listar_tipos(_ = Depends(usuario_actual), db: Session = Depends(get_db)):
-    return [{"id": t.id, "nombre": t.nombre}
-            for t in db.query(models.TipoEgreso).filter(models.TipoEgreso.activo == True)]
+def listar_tipos(user = Depends(usuario_actual), db: Session = Depends(get_db)):
+    return [{"id": t.id, "nombre": t.nombre, "privado": bool(t.privado)}
+            for t in tipos_visibles(db, user)]
 
 @app.post("/api/tipos-egreso")
-def crear_tipo(t: NombreIn, _ = Depends(usuario_actual), db: Session = Depends(get_db)):
+def crear_tipo(t: NombreIn, user = Depends(usuario_actual), db: Session = Depends(get_db)):
     existe = db.query(models.TipoEgreso).filter(models.TipoEgreso.nombre == t.nombre.strip()).first()
     if existe:
+        # Si el empleado tipeó justo el nombre de un tipo privado, se lo trata
+        # como uno cualquiera: NO se le devuelve que existe ni se lo reactiva a
+        # escondidas, pero tampoco se le rebota, que sería confirmarle que está.
+        if existe.privado and not es_dueno(user):
+            return {"id": existe.id}
         existe.activo = True; db.commit(); return {"id": existe.id}
     nuevo = models.TipoEgreso(nombre=t.nombre.strip())
     db.add(nuevo); db.commit(); db.refresh(nuevo); return {"id": nuevo.id}
 
-@app.delete("/api/tipos-egreso/{tipo_id}")
-def borrar_tipo(tipo_id: int, _ = Depends(solo_dueno), db: Session = Depends(get_db)):
+@app.put("/api/tipos-egreso/{tipo_id}")
+def editar_tipo(tipo_id: int, cambios: TipoEgresoEdit, _ = Depends(solo_dueno), db: Session = Depends(get_db)):
     t = db.get(models.TipoEgreso, tipo_id)
     if not t: raise HTTPException(404, "Tipo no existe")
+    if cambios.privado is not None: t.privado = cambios.privado
+    db.commit(); return {"ok": True, "privado": bool(t.privado)}
+
+@app.delete("/api/tipos-egreso/{tipo_id}")
+def borrar_tipo(tipo_id: int, user = Depends(usuario_actual), db: Session = Depends(get_db)):
+    t = db.get(models.TipoEgreso, tipo_id)
+    if not t: raise HTTPException(404, "Tipo no existe")
+    if t.privado and not es_dueno(user): raise HTTPException(404, "Tipo no existe")
     t.activo = False; db.commit(); return {"ok": True}
 
 # usuarios
@@ -675,7 +773,9 @@ def editar_usuario(uid: int, cambios: UsuarioEdit, _ = Depends(solo_dueno), db: 
                                                models.Usuario.id != uid).first()
         if otro: raise HTTPException(400, "Ese nombre de usuario ya existe")
         u.usuario = cambios.usuario.strip()
-    if cambios.rol is not None: u.rol = cambios.rol
+    if cambios.rol is not None and cambios.rol != u.rol:
+        _chequear_rol_libre(db, cambios.rol, salvo_id=uid)
+        u.rol = cambios.rol
     if cambios.password:
         u.salt = auth.nuevo_salt(); u.hash = auth.hash_password(cambios.password, u.salt)
     db.commit(); return {"ok": True}
@@ -687,7 +787,7 @@ def listar_alias(_ = Depends(usuario_actual), db: Session = Depends(get_db)):
             for a in db.query(models.Alias).filter(models.Alias.activo == True)]
 
 @app.post("/api/alias")
-def crear_alias(a: NombreIn, _ = Depends(solo_dueno), db: Session = Depends(get_db)):
+def crear_alias(a: NombreIn, _ = Depends(usuario_actual), db: Session = Depends(get_db)):
     existe = db.query(models.Alias).filter(models.Alias.nombre == a.nombre.strip()).first()
     if existe:
         existe.activo = True; db.commit(); return {"id": existe.id}
@@ -695,7 +795,7 @@ def crear_alias(a: NombreIn, _ = Depends(solo_dueno), db: Session = Depends(get_
     db.add(nuevo); db.commit(); db.refresh(nuevo); return {"id": nuevo.id}
 
 @app.delete("/api/alias/{alias_id}")
-def borrar_alias(alias_id: int, _ = Depends(solo_dueno), db: Session = Depends(get_db)):
+def borrar_alias(alias_id: int, _ = Depends(usuario_actual), db: Session = Depends(get_db)):
     a = db.get(models.Alias, alias_id)
     if not a: raise HTTPException(404, "Alias no existe")
     a.activo = False; db.commit(); return {"ok": True}
@@ -830,6 +930,9 @@ def cuenta_cliente(cliente_id: int, _ = Depends(usuario_actual), db: Session = D
             t = db.query(models.Comprobante).filter(models.Comprobante.convertido_de == comp.id).first()
             conv = t.numero if t else None
         out.append({"id": comp.id, "tipo": comp.tipo, "numero": comp.numero, "fecha": comp.fecha.isoformat(),
+                    # Para saber si la hora de `fecha` es real o es el mediodía
+                    # que se le pone a un servicio anotado de otro día.
+                    "anotado_despues": anotado_despues(comp),
                     "descuento_nombre": comp.descuento_nombre, "descuento_pct": comp.descuento_pct,
                     "total_transfer": est["total_transfer"], "desc_efectivo": est["desc_efectivo"],
                     "subtotal": est["subtotal"], "desc_jubilado": est["desc_jubilado"],
@@ -851,15 +954,15 @@ def proximo_turno(cliente_id: int, _ = Depends(usuario_actual), db: Session = De
     if not t: return {"turno": None}
     return {"turno": {"fecha": t.fecha, "hora": t.hora, "servicio": t.servicio, "es_hoy": t.fecha == hoy}}
 
-# ---------- catalogo (admin: solo dueño) ----------
+# ---------- catalogo (admin: dueña y empleado) ----------
 @app.post("/api/items")
-def crear_item(item: ItemIn, _ = Depends(solo_dueno), db: Session = Depends(get_db)):
+def crear_item(item: ItemIn, _ = Depends(usuario_actual), db: Session = Depends(get_db)):
     nuevo = models.Item(categoria=item.categoria.strip(), nombre=item.nombre.strip(),
                         precio=item.precio, precio_transfer=calcular_transfer(item.precio), es_producto=item.es_producto)
     db.add(nuevo); db.commit(); db.refresh(nuevo); return {"id": nuevo.id}
 
 @app.put("/api/items/{item_id}")
-def editar_item(item_id: int, cambios: ItemEdit, _ = Depends(solo_dueno), db: Session = Depends(get_db)):
+def editar_item(item_id: int, cambios: ItemEdit, _ = Depends(usuario_actual), db: Session = Depends(get_db)):
     item = db.get(models.Item, item_id)
     if not item: raise HTTPException(404, "Item no existe")
     if cambios.categoria is not None: item.categoria = cambios.categoria.strip()
@@ -871,13 +974,13 @@ def editar_item(item_id: int, cambios: ItemEdit, _ = Depends(solo_dueno), db: Se
     db.commit(); return {"ok": True}
 
 @app.delete("/api/items/{item_id}")
-def borrar_item(item_id: int, _ = Depends(solo_dueno), db: Session = Depends(get_db)):
+def borrar_item(item_id: int, _ = Depends(usuario_actual), db: Session = Depends(get_db)):
     item = db.get(models.Item, item_id)
     if not item: raise HTTPException(404, "Item no existe")
     item.activo = False; db.commit(); return {"ok": True}
 
 @app.put("/api/categorias")
-def renombrar_categoria(datos: RenombrarCat, _ = Depends(solo_dueno), db: Session = Depends(get_db)):
+def renombrar_categoria(datos: RenombrarCat, _ = Depends(usuario_actual), db: Session = Depends(get_db)):
     n = db.query(models.Item).filter(models.Item.categoria == datos.viejo).update(
         {models.Item.categoria: datos.nuevo.strip()})
     db.commit(); return {"actualizados": n}
@@ -889,14 +992,14 @@ def listar_formas(_ = Depends(usuario_actual), db: Session = Depends(get_db)):
             for f in db.query(models.FormaPago).filter(models.FormaPago.activo == True)]
 
 @app.post("/api/formas")
-def crear_forma(forma: FormaIn, _ = Depends(solo_dueno), db: Session = Depends(get_db)):
+def crear_forma(forma: FormaIn, _ = Depends(usuario_actual), db: Session = Depends(get_db)):
     existe = db.query(models.FormaPago).filter(models.FormaPago.nombre == forma.nombre.strip()).first()
     if existe: existe.activo = True; db.commit(); return {"id": existe.id}
     nueva = models.FormaPago(nombre=forma.nombre.strip())
     db.add(nueva); db.commit(); db.refresh(nueva); return {"id": nueva.id}
 
 @app.delete("/api/formas/{forma_id}")
-def borrar_forma(forma_id: int, _ = Depends(solo_dueno), db: Session = Depends(get_db)):
+def borrar_forma(forma_id: int, _ = Depends(usuario_actual), db: Session = Depends(get_db)):
     f = db.get(models.FormaPago, forma_id)
     if not f: raise HTTPException(404, "Forma no existe")
     f.activo = False; db.commit(); return {"ok": True}
@@ -974,9 +1077,18 @@ def crear_comprobante(c: ComprobanteIn, user = Depends(usuario_actual), db: Sess
         # aparece escrito distinto en el historial y en el papel impreso
         nombre_cli = nombre_propio(c.cliente_nombre) or None
     ahora = fecha_hora_now_utc().replace(tzinfo=None)
+    # Anotar un servicio con fecha de otro día mueve plata de una caja a otra:
+    # el cobro sale del día en que se atendió y no del día en que se cargó. Eso
+    # lo decide la dueña; el empleado factura siempre en el día.
+    #
+    # Se compara la fecha YA validada y no el texto que llegó: fecha_del_servicio
+    # es la que rebota un "2026-13-40" con un 400 en vez de reventar acá.
+    fecha_serv = fecha_del_servicio(c.fecha, ahora)
+    if not es_dueno(user) and hora_argentina(fecha_serv).date() != hoy_argentina():
+        raise HTTPException(403, "Solo la dueña puede anotar un servicio de otro día")
     comp = models.Comprobante(
         tipo=c.tipo, numero=siguiente_numero(db, c.tipo),
-        fecha=fecha_del_servicio(c.fecha, ahora), cargado=ahora,
+        fecha=fecha_serv, cargado=ahora,
         cliente_id=c.cliente_id, cliente_nombre=nombre_cli, peluquero=c.peluquero,
         forma_pago=c.forma_pago,
         descuento_pct=c.descuento_pct or 0, descuento_nombre=c.descuento_nombre, mostrar_motivo=c.mostrar_motivo)
@@ -1128,24 +1240,54 @@ def convertir_a_ticket(comp_id: int, user = Depends(usuario_actual), db: Session
 
 
 # ---------- egresos ----------
+"""Egresos privados.
+
+   La dueña anota el alquiler y los sueldos en la misma pantalla que el resto de
+   los egresos, pero eso no es asunto de quien atiende: un egreso privado no
+   aparece en la lista del empleado ni suma en los totales de SU caja. En la de
+   la dueña sale todo, con la marca de que es privado.
+
+   Qué es privado se decide en dos lugares que se complementan:
+     - la casilla al cargarlo, que la dueña puede tildar y destildar;
+     - el tipo marcado como privado, que la tilda solo y no deja destildarla
+       (si "Alquiler" es privado, no hay alquiler que no lo sea).
+
+   Un egreso cargado POR el empleado nunca es privado, aunque le haya puesto un
+   nombre de tipo reservado: esconderle lo que él mismo acaba de anotar le
+   dejaría el arqueo sin explicación.
+"""
+def _tipo_privado(db, nombre: str | None) -> bool:
+    if not nombre: return False
+    t = db.query(models.TipoEgreso).filter(models.TipoEgreso.nombre == nombre.strip()).first()
+    return bool(t and t.privado)
+
+def _ve_el_egreso(user, e) -> bool:
+    return es_dueno(user) or not e.privado
+
 @app.post("/api/egresos")
-def crear_egreso(e: EgresoIn, _ = Depends(usuario_actual), db: Session = Depends(get_db)):
+def crear_egreso(e: EgresoIn, user = Depends(usuario_actual), db: Session = Depends(get_db)):
+    privado = es_dueno(user) and (e.privado or _tipo_privado(db, e.tipo))
     eg = models.Egreso(tipo=e.tipo, concepto=e.concepto, monto=e.monto,
-                       forma_pago=e.forma_pago, notas=e.notas, fecha=fecha_hora_now_utc())
-    db.add(eg); db.commit(); db.refresh(eg); return {"id": eg.id}
+                       forma_pago=e.forma_pago, notas=e.notas, privado=privado,
+                       fecha=fecha_hora_now_utc())
+    db.add(eg); db.commit(); db.refresh(eg); return {"id": eg.id, "privado": privado}
 
 @app.get("/api/egresos/dia")
-def egresos_dia(_ = Depends(usuario_actual), db: Session = Depends(get_db)):
+def egresos_dia(user = Depends(usuario_actual), db: Session = Depends(get_db)):
     ini, fin = _rango_dia(hoy_argentina())
-    es = db.query(models.Egreso).filter(models.Egreso.fecha >= ini, models.Egreso.fecha < fin
-         ).order_by(models.Egreso.id.desc()).all()
+    q = db.query(models.Egreso).filter(models.Egreso.fecha >= ini, models.Egreso.fecha < fin)
+    if not es_dueno(user):
+        q = q.filter(_no_privado(models.Egreso.privado))
+    es = q.order_by(models.Egreso.id.desc()).all()
     return [{"id": e.id, "hora": hora_argentina(e.fecha).strftime("%H:%M"), "tipo": e.tipo, "concepto": e.concepto,
-             "monto": e.monto, "forma_pago": e.forma_pago} for e in es]
+             "monto": e.monto, "forma_pago": e.forma_pago, "privado": bool(e.privado)} for e in es]
 
 @app.put("/api/egresos/{egreso_id}")
 def editar_egreso(egreso_id: int, cambios: EgresoEdit, user = Depends(usuario_actual), db: Session = Depends(get_db)):
     e = db.get(models.Egreso, egreso_id)
-    if not e: raise HTTPException(404, "Egreso no existe")
+    # Un egreso que no ve tampoco lo puede tocar, y se contesta 404 y no 403:
+    # un "no podés" ya sería confirmarle que ese egreso existe.
+    if not e or not _ve_el_egreso(user, e): raise HTTPException(404, "Egreso no existe")
     if not _puede_modificar(user, e.fecha):
         raise HTTPException(403, "Solo el dueño puede editar egresos de otros días")
     if cambios.tipo is not None: e.tipo = cambios.tipo
@@ -1153,12 +1295,16 @@ def editar_egreso(egreso_id: int, cambios: EgresoEdit, user = Depends(usuario_ac
     if cambios.monto is not None: e.monto = cambios.monto
     if cambios.forma_pago is not None: e.forma_pago = cambios.forma_pago
     if cambios.notas is not None: e.notas = cambios.notas
-    db.commit(); return {"ok": True}
+    if cambios.privado is not None and es_dueno(user): e.privado = cambios.privado
+    # El tipo manda: si quedó en uno privado, vuelve a ser privado aunque el
+    # cambio venga sin la casilla.
+    if _tipo_privado(db, e.tipo): e.privado = True
+    db.commit(); return {"ok": True, "privado": bool(e.privado)}
 
 @app.delete("/api/egresos/{egreso_id}")
 def anular_egreso(egreso_id: int, user = Depends(usuario_actual), db: Session = Depends(get_db)):
     e = db.get(models.Egreso, egreso_id)
-    if not e: raise HTTPException(404, "Egreso no existe")
+    if not e or not _ve_el_egreso(user, e): raise HTTPException(404, "Egreso no existe")
     if not _puede_modificar(user, e.fecha):
         raise HTTPException(403, "Solo el dueño puede anular egresos de otros días")
     db.delete(e); db.commit(); return {"ok": True}
@@ -1191,11 +1337,17 @@ def _pago_detalle(p):
 
 
 @app.get("/api/caja/dia")
-def caja_dia(fecha: str | None = None, _ = Depends(usuario_actual), db: Session = Depends(get_db)):
+def caja_dia(fecha: str | None = None, user = Depends(usuario_actual), db: Session = Depends(get_db)):
     d = date.fromisoformat(fecha) if fecha else hoy_argentina()
     ini, fin = _rango_dia(d)
     pagos = db.query(models.Pago).filter(models.Pago.fecha >= ini, models.Pago.fecha < fin).all()
-    egresos = db.query(models.Egreso).filter(models.Egreso.fecha >= ini, models.Egreso.fecha < fin).all()
+    q_eg = db.query(models.Egreso).filter(models.Egreso.fecha >= ini, models.Egreso.fecha < fin)
+    # Los egresos privados se van de la caja del empleado ENTERA, no solo del
+    # detalle: si siguieran contando en el total, el número le diría que salió
+    # plata que no puede ver de dónde, que es peor que no mostrarlos.
+    if not es_dueno(user):
+        q_eg = q_eg.filter(_no_privado(models.Egreso.privado))
+    egresos = q_eg.all()
     ing = sum(p.monto for p in pagos); egr = sum((e.monto or 0) for e in egresos)
     por_pago = {}; por_tipo = {}
     for p in pagos: por_pago[p.forma_pago] = por_pago.get(p.forma_pago, 0) + p.monto
@@ -1209,7 +1361,8 @@ def caja_dia(fecha: str | None = None, _ = Depends(usuario_actual), db: Session 
             "efectivo_esperado": fondo + efectivo_ventas - efectivo_egresos,
             "ventas_detalle": [_pago_detalle(p) for p in pagos],
             "egresos_detalle": [{"id": e.id, "hora": hora_argentina(e.fecha).strftime("%H:%M"), "tipo": e.tipo,
-                                 "concepto": e.concepto, "monto": e.monto, "forma_pago": e.forma_pago}
+                                 "concepto": e.concepto, "monto": e.monto, "forma_pago": e.forma_pago,
+                                 "privado": bool(e.privado)}
                                 for e in egresos]}
 
 @app.get("/api/caja/diario")
@@ -1231,9 +1384,12 @@ def caja_semanal(semanas: int = 8, _ = Depends(solo_dueno), db: Session = Depend
         out.append({"semana_desde": ini_d.isoformat(), "ingresos": ing, "egresos": egr, "neto": ing - egr})
     return out
 
-# ---------- inventario (solo dueño) ----------
+# ---------- inventario ----------
+# Lo lee cualquiera: el empleado necesita saber si queda shampoo para venderlo, y
+# preguntar por WhatsApp no es una forma de consultar el stock. Corregirlo sigue
+# siendo de la dueña: el stock es plata y un número mal contado se arrastra.
 @app.get("/api/inventario")
-def inventario(_ = Depends(solo_dueno), db: Session = Depends(get_db)):
+def inventario(_ = Depends(usuario_actual), db: Session = Depends(get_db)):
     prods = db.query(models.Item).filter(models.Item.es_producto == True, models.Item.activo == True).all()
     out = []
     for p in prods:
@@ -1617,13 +1773,13 @@ def listar_descuentos(_ = Depends(usuario_actual), db: Session = Depends(get_db)
             for d in db.query(models.Descuento).filter(models.Descuento.activo == True).order_by(models.Descuento.nombre)]
 
 @app.post("/api/descuentos")
-def crear_descuento(d: DescuentoIn, _ = Depends(solo_dueno), db: Session = Depends(get_db)):
+def crear_descuento(d: DescuentoIn, _ = Depends(usuario_actual), db: Session = Depends(get_db)):
     if d.porcentaje < 0 or d.porcentaje > 100: raise HTTPException(400, "Porcentaje inválido")
     nuevo = models.Descuento(nombre=d.nombre.strip(), porcentaje=d.porcentaje, mostrar_motivo=d.mostrar_motivo)
     db.add(nuevo); db.commit(); db.refresh(nuevo); return {"id": nuevo.id}
 
 @app.put("/api/descuentos/{desc_id}")
-def editar_descuento(desc_id: int, cambios: DescuentoEdit, _ = Depends(solo_dueno), db: Session = Depends(get_db)):
+def editar_descuento(desc_id: int, cambios: DescuentoEdit, _ = Depends(usuario_actual), db: Session = Depends(get_db)):
     d = db.get(models.Descuento, desc_id)
     if not d: raise HTTPException(404, "Descuento no existe")
     if cambios.nombre is not None: d.nombre = cambios.nombre.strip()
@@ -1635,7 +1791,7 @@ def editar_descuento(desc_id: int, cambios: DescuentoEdit, _ = Depends(solo_duen
     db.commit(); return {"ok": True}
 
 @app.delete("/api/descuentos/{desc_id}")
-def borrar_descuento(desc_id: int, _ = Depends(solo_dueno), db: Session = Depends(get_db)):
+def borrar_descuento(desc_id: int, _ = Depends(usuario_actual), db: Session = Depends(get_db)):
     d = db.get(models.Descuento, desc_id)
     if not d: raise HTTPException(404, "Descuento no existe")
     d.activo = False; db.commit(); return {"ok": True}
@@ -1648,7 +1804,7 @@ def listar_ajustes_item(_ = Depends(usuario_actual), db: Session = Depends(get_d
                        .order_by(models.AjusteItem.porcentaje, models.AjusteItem.nombre)]
 
 @app.post("/api/ajustes-item")
-def crear_ajuste_item(a: AjusteItemIn, _ = Depends(solo_dueno), db: Session = Depends(get_db)):
+def crear_ajuste_item(a: AjusteItemIn, _ = Depends(usuario_actual), db: Session = Depends(get_db)):
     # Un ajuste guardado es de un tipo o del otro, nunca de los dos: si fuera
     # "-10% y -$2000" nadie sabría en qué orden se aplican.
     if a.porcentaje and a.monto: raise HTTPException(400, "Poné porcentaje o monto, no los dos")
@@ -1659,7 +1815,7 @@ def crear_ajuste_item(a: AjusteItemIn, _ = Depends(solo_dueno), db: Session = De
     db.add(nuevo); db.commit(); db.refresh(nuevo); return {"id": nuevo.id}
 
 @app.delete("/api/ajustes-item/{aj_id}")
-def borrar_ajuste_item(aj_id: int, _ = Depends(solo_dueno), db: Session = Depends(get_db)):
+def borrar_ajuste_item(aj_id: int, _ = Depends(usuario_actual), db: Session = Depends(get_db)):
     a = db.get(models.AjusteItem, aj_id)
     if not a: raise HTTPException(404, "Ajuste no existe")
     a.activo = False; db.commit(); return {"ok": True}
@@ -1717,7 +1873,7 @@ def backup_completo(_ = Depends(solo_dueno), db: Session = Depends(get_db)):
         "egresos": [
             {"id": e.id, "fecha": _iso_utc(e.fecha), "tipo": e.tipo,
              "concepto": e.concepto, "monto": e.monto,
-             "forma_pago": e.forma_pago, "notas": e.notas}
+             "forma_pago": e.forma_pago, "notas": e.notas, "privado": bool(e.privado)}
             for e in db.query(models.Egreso).order_by(models.Egreso.fecha).all()
         ],
         "formas_pago": [
@@ -1725,7 +1881,7 @@ def backup_completo(_ = Depends(solo_dueno), db: Session = Depends(get_db)):
             for f in db.query(models.FormaPago).all()
         ],
         "tipos_egreso": [
-            {"id": t.id, "nombre": t.nombre, "activo": t.activo}
+            {"id": t.id, "nombre": t.nombre, "activo": t.activo, "privado": bool(t.privado)}
             for t in db.query(models.TipoEgreso).all()
         ],
         "usuarios": [

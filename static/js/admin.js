@@ -1,4 +1,13 @@
-requireDueno(); pintarNav();
+/* Admin ya no es una pantalla de dueña.
+
+   El empleado entra y maneja las listas con las que factura todos los días
+   —catálogo, formas de pago, tipos de egreso, descuentos, ajustes por ítem y
+   alias—, que es la parte que se desactualiza sola y por la que había que
+   esperar a que la dueña se sentara. Lo que no ve ni de casualidad son los
+   usuarios y el backup: eso se saca del documento con ajustarPorRol(), y el
+   backend lo rebota igual si alguien prueba el endpoint a mano. */
+requireLogin(); pintarNav(); ajustarPorRol();
+const DUENO = esDueno();
 const $=s=>document.querySelector(s);
 const fmt=n=>"$"+(n||0).toLocaleString("es-AR");
 const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
@@ -13,51 +22,9 @@ async function cargarCats(){
   $("#cats").innerHTML=cats.map(c=>`<option value="${c}">`).join("");
   catActual=$("#selCat").value;
   ITEMS_ALL=await (await authFetch("/api/items/all")).json();
-  renderResumen();
   if($("#buscarItem").value.trim()) filtrarItems(); else cargarItems();
 }
 
-/* ---------- Resumen del catálogo (KPIs + gráfico) ----------
-   Se calcula sobre ITEMS_ALL, que ya está cargado para el buscador:
-   no hace falta pedirle nada más al servidor. */
-function renderResumen(){
-  const items=ITEMS_ALL;
-  const cont=$("#graficoCats"), kpis=$("#kpis");
-  if(!items.length){
-    kpis.innerHTML=""; cont.innerHTML='<p class="muted">Todavía no hay ítems cargados.</p>';
-    return;
-  }
-
-  const productos=items.filter(i=>i.es_producto).length;
-  const promedio=Math.round(items.reduce((a,i)=>a+i.precio,0)/items.length);
-
-  // agrupamos por categoría para el promedio, el conteo y el rango
-  const porCat=new Map();
-  items.forEach(i=>{
-    const g=porCat.get(i.categoria) || {n:0, suma:0, min:Infinity, max:0};
-    g.n++; g.suma+=i.precio;
-    g.min=Math.min(g.min,i.precio); g.max=Math.max(g.max,i.precio);
-    porCat.set(i.categoria,g);
-  });
-
-  kpis.innerHTML=`
-    <div class="kpi"><span class="lbl">Ítems activos</span><span class="val">${items.length}</span></div>
-    <div class="kpi"><span class="lbl">Categorías</span><span class="val">${porCat.size}</span></div>
-    <div class="kpi"><span class="lbl">Servicios / productos</span><span class="val">${items.length-productos} <small>/ ${productos}</small></span></div>
-    <div class="kpi"><span class="lbl">Precio promedio</span><span class="val">${fmt(promedio)}</span></div>`;
-
-  const filas=[...porCat.entries()]
-    .map(([cat,g])=>({cat, n:g.n, prom:Math.round(g.suma/g.n), min:g.min, max:g.max}))
-    .sort((a,b)=>b.prom-a.prom);
-  const tope=filas[0].prom;                      // la barra más larga marca la escala
-
-  cont.innerHTML=filas.map(f=>`
-    <div class="barra" title="${esc(f.cat)}: ${f.n} ${f.n===1?'ítem':'ítems'}, de ${fmt(f.min)} a ${fmt(f.max)}">
-      <span class="cat"><span class="nom">${esc(f.cat)}</span><i>(${f.n})</i></span>
-      <span class="track"><span class="fill" style="width:${(f.prom/tope*100).toFixed(1)}%;"></span></span>
-      <span class="val">${fmt(f.prom)}</span>
-    </div>`).join("");
-}
 $("#selCat").onchange=()=>{catActual=$("#selCat").value;$("#buscarItem").value="";cargarItems();};
 $("#buscarItem").oninput=filtrarItems;
 
@@ -141,14 +108,31 @@ $("#btnForma").onclick=async()=>{
   $("#nForma").value="";toast("Forma agregada");cargarFormas();
 };
 
-// --- Tipos de egreso ---
+/* --- Tipos de egreso ---
+
+   La marca de "privado" solo la ve y la toca la dueña. Es el interruptor que
+   contesta el pedido de anotar el alquiler y los sueldos sin que el empleado los
+   vea: el tipo desaparece de su desplegable al facturar y lo que se anote con él
+   no entra en los totales de su caja. */
 async function cargarTipos(){
   const tipos=await (await authFetch("/api/tipos-egreso")).json();
   const cont=$("#listaTipos");cont.innerHTML="";
   tipos.forEach(t=>{
-    const row=document.createElement("div");row.className="item-row simple";
-    row.innerHTML=`<span class="n">${t.nombre}</span><button class="b-del">Eliminar</button>`;
-    row.querySelector("button").onclick=async()=>{await authFetch(`/api/tipos-egreso/${t.id}`,{method:"DELETE"});toast("Eliminado");cargarTipos();};
+    const row=document.createElement("div");row.className="item-row simple"+(DUENO?" con-marca":"");
+    const marca = DUENO
+      ? `<label class="marca-privado" title="No se le muestra al empleado">
+           <input type="checkbox" class="priv"${t.privado?" checked":""}> privado</label>`
+      : "";
+    row.innerHTML=`<span class="n">${esc(t.nombre)}</span>${marca}<button class="b-del">Eliminar</button>`;
+    const chk=row.querySelector(".priv");
+    if(chk) chk.onchange=async()=>{
+      const r=await authFetch(`/api/tipos-egreso/${t.id}`,{method:"PUT",
+        headers:{"Content-Type":"application/json"},body:JSON.stringify({privado:chk.checked})});
+      if(!r.ok){ chk.checked=!chk.checked; toast("No se pudo"); return; }
+      toast(chk.checked ? "El empleado ya no ve este tipo" : "Tipo visible para todos");
+      cargarTipos();
+    };
+    row.querySelector(".b-del").onclick=async()=>{await authFetch(`/api/tipos-egreso/${t.id}`,{method:"DELETE"});toast("Eliminado");cargarTipos();};
     cont.appendChild(row);
   });
 }
@@ -275,7 +259,7 @@ async function cargarUsuarios(){
     cont.appendChild(row);
   });
 }
-$("#btnUsuario").onclick=async()=>{
+if(DUENO) $("#btnUsuario").onclick=async()=>{
   const u=$("#uNom").value.trim(),p=$("#uPass").value;
   if(!u||!p){toast("Completá usuario y contraseña");return;}
   const r=await authFetch("/api/usuarios",{method:"POST",headers:{"Content-Type":"application/json"},
@@ -307,7 +291,7 @@ $("#btnAlias").onclick=async()=>{
   $("#nAlias").value="";toast("Alias agregado");cargarAlias();
 };
 // --- Backup completo ---
-$("#btnBackup").onclick=async()=>{
+if(DUENO) $("#btnBackup").onclick=async()=>{
   $("#btnBackup").textContent="Descargando...";
   $("#btnBackup").disabled=true;
   try{
@@ -367,7 +351,7 @@ function marcarFin(cont){
   cont.classList.toggle("al-fin", fin);
 }
 
-["#graficoCats","#listaItems","#listaFormas","#listaTipos",
+["#listaItems","#listaFormas","#listaTipos",
  "#listaDescuentos","#listaAjustes","#listaUsuarios","#listaAlias"].forEach(sel=>{
   const cont = $(sel);
   if(!cont) return;
@@ -381,5 +365,6 @@ function marcarFin(cont){
 // al girar la tablet cambian los anchos y las filas altas cambian de alto
 addEventListener("resize", ()=>document.querySelectorAll(".lista-scroll").forEach(acotar));
 
-cargarCats();cargarFormas();cargarTipos();cargarUsuarios();cargarAlias();cargarDescuentos();cargarAjustes();
+cargarCats();cargarFormas();cargarTipos();cargarAlias();cargarDescuentos();cargarAjustes();
+if(DUENO) cargarUsuarios();
 

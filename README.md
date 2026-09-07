@@ -67,7 +67,7 @@ Resumen por período, evolución de la caja, ranking de lo más vendido, ingreso
 - **Caja** — Cierre diario con ingresos/egresos por forma de pago, arqueo de efectivo con fondo por día (con arrastre), y edición/anulación sin salir de la pantalla.
 - **Reportes** — Resumen por período, ranking de más vendidos, evolución temporal, deuda total y exportación a Excel.
 - **Inventario** — Stock con alertas de reposición y carga de entradas de mercadería.
-- **Administración** — ABM de productos, categorías, precios, descuentos, ajustes por ítem, formas de pago, alias, tipos de egreso y usuarios. Backup completo en JSON.
+- **Administración** — ABM de productos, categorías, precios, descuentos, ajustes por ítem, formas de pago, alias, tipos de egreso y usuarios. Backup completo en JSON. Las listas del día a día las maneja también el empleado; los usuarios y el backup, solo la dueña.
 - **Modo claro / oscuro** — Se elige por dispositivo y queda guardado; sin elección propia, sigue al sistema operativo.
 
 ---
@@ -146,7 +146,34 @@ uvicorn main:app --reload --port 8000
 | Usuario | Contraseña | Rol |
 |---|---|---|
 | `dueno` | `dueno1234` | Acceso total |
-| `empleado` | `empleado1234` | Facturación y agenda |
+| `empleado` | `empleado1234` | Todo salvo reportes, usuarios, backup y el stock |
+
+Hay **un usuario por rol**: una dueña y un empleado. El sistema no deja crear un
+segundo del mismo rol, porque con dos cuentas "empleado" deja de saberse quién
+anotó cada cosa y la contraseña termina siendo la misma para todos.
+
+### Qué ve cada rol
+
+| | Dueña | Empleado |
+|---|---|---|
+| Facturar, clientes, agenda, historial | ✅ | ✅ |
+| Anotar un servicio con fecha de otro día | ✅ | ❌ |
+| Caja del día y arqueo | ✅ | ✅ (sin los egresos privados) |
+| Fondo inicial de caja | ✅ | ❌ |
+| Inventario | edita | solo lee las cantidades |
+| Admin: catálogo, formas de pago, tipos de egreso, descuentos, ajustes por ítem, alias | ✅ | ✅ |
+| Admin: usuarios y backup | ✅ | ❌ |
+| Reportes | ✅ | ❌ |
+
+**Egresos privados.** El alquiler y los sueldos se anotan como cualquier otro
+egreso, pero marcados privados: no aparecen en la lista del empleado ni suman en
+los totales de *su* caja. Se marcan de dos formas que se complementan: la casilla
+al cargar el egreso (viene tildada para la dueña) y el tipo de egreso marcado
+como privado en Admin, que la tilda solo y no deja destildarla. Un egreso cargado
+por el empleado nunca es privado, aunque le ponga un nombre de tipo reservado:
+esconderle lo que él mismo acaba de anotar le dejaría el arqueo sin explicación.
+Si el egreso privado es en efectivo, la pantalla avisa que el arqueo del empleado
+va a dar de más por ese monto.
 
 Para acceder desde otro dispositivo en la misma red (ej: una tablet), levantar con `--host 0.0.0.0` y entrar a `http://[IP-de-la-PC]:8000`.
 

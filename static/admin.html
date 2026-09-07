@@ -31,20 +31,11 @@
     <a class="pill" href="#egresos">📤 Egresos</a>
     <a class="pill" href="#descuentos">🏷️ Descuentos</a>
     <a class="pill" href="#ajustes">🔧 Ajustes x ítem</a>
-    <a class="pill" href="#usuarios">👥 Usuarios</a>
     <a class="pill" href="#alias">🏦 Alias</a>
-    <a class="pill" href="#backup">💾 Backup</a>
+    <a class="pill" href="#miclave">🔑 Mi contraseña</a>
+    <a class="pill" href="#usuarios" data-dueno>👥 Usuarios</a>
+    <a class="pill" href="#backup" data-dueno>💾 Backup</a>
   </nav>
-
-  <div class="card" id="resumen">
-    <div class="card-head">
-      <h2>📊 Resumen del catálogo</h2>
-      <p>Cómo está parada la lista de precios hoy.</p>
-    </div>
-    <div class="kpis" id="kpis"></div>
-    <div class="sub-h">Precio promedio por categoría</div>
-    <div class="barras" id="graficoCats"></div>
-  </div>
 
   <div class="card" id="catalogo">
     <div class="card-head">
@@ -92,7 +83,10 @@
   <div class="card" id="egresos">
     <div class="card-head">
       <h2>📤 Tipos de egreso</h2>
-      <p>Las categorías con las que se clasifica lo que sale de la caja.</p>
+      <p>Las categorías con las que se clasifica lo que sale de la caja.
+         <span data-dueno>Un tipo marcado <b>privado</b> (el alquiler, los sueldos)
+         no se le ofrece al empleado, y lo que anotes con ese tipo no aparece en
+         su caja.</span></p>
     </div>
     <div id="listaTipos"></div>
     <hr>
@@ -149,29 +143,6 @@
     </div>
   </div>
 
-  <div class="card" id="usuarios">
-    <div class="card-head">
-      <h2>👥 Usuarios y contraseñas</h2>
-      <p>Quién entra a la app y con qué permisos. El dueño ve todas las pantallas.</p>
-    </div>
-    <div id="listaUsuarios"></div>
-    <hr>
-    <div class="sub-h">Crear usuario</div>
-    <div class="fila">
-      <div><label>Usuario</label><input id="uNom" placeholder="Ej: maria"></div>
-      <div><label>Contraseña</label><input id="uPass" type="text" placeholder="clave inicial"></div>
-      <div style="flex:0;min-width:120px;"><label>Rol</label>
-        <select id="uRol"><option value="empleado">Empleado</option><option value="dueno">Dueño</option></select></div>
-      <button class="b-ok" id="btnUsuario">Crear</button>
-    </div>
-    <hr>
-    <div class="sub-h">Cambiar mi contraseña</div>
-    <div class="fila">
-      <div style="max-width:240px;"><label>Nueva contraseña</label><input id="miPass" type="text"></div>
-      <button class="b-tinta" id="btnMiPass">Cambiar</button>
-    </div>
-  </div>
-
   <div class="card" id="alias">
     <div class="card-head">
       <h2>🏦 Alias de transferencia</h2>
@@ -185,7 +156,40 @@
     </div>
   </div>
 
-  <div class="card" id="backup">
+  <!-- Cambiar la propia contraseña lo tiene que poder hacer cualquiera: el cartel
+       de "seguís con la contraseña de fábrica" le aparece también al empleado, y
+       un aviso que no se puede obedecer no sirve de nada. Por eso está en su
+       propia tarjeta y no adentro de la de usuarios, que es solo de la dueña. -->
+  <div class="card" id="miclave">
+    <div class="card-head">
+      <h2>🔑 Mi contraseña</h2>
+      <p>La de tu propio usuario. Nadie más la ve, ni siquiera desde acá.</p>
+    </div>
+    <div class="fila">
+      <div style="max-width:240px;"><label>Nueva contraseña</label><input id="miPass" type="text"></div>
+      <button class="b-tinta" id="btnMiPass">Cambiar</button>
+    </div>
+  </div>
+
+  <div class="card" id="usuarios" data-dueno>
+    <div class="card-head">
+      <h2>👥 Usuarios y contraseñas</h2>
+      <p>Quién entra a la app y con qué permisos. Hay un usuario por rol: una dueña
+         y un empleado. Para sumar otro hay que borrar el que está.</p>
+    </div>
+    <div id="listaUsuarios"></div>
+    <hr>
+    <div class="sub-h">Crear usuario</div>
+    <div class="fila">
+      <div><label>Usuario</label><input id="uNom" placeholder="Ej: maria"></div>
+      <div><label>Contraseña</label><input id="uPass" type="text" placeholder="clave inicial"></div>
+      <div style="flex:0;min-width:120px;"><label>Rol</label>
+        <select id="uRol"><option value="empleado">Empleado</option><option value="dueno">Dueño</option></select></div>
+      <button class="b-ok" id="btnUsuario">Crear</button>
+    </div>
+  </div>
+
+  <div class="card" id="backup" data-dueno>
     <div class="card-head">
       <h2>💾 Backup completo</h2>
       <p>Un archivo JSON con todos los datos de la app: catálogo, ventas, egresos,

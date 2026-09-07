@@ -12,6 +12,24 @@ async function authFetch(url,opts){
 }
 function requireLogin(){ if(!getToken()){location.href="/login";} }
 function requireDueno(){ requireLogin(); if(getRol()!=="dueno"){location.href="/";} }
+function esDueno(){ return getRol()==="dueno"; }
+
+/* Deja en la pantalla lo que le corresponde a quien entró.
+
+   Un solo lugar en vez de un `if(getRol()...)` por bloque: se marca el elemento
+   con data-dueno (solo la dueña) o data-empleado (solo el empleado) en el HTML.
+   Se BORRA y no se esconde, así lo que quedó afuera no aparece por un cambio de
+   estilo ni sigue estando para el que abra el inspector.
+
+   Es ADEMÁS del control del backend, nunca en lugar de él: esto es para que a
+   cada uno no le aparezca algo que no le sirve. Lo que de verdad no puede hacer,
+   lo frena el servidor. */
+function ajustarPorRol(raiz){
+  const doc = raiz || document;
+  const sobra = esDueno() ? "[data-empleado]" : "[data-dueno]";
+  doc.querySelectorAll(sobra).forEach(el => el.remove());
+}
+window.ajustarPorRol = ajustarPorRol;
 function pintarNav(){
   const nav=document.querySelector("nav.menu");
   if(!nav) return;
@@ -24,9 +42,14 @@ function pintarNav(){
     {href:"/historial",  txt:"Historial"},
     {href:"/agenda",     txt:"Agenda"},
     {href:"/caja",       txt:"Caja"},
-    {href:"/inventario", txt:"Inventario", dueno:true},
+    // Inventario y Admin también son del empleado, pero recortados: en
+    // inventario ve las cantidades sin poder tocarlas, y en admin ve las listas
+    // con las que factura (catálogo, formas de pago, descuentos) y no los
+    // usuarios ni el backup. Reportes sigue siendo solo de la dueña: ahí está
+    // cuánto factura el local, que no es asunto de quien atiende.
+    {href:"/inventario", txt:"Inventario"},
     {href:"/reportes",   txt:"Reportes",   dueno:true},
-    {href:"/admin",      txt:"Admin",      dueno:true},
+    {href:"/admin",      txt:"Admin"},
   ];
   let html="";
   for(const l of links){
