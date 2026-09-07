@@ -2,7 +2,7 @@ from fastapi import FastAPI, Depends, HTTPException, Header, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy.orm import Session, selectinload
-from sqlalchemy import text, inspect, func, or_
+from sqlalchemy import text, inspect, func, or_, String
 from pydantic import BaseModel
 from datetime import datetime, date, timedelta, timezone
 from openpyxl import Workbook
@@ -1013,31 +1013,174 @@ def log_stock(db, item, tipo, cambio, motivo, usuario="sistema"):
         motivo=motivo, usuario=usuario))
 
 # ---------- comprobantes ----------
+"""Historial paginado.
+
+   Antes esta ruta devolvía TODOS los comprobantes activos y la pantalla se
+   arreglaba sola: filtraba, ordenaba y dibujaba de a 60. Con un año de trabajo
+   eso son más de mil, y el costo no estaba en dibujarlos sino antes: cada vez
+   que se abría el historial se traían las mil filas con sus líneas, sus extras y
+   sus pagos, y se calculaba el estado de cada una, para mostrar sesenta.
+
+   Ahora el recorte lo hace la base. Pero hay una parte que NO se puede mover a
+   SQL: el saldo de un comprobante sale de estado_comprobante(), que recorre las
+   líneas aplicando precio_con_ajuste() y los redondeos de las dos listas.
+   Escribir esa misma cuenta en SQL sería tener dos versiones de la cuenta de la
+   plata, y el día que se toca una y no la otra el historial dice una cosa y la
+   caja otra. Así que hay dos caminos:
+
+     - El de todos los días (ordenar por fecha o por número, con o sin búsqueda):
+       filtra, ordena y corta en SQL, y solo calcula el estado de los que entran
+       en la página. Es el que hace que la pantalla abra rápido.
+
+     - El de los filtros que dependen del saldo (con deuda, convertidos, sin
+       convertir) y el orden por monto: ahí no queda otra que traer lo que pasó
+       los filtros de SQL y calcular en Python, como antes. Sale lo mismo que
+       salía siempre, pero solo cuando lo pedís, y ya recortado por fecha y por
+       lo que hayas buscado.
+
+   Buscar por cliente o por número sigue mirando el historial entero: la pantalla
+   pasa el período a "Todo" cuando escribís, y se ve que lo hizo.
+"""
+TOPE_PAGINA = 200          # techo por si alguien pide una página enorme a mano
+
+# Ordenar por estas dos es barato: son columnas de la tabla. Por cliente y por
+# monto hay que calcular o comparar en Python, y por eso caen al camino largo.
+ORDEN_SQL = {"fecha": models.Comprobante.fecha, "numero": models.Comprobante.numero}
+ESTADOS_LISTA = ("todos", "deuda", "convertidos", "sinconvertir")
+
+def _sin_acentos(s: str) -> str:
+    """Para ordenar nombres como los ordena una persona: "Núñez" al lado de
+    "Nuñez", no después de todo. Es el equivalente del sensitivity:"base" que
+    usaba el localeCompare de la pantalla."""
+    import unicodedata
+    return "".join(c for c in unicodedata.normalize("NFD", (s or "").lower())
+                   if unicodedata.category(c) != "Mn")
+
 @app.get("/api/comprobantes")
-def listar_comprobantes(tipo: str | None = None, _ = Depends(usuario_actual), db: Session = Depends(get_db)):
-    query = con_relaciones(db.query(models.Comprobante).filter(models.Comprobante.activo == True))
-    if tipo: query = query.filter(models.Comprobante.tipo == tipo)
-    comps = query.order_by(models.Comprobante.fecha.desc()).all()
+def listar_comprobantes(tipo: str | None = None,
+                        desde: str | None = None, hasta: str | None = None,
+                        q: str | None = None, numero: str | None = None,
+                        estado: str = "todos",
+                        orden: str = "fecha", desc: bool = True,
+                        limite: int = 60, offset: int = 0,
+                        _ = Depends(usuario_actual), db: Session = Depends(get_db)):
+    limite = max(1, min(limite, TOPE_PAGINA))
+    offset = max(0, offset)
+    if estado not in ESTADOS_LISTA: estado = "todos"
 
-    # Todo lo que hace falta para la tanda entera, en tres consultas fijas en vez de
-    # tres por comprobante.
+    base = db.query(models.Comprobante).filter(models.Comprobante.activo == True)
+    if tipo: base = base.filter(models.Comprobante.tipo == tipo)
+    # Cuántos hay en total sin ningún filtro de los de la pantalla: es el "de N"
+    # del resumen ("23 de 1.412"), y se cuenta acá porque después la query se
+    # ensucia con los filtros.
+    total_sin_filtros = base.count()
+
+    # Ventana de fechas. Van por _rango_dia porque `desde` y `hasta` son días
+    # ARGENTINOS y lo guardado es UTC: sin esto, "hasta el 7" se comía lo
+    # facturado el 7 después de las 21:00, que en UTC ya es el 8.
+    if desde:
+        try: base = base.filter(models.Comprobante.fecha >= _rango_dia(date.fromisoformat(desde[:10]))[0])
+        except ValueError: raise HTTPException(400, "Fecha 'desde' inválida (se espera AAAA-MM-DD)")
+    if hasta:
+        try: base = base.filter(models.Comprobante.fecha < _rango_dia(date.fromisoformat(hasta[:10]))[1])
+        except ValueError: raise HTTPException(400, "Fecha 'hasta' inválida (se espera AAAA-MM-DD)")
+
+    if q and q.strip():
+        # Se compara en minúscula de los dos lados, pero la del texto buscado la
+        # hace Python y no la base. El lower() de SQLite es ASCII y solo: con
+        # ilike, buscar "NÚÑEZ" no encontraba a "Núñez" porque la Ú se quedaba
+        # como estaba. El de PostgreSQL sí la plegaría, o sea que además andaba
+        # distinto en el local y en producción. Python la baja bien en los dos.
+        #
+        # Los acentos siguen contando: "nunez" no encuentra "Núñez". Era así
+        # antes, cuando el filtro lo hacía la pantalla con includes().
+        patron = f"%{q.strip().lower()}%"
+        base = base.filter(func.lower(models.Comprobante.cliente_nombre).like(patron))
+    if numero and numero.strip():
+        # Mismo criterio que tenía la pantalla: "12" encuentra el 12, el 120 y el
+        # 312. Se compara como texto, así que el número va casteado.
+        base = base.filter(func.cast(models.Comprobante.numero, String).like(f"%{numero.strip()}%"))
+
+    # ¿Alcanza con SQL, o hay que calcular el estado de cada uno?
+    por_saldo = estado != "todos" or orden not in ORDEN_SQL
+
+    if not por_saldo:
+        total = base.count()
+        col = ORDEN_SQL[orden]
+        # El desempate SIEMPRE por número descendente, igual que en la pantalla:
+        # sin él, dos comprobantes del mismo día se pueden cambiar de lugar entre
+        # una página y la siguiente, y alguno aparece dos veces o ninguna.
+        orden_sql = [col.desc() if desc else col.asc(), models.Comprobante.numero.desc()]
+        comps = (con_relaciones(base).order_by(*orden_sql).limit(limite).offset(offset).all())
+        return _pagina_comprobantes(db, comps, total, total_sin_filtros, None)
+
+    # Camino largo: se calcula el estado de todo lo que pasó los filtros de SQL.
+    todos = con_relaciones(base).all()
+    pagos_map = pagos_por_comprobante(db, todos)
+    convertidos = _convertidos_de(db, [c.id for c in todos])
+
+    filas = []
+    for comp in todos:
+        est = estado_comprobante(db, comp, pagos_map)
+        conv = convertidos.get(comp.id) if comp.tipo == "presupuesto" else None
+        if estado == "deuda" and not (est["saldo"] > 0): continue
+        if estado == "convertidos" and not conv: continue
+        if estado == "sinconvertir" and conv: continue
+        filas.append((comp, est, conv))
+
+    clave = {
+        "fecha":   lambda f: f[0].fecha,
+        "numero":  lambda f: f[0].numero,
+        "monto":   lambda f: f[1]["ingresado"] + f[1]["saldo"],
+        "cliente": lambda f: _sin_acentos(f[0].cliente_nombre or "Mostrador"),
+    }.get(orden, lambda f: f[0].fecha)
+    # Dos pasadas en vez de una clave compuesta: el desempate por número va
+    # siempre descendente, dé para donde dé el orden principal.
+    filas.sort(key=lambda f: f[0].numero, reverse=True)
+    filas.sort(key=clave, reverse=desc)
+
+    total = len(filas)
+    # La deuda del período, para el resumen del filtro. Se suma sobre TODO lo que
+    # coincide, no sobre la página: "12 con deuda · $340.000" tiene que ser la
+    # deuda de los doce, no la de los que se están viendo.
+    deuda = sum(f[1]["saldo"] for f in filas if f[1]["saldo"] > 0) if estado == "deuda" else None
+    recorte = filas[offset:offset + limite]
+    return _pagina_comprobantes(db, [f[0] for f in recorte], total, total_sin_filtros, deuda,
+                                precalculado={f[0].id: (f[1], f[2]) for f in recorte})
+
+def _convertidos_de(db, ids) -> dict:
+    """{id del presupuesto: número del ticket en que se convirtió}."""
+    if not ids: return {}
+    salida = {}
+    for i in range(0, len(ids), 500):        # el tope de parámetros de SQLite
+        for origen, num in db.query(models.Comprobante.convertido_de, models.Comprobante.numero)\
+                             .filter(models.Comprobante.convertido_de.in_(ids[i:i+500])):
+            salida[origen] = num
+    return salida
+
+def _pagina_comprobantes(db, comps, total, total_sin_filtros, deuda, precalculado=None):
+    """Arma la respuesta de una página ya elegida.
+
+    `precalculado` viene del camino largo, que ya calculó el estado de estos
+    mismos comprobantes: sin él se calcularían dos veces."""
     pagos_map = pagos_por_comprobante(db, comps)
-    convertidos = {}
-    if any(c.tipo == "presupuesto" for c in comps):
-        for origen, numero in db.query(models.Comprobante.convertido_de, models.Comprobante.numero)\
-                                .filter(models.Comprobante.convertido_de.isnot(None)):
-            convertidos[origen] = numero
-
+    convertidos = (None if precalculado is not None
+                   else _convertidos_de(db, [c.id for c in comps if c.tipo == "presupuesto"]))
     out = []
     for comp in comps:
-        conv = convertidos.get(comp.id) if comp.tipo == "presupuesto" else None
+        if precalculado is not None:
+            est, conv = precalculado[comp.id]
+        else:
+            est = estado_comprobante(db, comp, pagos_map)
+            conv = convertidos.get(comp.id) if comp.tipo == "presupuesto" else None
         out.append({"id": comp.id, "tipo": comp.tipo, "numero": comp.numero,
                     "fecha": comp.fecha.isoformat(), "cliente_nombre": comp.cliente_nombre, "cliente_id": comp.cliente_id,
                     "total_lista": comp.total_lista, "extra_dificultad": comp.extra_dificultad,
                     "convertido_a": conv, "forma_pago": forma_comprobante(db, comp, pagos_map),
-                     "forma_origen": comp.forma_pago, "anotado_despues": anotado_despues(comp),
-                    **estado_comprobante(db, comp, pagos_map)})
-    return out
+                    "forma_origen": comp.forma_pago, "anotado_despues": anotado_despues(comp),
+                    **est})
+    return {"comprobantes": out, "total": total, "total_sin_filtros": total_sin_filtros,
+            "deuda_total": deuda}
 
 @app.get("/api/comprobantes/{comp_id}")
 def ver_comprobante(comp_id: int, _ = Depends(usuario_actual), db: Session = Depends(get_db)):

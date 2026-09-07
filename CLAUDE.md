@@ -129,6 +129,23 @@ Para migrar DATOS (no esquema), dejar una marca en la tabla `config` para que
 corra una sola vez; si no, cada reinicio le pisa al usuario lo que haya editado
 a mano después.
 
+**El historial se pide de a páginas.** `/api/comprobantes` no devuelve todo: se
+le pasa ventana de fechas, búsqueda, filtro, orden y `limite`/`offset`, y
+contesta `{comprobantes, total, total_sin_filtros, deuda_total}`. La pantalla
+arranca en los últimos 30 días y salta sola a "Todo" cuando escribís en el
+buscador, porque buscar un servicio de hace dos años es justo para lo que se usa.
+Ordenar y filtrar los hace el servidor: hacerlo sobre lo que está dibujado
+pondría arriba el más caro de los primeros 60 y no el más caro de todos.
+
+Ordenar por fecha o por número se resuelve en SQL. **"Con deuda", "convertidos",
+"sin convertir" y ordenar por monto, no**: el saldo sale de
+`estado_comprobante()`, que recorre las líneas con `precio_con_ajuste()` y los
+redondeos de las dos listas, y escribir esa cuenta también en SQL sería tener dos
+versiones de la cuenta de la plata. Esos casos traen lo que pasó los filtros de
+SQL y calculan en Python, como antes. Si alguna vez hay que acelerarlos, la
+salida NO es reescribir la cuenta en SQL: es guardar el total en una columna al
+crear y al cobrar.
+
 ## Caché del navegador
 
 Sin `Cache-Control`, el navegador no pregunta si el archivo cambió: adivina. En

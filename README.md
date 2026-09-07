@@ -30,7 +30,7 @@ Ficha del cliente con sus comprobantes, saldos pendientes y registro de pagos pa
 ![Cuenta corriente](docs/cuenta.png)
 
 ### Historial
-Tickets y presupuestos emitidos, con búsqueda por cliente y por número, y filtros por deuda o por presupuestos ya convertidos. La lista se dibuja de a tramos para que la tablet no se arrastre.
+Tickets y presupuestos emitidos, con búsqueda por cliente y por número, y filtros por deuda o por presupuestos ya convertidos. La lista se pide al servidor de a páginas, acotada a un período: arranca en los últimos 30 días y salta sola a todo el historial cuando buscás, para que la tablet no tenga que traerse mil comprobantes cada vez que se abre la pantalla.
 
 ![Historial](docs/historial.png)
 
@@ -61,7 +61,7 @@ Resumen por período, evolución de la caja, ranking de lo más vendido, ingreso
 - **Facturación** — Catálogo por categorías con buscador en vivo y agrupado por variantes (talles). Dos listas de precios, descuento por comprobante, **descuento o recargo por línea** (en porcentaje o en pesos), **extras que ningún descuento toca**, pago mixto y venta a cuenta. **Imprime el papel solo al terminar de cobrar**, y permite anotar un servicio de un día anterior sin desordenar la caja. Registro de egresos en la misma pantalla.
 - **Impresión térmica** — Comprobantes, presupuestos y resúmenes de cuenta por comandera Bluetooth de 80mm (ESC/POS, 48 columnas, acentos vía CP850), con vista previa en pantalla y salida a PDF como alternativa. No son documentos fiscales y el papel lo aclara. Ver [`docs/comandera.md`](docs/comandera.md).
 - **Clientes y cuenta corriente** — Alta y búsqueda con teléfono y alias de transferencia, filtro de deudores. Ficha con comprobantes, saldos y pagos parciales: cada cliente tiene su historial completo con lo que debe y lo que pagó.
-- **Historial** — Tickets y presupuestos con estado de pago, búsqueda por cliente y número, y filtros por deuda o conversión.
+- **Historial** — Tickets y presupuestos con estado de pago, búsqueda por cliente y número, y filtros por deuda o conversión. Paginado en el servidor: arranca en los últimos 30 días y buscar mira todo el historial, de cualquier fecha y año.
 - **Presupuestos** — Se emiten con los dos precios a la vista y se convierten a ticket con un botón, descontando el stock recién en ese momento.
 - **Agenda** — Turnos con vista día / semana / mes (lunes a domingo), cancelación y notas diarias.
 - **Caja** — Cierre diario con ingresos/egresos por forma de pago, arqueo de efectivo con fondo por día (con arrastre), y edición/anulación sin salir de la pantalla.
