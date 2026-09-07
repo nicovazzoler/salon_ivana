@@ -120,6 +120,17 @@ async def cabeceras_de_cache(request, call_next):
     resp = await call_next(request)
     ruta = request.url.path
     if ruta.startswith("/api/"):
+        # La API no se guarda NUNCA. Hoy no pasaba nada porque estas respuestas
+        # tampoco mandan Last-Modified, que es de lo que se agarra el navegador
+        # para adivinar cuánto sigue fresco algo sin instrucciones. Pero
+        # "no pasa nada porque falta otra cosa" no es una garantía: alcanza con
+        # que un día se agregue esa cabecera, o que haya un proxy en el medio,
+        # para que la tablet muestre la caja de ayer. En esta app la caché ya
+        # explicó dos quejas que parecían bugs distintos.
+        #
+        # no-store y no no-cache: acá no hay nada que revalidar, son datos que
+        # cambian con cada cobro.
+        resp.headers["Cache-Control"] = "no-store"
         return resp
     if ruta.startswith(CACHE_LARGO):
         resp.headers["Cache-Control"] = "public, max-age=31536000, immutable"
@@ -338,6 +349,43 @@ def _no_privado(col):
     nadie los hubiera marcado privados, y la cuenta le daba mal.
     """
     return or_(col == False, col.is_(None))
+
+"""Buscar sin depender de los acentos.
+
+   El nombre se guarda como se escribe —"Núñez", "María"— pero se busca como se
+   tipea, apurado y en una tablet: "nunez", "maria". Antes eso no encontraba
+   nada, y no era un detalle: el buscador del historial y el de clientes son la
+   forma de llegar a la ficha de alguien.
+
+   Se comparan las dos puntas sin acentos. Del lado de Python es una línea; del
+   lado de la base hay que armar la misma transformación con REPLACE anidados,
+   que es feo pero es lo único que anda IGUAL en SQLite y en PostgreSQL: unaccent
+   es una extensión de Postgres que en SQLite no existe, y el lower() de SQLite
+   no toca la Ú.
+
+   No se pierde velocidad: un LIKE con % adelante nunca podía usar un índice, con
+   acentos o sin ellos.
+"""
+_ACENTOS = {"á":"a","é":"e","í":"i","ó":"o","ú":"u","ü":"u","ñ":"n",
+            "Á":"a","É":"e","Í":"i","Ó":"o","Ú":"u","Ü":"u","Ñ":"n"}
+
+def _plano(texto: str) -> str:
+    """El texto buscado, en minúscula y sin acentos."""
+    salida = (texto or "").lower()
+    for acentuada, plana in _ACENTOS.items():
+        salida = salida.replace(acentuada, plana)
+    return salida
+
+def _plano_sql(col):
+    """La misma cuenta que _plano(), pero para que la haga la base."""
+    expr = col
+    for acentuada, plana in _ACENTOS.items():
+        expr = func.replace(expr, acentuada, plana)
+    return func.lower(expr)
+
+def _busca(col, texto: str):
+    """Condición 'esta columna contiene ese texto', sin importar acentos ni mayúsculas."""
+    return _plano_sql(col).like(f"%{_plano(texto)}%")
 
 def calcular_transfer(precio_efectivo: int) -> int:
     """Precio de transferencia = efectivo x 1.1111, redondeado PARA ARRIBA a múltiplo de 100."""
@@ -811,8 +859,11 @@ def _cliente_json(c):
 def listar_clientes(q: str | None = None, _ = Depends(usuario_actual), db: Session = Depends(get_db)):
     query = db.query(models.Cliente).filter(models.Cliente.activo == True)
     if q:
-        like = f"%{q.strip()}%"
-        query = query.filter(models.Cliente.nombre.ilike(like) | models.Cliente.telefono.ilike(like))
+        # El mismo criterio que el buscador del historial: sin acentos y sin
+        # mayúsculas. Que las dos búsquedas de la app se porten distinto sería
+        # peor que si las dos fueran estrictas.
+        query = query.filter(or_(_busca(models.Cliente.nombre, q.strip()),
+                                 _busca(models.Cliente.telefono, q.strip())))
     return [_cliente_json(c) for c in query.order_by(models.Cliente.nombre)]
 
 @app.post("/api/clientes")
@@ -1086,16 +1137,9 @@ def listar_comprobantes(tipo: str | None = None,
         except ValueError: raise HTTPException(400, "Fecha 'hasta' inválida (se espera AAAA-MM-DD)")
 
     if q and q.strip():
-        # Se compara en minúscula de los dos lados, pero la del texto buscado la
-        # hace Python y no la base. El lower() de SQLite es ASCII y solo: con
-        # ilike, buscar "NÚÑEZ" no encontraba a "Núñez" porque la Ú se quedaba
-        # como estaba. El de PostgreSQL sí la plegaría, o sea que además andaba
-        # distinto en el local y en producción. Python la baja bien en los dos.
-        #
-        # Los acentos siguen contando: "nunez" no encuentra "Núñez". Era así
-        # antes, cuando el filtro lo hacía la pantalla con includes().
-        patron = f"%{q.strip().lower()}%"
-        base = base.filter(func.lower(models.Comprobante.cliente_nombre).like(patron))
+        # Sin acentos y sin mayúsculas de los dos lados: "nunez" encuentra a
+        # "Núñez", que es como se tipea entre cliente y cliente.
+        base = base.filter(_busca(models.Comprobante.cliente_nombre, q.strip()))
     if numero and numero.strip():
         # Mismo criterio que tenía la pantalla: "12" encuentra el 12, el 120 y el
         # 312. Se compara como texto, así que el número va casteado.
