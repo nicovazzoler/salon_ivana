@@ -203,17 +203,11 @@
         </div>
         <button id="btnGuardarEgreso" class="b-ok">Registrar</button>
       </div>
-      <!-- Fuera de la grilla del formulario a propósito: la casilla es un renglón
-           entero que se lee de corrido, no un campo más de la fila.
-
-           Un egreso privado no le aparece al empleado ni suma en los totales de
-           SU caja. Viene tildada de entrada: si la dueña está anotando un egreso
-           desde su usuario, lo normal es que sea de los suyos. -->
+      <!-- Ya no hay casilla de "privado": lo decide el TIPO de egreso. Eran dos
+           formas de decir lo mismo —la casilla acá y la marca del tipo en Admin—
+           y tarde o temprano se contradecían entre sí. Queda solo el aviso, que
+           es lo único que no se puede deducir mirando la pantalla. -->
       <div class="eg-privado" data-dueno>
-        <label>
-          <input type="checkbox" id="egPrivado" checked>
-          <span>Privado <span class="aclara">(el empleado no lo ve)</span></span>
-        </label>
         <div class="eg-aviso" id="egAvisoPrivado" style="display:none;"></div>
       </div>
       <!-- Antes esta lista estaba adentro de OTRO desplegable: dos toques para

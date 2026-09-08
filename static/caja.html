@@ -158,11 +158,21 @@ async function anularPagoCaja(id){
   toast("Cobro anulado"); cargarDia();
 }
 async function guardarEgresoCaja(id){
-  await authFetch("/api/egresos/"+id,{method:"PUT",headers:{"Content-Type":"application/json"},
+  const r = await authFetch("/api/egresos/"+id,{method:"PUT",headers:{"Content-Type":"application/json"},
     body:JSON.stringify({tipo:document.getElementById("ec_tipo_"+id).value,
                          concepto:document.getElementById("ec_conc_"+id).value,
                          monto:parseInt(document.getElementById("ec_monto_"+id).value)||0})});
-  toast("Egreso actualizado"); cargarDia();
+  const d = await r.json().catch(()=>({}));
+  // Guardar no cambia si un egreso es privado: eso quedó decidido cuando se
+  // cargó. Si hoy su tipo dice otra cosa se avisa y no se toca nada, porque
+  // emparejarlos solos es justo lo que le hacía desaparecer al empleado un
+  // egreso que había anotado él.
+  if(d.desacuerda_con_el_tipo)
+    toast(d.privado
+      ? "Guardado. Sigue siendo privado, aunque su tipo ya no lo sea."
+      : "Guardado. Su tipo ahora es privado, pero este egreso sigue a la vista del empleado.");
+  else toast("Egreso actualizado");
+  cargarDia();
 }
 async function anularEgresoCaja(id){
   if(!confirm("¿Anular este egreso?"))return;

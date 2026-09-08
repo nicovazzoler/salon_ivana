@@ -390,20 +390,9 @@
   /* Casilla de egreso privado: renglón propio debajo del formulario.
      Adentro de la grilla habría sido una sexta columna que aprieta a las otras
      cinco, y en la tablet las deja de un ancho en el que ya no se lee el rótulo. */
+  /* Quedó como envoltorio del aviso nada más: la casilla de "privado" se sacó,
+     porque ahora eso lo decide el tipo de egreso. */
   .eg-privado{ margin-top:var(--sp-2); }
-  /* Esta etiqueta NO es el rótulo de un campo: es la frase que explica qué hace
-     la casilla. Por eso se sale de la versalita en bronce de base.css, que en un
-     renglón entero se lee a los gritos y cuesta leer de corrido. */
-  .eg-privado label{
-    display:inline-flex; align-items:center; gap:6px;
-    font-family:var(--font-ui);
-    font-size:var(--fs-base); font-weight:var(--fw-normal);
-    text-transform:none; letter-spacing:normal;
-    color:var(--text-suave);
-    cursor:pointer;
-  }
-  .eg-privado input{ width:auto; margin:0; }
-  .eg-privado .aclara{ color:var(--text-tenue); }
 
   /* Aviso del arqueo: sale solo cuando el egreso privado es en efectivo, que es
      el único caso en el que esconderlo le deja la cuenta mal a alguien. */

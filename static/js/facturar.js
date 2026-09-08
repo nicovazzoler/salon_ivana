@@ -21,28 +21,12 @@ $("#btnGuardarEgreso").onclick=async()=>{
   const tipo=$("#egTipo").value.trim();
   const monto=parseInt($("#egMonto").value);
   if(!tipo || !monto){ toast("Completá tipo y monto"); return; }
-  const privado = !!($("#egPrivado") && $("#egPrivado").checked);
   await authFetch("/api/tipos-egreso",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({nombre:tipo})});
   await authFetch("/api/egresos",{method:"POST",headers:{"Content-Type":"application/json"},
-    body:JSON.stringify({tipo, concepto:$("#egConcepto").value, monto, forma_pago:$("#egPago").value, privado})});
+    body:JSON.stringify({tipo, concepto:$("#egConcepto").value, monto, forma_pago:$("#egPago").value})});
   $("#egTipo").value=""; $("#egConcepto").value=""; $("#egMonto").value="";
   toast("Egreso registrado"); avisoEgresoPrivado(); cargarEgresosHoy();
 };
-
-/* Un tipo marcado privado en Admin ("Alquiler", "Sueldo") lo es siempre: el
-   backend fuerza la marca aunque la casilla venga destildada. Acá se refleja eso
-   —tildada y trabada— en vez de dejar una casilla que se puede destildar y no
-   hace nada. */
-function ajustarCasillaPrivado(){
-  const chk = $("#egPrivado");
-  if(!chk) return;
-  const forzado = TIPOS_PRIVADOS.has(($("#egTipo").value||"").trim().toLowerCase());
-  chk.disabled = forzado;
-  if(forzado) chk.checked = true;
-  chk.closest("label").title = forzado
-    ? "Este tipo de egreso está marcado como privado en Admin: siempre lo es."
-    : "";
-}
 
 /* Aviso del arqueo.
 
@@ -52,20 +36,19 @@ function ajustarCasillaPrivado(){
    plata del cajón y listo—, pero tiene que estar dicho antes de guardarlo, no
    descubrirse al cerrar la caja.
 
-   Se recalcula al tocar cualquiera de los tres campos que lo definen: la
-   casilla, la forma de pago y el tipo. */
+   Que sea privado ahora sale del TIPO y de ningún otro lado, así que el aviso se
+   recalcula al tocar el tipo o la forma de pago. TIPOS_PRIVADOS llega vacío para
+   el empleado: para él este aviso no existe, como el resto del asunto. */
 function avisoEgresoPrivado(){
-  ajustarCasillaPrivado();
   const caja = $("#egAvisoPrivado");
-  if(!caja) return;                       // el empleado no tiene ni la casilla
-  const privado = $("#egPrivado") && $("#egPrivado").checked;
+  if(!caja) return;
+  const privado = TIPOS_PRIVADOS.has(($("#egTipo").value||"").trim().toLowerCase());
   const efectivo = ($("#egPago").value || "").toLowerCase() === "efectivo";
   caja.style.display = (privado && efectivo) ? "" : "none";
   if(privado && efectivo)
     caja.textContent = "Sale plata del cajón y el empleado no lo va a ver: al cerrar, "
                      + "su arqueo le va a dar de más por este monto.";
 }
-if($("#egPrivado")) $("#egPrivado").onchange = avisoEgresoPrivado;
 $("#egPago").addEventListener("change", avisoEgresoPrivado);
 $("#egTipo").addEventListener("input", avisoEgresoPrivado);
 
@@ -134,8 +117,14 @@ async function cargarListas(cfg){
 
   $("#cobroForma").innerHTML=(cfg.formas_pago||[]).map(f=>`<option>${f}</option>`).join("");
   $("#egPago").innerHTML=(cfg.formas_pago||[]).map(f=>`<option>${f}</option>`).join("");
-  $("#egTipos").innerHTML=(cfg.tipos_egreso||[]).map(t=>`<option value="${t}">`).join("");
   TIPOS_PRIVADOS = new Set((cfg.tipos_privados||[]).map(t=>t.toLowerCase()));
+  // El backend ya los manda con los privados primero. Acá solo se los rotula:
+  // en un datalist un tipo privado y uno común se ven exactamente igual, y
+  // elegir el equivocado significa que el egreso lo ve quien no tiene que verlo.
+  $("#egTipos").innerHTML=(cfg.tipos_egreso||[]).map(t=>
+    TIPOS_PRIVADOS.has(t.toLowerCase())
+      ? `<option value="${t}" label="${t} · privado">`
+      : `<option value="${t}">`).join("");
   $("#aliasList").innerHTML=(cfg.alias||[]).map(a=>`<option value="${a}">`).join("");
   DESCUENTOS=await (await authFetch("/api/descuentos")).json();
   $("#descuento").innerHTML='<option value="">Sin descuento</option>'+

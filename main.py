@@ -182,11 +182,13 @@ class DescuentoEdit(BaseModel):
     nombre: str | None = None; porcentaje: int | None = None
     mostrar_motivo: bool | None = None; activo: bool | None = None
 class EgresoIn(BaseModel):
+    # Sin 'privado': lo decide el TIPO al momento de cargar. Antes venía como una
+    # casilla y eran dos formas de decir lo mismo, que tarde o temprano se
+    # contradicen entre sí.
     tipo: str; concepto: str | None = None; monto: int; forma_pago: str | None = None; notas: str | None = None
-    privado: bool = False                 # solo lo puede pedir la dueña
 class EgresoEdit(BaseModel):
     tipo: str | None = None; concepto: str | None = None; monto: int | None = None
-    forma_pago: str | None = None; notas: str | None = None; privado: bool | None = None
+    forma_pago: str | None = None; notas: str | None = None
 class TipoEgresoIn(BaseModel):
     nombre: str; privado: bool = False    # privado solo lo puede pedir la dueña
 class TipoEgresoEdit(BaseModel):
@@ -731,8 +733,9 @@ def catalogo(_ = Depends(usuario_actual), db: Session = Depends(get_db)):
 @app.get("/api/config")
 def config(user = Depends(usuario_actual), db: Session = Depends(get_db)):
     formas = [f.nombre for f in db.query(models.FormaPago).filter(models.FormaPago.activo == True)]
-    # Los tipos privados no entran acá: este es el desplegable de facturar, y es
-    # justo donde el empleado leería "Alquiler" y ataría cabos.
+    # Al empleado, tipos_visibles le saca los privados: este es el desplegable de
+    # facturar y es justo donde leería "Alquiler" y ataría cabos. A la dueña se
+    # los devuelve, y primero, que son los que carga ella.
     tipos = [t.nombre for t in tipos_visibles(db, user)]
     alias = [a.nombre for a in db.query(models.Alias).filter(models.Alias.activo == True)]
     return {"formas_pago": formas, "tipos_egreso": tipos, "alias": alias,
@@ -771,7 +774,11 @@ def tipos_visibles(db, user):
     q = db.query(models.TipoEgreso).filter(models.TipoEgreso.activo == True)
     if not es_dueno(user):
         q = q.filter(_no_privado(models.TipoEgreso.privado))
-    return q.order_by(models.TipoEgreso.id).all()
+        return q.order_by(models.TipoEgreso.id).all()
+    # A la dueña le van primero los privados. Son los suyos —alquiler, sueldos—
+    # y los carga ella; los comunes ya los tiene a mano el resto del día. El
+    # empleado no llega acá: para él la lista no tiene privados que ordenar.
+    return q.order_by(models.TipoEgreso.privado.desc(), models.TipoEgreso.id).all()
 
 @app.get("/api/tipos-egreso")
 def listar_tipos(user = Depends(usuario_actual), db: Session = Depends(get_db)):
@@ -1553,7 +1560,10 @@ def _ve_el_egreso(user, e) -> bool:
 
 @app.post("/api/egresos")
 def crear_egreso(e: EgresoIn, user = Depends(usuario_actual), db: Session = Depends(get_db)):
-    privado = es_dueno(user) and (e.privado or _tipo_privado(db, e.tipo))
+    # FOTO: se decide una sola vez, al cargar, según quién carga y qué tipo eligió.
+    # Después no se recalcula: un egreso que anotó el empleado le tiene que seguir
+    # apareciendo aunque la dueña marque ese tipo como privado el mes que viene.
+    privado = es_dueno(user) and _tipo_privado(db, e.tipo)
     eg = models.Egreso(tipo=e.tipo, concepto=e.concepto, monto=e.monto,
                        forma_pago=e.forma_pago, notas=e.notas, privado=privado,
                        fecha=fecha_hora_now_utc())
@@ -1582,11 +1592,16 @@ def editar_egreso(egreso_id: int, cambios: EgresoEdit, user = Depends(usuario_ac
     if cambios.monto is not None: e.monto = cambios.monto
     if cambios.forma_pago is not None: e.forma_pago = cambios.forma_pago
     if cambios.notas is not None: e.notas = cambios.notas
-    if cambios.privado is not None and es_dueno(user): e.privado = cambios.privado
-    # El tipo manda: si quedó en uno privado, vuelve a ser privado aunque el
-    # cambio venga sin la casilla.
-    if _tipo_privado(db, e.tipo): e.privado = True
-    db.commit(); return {"ok": True, "privado": bool(e.privado)}
+    # Editar NO reclasifica. Antes, un egreso cuyo tipo hubiera pasado a privado
+    # se volvía privado al guardar cualquier corrección, la hiciera quien la
+    # hiciera: el empleado corregía el monto de un egreso suyo y ese egreso
+    # desaparecía de su propia caja, con el arqueo bajando sin explicación.
+    db.commit()
+    # Cuando la foto y el tipo dejaron de coincidir, se avisa en vez de
+    # emparejarlos por las nuestras: la dueña decide si ese egreso viejo tiene
+    # que pasar a privado, y para eso lo mueve a un tipo privado.
+    desacuerdo = es_dueno(user) and bool(e.privado) != _tipo_privado(db, e.tipo)
+    return {"ok": True, "privado": bool(e.privado), "desacuerda_con_el_tipo": desacuerdo}
 
 @app.delete("/api/egresos/{egreso_id}")
 def anular_egreso(egreso_id: int, user = Depends(usuario_actual), db: Session = Depends(get_db)):
