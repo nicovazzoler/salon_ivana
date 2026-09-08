@@ -17,7 +17,9 @@ la URL de Railway pegada por error, tiene que dar un error y no borrar la base
 del local.
 """
 import argparse
+import glob
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -34,6 +36,32 @@ SOLO_LOCAL = {"127.0.0.1", "localhost", "::1"}
 
 def es_local(url: str) -> bool:
     return (urlparse(url).hostname or "") in SOLO_LOCAL
+
+
+def buscar_binario(nombre: str) -> str:
+    """Encuentra psql / pg_restore aunque no estén en el PATH.
+
+    El instalador de PostgreSQL en Windows NO agrega su carpeta bin al PATH, así
+    que llamarlos por nombre revienta con un "WinError 2: el sistema no puede
+    encontrar el archivo especificado" que no menciona a PostgreSQL por ningún
+    lado. Se busca igual que en backup_salon.ps1: la versión más alta instalada,
+    porque pg_restore puede con dumps más viejos pero no al revés.
+    """
+    ruta = shutil.which(nombre)
+    if ruta:
+        return ruta
+    if os.name == "nt":
+        candidatos = glob.glob(rf"C:\Program Files\PostgreSQL\*\bin\{nombre}.exe")
+        if candidatos:
+            def version(p):
+                try:
+                    return int(Path(p).parent.parent.name)
+                except ValueError:
+                    return 0
+            return max(candidatos, key=version)
+    sys.exit(f"No encuentro {nombre}. Instalá el cliente de PostgreSQL, o agregá "
+             f"su carpeta bin al PATH:\n"
+             f"  $env:PATH += ';C:\\Program Files\\PostgreSQL\\18\\bin'")
 
 
 def correr(cmd, **kw):
@@ -86,15 +114,17 @@ def main():
     print(f"Backup:  {dump.name}  ({dump.stat().st_size // 1024} KB)")
     print(f"Destino: {url_base}\n")
 
+    psql, pg_restore = buscar_binario("psql"), buscar_binario("pg_restore")
+
     print("Recreando la base local...")
     admin = f"{servidor.rstrip('/')}/postgres"
     for sql in (f'DROP DATABASE IF EXISTS "{a.base}"', f'CREATE DATABASE "{a.base}"'):
-        correr(["psql", admin, "-q", "-c", sql])
+        correr([psql, admin, "-q", "-c", sql])
 
     print("Restaurando...")
     # pg_restore avisa de cosas menores con exit code 1 aunque haya restaurado
     # bien, así que acá no se corta: lo que decide es el conteo de abajo.
-    subprocess.run(["pg_restore", "--dbname", url_base, "--no-owner",
+    subprocess.run([pg_restore, "--dbname", url_base, "--no-owner",
                     "--no-privileges", str(dump)], capture_output=True, text=True)
 
     os.environ["DATABASE_URL"] = url_base
@@ -132,10 +162,9 @@ def main():
         return
 
     print(f"Servidor en http://127.0.0.1:{a.puerto}   (Ctrl+C para cortar)\n")
-    os.execvpe(sys.executable,
-               [sys.executable, "-m", "uvicorn", "main:app",
-                "--host", "127.0.0.1", "--port", str(a.puerto)],
-               {**os.environ, "DATABASE_URL": url_base})
+    subprocess.run([sys.executable, "-m", "uvicorn", "main:app",
+                    "--host", "127.0.0.1", "--port", str(a.puerto)],
+                   env={**os.environ, "DATABASE_URL": url_base})
 
 
 if __name__ == "__main__":
