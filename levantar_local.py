@@ -18,6 +18,7 @@ del local.
 """
 import argparse
 import glob
+import importlib.util
 import os
 import shutil
 import subprocess
@@ -115,6 +116,16 @@ def main():
     print(f"Destino: {url_base}\n")
 
     psql, pg_restore = buscar_binario("psql"), buscar_binario("pg_restore")
+
+    # Todo lo que puede faltar se comprueba ANTES de borrar la base. Si no, un
+    # requirements sin instalar te deja sin la copia local y sin la app: el paso
+    # destructivo ya corrió y el que avisa del problema viene después.
+    if not a.solo_restaurar:
+        faltan = [m for m in ("uvicorn", "fastapi") if importlib.util.find_spec(m) is None]
+        if faltan:
+            sys.exit(f"Falta instalar: {', '.join(faltan)}.\n"
+                     f"  pip install -r requirements.txt\n"
+                     f"(o corré con --solo-restaurar si solo querés la base)")
 
     print("Recreando la base local...")
     admin = f"{servidor.rstrip('/')}/postgres"
