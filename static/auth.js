@@ -38,10 +38,12 @@ function pintarNav(){
   // Un solo lugar donde se definen los links del menú. Cambiás acá y se actualiza en todas las páginas.
   const links=[
     {href:"/",           txt:"Facturar"},
+    // Caja va pegada a Facturar porque es el otro lado del mismo movimiento: se
+    // cobra y se mira cuánto entró, muchas veces seguidas en el mismo rato.
+    {href:"/caja",       txt:"Caja"},
     {href:"/clientes",   txt:"Clientes"},
     {href:"/historial",  txt:"Historial"},
     {href:"/agenda",     txt:"Agenda"},
-    {href:"/caja",       txt:"Caja"},
     // Inventario y Admin también son del empleado, pero recortados: en
     // inventario ve las cantidades sin poder tocarlas, y en admin ve las listas
     // con las que factura (catálogo, formas de pago, descuentos) y no los

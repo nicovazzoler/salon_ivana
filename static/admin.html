@@ -27,16 +27,16 @@
 
   <nav class="indice">
     <a class="pill" href="#catalogo">✂️ Catálogo</a>
-    <a class="pill" href="#pagos">💳 Formas de pago</a>
-    <a class="pill" href="#egresos">📤 Egresos</a>
-    <a class="pill" href="#descuentos">🏷️ Descuentos</a>
-    <a class="pill" href="#ajustes">🔧 Ajustes x ítem</a>
-    <a class="pill" href="#alias">🏦 Alias</a>
     <a class="pill" href="#miclave">🔑 Mi contraseña</a>
     <a class="pill" href="#usuarios" data-dueno>👥 Usuarios</a>
     <a class="pill" href="#backup" data-dueno>💾 Backup</a>
   </nav>
 
+  <!-- Las cinco listas configurables —formas de pago, tipos de egreso,
+       descuentos, ajustes por ítem y alias— salieron de acá. Se editan con el
+       lapicito que está al lado del desplegable donde se usan, en Facturar, que
+       es donde uno se da cuenta de que falta una: tener el mismo editor en dos
+       pantallas obligaba a irse de un cobro a medio hacer para venir hasta acá. -->
   <div class="card" id="catalogo">
     <div class="card-head">
       <h2>✂️ Servicios y productos</h2>
@@ -65,50 +65,10 @@
     <datalist id="cats"></datalist>
   </div>
 
-  <div class="card" id="pagos">
-    <div class="card-head">
-      <h2>💳 Formas de pago</h2>
-      <p>Las opciones que se ofrecen al cobrar un ticket.</p>
-    </div>
-    <div id="listaFormas"></div>
-  </div>
 
-  <div class="card" id="egresos">
-    <div class="card-head">
-      <h2>📤 Tipos de egreso</h2>
-      <p>Las categorías con las que se clasifica lo que sale de la caja.
-         <span data-dueno>Un tipo marcado <b>privado</b> (el alquiler, los sueldos)
-         no se le ofrece al empleado, y lo que anotes con ese tipo no aparece en
-         su caja.</span></p>
-    </div>
-    <div id="listaTipos"></div>
-  </div>
 
-  <div class="card" id="descuentos">
-    <div class="card-head">
-      <h2>🏷️ Descuentos</h2>
-      <p>Descuentos por porcentaje que se pueden aplicar a un ticket o presupuesto.</p>
-    </div>
-    <div id="listaDescuentos"></div>
-  </div>
 
-  <div class="card" id="ajustes">
-    <div class="card-head">
-      <h2>🔧 Ajustes por ítem</h2>
-      <p>Descuentos y recargos que se aplican a <b>una línea sola</b> del servicio,
-         no al total. Al facturar aparecen en un desplegable en cada ítem, y ahí
-         también se puede tipear uno suelto.</p>
-    </div>
-    <div id="listaAjustes"></div>
-  </div>
 
-  <div class="card" id="alias">
-    <div class="card-head">
-      <h2>🏦 Alias de transferencia</h2>
-      <p>Las cuentas que aparecen como opción al cobrar por transferencia.</p>
-    </div>
-    <div id="listaAlias"></div>
-  </div>
 
   <!-- Cambiar la propia contraseña lo tiene que poder hacer cualquiera: el cartel
        de "seguís con la contraseña de fábrica" le aparece también al empleado, y
@@ -153,7 +113,6 @@
 <div class="toast" id="toast"></div>
 
 <script src="/static/auth.js"></script>
-<script src="/static/js/listas.js"></script>
 <script src="/static/js/admin.js"></script>
 </body>
 </html>

@@ -90,15 +90,6 @@ $("#btnRenombrar").onclick=async()=>{
   toast("Categoría renombrada");await cargarCats();
 };
 
-/* ---------- Las cinco listas ----------
-
-   El dibujante y la configuración de cada lista viven en /static/js/listas.js,
-   porque Facturar usa lo mismo desde el lapicito que hay al lado de cada
-   desplegable. Acá solo se dice dónde va cada una. */
-["formas","tipos","descuentos","ajustes","alias"].forEach(nombre =>
-  Listas.dibujar("#lista" + {formas:"Formas", tipos:"Tipos", descuentos:"Descuentos",
-                             ajustes:"Ajustes", alias:"Alias"}[nombre], nombre));
-
 // --- Usuarios ---
 // Se dibuja para leer. Los campos aparecen al pedirlos, y de a uno: nombre y
 // contraseña no se cambian juntos casi nunca, y tenerlos siempre a la vista
