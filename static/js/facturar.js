@@ -460,8 +460,16 @@ function renderTicket(){
         <select class="aj-sel">
           <option value="">Sin ajuste</option>
           ${AJUSTES.map(a=>`<option value="${a.id}"${coincideAj(l,a)?" selected":""}>${esc(a.nombre)} (${etiquetaAj(a)})</option>`).join("")}
-          <option value="libre"${aj && !l.ajusteNombre?" selected":""}>Otro…</option>
+          <!-- "Otro…" queda elegido para cualquier ajuste que no sea igualito a
+               uno de la lista: el tipeado a mano, y también el que salió de un
+               ajuste que después se editó o se borró. Antes solo se fijaba en si
+               tenía nombre, así que una línea con "Pelo largo −10%" a la que le
+               cambiaban el porcentaje en la lista quedaba con el desplegable en
+               "Sin ajuste" mientras el renglón seguía descontando. -->
+          <option value="libre"${aj && !AJUSTES.some(a=>coincideAj(l,a))?" selected":""}>Otro…</option>
         </select>
+        <button class="editar-lista aj-editar" type="button"
+                title="Editar la lista de ajustes por ítem" aria-label="Editar la lista de ajustes por ítem">✎</button>
         <div class="aj-unidad">
           <button class="u-pct${enPesos?"":" on"}" type="button" title="Ajuste en porcentaje">Porc. %</button>
           <button class="u-mon${enPesos?" on":""}" type="button" title="Ajuste en pesos">Pesos</button>
@@ -531,6 +539,17 @@ function renderTicket(){
       };
       row.querySelector(".u-pct").onclick = () => cambiarUnidad("%");
       row.querySelector(".u-mon").onclick = () => cambiarUnidad("$");
+
+      /* Editar la lista de ajustes desde el propio renglón. Acá ya se podía
+         tipear un ajuste suelto con "Otro…", así que esto es para el otro caso:
+         el que vas a volver a usar y querés dejar cargado. Lo que la línea ya
+         tiene no se toca —el ajuste está aplicado y su nombre quedó copiado en
+         ella—; lo que se refresca es el desplegable. */
+      row.querySelector(".aj-editar").onclick = () => Listas.abrir("ajustes", async hubo => {
+        if(!hubo) return;
+        await cargarListas();
+        renderTicket();
+      });
 
       inp.oninput = () => {
         let v = parseInt(inp.value);

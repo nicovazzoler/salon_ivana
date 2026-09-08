@@ -259,6 +259,11 @@
   }
   .aj-panel .lbl{ font-size:var(--fs-sm); color:var(--text-tenue); }
   .aj-panel select{ flex:1 1 150px; min-width:0; padding:6px 8px; }
+  /* El lapicito del panel de ajuste va más chico que el de los desplegables de
+     arriba: acá el renglón entero mide 34px y un botón de ese alto lo estiraría.
+     Es el mismo botón, solo achicado para este lugar. */
+  .aj-panel .aj-editar{ width:30px; height:30px; font-size:14px; }
+
   .aj-panel .pct-box{
     display:flex; align-items:center; gap:2px;
     /* alcanza para "-2000" mas el sufijo "$/u" en un solo renglon */
