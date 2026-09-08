@@ -125,22 +125,18 @@
     </div>
   </div>
 
+  <!-- La lista se dibuja para LEERSE: quién entra y con qué rol. Los campos
+       aparecen recién cuando se pide cambiar algo. Antes estaba todo editable a
+       la vez —nombre, rol, contraseña, guardar y eliminar en cada renglón— y con
+       dos usuarios eran catorce controles habilitados compitiendo por atención,
+       para una pantalla que se toca dos veces por año. -->
   <div class="card" id="usuarios" data-dueno>
     <div class="card-head">
-      <h2>👥 Usuarios y contraseñas</h2>
-      <p>Quién entra a la app y con qué permisos. Hay un usuario por rol: una dueña
-         y un empleado. Para sumar otro hay que borrar el que está.</p>
+      <h2>👥 Usuarios</h2>
+      <p>Quién entra a la app. Hay uno por rol: una dueña y un empleado.</p>
     </div>
     <div id="listaUsuarios"></div>
-    <hr>
-    <div class="sub-h">Crear usuario</div>
-    <div class="fila">
-      <div><label>Usuario</label><input id="uNom" placeholder="Ej: maria"></div>
-      <div><label>Contraseña</label><input id="uPass" type="text" placeholder="clave inicial"></div>
-      <div style="flex:0;min-width:120px;"><label>Rol</label>
-        <select id="uRol"><option value="empleado">Empleado</option><option value="dueno">Dueño</option></select></div>
-      <button class="b-ok" id="btnUsuario">Crear</button>
-    </div>
+    <div id="crearUsuario"></div>
   </div>
 
   <div class="card" id="backup" data-dueno>

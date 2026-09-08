@@ -55,8 +55,48 @@
 
   /* Listas simples (formas de pago, egresos, alias): nombre + eliminar */
   .item-row.simple{ grid-template-columns:1fr auto; }
-  /* Usuarios: nombre + rol + clave nueva + acciones */
-  .item-row.usuario{ grid-template-columns:minmax(0,1.6fr) 130px minmax(0,1fr) auto; }
+  /* Usuarios. La fila es de LECTURA: nombre, rol y los botones que abren lo que
+     haga falta. El panel de edición se inserta debajo y solo hay uno abierto por
+     vez, así la tarjeta nunca muestra más de un formulario. */
+  .usuario-fila{
+    display:grid;
+    grid-template-columns:minmax(0,1fr) auto;
+    align-items:center;
+    gap:var(--sp-2);
+    padding:var(--sp-2) 0;
+    border-bottom:1px solid var(--border-sutil);
+  }
+  .usuario-fila .quien{
+    display:flex; align-items:baseline; gap:var(--sp-2);
+    min-width:0;
+  }
+  .usuario-fila .n{ min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .usuario-fila .meta{ font-size:var(--fs-sm); color:var(--text-tenue); white-space:nowrap; }
+  .usuario-fila .acc{ display:flex; gap:6px; }
+  /* Eliminar se despega del resto: lo que no se deshace no va pegado a lo
+     rutinario, donde se aprieta sin mirar. */
+  .usuario-fila .acc .b-del{ margin-left:var(--sp-2); }
+
+  .usuario-panel{
+    display:flex; align-items:flex-end; flex-wrap:wrap;
+    gap:var(--sp-2);
+    padding:var(--sp-2);
+    margin-bottom:var(--sp-2);
+    border:1px solid var(--border-sutil);
+    border-top:none;
+    border-radius:0 0 var(--r-md) var(--r-md);
+    background:var(--bg-header);
+  }
+  .usuario-panel label{ flex:0 0 100%; margin:0; font-size:var(--fs-sm); color:var(--text-tenue); }
+  .usuario-panel input, .usuario-panel select{ flex:1 1 160px; min-width:0; }
+  .usuario-panel .acc{ display:flex; gap:6px; }
+  /* El de crear no cuelga de ninguna fila: lleva el borde completo. */
+  .usuario-panel.crear{ border-top:1px solid var(--border-sutil); border-radius:var(--r-md); margin-top:var(--sp-3); }
+
+  .nota-vacio{
+    margin:var(--sp-3) 0 0;
+    font-size:var(--fs-sm); color:var(--text-tenue);
+  }
 
   /* Tipos de egreso: entre el nombre y el botón se cuela la marca de "privado",
      que solo existe para la dueña. La fila tiene dos formas y cada una declara
@@ -70,9 +110,12 @@
   .marca-privado input{ width:auto; margin:0; }
 
   @media (max-width:640px){
-    .item-row, .item-row.simple, .item-row.simple.con-marca, .item-row.usuario{ grid-template-columns:1fr auto; row-gap:6px; }
+    .item-row, .item-row.simple, .item-row.simple.con-marca{ grid-template-columns:1fr auto; row-gap:6px; }
     .item-row .marca-privado{ grid-column:1; }
-    .item-row .p, .item-row .uRolEd, .item-row .uClave{ grid-column:1 / -1; }
+    .item-row .p{ grid-column:1 / -1; }
+    /* En pantalla chica la fila de usuario apila el rol debajo del nombre. */
+    .usuario-fila{ grid-template-columns:1fr; row-gap:6px; }
+    .usuario-fila .acc{ justify-content:flex-start; flex-wrap:wrap; }
     .item-row .meta{ grid-column:1 / -1; }
     .item-row .acc{ grid-column:2; grid-row:1; }
   }

@@ -100,47 +100,153 @@ $("#btnRenombrar").onclick=async()=>{
                              ajustes:"Ajustes", alias:"Alias"}[nombre], nombre));
 
 // --- Usuarios ---
-async function cargarUsuarios(){
-  const us=await (await authFetch("/api/usuarios")).json();
-  const cont=$("#listaUsuarios");cont.innerHTML="";
-  us.forEach(u=>{
-    const row=document.createElement("div");row.className="item-row usuario";
-    row.innerHTML=`
-      <input class="uNombre" value="${u.usuario}">
-      <select class="uRolEd">
-        <option value="empleado"${u.rol==="empleado"?" selected":""}>Empleado</option>
-        <option value="dueno"${u.rol==="dueno"?" selected":""}>Dueño</option>
-      </select>
-      <input class="uClave" type="text" placeholder="nueva clave (opcional)">
-      <span class="acc">
-        <button class="b-tinta guardarU">Guardar</button>
-        <button class="b-del borrarU">Eliminar</button>
-      </span>`;
-    row.querySelector(".guardarU").onclick=async()=>{
-      const cambios={usuario:row.querySelector(".uNombre").value.trim(), rol:row.querySelector(".uRolEd").value};
-      const cl=row.querySelector(".uClave").value;
-      if(cl) cambios.password=cl;
-      const r=await authFetch(`/api/usuarios/${u.id}`,{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify(cambios)});
-      if(!r.ok){const e=await r.json();toast(e.detail||"No se pudo");return;}
-      toast("Usuario actualizado");cargarUsuarios();
-    };
-    row.querySelector(".borrarU").onclick=async()=>{
-      if(!confirm(`¿Eliminar al usuario "${u.usuario}"?`))return;
-      const r=await authFetch(`/api/usuarios/${u.id}`,{method:"DELETE"});
-      if(!r.ok){const e=await r.json();toast(e.detail||"No se pudo");return;}
-      toast("Eliminado");cargarUsuarios();
-    };
-    cont.appendChild(row);
+// Se dibuja para leer. Los campos aparecen al pedirlos, y de a uno: nombre y
+// contraseña no se cambian juntos casi nunca, y tenerlos siempre a la vista
+// convertía un dato que se mira en un formulario a medio llenar.
+const ROTULO_ROL = {dueno:"Dueña", empleado:"Empleado"};
+
+function panelUsuario(u, tipo, alTerminar){
+  // tipo: "clave" o "nombre". Devuelve la fila de edición ya cableada.
+  const esClave = tipo === "clave";
+  const pan = document.createElement("div");
+  pan.className = "usuario-panel";
+  pan.innerHTML = `
+    <label>${esClave ? "Contraseña nueva" : "Nombre de usuario"}</label>
+    <input class="valor" type="text">
+    <span class="acc">
+      <button class="b-ok aceptar">Guardar</button>
+      <button class="b-out cancelar">Cancelar</button>
+    </span>`;
+  const campo = pan.querySelector(".valor");
+  if (!esClave) campo.value = u.usuario;
+
+  pan.querySelector(".cancelar").onclick = () => alTerminar(false);
+  pan.querySelector(".aceptar").onclick = async () => {
+    const v = campo.value.trim();
+    if (!v) { toast(esClave ? "Escribí la contraseña nueva" : "El nombre no puede quedar vacío"); return; }
+    const r = await authFetch(`/api/usuarios/${u.id}`, {
+      method: "PUT", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify(esClave ? {password: v} : {usuario: v})});
+    if (!r.ok) { const e = await r.json(); toast(e.detail || "No se pudo"); return; }
+    toast(esClave ? "Contraseña cambiada" : "Nombre cambiado");
+    alTerminar(true);
+  };
+  campo.addEventListener("keydown", ev => {
+    if (ev.key === "Enter") pan.querySelector(".aceptar").click();
+    if (ev.key === "Escape") alTerminar(false);
   });
+  setTimeout(() => campo.focus(), 0);
+  return pan;
 }
-if(DUENO) $("#btnUsuario").onclick=async()=>{
-  const u=$("#uNom").value.trim(),p=$("#uPass").value;
-  if(!u||!p){toast("Completá usuario y contraseña");return;}
-  const r=await authFetch("/api/usuarios",{method:"POST",headers:{"Content-Type":"application/json"},
-    body:JSON.stringify({usuario:u,password:p,rol:$("#uRol").value})});
-  if(!r.ok){const e=await r.json();toast(e.detail||"No se pudo");return;}
-  $("#uNom").value="";$("#uPass").value="";toast("Usuario creado");cargarUsuarios();
-};
+
+async function cargarUsuarios(){
+  const us = await (await authFetch("/api/usuarios")).json();
+  const cont = $("#listaUsuarios");
+  cont.innerHTML = "";
+  const yo = getUser();
+
+  us.forEach(u => {
+    const fila = document.createElement("div");
+    fila.className = "usuario-fila";
+
+    const nom = document.createElement("span");
+    nom.className = "n";
+    nom.textContent = u.usuario;              // textContent y no innerHTML: el
+    const meta = document.createElement("span");   // nombre lo escribe una persona
+    meta.className = "meta";
+    meta.textContent = ROTULO_ROL[u.rol] || u.rol;
+    if (u.usuario === yo) meta.textContent += " · vos";
+
+    const acc = document.createElement("span");
+    acc.className = "acc";
+    const bClave = Object.assign(document.createElement("button"),
+                                 {className: "b-out", textContent: "Contraseña"});
+    const bNom = Object.assign(document.createElement("button"),
+                               {className: "b-out", textContent: "Renombrar"});
+    acc.append(bClave, bNom);
+
+    // Eliminar solo donde puede funcionar: el backend no deja borrarse a uno
+    // mismo, así que mostrar el botón ahí es ofrecer un error.
+    if (u.usuario !== yo) {
+      const bDel = Object.assign(document.createElement("button"),
+                                 {className: "b-del", textContent: "Eliminar"});
+      bDel.onclick = async () => {
+        if (!confirm(`¿Eliminar al usuario "${u.usuario}"?`)) return;
+        const r = await authFetch(`/api/usuarios/${u.id}`, {method: "DELETE"});
+        if (!r.ok) { const e = await r.json(); toast(e.detail || "No se pudo"); return; }
+        toast("Eliminado"); cargarUsuarios();
+      };
+      acc.appendChild(bDel);
+    }
+
+    // Nombre y rol van en la MISMA celda. Si son dos columnas de grilla, el
+    // ancho del bloque de botones (dos o tres, según la fila) corre el rol a
+    // distinta altura en cada renglón y la lista se lee en zigzag.
+    const quien = document.createElement("span");
+    quien.className = "quien";
+    quien.append(nom, meta);
+    fila.append(quien, acc);
+    cont.appendChild(fila);
+
+    // Un solo panel abierto por vez en toda la lista: dos formularios abiertos
+    // a la vez son otra vez el problema que se quería sacar.
+    const abrir = tipo => {
+      cont.querySelectorAll(".usuario-panel").forEach(x => x.remove());
+      const pan = panelUsuario(u, tipo, recargar => {
+        pan.remove();
+        if (recargar) cargarUsuarios();
+      });
+      fila.after(pan);
+    };
+    bClave.onclick = () => abrir("clave");
+    bNom.onclick = () => abrir("nombre");
+  });
+
+  dibujarCrearUsuario(us);
+}
+
+// El formulario de crear solo existe si hay un rol libre. Con los dos ocupados
+// era un formulario que solo podía terminar en el error "ya hay un usuario X".
+function dibujarCrearUsuario(us){
+  const cont = $("#crearUsuario");
+  if (!cont) return;
+  cont.innerHTML = "";
+  const libres = Object.keys(ROTULO_ROL).filter(r => !us.some(u => u.rol === r));
+
+  if (!libres.length){
+    const p = document.createElement("p");
+    p.className = "nota-vacio";
+    p.textContent = "Los dos roles están ocupados. Para cambiar de persona, "
+                  + "renombrá el usuario y cambiale la contraseña, o borralo y creá otro.";
+    cont.appendChild(p);
+    return;
+  }
+
+  const caja = document.createElement("div");
+  caja.className = "usuario-panel crear";
+  caja.innerHTML = `
+    <label>Crear el usuario ${libres.map(r => ROTULO_ROL[r]).join(" o ")}</label>
+    <input class="cNom" type="text" placeholder="nombre de usuario">
+    <input class="cPass" type="text" placeholder="contraseña inicial">
+    ${libres.length > 1
+      ? `<select class="cRol">${libres.map(r => `<option value="${r}">${ROTULO_ROL[r]}</option>`).join("")}</select>`
+      : ""}
+    <span class="acc"><button class="b-ok crear">Crear</button></span>`;
+
+  caja.querySelector(".crear").onclick = async () => {
+    const nom = caja.querySelector(".cNom").value.trim();
+    const pass = caja.querySelector(".cPass").value;
+    if (!nom || !pass) { toast("Completá usuario y contraseña"); return; }
+    const rol = libres.length > 1 ? caja.querySelector(".cRol").value : libres[0];
+    const r = await authFetch("/api/usuarios", {
+      method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({usuario: nom, password: pass, rol})});
+    if (!r.ok) { const e = await r.json(); toast(e.detail || "No se pudo"); return; }
+    toast("Usuario creado"); cargarUsuarios();
+  };
+  cont.appendChild(caja);
+}
+
 $("#btnMiPass").onclick=async()=>{
   const p=$("#miPass").value;if(!p){toast("Escribí la nueva contraseña");return;}
   await authFetch("/api/usuarios/password",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify({nueva:p})});
