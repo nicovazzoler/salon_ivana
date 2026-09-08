@@ -173,9 +173,13 @@ def main():
         return
 
     print(f"Servidor en http://127.0.0.1:{a.puerto}   (Ctrl+C para cortar)\n")
-    subprocess.run([sys.executable, "-m", "uvicorn", "main:app",
-                    "--host", "127.0.0.1", "--port", str(a.puerto)],
-                   env={**os.environ, "DATABASE_URL": url_base})
+    # uvicorn se levanta DENTRO de este proceso, no como hijo. Con un proceso
+    # hijo, en Windows el Ctrl+C queda repartido entre los dos y no corta ni uno
+    # ni el otro: hay que cerrar la ventana. Con os.execvpe tampoco servía, que
+    # en Windows no reemplaza el proceso y devuelve la consola antes de tiempo.
+    # Corriéndolo acá adentro hay un solo proceso y el Ctrl+C llega derecho.
+    import uvicorn
+    uvicorn.run("main:app", host="127.0.0.1", port=a.puerto)
 
 
 if __name__ == "__main__":
