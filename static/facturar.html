@@ -66,8 +66,12 @@
 
       <!-- Anotar un servicio de otro día. Va plegado porque el 99% de las veces
            se factura en el momento: abierto, sería un campo más que leer en cada
-           cobro y una fecha más que se puede tocar sin querer. -->
-      <details class="otro-dia" id="otroDiaBox">
+           cobro y una fecha más que se puede tocar sin querer.
+
+           Solo para la dueña: cambiar la fecha del servicio mueve el cobro de la
+           caja de un día a la de otro, y esa decisión no es de quien atiende.
+           El backend rebota el intento igual. -->
+      <details class="otro-dia" id="otroDiaBox" data-dueno>
         <summary>Es de otro día <span class="aclara">(se olvidaron de cargarlo)</span></summary>
         <div class="fila alta-fecha">
           <label>Fecha del servicio</label>
@@ -199,6 +203,19 @@
         </div>
         <button id="btnGuardarEgreso" class="b-ok">Registrar</button>
       </div>
+      <!-- Fuera de la grilla del formulario a propósito: la casilla es un renglón
+           entero que se lee de corrido, no un campo más de la fila.
+
+           Un egreso privado no le aparece al empleado ni suma en los totales de
+           SU caja. Viene tildada de entrada: si la dueña está anotando un egreso
+           desde su usuario, lo normal es que sea de los suyos. -->
+      <div class="eg-privado" data-dueno>
+        <label>
+          <input type="checkbox" id="egPrivado" checked>
+          <span>Privado <span class="aclara">(el empleado no lo ve)</span></span>
+        </label>
+        <div class="eg-aviso" id="egAvisoPrivado" style="display:none;"></div>
+      </div>
       <!-- Antes esta lista estaba adentro de OTRO desplegable: dos toques para
            ver lo que salió hoy. Ahora se muestra directo. -->
       <div class="eg-hoy" id="egresosHoy"></div>
@@ -210,5 +227,6 @@
 
 <script src="/static/auth.js"></script>
 <script src="/static/escpos.js"></script>
+<script src="/static/js/listas.js"></script>
 <script src="/static/js/facturar.js"></script>
 </body></html>

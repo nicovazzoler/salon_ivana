@@ -30,7 +30,7 @@ Ficha del cliente con sus comprobantes, saldos pendientes y registro de pagos pa
 ![Cuenta corriente](docs/cuenta.png)
 
 ### Historial
-Tickets y presupuestos emitidos, con búsqueda por cliente y por número, y filtros por deuda o por presupuestos ya convertidos. La lista se dibuja de a tramos para que la tablet no se arrastre.
+Tickets y presupuestos emitidos, con búsqueda por cliente y por número, y filtros por deuda o por presupuestos ya convertidos. La lista se pide al servidor de a páginas, acotada a un período: arranca en los últimos 30 días y salta sola a todo el historial cuando buscás, para que la tablet no tenga que traerse mil comprobantes cada vez que se abre la pantalla.
 
 ![Historial](docs/historial.png)
 
@@ -61,13 +61,13 @@ Resumen por período, evolución de la caja, ranking de lo más vendido, ingreso
 - **Facturación** — Catálogo por categorías con buscador en vivo y agrupado por variantes (talles). Dos listas de precios, descuento por comprobante, **descuento o recargo por línea** (en porcentaje o en pesos), **extras que ningún descuento toca**, pago mixto y venta a cuenta. **Imprime el papel solo al terminar de cobrar**, y permite anotar un servicio de un día anterior sin desordenar la caja. Registro de egresos en la misma pantalla.
 - **Impresión térmica** — Comprobantes, presupuestos y resúmenes de cuenta por comandera Bluetooth de 80mm (ESC/POS, 48 columnas, acentos vía CP850), con vista previa en pantalla y salida a PDF como alternativa. No son documentos fiscales y el papel lo aclara. Ver [`docs/comandera.md`](docs/comandera.md).
 - **Clientes y cuenta corriente** — Alta y búsqueda con teléfono y alias de transferencia, filtro de deudores. Ficha con comprobantes, saldos y pagos parciales: cada cliente tiene su historial completo con lo que debe y lo que pagó.
-- **Historial** — Tickets y presupuestos con estado de pago, búsqueda por cliente y número, y filtros por deuda o conversión.
+- **Historial** — Tickets y presupuestos con estado de pago, búsqueda por cliente y número, y filtros por deuda o conversión. Paginado en el servidor: arranca en los últimos 30 días y buscar mira todo el historial, de cualquier fecha y año.
 - **Presupuestos** — Se emiten con los dos precios a la vista y se convierten a ticket con un botón, descontando el stock recién en ese momento.
 - **Agenda** — Turnos con vista día / semana / mes (lunes a domingo), cancelación y notas diarias.
 - **Caja** — Cierre diario con ingresos/egresos por forma de pago, arqueo de efectivo con fondo por día (con arrastre), y edición/anulación sin salir de la pantalla.
 - **Reportes** — Resumen por período, ranking de más vendidos, evolución temporal, deuda total y exportación a Excel.
 - **Inventario** — Stock con alertas de reposición y carga de entradas de mercadería.
-- **Administración** — ABM de productos, categorías, precios, descuentos, ajustes por ítem, formas de pago, alias, tipos de egreso y usuarios. Backup completo en JSON.
+- **Administración** — ABM de productos, categorías, precios, descuentos, ajustes por ítem, formas de pago, alias, tipos de egreso y usuarios. Backup completo en JSON. Las listas del día a día las maneja también el empleado; los usuarios y el backup, solo la dueña. Cada lista se edita fila por fila, y también desde el lapicito que hay al lado del desplegable donde se usa: si falta un descuento en medio de un cobro, se carga ahí sin salir de Facturación.
 - **Modo claro / oscuro** — Se elige por dispositivo y queda guardado; sin elección propia, sigue al sistema operativo.
 
 ---
@@ -146,7 +146,34 @@ uvicorn main:app --reload --port 8000
 | Usuario | Contraseña | Rol |
 |---|---|---|
 | `dueno` | `dueno1234` | Acceso total |
-| `empleado` | `empleado1234` | Facturación y agenda |
+| `empleado` | `empleado1234` | Todo salvo reportes, usuarios, backup y el stock |
+
+Hay **un usuario por rol**: una dueña y un empleado. El sistema no deja crear un
+segundo del mismo rol, porque con dos cuentas "empleado" deja de saberse quién
+anotó cada cosa y la contraseña termina siendo la misma para todos.
+
+### Qué ve cada rol
+
+| | Dueña | Empleado |
+|---|---|---|
+| Facturar, clientes, agenda, historial | ✅ | ✅ |
+| Anotar un servicio con fecha de otro día | ✅ | ❌ |
+| Caja del día y arqueo | ✅ | ✅ (sin los egresos privados) |
+| Fondo inicial de caja | ✅ | ❌ |
+| Inventario | edita | solo lee las cantidades |
+| Admin: catálogo, formas de pago, tipos de egreso, descuentos, ajustes por ítem, alias | ✅ | ✅ |
+| Admin: usuarios y backup | ✅ | ❌ |
+| Reportes | ✅ | ❌ |
+
+**Egresos privados.** El alquiler y los sueldos se anotan como cualquier otro
+egreso, pero marcados privados: no aparecen en la lista del empleado ni suman en
+los totales de *su* caja. Se marcan de dos formas que se complementan: la casilla
+al cargar el egreso (viene tildada para la dueña) y el tipo de egreso marcado
+como privado en Admin, que la tilda solo y no deja destildarla. Un egreso cargado
+por el empleado nunca es privado, aunque le ponga un nombre de tipo reservado:
+esconderle lo que él mismo acaba de anotar le dejaría el arqueo sin explicación.
+Si el egreso privado es en efectivo, la pantalla avisa que el arqueo del empleado
+va a dar de más por ese monto.
 
 Para acceder desde otro dispositivo en la misma red (ej: una tablet), levantar con `--host 0.0.0.0` y entrar a `http://[IP-de-la-PC]:8000`.
 

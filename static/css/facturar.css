@@ -259,6 +259,11 @@
   }
   .aj-panel .lbl{ font-size:var(--fs-sm); color:var(--text-tenue); }
   .aj-panel select{ flex:1 1 150px; min-width:0; padding:6px 8px; }
+  /* El lapicito del panel de ajuste va más chico que el de los desplegables de
+     arriba: acá el renglón entero mide 34px y un botón de ese alto lo estiraría.
+     Es el mismo botón, solo achicado para este lugar. */
+  .aj-panel .aj-editar{ width:30px; height:30px; font-size:14px; }
+
   .aj-panel .pct-box{
     display:flex; align-items:center; gap:2px;
     /* alcanza para "-2000" mas el sufijo "$/u" en un solo renglon */
@@ -380,6 +385,46 @@
     .eg-form{ grid-template-columns:1fr 1fr; }
     .eg-form .concepto{ grid-column:1 / -1; }
     .eg-form button{ grid-column:1 / -1; }
+  }
+
+  /* Casilla de egreso privado: renglón propio debajo del formulario.
+     Adentro de la grilla habría sido una sexta columna que aprieta a las otras
+     cinco, y en la tablet las deja de un ancho en el que ya no se lee el rótulo. */
+  .eg-privado{ margin-top:var(--sp-2); }
+  /* Esta etiqueta NO es el rótulo de un campo: es la frase que explica qué hace
+     la casilla. Por eso se sale de la versalita en bronce de base.css, que en un
+     renglón entero se lee a los gritos y cuesta leer de corrido. */
+  .eg-privado label{
+    display:inline-flex; align-items:center; gap:6px;
+    font-family:var(--font-ui);
+    font-size:var(--fs-base); font-weight:var(--fw-normal);
+    text-transform:none; letter-spacing:normal;
+    color:var(--text-suave);
+    cursor:pointer;
+  }
+  .eg-privado input{ width:auto; margin:0; }
+  .eg-privado .aclara{ color:var(--text-tenue); }
+
+  /* Aviso del arqueo: sale solo cuando el egreso privado es en efectivo, que es
+     el único caso en el que esconderlo le deja la cuenta mal a alguien. */
+  .eg-aviso{
+    margin-top:6px;
+    padding:8px 10px;
+    border-radius:var(--r-md);
+    border:1px solid var(--rojo-borde);
+    background:var(--rojo-bg);
+    font-size:var(--fs-sm);
+    color:var(--text-suave);
+  }
+
+  /* Egreso que el empleado no ve: se marca en la lista de la dueña, si no no hay
+     forma de distinguir cuál de los de hoy es de los suyos. */
+  .eg-row .privado{
+    margin:0 6px;
+    font-size:var(--fs-xs);
+    color:var(--text-marca);
+    text-transform:uppercase;
+    letter-spacing:var(--tracking-eti);
   }
 
   /* ----- Lo que salió hoy ----- */

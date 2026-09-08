@@ -72,6 +72,14 @@
   }
   .prod-estado b{ color:var(--danger); font-weight:var(--fw-bold); }
 
+  /* Solo lectura: el número al que vino a mirar el empleado, grande y solo.
+     Sin los tres campos vacíos al lado, que serían tres cosas que no puede tocar. */
+  .prod-campos.solo-lectura{ align-items:center; padding-right:var(--sp-4); }
+  .prod-campos .cantidad{
+    font-family:var(--font-display); font-size:26px; font-weight:var(--fw-bold);
+    color:var(--text-titulo); font-variant-numeric:tabular-nums;
+  }
+
   .prod-campos{
     display:flex; align-items:flex-end; gap:var(--sp-3);
     padding:10px var(--sp-3) 10px 0; flex-wrap:wrap;
@@ -130,15 +138,17 @@
   <div class="card">
     <div class="card-head">
       <h2>Productos en stock</h2>
-      <p>Cargá el stock contado en <b>Actual</b>, o usá <b>Entrada</b> para sumar lo que
+      <p data-dueno>Cargá el stock contado en <b>Actual</b>, o usá <b>Entrada</b> para sumar lo que
          llegó sin hacer la cuenta. Baja solo con cada venta.</p>
+      <p data-empleado>Cuánto queda de cada producto. Baja solo con cada venta;
+         corregirlo lo hace la dueña.</p>
     </div>
 
     <div class="kpis" id="kpis"></div>
 
     <div class="herramientas">
       <input class="buscar" id="buscar" placeholder="🔎 Buscar producto por nombre...">
-      <button id="btnHist" class="b-out">📋 Movimientos</button>
+      <button id="btnHist" class="b-out" data-dueno>📋 Movimientos</button>
     </div>
 
     <div class="filtros" id="filtros">
@@ -154,7 +164,16 @@
 <div class="toast" id="toast"></div>
 <script src="/static/auth.js"></script>
 <script>
-requireDueno(); pintarNav();
+/* El empleado entra a ver, no a corregir.
+
+   Necesita saber si queda shampoo antes de vendérselo a alguien, y preguntarlo
+   por WhatsApp no es una forma de consultar el stock. Pero el número del
+   inventario es plata: uno mal contado se arrastra hasta que alguien hace el
+   recuento entero de nuevo. Así que para el empleado la pantalla queda de solo
+   lectura —sin los campos, sin los botones y sin el log de movimientos— y el
+   backend rebota igual el PUT si alguien lo prueba a mano. */
+requireLogin(); pintarNav(); ajustarPorRol();
+const DUENO = esDueno();
 const $=s=>document.querySelector(s);
 const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 function toast(m){const t=$("#toast");t.textContent=m;t.classList.add("show");setTimeout(()=>t.classList.remove("show"),2000);}
@@ -212,7 +231,7 @@ function render(){
         <div class="prod-nombre">${esc(p.nombre)}</div>
         <div class="prod-estado">${nota}</div>
       </div>
-      <div class="prod-campos">
+      ${DUENO ? `<div class="prod-campos">
         <div class="campo"><label>Actual</label><input type="number" class="sa" value="${p.stock_actual}"></div>
         <div class="campo"><label>Mínimo</label><input type="number" class="sm" value="${p.stock_minimo}"></div>
         <div class="campo entrada"><label>Entrada</label><input type="number" class="ent" placeholder="0"></div>
@@ -220,7 +239,10 @@ function render(){
           <button class="sumar" title="Sumar lo que entró al stock actual">Sumar</button>
           <button class="guardar">Guardar</button>
         </div>
-      </div>`;
+      </div>` : `<div class="prod-campos solo-lectura"><span class="cantidad">${p.stock_actual}</span></div>`}`;
+
+    // Para el empleado la fila termina acá: no hay campos que atar a nada.
+    if(!DUENO){ cont.appendChild(fila); return; }
 
     const sa=fila.querySelector(".sa"), sm=fila.querySelector(".sm"), ent=fila.querySelector(".ent");
 
@@ -263,7 +285,7 @@ document.querySelectorAll("#filtros .pill").forEach(b=>{
 });
 
 let histAbierto=false;
-$("#btnHist").onclick = async ()=>{
+if($("#btnHist")) $("#btnHist").onclick = async ()=>{
   histAbierto=!histAbierto;
   const cont=$("#historial");
   if(!histAbierto){ cont.style.display="none"; $("#btnHist").textContent="📋 Movimientos"; return; }

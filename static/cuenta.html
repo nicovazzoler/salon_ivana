@@ -117,6 +117,24 @@ function numTicket(n){ return "N-"+String(n).padStart(5,"0"); }
 function numComp(c){ return (c.tipo==="presupuesto"?"P-":"N-")+String(c.numero).padStart(5,"0"); }
 function parseISO2(s){ const [y,m,d]=s.split("-").map(Number); return new Date(y,m-1,d); }
 
+/* Fecha y hora de facturación de un comprobante.
+
+   La "Z" no es un detalle: el backend guarda UTC sin marcar la zona, y sin ella
+   el navegador lee "2026-09-07T23:40" como si ya fuera hora argentina. La fecha
+   salía corrida para todo lo facturado después de las 21:00 y la hora habría
+   salido tres horas adelantada. Es el mismo truco que usa escpos.js.
+
+   Un servicio anotado de otro día lleva las 12:00 puestas por el backend para
+   que caiga en la caja correcta, así que ahí va la fecha sola: mostrar esa hora
+   sería inventar a qué hora se atendió. */
+function fechaHoraComp(comp){
+  const iso = comp.fecha.endsWith("Z") ? comp.fecha : comp.fecha + "Z";
+  const d = new Date(iso);
+  const dia = d.toLocaleDateString("es-AR");
+  if(comp.anotado_despues) return dia;
+  return dia + " " + d.toLocaleTimeString("es-AR",{hour:"2-digit",minute:"2-digit",hour12:false});
+}
+
 async function cargar(){
   if(!id){ $("#cabecera").innerHTML='<p class="muted">Falta el cliente.</p>'; return; }
   const cfg=await (await authFetch("/api/config")).json();
@@ -236,7 +254,7 @@ function renderComprobantes(){
   comps.forEach(comp=>{
     const esPresu = comp.tipo==="presupuesto";
     const div=document.createElement("div"); div.className="comp card";
-    const fecha=new Date(comp.fecha).toLocaleDateString("es-AR");
+    const fecha=fechaHoraComp(comp);
     const efvoTodo = comp.desc_efectivo>0 ? comp.saldo : Math.ceil(comp.saldo * 0.9/100)*100;
     div.innerHTML=`
       <div class="comp-head">
@@ -375,7 +393,7 @@ function renderComprobantes(){
 
       const pagos = d.pagos.length
         ? d.pagos.map(p=>{
-            const f=new Date(p.fecha).toLocaleDateString("es-AR");
+            const f=new Date(p.fecha.endsWith("Z")?p.fecha:p.fecha+"Z").toLocaleDateString("es-AR");
             const desc = p.desc_aplicado || 0;
             const extra = desc>0 ? ` <span class="muted">(saldó ${fmt(p.saldado)} · ${(desc / p.saldado * 100).toFixed(2)}% desc)</span>` : "";
             return `<div class="fila" style="justify-content:space-between;color:var(--text-tenue);"><span>✓ ${f} · ${p.forma_pago}${p.alias?' ('+p.alias+')':''}${extra}</span><span>${fmt(p.monto)}</span></div>`;
