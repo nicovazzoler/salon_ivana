@@ -487,6 +487,31 @@
   }
   .tot-row .lbl{ text-align:left; }
   .tot-row .v2{ display:none; }
+
+  /* Renglones de importe DENTRO de los paneles de cobro.
+     Arriba, en el bloque de totales, el rótulo lleva .lbl y hay una segunda
+     columna de importes para el presupuesto. Acá son dos datos sueltos y el
+     rótulo se había quedado sin esa clase: heredaba el text-align:right del
+     contenedor y terminaba pegado al número, los dos del mismo tamaño y del
+     mismo color, compitiendo por la atención. En un panel de cobro el que tiene
+     que ganar es el número. */
+  .panel-cobro .tot-row{ margin:3px 0; }
+  .panel-cobro .tot-row > span:first-child{
+    text-align:left;
+    font-size:var(--fs-sm);
+    font-weight:var(--fw-normal);
+    text-transform:uppercase; letter-spacing:.04em;
+    color:var(--text-tenue);
+  }
+  .panel-cobro .tot-row > span:last-child{ color:var(--text-suave); }
+  /* El saldo es lo que se está por cobrar: es el número que manda en el panel,
+     y el que la persona mira antes de tipear cuánto entra. */
+  .panel-cobro .tot-row.principal{ margin-top:var(--sp-2); }
+  .panel-cobro .tot-row.principal > span:last-child{
+    font-size:var(--fs-xl);
+    font-weight:var(--fw-black);
+    color:var(--text-titulo);
+  }
   .tot-cab{ display:none; }
 
   /* Presupuesto: UNA sola grilla para todo el bloque, con las filas en
