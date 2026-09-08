@@ -16,7 +16,10 @@
 .b-ok,
 .confirmar{
   background:var(--acento-fuerte);
-  color:var(--tinta-900);
+  /* --text-sobre-oro y no --tinta-900: el bronce del botón es el mismo en los dos
+     temas, pero --tinta-900 se da vuelta en oscuro y dejaba letra casi blanca
+     sobre dorado, 2,25:1, ilegible. Este token existe justo para esto. */
+  color:var(--text-sobre-oro);
 }
 .b-ok:hover,
 .confirmar:hover{ background:var(--bronce-500); color:var(--text-invertido); }
@@ -515,4 +518,58 @@ body.con-panel{ overflow:hidden; }
 @media (max-width:560px){
   .panel-lista-fondo{ padding:0; align-items:flex-end; }
   .panel-lista{ max-height:88vh; border-radius:var(--r-lg) var(--r-lg) 0 0; }
+}
+
+/* ---------- Cajas de números (KPI) ----------
+   Estaban duplicadas en reportes.html y en inventario.html, y las dos copias ya
+   habían divergido (150px contra 140px, y un margen de más en una). Vive acá una
+   sola vez. */
+.kpis{
+  display:grid;
+  grid-template-columns:repeat(auto-fit, minmax(150px, 1fr));
+  gap:var(--sp-3);
+}
+.kpi{
+  padding:var(--sp-3) var(--sp-4);
+  border:1px solid var(--border-sutil);
+  border-radius:var(--r-lg);
+  background:var(--bg-sutil);
+}
+.kpi .lbl{
+  display:block;
+  font-size:var(--fs-xs); color:var(--text-tenue);
+  text-transform:uppercase; letter-spacing:.04em;
+}
+.kpi .val{
+  display:block; margin-top:2px;
+  font-size:var(--fs-2xl); font-weight:var(--fw-black);
+  color:var(--text-titulo);
+}
+
+/* Encabezado con los números al lado del título en vez de abajo. Ocupan el alto
+   que ya usaba el título, que estaba vacío a la derecha, y así entra más de la
+   tarjeta en la pantalla sin scrollear. Si no hay lugar bajan solas: en el
+   celular quedan como estaban. */
+.card-head.con-datos{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:var(--sp-3) var(--sp-4);
+  flex-wrap:wrap;
+}
+.card-head.con-datos .titulo{ flex:1 1 240px; min-width:0; }
+.card-head.con-datos .kpis{
+  flex:0 1 auto;
+  display:flex; flex-wrap:wrap;
+  gap:var(--sp-2);
+  margin:0;
+}
+/* Al lado de un título tienen que pesar menos que él: son el dato de apoyo, no
+   el encabezado de la tarjeta. */
+.card-head.con-datos .kpi{ padding:var(--sp-2) var(--sp-3); }
+.card-head.con-datos .kpi .val{ font-size:var(--fs-xl); margin-top:0; }
+
+@media (max-width:640px){
+  .card-head.con-datos .kpis{ width:100%; }
+  .card-head.con-datos .kpi{ flex:1 1 130px; }
 }

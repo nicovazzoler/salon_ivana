@@ -13,25 +13,6 @@
   .card-head p{ margin:var(--sp-1) 0 0; font-size:var(--fs-base); color:var(--text-tenue); max-width:64ch; }
 
   /* ----- Resumen: lo primero es cuánto hay que reponer ----- */
-  .kpis{
-    display:grid; grid-template-columns:repeat(auto-fit, minmax(140px,1fr));
-    gap:var(--sp-3); margin-bottom:var(--sp-5);
-  }
-  .kpi{
-    padding:var(--sp-3) var(--sp-4);
-    border:1px solid var(--border-sutil);
-    border-radius:var(--r-lg);
-    background:var(--papel-200);
-  }
-  .kpi .lbl{
-    display:block; font-size:var(--fs-xs); color:var(--text-tenue);
-    text-transform:uppercase; letter-spacing:var(--tracking-eti); font-weight:var(--fw-bold);
-  }
-  .kpi .val{
-    display:block; margin-top:3px;
-    font-family:var(--font-display); font-size:26px; font-weight:var(--fw-bold);
-    color:var(--text-titulo); font-variant-numeric:tabular-nums;
-  }
   .kpi.urgente{ background:var(--rojo-bg); border-color:var(--rojo-borde); }
   .kpi.urgente .val{ color:var(--danger); }
 
@@ -136,15 +117,16 @@
 </header>
 <div class="wrap">
   <div class="card">
-    <div class="card-head">
-      <h2>Productos en stock</h2>
-      <p data-dueno>Cargá el stock contado en <b>Actual</b>, o usá <b>Entrada</b> para sumar lo que
-         llegó sin hacer la cuenta. Baja solo con cada venta.</p>
-      <p data-empleado>Cuánto queda de cada producto. Baja solo con cada venta;
-         corregirlo lo hace la dueña.</p>
+    <div class="card-head con-datos">
+      <div class="titulo">
+        <h2>Productos en stock</h2>
+        <p data-dueno>Cargá el stock contado en <b>Actual</b>, o usá <b>Entrada</b> para sumar lo que
+           llegó sin hacer la cuenta. Baja solo con cada venta.</p>
+        <p data-empleado>Cuánto queda de cada producto. Baja solo con cada venta;
+           corregirlo lo hace la dueña.</p>
+      </div>
+      <div class="kpis" id="kpis"></div>
     </div>
-
-    <div class="kpis" id="kpis"></div>
 
     <div class="herramientas">
       <input class="buscar" id="buscar" placeholder="🔎 Buscar producto por nombre...">

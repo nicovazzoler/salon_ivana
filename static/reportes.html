@@ -49,27 +49,6 @@
   .rango .aplicar{ padding:6px 12px; font-size:var(--fs-base); }
 
   /* ----- KPIs ----- */
-  .kpis{
-    display:grid;
-    grid-template-columns:repeat(auto-fit, minmax(150px, 1fr));
-    gap:var(--sp-3);
-  }
-  .kpi{
-    padding:var(--sp-3) var(--sp-4);
-    border:1px solid var(--border-sutil);
-    border-radius:var(--r-lg);
-    background:var(--bg-sutil);
-  }
-  .kpi .lbl{
-    display:block;
-    font-size:var(--fs-xs); color:var(--text-tenue);
-    text-transform:uppercase; letter-spacing:.04em;
-  }
-  .kpi .val{
-    display:block; margin-top:2px;
-    font-size:var(--fs-2xl); font-weight:var(--fw-black);
-    color:var(--text-titulo);
-  }
   .kpi .val.neg{ color:var(--danger); }
   .kpi .pie{ display:block; margin-top:2px; font-size:var(--fs-xs); color:var(--text-tenue); }
 
@@ -217,11 +196,13 @@
   </div>
 
   <div class="card" id="resumen">
-    <div class="card-head">
-      <h2>📈 Resumen del período</h2>
-      <p>Lo que entró, lo que salió y cuántos tickets se emitieron.</p>
+    <div class="card-head con-datos">
+      <div class="titulo">
+        <h2>📈 Resumen del período</h2>
+        <p>Lo que entró, lo que salió y cuántos tickets se emitieron.</p>
+      </div>
+      <div class="kpis" id="kpis"></div>
     </div>
-    <div class="kpis" id="kpis"></div>
   </div>
 
   <div class="card" id="evolucion">
@@ -256,13 +237,15 @@
   </div>
 
   <div class="card" id="deuda">
-    <div class="card-head">
-      <h2>🧾 Cuenta corriente</h2>
-      <p>Foto de hoy: no depende del período de arriba. Tocá un cliente para ver su cuenta.</p>
-    </div>
-    <div class="kpis" style="margin-bottom:var(--sp-4);">
-      <div class="kpi"><span class="lbl">Deuda total</span><span class="val" id="deudaTotal">—</span></div>
-      <div class="kpi"><span class="lbl">Clientes con saldo</span><span class="val" id="deudaTickets">—</span></div>
+    <div class="card-head con-datos">
+      <div class="titulo">
+        <h2>🧾 Cuenta corriente</h2>
+        <p>Foto de hoy: no depende del período de arriba. Tocá un cliente para ver su cuenta.</p>
+      </div>
+      <div class="kpis">
+        <div class="kpi"><span class="lbl">Deuda total</span><span class="val" id="deudaTotal">—</span></div>
+        <div class="kpi"><span class="lbl">Clientes con saldo</span><span class="val" id="deudaTickets">—</span></div>
+      </div>
     </div>
     <div class="barras" id="rankDeuda"></div>
     <button id="verTodos" class="b-out" style="display:none;margin-top:10px;">Ver todos</button>
