@@ -51,19 +51,12 @@
         <select id="selCat"></select>
       </div>
       <button class="b-out" id="btnRenombrar">Renombrar categoría</button>
+      <button class="b-ok" id="btnNuevoItem">+ Ítem nuevo</button>
     </div>
-    <div class="fila fila-agregar">
-      <div><label>Categoría</label><input id="nCat" list="cats" placeholder="existente o nueva"></div>
-      <div><label>Nombre</label><input id="nNom" placeholder="Ej: Corte nuevo"></div>
-      <div><label>Precio</label><input id="nPre" type="number" placeholder="0"></div>
-      <div class="check">
-        <input type="checkbox" id="nProd"><label for="nProd">Es producto</label>
-      </div>
-      <div class="check">
-        <input type="checkbox" id="nCom"><label for="nCom" title="La empleada cobra comisión por este trabajo">Va a comisión</label>
-      </div>
-      <button class="b-ok" id="btnAgregar">Agregar</button>
-    </div>
+    <!-- El formulario de alta aparece cuando se lo pide. Estaba siempre abierto,
+         arriba de la lista, y con cinco campos vacíos que casi nunca se usan:
+         para mirar un precio había que pasarlos por arriba todas las veces. -->
+    <div id="panelNuevoItem"></div>
     <div id="listaItems"></div>
     <datalist id="cats"></datalist>
   </div>

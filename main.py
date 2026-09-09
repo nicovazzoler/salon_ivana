@@ -183,7 +183,7 @@ class ItemIn(BaseModel):
     es_comision: bool = False
 class ItemEdit(BaseModel):
     categoria: str | None = None; nombre: str | None = None; precio: int | None = None; activo: bool | None = None
-    es_comision: bool | None = None
+    es_comision: bool | None = None; es_producto: bool | None = None
 class RenombrarCat(BaseModel):
     viejo: str; nuevo: str
 class LineaCompIn(BaseModel):
@@ -1815,6 +1815,11 @@ def editar_item(item_id: int, cambios: ItemEdit, _ = Depends(usuario_actual), db
     # desaparecer una comisión que la empleada ya se ganó. Se cambia sabiendo eso,
     # y por eso el aviso está en la pantalla.
     if cambios.es_comision is not None: item.es_comision = cambios.es_comision
+    # Se puede corregir después de creado. Es una casilla que se tilda al pasar y
+    # hasta ahora no había forma de destildarla: un servicio marcado producto
+    # descuenta stock en cada venta, y quedaba descontando para siempre. No toca
+    # nada hacia atrás; cambia de la próxima venta en adelante.
+    if cambios.es_producto is not None: item.es_producto = cambios.es_producto
     db.commit(); return {"ok": True}
 
 @app.delete("/api/items/{item_id}")

@@ -20,6 +20,10 @@ async function cargarCats(){
   const cats=await (await authFetch("/api/categorias")).json();
   $("#selCat").innerHTML=cats.map(c=>`<option>${c}</option>`).join("");
   $("#cats").innerHTML=cats.map(c=>`<option value="${c}">`).join("");
+  // Se respeta la categoría que se estaba mirando. Sin esto, guardar un precio
+  // devolvía la lista a la primera categoría del abecedario y había que volver a
+  // buscar dónde estabas para tocar el ítem de al lado.
+  if(catActual && cats.includes(catActual)) $("#selCat").value=catActual;
   catActual=$("#selCat").value;
   ITEMS_ALL=await (await authFetch("/api/items/all")).json();
   if($("#buscarItem").value.trim()) filtrarItems(); else cargarItems();
@@ -40,54 +44,161 @@ async function cargarItems(){
   renderItems(items, false);
 }
 
+/* El catálogo se dibuja para LEER: nombre, precio y las marcas. Los casilleros
+   aparecen cuando se toca Editar, y de a uno por vez.
+
+   Antes cada renglón tenía el nombre y el precio en campos habilitados, con
+   Guardar y Eliminar al lado. Con veinte ítems eran cuarenta campos abiertos en
+   una pantalla a la que casi siempre se entra a mirar un precio, y el que se
+   quería tocar había que encontrarlo entre los otros treinta y nueve. Peor: un
+   campo abierto invita a escribir, y un precio cambiado sin querer se cobra. */
 function renderItems(items, mostrarCat){
   const cont=$("#listaItems");
+  cerrarPaneles();
   if(items.length===0){cont.innerHTML='<p class="muted">Sin ítems para mostrar.</p>';return;}
   cont.innerHTML="";
   items.forEach(it=>{
-    const row=document.createElement("div");row.className="item-row";
-    const cat = mostrarCat ? `<span class="tag neutro">${it.categoria}</span>` : "";
-    row.innerHTML=`
-      <input class="n" value="${it.nombre.replace(/"/g,'&quot;')}">
-      <input class="p" type="number" value="${it.precio}">
-      <span class="meta">
-        <span style="white-space:nowrap;">→ transf ${fmt(it.precio_transfer||0)}</span>
-        ${cat}${it.es_producto?'<span class="tag">prod</span>':''}
-        <label class="chk-com" title="La empleada que lo haga cobra comisión por este trabajo">
-          <input type="checkbox" class="com" ${it.es_comision?"checked":""}> comisión
-        </label>
-      </span>
-      <span class="acc">
-        <button class="b-tinta guardar">Guardar</button>
-        <button class="b-del borrar">Eliminar</button>
-      </span>`;
-    row.querySelector(".guardar").onclick=async()=>{
-      // La comisión va en el mismo Guardar que el precio y el nombre: es una
-      // propiedad del ítem, y separarla en su propio botón haría que se guarde
-      // el precio y se pierda la marca sin que nada avise.
-      await authFetch(`/api/items/${it.id}`,{method:"PUT",headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({nombre:row.querySelector(".n").value,precio:parseInt(row.querySelector(".p").value),
-                             es_comision:row.querySelector(".com").checked})});
-      toast("Guardado"); ITEMS_ALL=await (await authFetch("/api/items/all")).json();
+    const fila=document.createElement("div"); fila.className="item-fila";
+
+    const nom=document.createElement("span"); nom.className="n";
+    nom.textContent=it.nombre;                 // textContent y no innerHTML: el
+                                               // nombre lo escribe una persona
+    const meta=document.createElement("span"); meta.className="meta";
+    const partes=[fmt(it.precio), `transf ${fmt(it.precio_transfer||0)}`];
+    if(mostrarCat) partes.push(it.categoria);
+    if(it.es_producto) partes.push("producto");
+    if(it.es_comision) partes.push("comisión");
+    meta.textContent = partes.join(" · ");
+
+    const quien=document.createElement("span"); quien.className="quien";
+    quien.append(nom, meta);
+
+    const acc=document.createElement("span"); acc.className="acc";
+    const bEd=Object.assign(document.createElement("button"),
+                            {className:"b-out", textContent:"Editar"});
+    acc.appendChild(bEd);
+    fila.append(quien, acc);
+    cont.appendChild(fila);
+
+    // Un solo panel abierto por vez en toda la pantalla: dos formularios
+    // abiertos a la vez son otra vez el problema que se quería sacar.
+    bEd.onclick=()=>{
+      const yaEstaba = fila.nextElementSibling?.classList.contains("panel-edicion");
+      cerrarPaneles();
+      if(yaEstaba) return;                     // el mismo botón cierra lo que abrió
+      fila.after(panelItem(it));
     };
-    row.querySelector(".borrar").onclick=async()=>{
-      if(!confirm(`¿Eliminar "${it.nombre}"?`))return;
-      await authFetch(`/api/items/${it.id}`,{method:"DELETE"});
-      toast("Eliminado"); ITEMS_ALL=await (await authFetch("/api/items/all")).json();
-      filtrarItems();
-    };
-    cont.appendChild(row);
   });
 }
 
-$("#btnAgregar").onclick=async()=>{
-  const cat=$("#nCat").value.trim(),nom=$("#nNom").value.trim(),pre=parseInt($("#nPre").value);
-  if(!cat||!nom||!pre){toast("Completá categoría, nombre y precio");return;}
-  await authFetch("/api/items",{method:"POST",headers:{"Content-Type":"application/json"},
-    body:JSON.stringify({categoria:cat,nombre:nom,precio:pre,es_producto:$("#nProd").checked,
-                         es_comision:$("#nCom").checked})});
-  $("#nNom").value="";$("#nPre").value="";$("#nProd").checked=false;$("#nCom").checked=false;
-  toast("Ítem agregado");await cargarCats();
+// Uno solo abierto en toda la tarjeta, el de crear incluido.
+function cerrarPaneles(){
+  document.querySelectorAll("#catalogo .panel-edicion").forEach(p=>p.remove());
+}
+
+/* El panel de edición de un ítem. Todo lo del ítem junto y un solo Guardar: el
+   precio y la marca de comisión son del mismo ítem, y con un botón por campo se
+   guarda uno y se pierde el otro sin que nada avise. */
+function panelItem(it){
+  const pan=document.createElement("div");
+  pan.className="panel-edicion";
+  pan.innerHTML=`
+    <div class="campo"><label>Nombre</label><input class="f-nombre" type="text"></div>
+    <div class="campo chico"><label>Precio efectivo</label><input class="f-precio" type="number" min="0"></div>
+    <div class="campo chico"><label>Categoría</label><input class="f-cat" list="cats"></div>
+    <div class="marcas">
+      <label><input type="checkbox" class="f-prod"> Es producto (descuenta stock)</label>
+      <label><input type="checkbox" class="f-com"> Va a comisión</label>
+    </div>
+    <span class="acc">
+      <button class="b-ok guardar">Guardar</button>
+      <button class="b-out cancelar">Cancelar</button>
+      <button class="b-del borrar">Eliminar</button>
+    </span>`;
+  const $$=s=>pan.querySelector(s);
+  $$(".f-nombre").value=it.nombre;
+  $$(".f-precio").value=it.precio;
+  $$(".f-cat").value=it.categoria||catActual;
+  $$(".f-prod").checked=!!it.es_producto;
+  $$(".f-com").checked=!!it.es_comision;
+
+  $$(".cancelar").onclick=()=>pan.remove();
+  $$(".guardar").onclick=async()=>{
+    const nombre=$$(".f-nombre").value.trim();
+    const precio=parseInt($$(".f-precio").value,10);
+    const categoria=$$(".f-cat").value.trim();
+    if(!nombre){ toast("El nombre no puede quedar vacío"); return; }
+    if(!(precio>0)){ toast("El precio tiene que ser mayor a 0"); return; }
+    if(!categoria){ toast("Falta la categoría"); return; }
+    const r=await authFetch(`/api/items/${it.id}`,{method:"PUT",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({nombre, precio, categoria,
+                           es_producto:$$(".f-prod").checked, es_comision:$$(".f-com").checked})});
+    if(!r.ok){ toast((await r.json().catch(()=>({}))).detail || "No se pudo guardar"); return; }
+    toast("Guardado");
+    ITEMS_ALL=await (await authFetch("/api/items/all")).json();
+    await cargarCats();
+  };
+  $$(".borrar").onclick=async()=>{
+    if(!confirm(`¿Eliminar "${it.nombre}"?\n\nDeja de aparecer al facturar. Los tickets viejos que lo tienen no se tocan.`)) return;
+    const r=await authFetch(`/api/items/${it.id}`,{method:"DELETE"});
+    if(!r.ok){ toast("No se pudo eliminar"); return; }
+    toast("Eliminado");
+    ITEMS_ALL=await (await authFetch("/api/items/all")).json();
+    await cargarCats();
+  };
+  $$(".f-nombre").addEventListener("keydown", ev=>{
+    if(ev.key==="Enter") $$(".guardar").click();
+    if(ev.key==="Escape") pan.remove();
+  });
+  setTimeout(()=>$$(".f-nombre").focus(), 0);
+  return pan;
+}
+
+/* Cargar uno nuevo. Mismo panel que el de editar, pero vacío y colgado del
+   botón de arriba en vez de una fila. */
+$("#btnNuevoItem").onclick=()=>{
+  const caja=$("#panelNuevoItem");
+  if(caja.firstChild){ caja.innerHTML=""; return; }   // el mismo botón lo cierra
+  cerrarPaneles();
+  const pan=document.createElement("div");
+  pan.className="panel-edicion crear";
+  pan.innerHTML=`
+    <div class="campo"><label>Nombre</label><input class="f-nombre" placeholder="Ej: Corte nuevo"></div>
+    <div class="campo chico"><label>Precio efectivo</label><input class="f-precio" type="number" min="0" placeholder="0"></div>
+    <div class="campo chico"><label>Categoría</label><input class="f-cat" list="cats" placeholder="existente o nueva"></div>
+    <div class="marcas">
+      <label><input type="checkbox" class="f-prod"> Es producto (descuenta stock)</label>
+      <label><input type="checkbox" class="f-com"> Va a comisión</label>
+    </div>
+    <span class="acc">
+      <button class="b-ok guardar">Agregar</button>
+      <button class="b-out cancelar">Cancelar</button>
+    </span>`;
+  const $$=s=>pan.querySelector(s);
+  $$(".f-cat").value=catActual||"";            // la que se está mirando, que es
+                                               // casi siempre donde va el nuevo
+  $$(".cancelar").onclick=()=>{ caja.innerHTML=""; };
+  $$(".guardar").onclick=async()=>{
+    const nombre=$$(".f-nombre").value.trim();
+    const precio=parseInt($$(".f-precio").value,10);
+    const categoria=$$(".f-cat").value.trim();
+    if(!categoria||!nombre||!(precio>0)){ toast("Completá categoría, nombre y precio"); return; }
+    const r=await authFetch("/api/items",{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({categoria, nombre, precio,
+                           es_producto:$$(".f-prod").checked, es_comision:$$(".f-com").checked})});
+    if(!r.ok){ toast((await r.json().catch(()=>({}))).detail || "No se pudo agregar"); return; }
+    toast("Ítem agregado");
+    caja.innerHTML="";
+    catActual=categoria;                        // que quede mirando donde cayó
+    $("#buscarItem").value="";
+    await cargarCats();
+  };
+  $$(".f-nombre").addEventListener("keydown", ev=>{
+    if(ev.key==="Enter") $$(".guardar").click();
+    if(ev.key==="Escape") caja.innerHTML="";
+  });
+  caja.appendChild(pan);
+  setTimeout(()=>$$(".f-nombre").focus(), 0);
 };
 
 $("#btnRenombrar").onclick=async()=>{

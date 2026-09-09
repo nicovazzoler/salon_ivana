@@ -64,10 +64,16 @@
 
   /* Listas simples (formas de pago, egresos, alias): nombre + eliminar */
   .item-row.simple{ grid-template-columns:1fr auto; }
-  /* Usuarios. La fila es de LECTURA: nombre, rol y los botones que abren lo que
-     haga falta. El panel de edición se inserta debajo y solo hay uno abierto por
-     vez, así la tarjeta nunca muestra más de un formulario. */
-  .usuario-fila{
+  /* Filas de LECTURA: el dato y los botones que abren lo que haga falta. El
+     panel de edición se inserta debajo y solo hay uno abierto por vez, así la
+     tarjeta nunca muestra más de un formulario.
+
+     Lo usan usuarios y el catálogo. Antes el catálogo tenía cada nombre y cada
+     precio en un casillero editable, todos a la vez: con veinte ítems eran
+     cuarenta campos habilitados para una pantalla en la que casi siempre se
+     viene a mirar un precio, y el que se quería tocar había que encontrarlo
+     entre los otros treinta y nueve. */
+  .usuario-fila, .item-fila{
     display:grid;
     grid-template-columns:minmax(0,1fr) auto;
     align-items:center;
@@ -75,18 +81,23 @@
     padding:var(--sp-2) 0;
     border-bottom:1px solid var(--border-sutil);
   }
-  .usuario-fila .quien{
+  .usuario-fila .quien, .item-fila .quien{
     display:flex; align-items:baseline; gap:var(--sp-2);
     min-width:0;
   }
-  .usuario-fila .n{ min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-  .usuario-fila .meta{ font-size:var(--fs-sm); color:var(--text-tenue); white-space:nowrap; }
-  .usuario-fila .acc{ display:flex; gap:6px; }
+  .usuario-fila .n, .item-fila .n{ min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .usuario-fila .meta, .item-fila .meta{ font-size:var(--fs-sm); color:var(--text-tenue); white-space:nowrap; }
+  .usuario-fila .acc, .item-fila .acc{ display:flex; gap:6px; }
+  /* En el catálogo el dato de al lado del nombre es largo (precio, transfer y
+     las marcas), así que ahí sí se deja partir en dos renglones en pantalla
+     angosta en vez de recortarse. */
+  .item-fila .quien{ flex-wrap:wrap; }
+  .item-fila .meta{ white-space:normal; }
   /* Eliminar se despega del resto: lo que no se deshace no va pegado a lo
      rutinario, donde se aprieta sin mirar. */
   .usuario-fila .acc .b-del{ margin-left:var(--sp-2); }
 
-  .usuario-panel{
+  .usuario-panel, .panel-edicion{
     display:flex; align-items:flex-end; flex-wrap:wrap;
     gap:var(--sp-2);
     padding:var(--sp-2);
@@ -96,11 +107,31 @@
     border-radius:0 0 var(--r-md) var(--r-md);
     background:var(--bg-header);
   }
-  .usuario-panel label{ flex:0 0 100%; margin:0; font-size:var(--fs-sm); color:var(--text-tenue); }
-  .usuario-panel input, .usuario-panel select{ flex:1 1 160px; min-width:0; }
-  .usuario-panel .acc{ display:flex; gap:6px; }
+  .usuario-panel label, .panel-edicion label{ flex:0 0 100%; margin:0; font-size:var(--fs-sm); color:var(--text-tenue); }
+  .usuario-panel input, .usuario-panel select,
+  .panel-edicion input, .panel-edicion select{ flex:1 1 160px; min-width:0; }
+  .usuario-panel .acc, .panel-edicion .acc{ display:flex; gap:6px; }
   /* El de crear no cuelga de ninguna fila: lleva el borde completo. */
-  .usuario-panel.crear{ border-top:1px solid var(--border-sutil); border-radius:var(--r-md); margin-top:var(--sp-3); }
+  .usuario-panel.crear, .panel-edicion.crear{ border-top:1px solid var(--border-sutil); border-radius:var(--r-md); margin-top:var(--sp-3); }
+
+  /* El panel del catálogo tiene varios campos: cada uno con su rótulo arriba,
+     en su propia columna, en vez de la fila de un solo campo de usuarios. */
+  .panel-edicion .campo{ display:flex; flex-direction:column; gap:2px; flex:1 1 150px; min-width:0; }
+  .panel-edicion .campo.chico{ flex:0 1 110px; }
+  .panel-edicion .campo label{ flex:none; }
+  .panel-edicion .campo input{ flex:none; width:100%; }
+  .panel-edicion .marcas{ display:flex; gap:var(--sp-3); flex:1 1 100%; }
+  /* Las marcas son frases, no rótulos de campo: van en minúscula. Con el
+     text-transform de los <label> de la tarjeta salían gritadas ("ES PRODUCTO
+     (DESCUENTA STOCK)") y pesaban más que el nombre del ítem. */
+  .panel-edicion .marcas label{ flex:none; display:inline-flex; align-items:center; gap:5px;
+                                margin:0; cursor:pointer; color:var(--text);
+                                text-transform:none; letter-spacing:normal;
+                                font-size:var(--fs-sm); font-weight:var(--fw-normal); }
+  .panel-edicion .marcas input{ flex:none; width:auto; margin:0; }
+  /* Eliminar se despega, como en usuarios: lo que no se deshace no va pegado a
+     Guardar, donde se aprieta sin mirar. */
+  .panel-edicion .acc .b-del{ margin-left:var(--sp-2); }
 
   .nota-vacio{
     margin:var(--sp-3) 0 0;
