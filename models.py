@@ -260,6 +260,74 @@ class Descuento(Base):
     mostrar_motivo = Column(Boolean, default=False)     # default de si se imprime el motivo
     activo = Column(Boolean, default=True)
 
+class Liquidacion(Base):
+    """Un ciclo de sueldo ya cerrado y pagado.
+
+    El período NO es una semana fija: es "todo lo que estaba pendiente hasta que
+    se cerró". Con ventanas de fechas siempre hay algo que queda afuera —se pagó
+    un día tarde, alguien cargó las horas del jueves el martes siguiente— y eso,
+    en un sueldo, es plata que se pierde sin que nadie se entere. Acá cada hora y
+    cada trabajo está pendiente o está adentro de una liquidación, y lo que se
+    carga después cae solo en el ciclo que viene.
+
+    Los totales se guardan calculados. Es una foto: si mañana se anula un ticket
+    de la semana pasada, el sueldo que ya se pagó no cambia solo. La corrección va
+    como ajuste en el ciclo siguiente, que es como funciona un sueldo de verdad.
+    """
+    __tablename__ = "liquidaciones"
+    id = Column(Integer, primary_key=True)
+    empleado_id = Column(Integer, ForeignKey("empleados.id"), nullable=False, index=True)
+    cerrada = Column(DateTime, default=fecha_hora_now_utc)
+    # Informativos: de cuándo a cuándo terminó abarcando lo que entró. No definen
+    # qué entra, eso lo define estar pendiente.
+    desde = Column(String)                  # 'YYYY-MM-DD' argentino, o None
+    hasta = Column(String)
+    valor_hora = Column(Integer)            # el que regía al cerrar
+    comision_pct = Column(Integer)          # ídem, por si algún día cambia
+    minutos_total = Column(Integer, default=0)      # lo que declaró la empleada
+    minutos_comision = Column(Integer, default=0)   # de trabajos a comisión
+    minutos_pagados = Column(Integer, default=0)    # total - comisión, nunca < 0
+    total_comisiones = Column(Integer, default=0)
+    total_horas = Column(Integer, default=0)
+    total = Column(Integer, default=0)
+    notas = Column(String)
+    empleado = relationship("Empleado")
+
+class HoraTrabajada(Base):
+    """Las horas de un día, cargadas por la empleada.
+
+    En minutos y no en horas decimales: 7,5 y 7,50000001 son el mismo día de
+    trabajo pero no el mismo número, y de acá sale plata.
+    """
+    __tablename__ = "horas_trabajadas"
+    id = Column(Integer, primary_key=True)
+    empleado_id = Column(Integer, ForeignKey("empleados.id"), nullable=False, index=True)
+    fecha = Column(String, nullable=False, index=True)   # 'YYYY-MM-DD' argentino
+    minutos = Column(Integer, default=0)
+    # NULL = pendiente. Es lo único que decide si entra en el próximo cierre.
+    liquidacion_id = Column(Integer, ForeignKey("liquidaciones.id"), index=True)
+    cargado = Column(DateTime, default=fecha_hora_now_utc)
+
+class TrabajoComision(Base):
+    """Un trabajo a comisión, atado a la línea del comprobante de donde salió.
+
+    La línea es la fuente: el trabajo aparece solo en la lista de la empleada
+    porque el comprobante la nombra como peluquera y el ítem está marcado a
+    comisión. Acá se guarda lo que la línea no sabe —cuánto duró, que lo carga
+    ella— y, al cerrar, la foto de la plata.
+    """
+    __tablename__ = "trabajos_comision"
+    id = Column(Integer, primary_key=True)
+    linea_id = Column(Integer, ForeignKey("comprobante_lineas.id"), nullable=False,
+                      unique=True, index=True)
+    empleado_id = Column(Integer, ForeignKey("empleados.id"), nullable=False, index=True)
+    minutos = Column(Integer, default=0)
+    liquidacion_id = Column(Integer, ForeignKey("liquidaciones.id"), index=True)
+    # Se llenan al cerrar. Antes son None: lo pendiente se calcula en vivo, así
+    # que si se corrige el comprobante el número se corrige solo hasta que se paga.
+    base = Column(Integer)          # precio efectivo con ajuste, por la cantidad
+    comision = Column(Integer)      # el porcentaje de esa base
+
 class AjusteItem(Base):
     """Descuentos y recargos que se aplican a UNA línea, no al comprobante entero.
     Van con signo: negativo descuenta, positivo recarga. Cada ajuste guardado es

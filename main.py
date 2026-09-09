@@ -212,6 +212,12 @@ class EmpleadoEdit(BaseModel):
     nombre: str | None = None; activo: bool | None = None
 class ValorHoraIn(BaseModel):
     valor: int
+class HorasIn(BaseModel):
+    empleado_id: int; fecha: str; minutos: int
+class MinutosTrabajoIn(BaseModel):
+    empleado_id: int; linea_id: int; minutos: int
+class CerrarIn(BaseModel):
+    empleado_id: int; notas: str | None = None
 class NombreEdit(BaseModel):
     nombre: str
 class AjusteItemEdit(BaseModel):
@@ -350,6 +356,13 @@ def migrar_peluqueros_a_empleados():
         for n in sorted(set(canonico.values())):
             if not db.query(models.Empleado).filter(models.Empleado.nombre == n).first():
                 db.add(models.Empleado(nombre=n)); nuevos += 1
+        # Corte de arranque de los sueldos. Sin esto, el día que la dueña marque
+        # "Corte" como trabajo a comisión le aparecerían como pendientes todos los
+        # cortes de la historia del local, y el primer sueldo saldría absurdo. Se
+        # fija ahora, al prender la función: lo de antes queda afuera.
+        if not db.query(models.Config).filter_by(clave="sueldos_desde").first():
+            db.add(models.Config(clave="sueldos_desde",
+                                 valor=fecha_hora_now_utc().replace(tzinfo=None).isoformat()))
         db.add(models.Config(clave=MARCA_EMPLEADOS, valor=str(nuevos)))
         db.commit()
         if nuevos:
@@ -942,9 +955,219 @@ def editar_usuario(uid: int, cambios: UsuarioEdit, _ = Depends(solo_dueno), db: 
     db.commit(); return {"ok": True}
 
 # alias de transferencia
+# ---------- sueldos ----------
+# El porcentaje vive en config y no en el código: cambiarlo no puede depender de
+# un deploy. 40 es lo acordado hoy.
+COMISION_PCT_DEFECTO = 40
+
+def _cfg_int(db, clave, defecto=0) -> int:
+    fila = db.query(models.Config).filter_by(clave=clave).first()
+    try:
+        return int(fila.valor) if fila else defecto
+    except (TypeError, ValueError):
+        return defecto
+
+def valor_hora(db) -> int:
+    return _cfg_int(db, "valor_hora", 0)
+
+def comision_pct(db) -> int:
+    return _cfg_int(db, "comision_pct", COMISION_PCT_DEFECTO)
+
+def base_comision(linea) -> int:
+    """Sobre cuánta plata se calcula la comisión de una línea.
+
+    Es el precio EFECTIVO con el ajuste de esa línea aplicado, por la cantidad.
+    No entra el descuento del comprobante: se acordó que la comisión se cuenta
+    sobre el trabajo, no sobre lo que después se le perdonó al cliente.
+    """
+    unidad = precio_con_ajuste(linea.precio_efectivo or 0,
+                               linea.ajuste_pct, linea.ajuste_monto)
+    return unidad * (linea.cantidad or 1)
+
+def comision_de(linea, pct: int) -> int:
+    return round(base_comision(linea) * pct / 100)
+
+def lineas_a_comision_pendientes(db, empleado):
+    """Las líneas a comisión de esa empleada que todavía no se pagaron.
+
+    Pendiente no es "de esta semana": es "no está en ninguna liquidación". Por eso
+    algo cargado tarde, o de un día viejo, entra igual en el próximo cierre en vez
+    de perderse en una ventana que ya cerró.
+
+    El corte de arranque existe solo para el primer cierre: sin él, el día que se
+    prende la función aparecerían como pendientes todos los trabajos de la
+    historia del local.
+    """
+    desde = db.query(models.Config).filter_by(clave="sueldos_desde").first()
+    ya = db.query(models.TrabajoComision.linea_id).filter(
+        models.TrabajoComision.liquidacion_id.isnot(None))
+    q = (db.query(models.ComprobanteLinea, models.Comprobante)
+           .join(models.Comprobante, models.ComprobanteLinea.comprobante_id == models.Comprobante.id)
+           .join(models.Item, models.ComprobanteLinea.item_id == models.Item.id)
+           .filter(models.Comprobante.activo == True,
+                   models.Comprobante.tipo == "ticket",
+                   models.Comprobante.peluquero == empleado.nombre,
+                   models.Item.es_comision == True,
+                   models.ComprobanteLinea.id.notin_(ya)))
+    if desde and desde.valor:
+        q = q.filter(models.Comprobante.fecha >= datetime.fromisoformat(desde.valor))
+    return q.order_by(models.Comprobante.fecha).all()
+
+def resumen_pendiente(db, empleado) -> dict:
+    """Lo que se le debe hoy a una empleada, calculado en vivo.
+
+    En vivo y no guardado porque mientras está pendiente todavía puede cambiar:
+    si se corrige un comprobante, el número se corrige solo. Recién al cerrar se
+    saca la foto.
+    """
+    pct = comision_pct(db)
+    vh = valor_hora(db)
+
+    minutos_por_linea = dict(
+        db.query(models.TrabajoComision.linea_id, models.TrabajoComision.minutos)
+          .filter(models.TrabajoComision.empleado_id == empleado.id,
+                  models.TrabajoComision.liquidacion_id.is_(None)).all())
+
+    trabajos, total_com, min_com = [], 0, 0
+    for linea, comp in lineas_a_comision_pendientes(db, empleado):
+        c = comision_de(linea, pct)
+        m = minutos_por_linea.get(linea.id, 0) or 0
+        total_com += c; min_com += m
+        trabajos.append({
+            "linea_id": linea.id, "comprobante_id": comp.id, "numero": comp.numero,
+            "fecha": hora_argentina(comp.fecha).date().isoformat(),
+            "nombre": linea.nombre, "cantidad": linea.cantidad,
+            "base": base_comision(linea), "comision": c, "minutos": m,
+            "cliente": comp.cliente_nombre})
+
+    horas = (db.query(models.HoraTrabajada)
+               .filter(models.HoraTrabajada.empleado_id == empleado.id,
+                       models.HoraTrabajada.liquidacion_id.is_(None))
+               .order_by(models.HoraTrabajada.fecha).all())
+    min_total = sum(h.minutos or 0 for h in horas)
+
+    # Las horas de los trabajos a comisión ya se pagan con la comisión, así que
+    # se descuentan. Nunca baja de cero: si declaró menos horas que las que
+    # duraron sus trabajos, no se le puede descontar plata por eso.
+    min_pagados = max(min_total - min_com, 0)
+    total_horas = round(min_pagados * vh / 60)
+
+    return {
+        "empleado": {"id": empleado.id, "nombre": empleado.nombre},
+        "valor_hora": vh, "comision_pct": pct,
+        "dias": [{"id": h.id, "fecha": h.fecha, "minutos": h.minutos or 0} for h in horas],
+        "trabajos": trabajos,
+        "minutos_total": min_total, "minutos_comision": min_com,
+        "minutos_pagados": min_pagados,
+        "total_comisiones": total_com, "total_horas": total_horas,
+        "total": total_com + total_horas,
+        "desde": horas[0].fecha if horas else (trabajos[0]["fecha"] if trabajos else None),
+    }
+
 # ---------- empleados ----------
 # La lista la lee cualquiera: el desplegable de "peluquero" está en facturar y en
 # la agenda, que usa el empleado todos los días. Tocarla es solo de la dueña.
+def _empleado_o_404(db, emp_id: int):
+    e = db.get(models.Empleado, emp_id)
+    if not e: raise HTTPException(404, "Empleado no existe")
+    return e
+
+# Quién es la empleada que está cargando lo llega por parámetro: hay un solo
+# login compartido y ella elige su nombre al entrar. Está en un solo lugar a
+# propósito, para que el día que haya un PIN por persona se cambie acá y no en
+# cada endpoint.
+@app.get("/api/sueldos/pendiente")
+def sueldo_pendiente(empleado_id: int, _ = Depends(usuario_actual), db: Session = Depends(get_db)):
+    return resumen_pendiente(db, _empleado_o_404(db, empleado_id))
+
+@app.put("/api/sueldos/horas")
+def cargar_horas(h: HorasIn, _ = Depends(usuario_actual), db: Session = Depends(get_db)):
+    """Las horas de un día. Se pisa el valor del día en vez de sumar: la empleada
+    corrige lo que puso, no acumula intentos."""
+    _empleado_o_404(db, h.empleado_id)
+    if h.minutos < 0: raise HTTPException(400, "Las horas no pueden ser negativas")
+    if h.minutos > 24 * 60: raise HTTPException(400, "No entran más de 24 horas en un día")
+    fila = (db.query(models.HoraTrabajada)
+              .filter(models.HoraTrabajada.empleado_id == h.empleado_id,
+                      models.HoraTrabajada.fecha == h.fecha,
+                      models.HoraTrabajada.liquidacion_id.is_(None)).first())
+    if h.minutos == 0:
+        if fila: db.delete(fila)
+    elif fila:
+        fila.minutos = h.minutos
+    else:
+        db.add(models.HoraTrabajada(empleado_id=h.empleado_id, fecha=h.fecha, minutos=h.minutos))
+    db.commit(); return {"ok": True}
+
+@app.put("/api/sueldos/trabajo-minutos")
+def cargar_minutos_trabajo(m: MinutosTrabajoIn, _ = Depends(usuario_actual), db: Session = Depends(get_db)):
+    """Cuánto duró un trabajo a comisión. La línea ya existe; esto es lo único
+    que la empleada agrega."""
+    _empleado_o_404(db, m.empleado_id)
+    if m.minutos < 0 or m.minutos > 24 * 60:
+        raise HTTPException(400, "Duración fuera de rango")
+    t = db.query(models.TrabajoComision).filter_by(linea_id=m.linea_id).first()
+    if t and t.liquidacion_id:
+        raise HTTPException(400, "Ese trabajo ya está en una liquidación cerrada")
+    if t: t.minutos = m.minutos
+    else: db.add(models.TrabajoComision(linea_id=m.linea_id, empleado_id=m.empleado_id,
+                                        minutos=m.minutos))
+    db.commit(); return {"ok": True}
+
+@app.post("/api/sueldos/cerrar")
+def cerrar_liquidacion(datos: CerrarIn, _ = Depends(solo_dueno), db: Session = Depends(get_db)):
+    """Cierra el ciclo: saca la foto de lo pendiente y arranca uno nuevo.
+
+    Cerrar es de la dueña, que es la que paga. Y a partir de acá esos números no
+    se mueven aunque después se corrija un comprobante: la corrección va como
+    ajuste en el ciclo siguiente.
+    """
+    emp = _empleado_o_404(db, datos.empleado_id)
+    r = resumen_pendiente(db, emp)
+    if not r["trabajos"] and not r["dias"]:
+        raise HTTPException(400, "No hay nada pendiente para cerrar")
+
+    hoy = hoy_argentina().isoformat()
+    liq = models.Liquidacion(
+        empleado_id=emp.id, desde=r["desde"], hasta=hoy,
+        valor_hora=r["valor_hora"], comision_pct=r["comision_pct"],
+        minutos_total=r["minutos_total"], minutos_comision=r["minutos_comision"],
+        minutos_pagados=r["minutos_pagados"],
+        total_comisiones=r["total_comisiones"], total_horas=r["total_horas"],
+        total=r["total"], notas=datos.notas)
+    db.add(liq); db.flush()
+
+    for t in r["trabajos"]:
+        fila = db.query(models.TrabajoComision).filter_by(linea_id=t["linea_id"]).first()
+        if not fila:
+            fila = models.TrabajoComision(linea_id=t["linea_id"], empleado_id=emp.id,
+                                          minutos=t["minutos"])
+            db.add(fila)
+        fila.liquidacion_id = liq.id
+        fila.base = t["base"]; fila.comision = t["comision"]
+    (db.query(models.HoraTrabajada)
+       .filter(models.HoraTrabajada.empleado_id == emp.id,
+               models.HoraTrabajada.liquidacion_id.is_(None))
+       .update({"liquidacion_id": liq.id}, synchronize_session=False))
+    db.commit()
+    return {"id": liq.id, "total": liq.total}
+
+@app.get("/api/sueldos/liquidaciones")
+def listar_liquidaciones(empleado_id: int | None = None, limite: int = 20,
+                         _ = Depends(usuario_actual), db: Session = Depends(get_db)):
+    q = db.query(models.Liquidacion)
+    if empleado_id: q = q.filter(models.Liquidacion.empleado_id == empleado_id)
+    return [{"id": l.id, "empleado_id": l.empleado_id,
+             "empleado": l.empleado.nombre if l.empleado else None,
+             "cerrada": hora_argentina(l.cerrada).isoformat() if l.cerrada else None,
+             "desde": l.desde, "hasta": l.hasta,
+             "valor_hora": l.valor_hora, "comision_pct": l.comision_pct,
+             "minutos_total": l.minutos_total, "minutos_comision": l.minutos_comision,
+             "minutos_pagados": l.minutos_pagados,
+             "total_comisiones": l.total_comisiones, "total_horas": l.total_horas,
+             "total": l.total, "notas": l.notas}
+            for l in q.order_by(models.Liquidacion.cerrada.desc()).limit(limite)]
+
 @app.get("/api/empleados")
 def listar_empleados(todos: bool = False, _ = Depends(usuario_actual), db: Session = Depends(get_db)):
     q = db.query(models.Empleado)
@@ -2342,6 +2565,27 @@ def backup_completo(_ = Depends(solo_dueno), db: Session = Depends(get_db)):
         "empleados": [
             {"id": e.id, "nombre": e.nombre, "activo": e.activo}
             for e in db.query(models.Empleado).all()
+        ],
+        "liquidaciones": [
+            {"id": l.id, "empleado_id": l.empleado_id, "cerrada": _iso_utc(l.cerrada),
+             "desde": l.desde, "hasta": l.hasta, "valor_hora": l.valor_hora,
+             "comision_pct": l.comision_pct, "minutos_total": l.minutos_total,
+             "minutos_comision": l.minutos_comision, "minutos_pagados": l.minutos_pagados,
+             "total_comisiones": l.total_comisiones, "total_horas": l.total_horas,
+             "total": l.total, "notas": l.notas}
+            for l in db.query(models.Liquidacion).order_by(models.Liquidacion.id).all()
+        ],
+        "horas_trabajadas": [
+            {"id": h.id, "empleado_id": h.empleado_id, "fecha": h.fecha,
+             "minutos": h.minutos, "liquidacion_id": h.liquidacion_id,
+             "cargado": _iso_utc(h.cargado)}
+            for h in db.query(models.HoraTrabajada).order_by(models.HoraTrabajada.id).all()
+        ],
+        "trabajos_comision": [
+            {"id": t.id, "linea_id": t.linea_id, "empleado_id": t.empleado_id,
+             "minutos": t.minutos, "liquidacion_id": t.liquidacion_id,
+             "base": t.base, "comision": t.comision}
+            for t in db.query(models.TrabajoComision).order_by(models.TrabajoComision.id).all()
         ],
         "formas_pago": [
             {"id": f.id, "nombre": f.nombre, "activo": f.activo}

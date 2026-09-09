@@ -73,6 +73,12 @@ ORDEN = [
                               "peluquero", "total"], ["fecha"]),
     ("pagos", models.Pago, ["id", "comprobante_id", "monto", "saldado", "forma_pago",
                             "alias", "desc_aplicado"], ["fecha"]),
+    ("liquidaciones", models.Liquidacion,
+     ["id", "empleado_id", "desde", "hasta", "valor_hora", "comision_pct",
+      "minutos_total", "minutos_comision", "minutos_pagados",
+      "total_comisiones", "total_horas", "total", "notas"], ["cerrada"]),
+    ("horas_trabajadas", models.HoraTrabajada,
+     ["id", "empleado_id", "fecha", "minutos", "liquidacion_id"], ["cargado"]),
 ]
 
 # Tablas que viven anidadas adentro de otra en el JSON.
@@ -198,6 +204,13 @@ def restaurar(archivo, destino, vaciar=False, sin_preguntar=False):
                     d[fk] = p.get("id")
                     filas.append(d)
             total[f"{padre}.{hija}"] = _insertar(db, modelo, filas)
+
+        # Después de las líneas, que se insertan anidadas dentro de los
+        # comprobantes: cada trabajo apunta a una de ellas.
+        total["trabajos_comision"] = _insertar(db, models.TrabajoComision, _filas(
+            datos, "trabajos_comision",
+            ["id", "linea_id", "empleado_id", "minutos", "liquidacion_id", "base", "comision"],
+            [], version))
 
         total["pagos"] = _insertar(db, models.Pago, _filas(
             datos, "pagos",
