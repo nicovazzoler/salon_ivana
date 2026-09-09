@@ -50,6 +50,9 @@ function pintarNav(){
     // usuarios ni el backup. Reportes sigue siendo solo de la dueña: ahí está
     // cuánto factura el local, que no es asunto de quien atiende.
     {href:"/inventario", txt:"Inventario"},
+    // Sueldos lo usan los dos, pero para cosas distintas: la empleada carga sus
+    // horas y la dueña mira lo que debe y cierra el ciclo.
+    {href:"/sueldos",    txt:"Sueldos"},
     {href:"/reportes",   txt:"Reportes",   dueno:true},
     {href:"/admin",      txt:"Admin"},
   ];

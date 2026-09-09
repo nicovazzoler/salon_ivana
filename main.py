@@ -175,8 +175,10 @@ class ClienteEdit(BaseModel):
     nombre: str | None = None; telefono: str | None = None; alias: str | None = None; notas: str | None = None; activo: bool | None = None; direccion: str | None = None; dni: str | None = None
 class ItemIn(BaseModel):
     categoria: str; nombre: str; precio: int; es_producto: bool = False
+    es_comision: bool = False
 class ItemEdit(BaseModel):
     categoria: str | None = None; nombre: str | None = None; precio: int | None = None; activo: bool | None = None
+    es_comision: bool | None = None
 class RenombrarCat(BaseModel):
     viejo: str; nuevo: str
 class LineaCompIn(BaseModel):
@@ -229,7 +231,11 @@ class ValorHoraIn(BaseModel):
 class HorasIn(BaseModel):
     empleado_id: int; fecha: str; minutos: int
 class MinutosTrabajoIn(BaseModel):
-    empleado_id: int; linea_id: int; minutos: int
+    # Uno de los dos: linea_id si el trabajo salió de un comprobante, trabajo_id
+    # si es suelto. Los sueltos nacen con la duración puesta, pero se tiene que
+    # poder corregir: un cero de más ahí le descuenta horas del sueldo.
+    empleado_id: int; minutos: int
+    linea_id: int | None = None; trabajo_id: int | None = None
 class CerrarIn(BaseModel):
     empleado_id: int; notas: str | None = None
 class TrabajoSueltoIn(BaseModel):
@@ -348,6 +354,17 @@ def migrar_peluqueros_a_empleados():
     MARCA_EMPLEADOS = "migro_peluqueros_a_empleados"
     from sqlalchemy.orm import Session as _S
     with _S(engine) as db:
+        # Corte de arranque de los sueldos. Sin esto, el día que la dueña marque
+        # "Corte" como trabajo a comisión le aparecerían como pendientes todos los
+        # cortes de la historia del local, y el primer sueldo saldría absurdo.
+        # Va ANTES de la marca y con su propia condición: si dependiera de la
+        # marca, una base que ya había migrado los nombres con una versión
+        # anterior se quedaría sin corte para siempre y arrancaría con toda la
+        # historia adentro.
+        if not db.query(models.Config).filter_by(clave="sueldos_desde").first():
+            db.add(models.Config(clave="sueldos_desde",
+                                 valor=fecha_hora_now_utc().replace(tzinfo=None).isoformat()))
+            db.commit()
         if db.query(models.Config).filter_by(clave=MARCA_EMPLEADOS).first():
             return
         # Cada nombre crudo se lleva a su forma canónica con nombre_propio(), que
@@ -375,13 +392,6 @@ def migrar_peluqueros_a_empleados():
         for n in sorted(set(canonico.values())):
             if not db.query(models.Empleado).filter(models.Empleado.nombre == n).first():
                 db.add(models.Empleado(nombre=n)); nuevos += 1
-        # Corte de arranque de los sueldos. Sin esto, el día que la dueña marque
-        # "Corte" como trabajo a comisión le aparecerían como pendientes todos los
-        # cortes de la historia del local, y el primer sueldo saldría absurdo. Se
-        # fija ahora, al prender la función: lo de antes queda afuera.
-        if not db.query(models.Config).filter_by(clave="sueldos_desde").first():
-            db.add(models.Config(clave="sueldos_desde",
-                                 valor=fecha_hora_now_utc().replace(tzinfo=None).isoformat()))
         db.add(models.Config(clave=MARCA_EMPLEADOS, valor=str(nuevos)))
         db.commit()
         if nuevos:
@@ -831,13 +841,14 @@ def categorias(_ = Depends(usuario_actual), db: Session = Depends(get_db)):
 @app.get("/api/items")
 def items(categoria: str, _ = Depends(usuario_actual), db: Session = Depends(get_db)):
     q = db.query(models.Item).filter(models.Item.categoria == categoria, models.Item.activo == True)
-    return [{"id": i.id, "nombre": i.nombre, "precio": i.precio, "precio_transfer": i.precio_transfer, "es_producto": i.es_producto} for i in q]
+    return [{"id": i.id, "nombre": i.nombre, "precio": i.precio, "precio_transfer": i.precio_transfer,
+             "es_producto": i.es_producto, "es_comision": bool(i.es_comision)} for i in q]
 
 @app.get("/api/items/all")
 def items_all(_ = Depends(usuario_actual), db: Session = Depends(get_db)):
     q = db.query(models.Item).filter(models.Item.activo == True).order_by(models.Item.nombre)
     return [{"id": i.id, "nombre": i.nombre, "precio": i.precio, "categoria": i.categoria, "precio_transfer": i.precio_transfer,
-             "es_producto": i.es_producto} for i in q]
+             "es_producto": i.es_producto, "es_comision": bool(i.es_comision)} for i in q]
 
 @app.get("/api/catalogo")
 def catalogo(_ = Depends(usuario_actual), db: Session = Depends(get_db)):
@@ -1035,7 +1046,12 @@ def lineas_a_comision_pendientes(db, empleado):
                    models.Item.es_comision == True,
                    models.ComprobanteLinea.id.notin_(ya)))
     if desde and desde.valor:
-        q = q.filter(models.Comprobante.fecha >= datetime.fromisoformat(desde.valor))
+        # El corte mira CUÁNDO SE ANOTÓ, no la fecha del servicio. Si mirara la
+        # fecha del servicio, un trabajo de ayer anotado hoy —que es trabajo
+        # nuevo, hecho con la función ya prendida— quedaría afuera para siempre y
+        # nadie se enteraría. Los viejos igual quedan afuera: se anotaron antes.
+        anotado = func.coalesce(models.Comprobante.cargado, models.Comprobante.fecha)
+        q = q.filter(anotado >= datetime.fromisoformat(desde.valor))
     return q.order_by(models.Comprobante.fecha).all()
 
 def resumen_pendiente(db, empleado) -> dict:
@@ -1105,6 +1121,18 @@ def resumen_pendiente(db, empleado) -> dict:
                .order_by(models.HoraTrabajada.fecha).all())
     min_total = sum(h.minutos or 0 for h in horas)
 
+    # Un día en el que hizo un trabajo es un día que trabajó: aparece solo, con
+    # las horas en cero esperando que las complete. Si hubiera que agregarlos a
+    # mano, tendría que acordarse de qué días vino, y el día que se olvide de uno
+    # se le paga de menos sin que nada avise.
+    dias = {h.fecha: {"id": h.id, "fecha": h.fecha, "minutos": h.minutos or 0,
+                      "sugerido": False} for h in horas}
+    for t in trabajos:
+        f = t["fecha"]
+        if f and f not in dias:
+            dias[f] = {"id": None, "fecha": f, "minutos": 0, "sugerido": True}
+    dias = [dias[f] for f in sorted(dias)]
+
     # Las horas de los trabajos a comisión ya se pagan con la comisión, así que
     # se descuentan. Nunca baja de cero: si declaró menos horas que las que
     # duraron sus trabajos, no se le puede descontar plata por eso.
@@ -1114,13 +1142,13 @@ def resumen_pendiente(db, empleado) -> dict:
     return {
         "empleado": {"id": empleado.id, "nombre": empleado.nombre},
         "valor_hora": vh, "comision_pct": pct,
-        "dias": [{"id": h.id, "fecha": h.fecha, "minutos": h.minutos or 0} for h in horas],
+        "dias": dias,
         "trabajos": trabajos,
         "minutos_total": min_total, "minutos_comision": min_com,
         "minutos_pagados": min_pagados,
         "total_comisiones": total_com, "total_horas": total_horas,
         "total": total_com + total_horas,
-        "desde": horas[0].fecha if horas else (trabajos[0]["fecha"] if trabajos else None),
+        "desde": dias[0]["fecha"] if dias else None,
     }
 
 # ---------- empleados ----------
@@ -1160,12 +1188,21 @@ def cargar_horas(h: HorasIn, _ = Depends(usuario_actual), db: Session = Depends(
 
 @app.put("/api/sueldos/trabajo-minutos")
 def cargar_minutos_trabajo(m: MinutosTrabajoIn, _ = Depends(usuario_actual), db: Session = Depends(get_db)):
-    """Cuánto duró un trabajo a comisión. La línea ya existe; esto es lo único
-    que la empleada agrega."""
+    """Cuánto duró un trabajo a comisión.
+
+    Si viene de un comprobante la línea ya existe y esto es lo único que la
+    empleada agrega; si es suelto, corrige lo que puso al cargarlo.
+    """
     _empleado_o_404(db, m.empleado_id)
     if m.minutos < 0 or m.minutos > 24 * 60:
         raise HTTPException(400, "Duración fuera de rango")
-    t = db.query(models.TrabajoComision).filter_by(linea_id=m.linea_id).first()
+    if bool(m.linea_id) == bool(m.trabajo_id):
+        raise HTTPException(400, "Falta decir de qué trabajo se habla")
+    if m.trabajo_id:
+        t = db.get(models.TrabajoComision, m.trabajo_id)
+        if not t: raise HTTPException(404, "Ese trabajo no existe")
+    else:
+        t = db.query(models.TrabajoComision).filter_by(linea_id=m.linea_id).first()
     if t and t.liquidacion_id:
         raise HTTPException(400, "Ese trabajo ya está en una liquidación cerrada")
     if t: t.minutos = m.minutos
@@ -1544,7 +1581,8 @@ def proximo_turno(cliente_id: int, _ = Depends(usuario_actual), db: Session = De
 @app.post("/api/items")
 def crear_item(item: ItemIn, _ = Depends(usuario_actual), db: Session = Depends(get_db)):
     nuevo = models.Item(categoria=item.categoria.strip(), nombre=item.nombre.strip(),
-                        precio=item.precio, precio_transfer=calcular_transfer(item.precio), es_producto=item.es_producto)
+                        precio=item.precio, precio_transfer=calcular_transfer(item.precio),
+                        es_producto=item.es_producto, es_comision=item.es_comision)
     db.add(nuevo); db.commit(); db.refresh(nuevo); return {"id": nuevo.id}
 
 @app.put("/api/items/{item_id}")
@@ -1557,6 +1595,11 @@ def editar_item(item_id: int, cambios: ItemEdit, _ = Depends(usuario_actual), db
         item.precio = cambios.precio
         item.precio_transfer = calcular_transfer(cambios.precio)
     if cambios.activo is not None: item.activo = cambios.activo
+    # Marcar o desmarcar un ítem a comisión NO toca los trabajos ya cargados: los
+    # que están pendientes salen de esta marca, así que desmarcar algo hace
+    # desaparecer una comisión que la empleada ya se ganó. Se cambia sabiendo eso,
+    # y por eso el aviso está en la pantalla.
+    if cambios.es_comision is not None: item.es_comision = cambios.es_comision
     db.commit(); return {"ok": True}
 
 @app.delete("/api/items/{item_id}")
@@ -2828,6 +2871,8 @@ if os.path.isdir("static"):
     def p_caja(): return FileResponse("static/caja.html")
     @app.get("/inventario")
     def p_inv(): return FileResponse("static/inventario.html")
+    @app.get("/sueldos")
+    def p_sueldos(): return FileResponse("static/sueldos.html")
     @app.get("/clientes")
     def pagina_clientes(): return FileResponse("static/clientes.html")
     @app.get("/reportes")

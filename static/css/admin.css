@@ -52,6 +52,15 @@
     font-size:var(--fs-sm); color:var(--text-tenue);
   }
   .item-row .acc{ display:flex; gap:6px; }
+  /* La marca de comisión va con el resto de los datos del ítem y no en una
+     columna propia: es de los pocos ítems que la llevan, y una columna vacía en
+     todas las filas para el caso raro estira la fila sin decir nada. */
+  .item-row .chk-com{
+    display:inline-flex; align-items:center; gap:4px; margin:0;
+    white-space:nowrap; cursor:pointer;
+    font-size:var(--fs-sm); color:var(--text-tenue);
+  }
+  .item-row .chk-com input{ margin:0; }
 
   /* Listas simples (formas de pago, egresos, alias): nombre + eliminar */
   .item-row.simple{ grid-template-columns:1fr auto; }

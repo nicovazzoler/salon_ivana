@@ -53,14 +53,21 @@ function renderItems(items, mostrarCat){
       <span class="meta">
         <span style="white-space:nowrap;">→ transf ${fmt(it.precio_transfer||0)}</span>
         ${cat}${it.es_producto?'<span class="tag">prod</span>':''}
+        <label class="chk-com" title="La empleada que lo haga cobra comisión por este trabajo">
+          <input type="checkbox" class="com" ${it.es_comision?"checked":""}> comisión
+        </label>
       </span>
       <span class="acc">
         <button class="b-tinta guardar">Guardar</button>
         <button class="b-del borrar">Eliminar</button>
       </span>`;
     row.querySelector(".guardar").onclick=async()=>{
+      // La comisión va en el mismo Guardar que el precio y el nombre: es una
+      // propiedad del ítem, y separarla en su propio botón haría que se guarde
+      // el precio y se pierda la marca sin que nada avise.
       await authFetch(`/api/items/${it.id}`,{method:"PUT",headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({nombre:row.querySelector(".n").value,precio:parseInt(row.querySelector(".p").value)})});
+        body:JSON.stringify({nombre:row.querySelector(".n").value,precio:parseInt(row.querySelector(".p").value),
+                             es_comision:row.querySelector(".com").checked})});
       toast("Guardado"); ITEMS_ALL=await (await authFetch("/api/items/all")).json();
     };
     row.querySelector(".borrar").onclick=async()=>{
@@ -77,8 +84,9 @@ $("#btnAgregar").onclick=async()=>{
   const cat=$("#nCat").value.trim(),nom=$("#nNom").value.trim(),pre=parseInt($("#nPre").value);
   if(!cat||!nom||!pre){toast("Completá categoría, nombre y precio");return;}
   await authFetch("/api/items",{method:"POST",headers:{"Content-Type":"application/json"},
-    body:JSON.stringify({categoria:cat,nombre:nom,precio:pre,es_producto:$("#nProd").checked})});
-  $("#nNom").value="";$("#nPre").value="";$("#nProd").checked=false;
+    body:JSON.stringify({categoria:cat,nombre:nom,precio:pre,es_producto:$("#nProd").checked,
+                         es_comision:$("#nCom").checked})});
+  $("#nNom").value="";$("#nPre").value="";$("#nProd").checked=false;$("#nCom").checked=false;
   toast("Ítem agregado");await cargarCats();
 };
 
