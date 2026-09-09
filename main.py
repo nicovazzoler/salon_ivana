@@ -226,8 +226,10 @@ class EmpleadoIn(BaseModel):
     nombre: str
 class EmpleadoEdit(BaseModel):
     nombre: str | None = None; activo: bool | None = None
-class ValorHoraIn(BaseModel):
-    valor: int
+class SueldosConfigIn(BaseModel):
+    # Los dos números con los que se arma el sueldo. Van juntos porque se miran
+    # juntos: cambiar uno sin ver el otro es como no verlos.
+    valor_hora: int | None = None; comision_pct: int | None = None
 class HorasIn(BaseModel):
     empleado_id: int; fecha: str; minutos: int
 class MinutosTrabajoIn(BaseModel):
@@ -1244,7 +1246,13 @@ def cerrar_liquidacion(datos: CerrarIn, _ = Depends(solo_dueno), db: Session = D
                                           minutos=t["minutos"], fecha=t["fecha"],
                                           nombre=t["nombre"], cantidad=t["cantidad"])
             db.add(fila)
+        # La foto se completa SIEMPRE, no solo cuando la fila es nueva: una que
+        # ya existía porque le habían cargado los minutos guarda el id de la
+        # línea y nada más, y sin esto la liquidación cerrada se leería con el
+        # trabajo en blanco. El nombre y la fecha son los de hoy: si mañana se
+        # renombra el ítem, lo que se pagó tiene que seguir diciendo lo que decía.
         fila.liquidacion_id = liq.id
+        fila.fecha = t["fecha"]; fila.nombre = t["nombre"]; fila.cantidad = t["cantidad"]
         fila.base = t["base"]; fila.comision = t["comision"]
     (db.query(models.HoraTrabajada)
        .filter(models.HoraTrabajada.empleado_id == emp.id,
@@ -1332,6 +1340,34 @@ def listar_liquidaciones(empleado_id: int | None = None, limite: int = 20,
              "total": l.total, "notas": l.notas}
             for l in q.order_by(models.Liquidacion.cerrada.desc()).limit(limite)]
 
+@app.get("/api/sueldos/liquidaciones/{liq_id}")
+def detalle_liquidacion(liq_id: int, _ = Depends(usuario_actual), db: Session = Depends(get_db)):
+    """Qué se pagó en un cierre. Los números salen de la FOTO guardada, no de
+    recalcular: si mañana se corrige un comprobante viejo, lo que ya se pagó
+    tiene que seguir diciendo lo mismo que decía el día que se pagó."""
+    liq = db.get(models.Liquidacion, liq_id)
+    if not liq: raise HTTPException(404, "Esa liquidación no existe")
+    trabajos = (db.query(models.TrabajoComision)
+                  .filter(models.TrabajoComision.liquidacion_id == liq.id)
+                  .order_by(models.TrabajoComision.fecha).all())
+    horas = (db.query(models.HoraTrabajada)
+               .filter(models.HoraTrabajada.liquidacion_id == liq.id)
+               .order_by(models.HoraTrabajada.fecha).all())
+    return {
+        "id": liq.id, "empleado": liq.empleado.nombre if liq.empleado else None,
+        "cerrada": hora_argentina(liq.cerrada).isoformat() if liq.cerrada else None,
+        "desde": liq.desde, "hasta": liq.hasta,
+        "valor_hora": liq.valor_hora, "comision_pct": liq.comision_pct,
+        "minutos_total": liq.minutos_total, "minutos_comision": liq.minutos_comision,
+        "minutos_pagados": liq.minutos_pagados,
+        "total_comisiones": liq.total_comisiones, "total_horas": liq.total_horas,
+        "total": liq.total, "notas": liq.notas,
+        "dias": [{"fecha": h.fecha, "minutos": h.minutos or 0} for h in horas],
+        "trabajos": [{"fecha": t.fecha, "nombre": t.nombre, "cantidad": t.cantidad or 1,
+                      "minutos": t.minutos or 0, "base": t.base or 0, "comision": t.comision or 0,
+                      "suelto": t.linea_id is None}
+                     for t in trabajos]}
+
 @app.get("/api/empleados")
 def listar_empleados(todos: bool = False, _ = Depends(usuario_actual), db: Session = Depends(get_db)):
     q = db.query(models.Empleado)
@@ -1378,13 +1414,28 @@ def editar_empleado(emp_id: int, cambios: EmpleadoEdit, _ = Depends(solo_dueno),
 # No hay DELETE a propósito: un empleado que se fue sigue teniendo comprobantes y
 # liquidaciones que tienen que poder leerse. Se desactiva con el PUT.
 
-@app.put("/api/config/valor-hora")
-def set_valor_hora(datos: ValorHoraIn, _ = Depends(solo_dueno), db: Session = Depends(get_db)):
-    if datos.valor < 0: raise HTTPException(400, "El valor hora no puede ser negativo")
-    fila = db.query(models.Config).filter_by(clave="valor_hora").first()
-    if fila: fila.valor = str(datos.valor)
-    else: db.add(models.Config(clave="valor_hora", valor=str(datos.valor)))
-    db.commit(); return {"ok": True, "valor": datos.valor}
+@app.put("/api/config/sueldos")
+def set_config_sueldos(datos: SueldosConfigIn, _ = Depends(solo_dueno), db: Session = Depends(get_db)):
+    """El valor hora y el porcentaje de comisión.
+
+    Cambiarlos NO toca lo ya cerrado: la liquidación guarda los dos números con
+    los que se pagó. Sí cambia lo pendiente, que todavía se está calculando en
+    vivo, y eso es a propósito: un aumento acordado a mitad de ciclo se paga en
+    el ciclo, no al siguiente.
+    """
+    def guardar(clave, valor):
+        fila = db.query(models.Config).filter_by(clave=clave).first()
+        if fila: fila.valor = str(valor)
+        else: db.add(models.Config(clave=clave, valor=str(valor)))
+    if datos.valor_hora is not None:
+        if datos.valor_hora < 0: raise HTTPException(400, "El valor hora no puede ser negativo")
+        guardar("valor_hora", datos.valor_hora)
+    if datos.comision_pct is not None:
+        if not 0 <= datos.comision_pct <= 100:
+            raise HTTPException(400, "La comisión va de 0 a 100")
+        guardar("comision_pct", datos.comision_pct)
+    db.commit()
+    return {"ok": True, "valor_hora": valor_hora(db), "comision_pct": comision_pct(db)}
 
 @app.get("/api/alias")
 def listar_alias(_ = Depends(usuario_actual), db: Session = Depends(get_db)):

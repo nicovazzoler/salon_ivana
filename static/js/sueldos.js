@@ -21,6 +21,19 @@ function toast(m){const t=$("#toast");t.textContent=m;t.classList.add("show");se
 const RECUERDO = "sueldos_empleado";
 
 let EMPLEADOS = [], ITEMS = [], EMP = null, D = null;
+const DUENO = esDueno();
+/* La misma tarjeta la miran dos personas distintas: la empleada mira lo suyo y
+   la dueña mira lo de otra. Los rótulos cambian con eso, porque "se te debe" en
+   la pantalla de la dueña es directamente falso. */
+const VOS = {
+  debe:   DUENO ? "Se le debe" : "Se te debe",
+  dias:   DUENO ? "Días trabajados" : "Días que trabajaste",
+  quien:  DUENO ? "Empleada" : "Quién sos",
+  sinDias: DUENO ? "Todavía no tiene días cargados" : "Todavía no cargaste ningún día",
+  comoCargar: DUENO ? "Se agregan abajo, con el día y las horas." : "Agregá abajo el día y cuántas horas hiciste.",
+  sinTrabajos: DUENO ? "Aparecen solos cuando se cobra un ticket a su nombre con un ítem marcado a comisión."
+                     : "Aparecen solos cuando se cobra un ticket a tu nombre con un ítem marcado a comisión.",
+};
 
 /* Las horas se muestran como las dice la gente ("8 h 30"), nunca en decimales:
    "8,5 h" se lee mal y se tipea peor. Adentro siempre son minutos enteros, que
@@ -53,22 +66,184 @@ function diaDe(iso){
 }
 
 async function arranque(){
-  EMPLEADOS = await (await authFetch("/api/empleados")).json();
+  // La dueña ve también a las dadas de baja: mientras tengan algo pendiente hay
+  // que pagárselo, y esconderlas sería perderles el sueldo de la última semana.
+  EMPLEADOS = await (await authFetch("/api/empleados" + (DUENO ? "?todos=true" : ""))).json();
   const sel = $("#quien");
+  sel.onchange = () => { localStorage.setItem(RECUERDO, sel.value); cargar(); };
+  if(DUENO){
+    // Para la dueña la tarjeta de abajo no es "tus horas": es el detalle de la
+    // que está mirando. El selector de arriba sigue existiendo porque es lo que
+    // dice de quién es lo que se ve.
+    $("#tituloDetalle").textContent = "Detalle";
+    $("#bajadaDetalle").textContent = "Lo que se le debe hoy. Se puede corregir acá mismo antes de cerrar.";
+    $("#rotuloQuien").textContent = VOS.quien;
+  }
+  ITEMS = await (await authFetch("/api/sueldos/items-comision")).json();
+  llenarSelector();
+  if(!EMPLEADOS.length) return;
+  if(DUENO) await cargarPanelDueno();
+  await cargar();
+}
+
+/* El selector es de dónde sale TODO lo demás: si queda apuntando a alguien que
+   ya no está, la pantalla muestra el sueldo de otra. Por eso se redibuja entero
+   cada vez que cambia la lista, respetando lo que estaba elegido. */
+function llenarSelector(){
+  const sel = $("#quien");
+  const antes = sel.value || localStorage.getItem(RECUERDO);
   if(!EMPLEADOS.length){
     sel.closest(".quien").style.display = "none";
+    $("#totales").innerHTML = "";
     $("#cuerpo").innerHTML = `<div class="vacio"><b>Todavía no hay nadie en la lista</b>
-      La dueña carga los nombres en Admin, y desde ahí aparecen acá.</div>`;
+      ${DUENO ? "Agregalos más abajo, en “Cómo se calcula”." : "La dueña los carga desde esta misma pantalla."}</div>`;
     return;
   }
-  sel.innerHTML = EMPLEADOS.map(e=>`<option value="${e.id}">${esc(e.nombre)}</option>`).join("");
-  const guardado = localStorage.getItem(RECUERDO);
-  if(guardado && EMPLEADOS.some(e=>String(e.id)===guardado)) sel.value = guardado;
-  sel.onchange = () => { localStorage.setItem(RECUERDO, sel.value); cargar(); };
+  sel.closest(".quien").style.display = "";
+  sel.innerHTML = EMPLEADOS.map(e=>`<option value="${e.id}">${esc(e.nombre)}${e.activo===false?" (de baja)":""}</option>`).join("");
+  if(antes && EMPLEADOS.some(e=>String(e.id)===String(antes))) sel.value = antes;
   localStorage.setItem(RECUERDO, sel.value);
+}
 
-  ITEMS = await (await authFetch("/api/sueldos/items-comision")).json();
-  cargar();
+/* Después de cualquier cambio se vuelve a leer todo del servidor: la cuenta la
+   hace él, y repetirla acá sería tener dos versiones del sueldo. Es barato
+   —son dos empleadas y una lista corta— y evita que la pantalla muestre un
+   total viejo al lado de un detalle nuevo. */
+async function refrescar(){
+  EMPLEADOS = await (await authFetch("/api/empleados" + (DUENO ? "?todos=true" : ""))).json();
+  llenarSelector();
+  if(!EMPLEADOS.length) return;
+  if(DUENO) await cargarPanelDueno();
+  await cargar();
+}
+
+/* ---------- lo que ve solo la dueña ---------- */
+
+async function cargarPanelDueno(){
+  const card = $("#cardDueno");
+  if(!card) return;
+  card.style.display = "";
+  // Un pedido por empleada: son dos o tres. Hacer un endpoint que devuelva todo
+  // junto sería otra versión de la misma cuenta para mantener al lado de esta.
+  const resumenes = await Promise.all(EMPLEADOS.map(async e =>
+    (await authFetch("/api/sueldos/pendiente?empleado_id="+e.id)).json()));
+  const total = resumenes.reduce((a,r)=>a+r.total, 0);
+  $("#kpisDueno").innerHTML = `
+    <div class="kpi"><span class="lbl">Total a pagar</span><span class="val">${fmt(total)}</span></div>
+    <div class="kpi"><span class="lbl">Valor hora</span><span class="val">${fmt(resumenes[0] ? resumenes[0].valor_hora : 0)}</span></div>`;
+  $("#listaEmpleadas").innerHTML = resumenes.map(r=>`
+    <div class="fila-emp${r.empleado.id===EMP?" abierta":""}">
+      <div>
+        <b>${esc(r.empleado.nombre)}</b>
+        <span class="det">${r.trabajos.length} ${r.trabajos.length===1?"trabajo":"trabajos"} · ${hhmm(r.minutos_total)} · ${r.dias.length} ${r.dias.length===1?"día":"días"}</span>
+      </div>
+      <div class="plata">${fmt(r.total)}</div>
+      <button class="b-out ver" data-emp="${r.empleado.id}">Ver</button>
+    </div>`).join("") || `<div class="vacio"><b>No hay empleados cargados</b>
+      Agregalos más abajo y ahí empiezan a aparecer acá.</div>`;
+  $("#listaEmpleadas").querySelectorAll(".ver").forEach(b=>{
+    b.onclick = () => { $("#quien").value = b.dataset.emp; localStorage.setItem(RECUERDO, b.dataset.emp); cargar(); };
+  });
+
+  $("#cfgHora").value = resumenes[0] ? resumenes[0].valor_hora : 0;
+  $("#cfgPct").value  = resumenes[0] ? resumenes[0].comision_pct : 40;
+  $("#btnCfg").onclick = async () => {
+    await mandar("/api/config/sueldos", "PUT", {
+      valor_hora: Math.max(0, parseInt($("#cfgHora").value,10)||0),
+      comision_pct: Math.max(0, parseInt($("#cfgPct").value,10)||0)});
+  };
+
+  pintarEmpleados();
+  pintarLiquidaciones();
+}
+
+/* La lista de empleados se dibuja para leer, como la de usuarios: los campos
+   aparecen cuando se piden. Renombrar arrastra —el nombre del peluquero es una
+   clasificación, no lo que se le dijo al cliente—, así que un comprobante viejo
+   nunca queda a nombre de alguien que ya no existe. */
+function pintarEmpleados(){
+  const cont = $("#listaEmpleados");
+  cont.innerHTML = EMPLEADOS.map(e=>`
+    <div class="fila-emp">
+      <div><b>${esc(e.nombre)}</b>
+        <span class="det">${e.activo ? "trabajando" : "dada de baja"}</span></div>
+      <button class="b-out renombrar" data-id="${e.id}">Renombrar</button>
+      <button class="${e.activo?"b-del":"b-ok"} baja" data-id="${e.id}" data-activo="${e.activo?1:0}">${e.activo?"Dar de baja":"Reactivar"}</button>
+    </div>`).join("") || `<div class="vacio">Todavía no hay nadie.</div>`;
+  cont.querySelectorAll(".renombrar").forEach(b=>{
+    b.onclick = async () => {
+      const e = EMPLEADOS.find(x=>x.id==b.dataset.id);
+      const nuevo = prompt(`Renombrar a "${e.nombre}":`, e.nombre);
+      if(!nuevo || nuevo.trim()===e.nombre) return;
+      await mandar(`/api/empleados/${e.id}`, "PUT", {nombre: nuevo.trim()});
+    };
+  });
+  cont.querySelectorAll(".baja").forEach(b=>{
+    b.onclick = async () => {
+      const activo = b.dataset.activo === "1";
+      if(activo && !confirm("Dar de baja no borra nada: sus comprobantes y lo que se le pagó siguen estando. Solo deja de aparecer para elegir. ¿Seguimos?")) return;
+      await mandar(`/api/empleados/${b.dataset.id}`, "PUT", {activo: !activo});
+    };
+  });
+  $("#btnEmpleado").onclick = async () => {
+    const nombre = $("#nvEmpleado").value.trim();
+    if(!nombre){ toast("Poné el nombre"); return; }
+    if(await mandar("/api/empleados", "POST", {nombre})) $("#nvEmpleado").value = "";
+  };
+}
+
+async function pintarLiquidaciones(){
+  const liqs = await (await authFetch("/api/sueldos/liquidaciones")).json();
+  const card = $("#cardLiquidaciones");
+  if(!liqs.length){ card.style.display = "none"; return; }
+  card.style.display = "";
+  $("#listaLiq").innerHTML = liqs.map(l=>`
+    <div class="fila-emp">
+      <div><b>${esc(l.empleado||"—")} · ${fechaCorta(l.hasta)}</b>
+        <span class="det">${fechaCorta(l.desde)} a ${fechaCorta(l.hasta)} · ${hhmm(l.minutos_pagados)} a ${fmt(l.valor_hora)} + comisiones al ${l.comision_pct}%${l.notas?" · "+esc(l.notas):""}</span></div>
+      <div class="plata">${fmt(l.total)}</div>
+      <button class="b-out verLiq" data-id="${l.id}">Ver</button>
+    </div>
+    <div class="detalle-liq" id="liq${l.id}" style="display:none;"></div>`).join("");
+  $("#listaLiq").querySelectorAll(".verLiq").forEach(b=>{
+    b.onclick = async () => {
+      const caja = $("#liq"+b.dataset.id);
+      if(caja.style.display === "block"){ caja.style.display = "none"; return; }
+      const d = await (await authFetch("/api/sueldos/liquidaciones/"+b.dataset.id)).json();
+      caja.innerHTML = `
+        <div class="sub-h">Días</div>
+        ${d.dias.map(x=>`<div class="fila-dato"><div class="que"><b>${diaDe(x.fecha)} ${fechaCorta(x.fecha)}</b></div>
+           <div class="mins">${hhmm(x.minutos)}</div>
+           <div class="plata">${fmt(Math.round(x.minutos * d.valor_hora / 60))}</div></div>`).join("") || `<div class="vacio">Sin días.</div>`}
+        <div class="sub-h">Trabajos</div>
+        ${d.trabajos.map(x=>`<div class="fila-dato"><div class="que"><b>${esc(x.nombre||"—")}${x.cantidad>1?` ×${x.cantidad}`:""}${x.suelto?` <span class="sin-comp">sin comprobante</span>`:""}</b>
+           <span class="det">${fechaCorta(x.fecha)} · ${fmt(x.base)}</span></div>
+           <div class="mins">${hhmm(x.minutos)}</div>
+           <div class="plata">${fmt(x.comision)}</div></div>`).join("") || `<div class="vacio">Sin trabajos.</div>`}`;
+      caja.style.display = "block";
+    };
+  });
+}
+
+/* Cerrar es de la dueña, que es la que paga, y no se puede deshacer: a partir de
+   ahí esos números no se mueven aunque después se corrija un comprobante. Por eso
+   el botón dice cuánto se está pagando y a quién. */
+function pintarCierre(){
+  const caja = $("#cierre");
+  if(!caja) return;
+  const hay = D.trabajos.length || D.dias.length;
+  if(!hay){ caja.innerHTML = ""; return; }
+  const faltan = D.trabajos.filter(t=>!t.minutos).length;
+  caja.className = "cierre";
+  caja.innerHTML = `
+    <input class="nota" id="notaCierre" placeholder="Nota (opcional): cómo se pagó, si quedó algo…">
+    <button class="b-ok" id="btnCerrar">Cerrar y pagar ${fmt(D.total)} a ${esc(D.empleado.nombre)}</button>
+    ${faltan ? `<div class="aviso">⚠️ ${faltan} ${faltan===1?"trabajo":"trabajos"} sin duración cargada. Ese tiempo no se descuenta de las horas del día, así que si el día tiene horas puestas se paga dos veces: por hora y por comisión.</div>` : ""}`;
+  $("#btnCerrar").onclick = async () => {
+    if(!confirm(`Se le pagan ${fmt(D.total)} a ${D.empleado.nombre} y arranca un ciclo nuevo.\n\nEsto no se puede deshacer. ¿Cerramos?`)) return;
+    if(await mandar("/api/sueldos/cerrar", "POST",
+        {empleado_id: EMP, notas: $("#notaCierre").value.trim() || null})) toast("Pagado ✓");
+  };
 }
 
 async function cargar(){
@@ -81,7 +256,7 @@ function pintar(){
   const conComp = D.trabajos.filter(t=>!t.suelto).length;
   $("#totales").innerHTML = `
     <div class="kpi destacado">
-      <span class="lbl">Se te debe</span>
+      <span class="lbl">${VOS.debe}</span>
       <span class="val">${fmt(D.total)}</span>
       <span class="nota">sin cerrar todavía</span>
     </div>
@@ -98,6 +273,7 @@ function pintar(){
 
   $("#cuerpo").innerHTML = seccionDias() + seccionTrabajos();
   enganchar();
+  if(DUENO) pintarCierre();
 }
 
 /* Los días no se agregan de a uno: aparecen solos apenas hay un trabajo de esa
@@ -110,7 +286,7 @@ function seccionDias(){
     return `<div class="fila-dato${d.sugerido?" sugerido":""}">
       <div class="que">
         <b>${diaDe(d.fecha)} ${fechaCorta(d.fecha)}</b>
-        <span class="det">${d.sugerido ? "hiciste trabajos ese día — poné las horas" : ""}</span>
+        <span class="det">${d.sugerido ? (DUENO ? "hizo trabajos ese día — faltan las horas" : "hiciste trabajos ese día — poné las horas") : ""}</span>
       </div>
       <div class="mins">
         <input type="number" min="0" max="24" inputmode="numeric" value="${h||""}"
@@ -124,9 +300,8 @@ function seccionDias(){
     </div>`;
   }).join("");
 
-  return `<div class="sub-h">Días que trabajaste — ${hhmm(D.minutos_total)} en total</div>
-    ${filas || `<div class="vacio"><b>Todavía no cargaste ningún día</b>
-       Agregá abajo el día y cuántas horas hiciste.</div>`}
+  return `<div class="sub-h">${VOS.dias} — ${hhmm(D.minutos_total)} en total</div>
+    ${filas || `<div class="vacio"><b>${VOS.sinDias}</b>${VOS.comoCargar}</div>`}
     <div class="agregar">
       <div><label for="nvFecha">Día</label><input type="date" id="nvFecha" value="${hoyArg()}" max="${hoyArg()}"></div>
       <div><label for="nvHoras">Horas</label><input type="number" id="nvHoras" min="0" max="24" inputmode="numeric" placeholder="8"></div>
@@ -179,8 +354,7 @@ function seccionTrabajos(){
     </div>` : "";
 
   return `<div class="sub-h">Trabajos a comisión — ${hhmm(D.minutos_comision)} que ya se pagan con la comisión</div>
-    ${filas || `<div class="vacio"><b>Ningún trabajo a comisión pendiente</b>
-       Aparecen solos cuando se cobra un ticket a tu nombre con un ítem marcado a comisión.</div>`}
+    ${filas || `<div class="vacio"><b>Ningún trabajo a comisión pendiente</b>${VOS.sinTrabajos}</div>`}
     ${agregar}`;
 }
 
@@ -255,7 +429,7 @@ async function mandar(url, metodo, cuerpo){
       toast(e.detail || "No se pudo guardar");
       return false;
     }
-    await cargar();
+    await refrescar();
     return true;
   }catch(e){
     toast("No se pudo guardar: " + e.message);

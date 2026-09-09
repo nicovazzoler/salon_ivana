@@ -51,6 +51,31 @@
           font-weight:var(--fw-bold); text-transform:uppercase; letter-spacing:.04em;
           color:var(--text-tenue); }
   .vacio{ padding:var(--sp-4); text-align:center; color:var(--text-tenue); }
+
+  /* Fila de una empleada en la vista de la dueña: nombre, de qué se compone lo
+     que se le debe, el total y el botón para entrar. Misma grilla que .fila-dato
+     para que las dos listas de la pantalla se lean parejas. */
+  .fila-emp{
+    display:grid; grid-template-columns:minmax(0,1fr) auto auto;
+    align-items:center; gap:var(--sp-2);
+    padding:var(--sp-2) 0; border-bottom:1px solid var(--border-sutil);
+  }
+  .fila-emp b{ display:block; }
+  .fila-emp .det{ font-size:var(--fs-sm); color:var(--text-tenue); }
+  .fila-emp .plata{ font-variant-numeric:tabular-nums; white-space:nowrap;
+                    text-align:right; font-weight:var(--fw-bold); }
+  .fila-emp.abierta{ background:var(--bg-sutil); }
+  .cierre{ margin-top:var(--sp-4); padding-top:var(--sp-3);
+           border-top:1px solid var(--border-sutil);
+           display:flex; flex-wrap:wrap; gap:var(--sp-2); align-items:center; }
+  .cierre .nota{ flex:1 1 220px; }
+  .cierre .aviso{ flex:1 1 100%; font-size:var(--fs-sm); color:var(--text-tenue); }
+  /* El detalle de un cierre va metido adentro de la lista y hundido, para que se
+     vea que pertenece a la fila de arriba y no que es otra sección. */
+  .detalle-liq{ padding:0 0 var(--sp-3) var(--sp-3);
+                border-left:2px solid var(--border-sutil); margin:var(--sp-2) 0 var(--sp-3); }
+  .detalle-liq .sub-h{ margin-top:var(--sp-2); }
+  .detalle-liq .mins{ color:var(--text-tenue); font-size:var(--fs-sm); }
   .vacio b{ display:block; color:var(--text-titulo); margin-bottom:var(--sp-1); }
 
   .agregar{ display:flex; flex-wrap:wrap; gap:var(--sp-2); align-items:flex-end;
@@ -78,19 +103,60 @@
 </header>
 
 <div class="wrap">
+  <!-- La dueña entra a otra cosa: a ver a quién le debe cuánto y a cerrar. El
+       detalle de una es el mismo que ve la empleada, así que la tarjeta de abajo
+       la usan las dos y lo que cambia es lo que la rodea. -->
+  <div class="card" id="cardDueno" data-dueno style="display:none;">
+    <div class="card-head con-datos">
+      <div class="titulo">
+        <h2>💰 A pagar</h2>
+        <p>Lo que se debe hasta hoy. Al cerrar, esos números quedan fijos y arranca un ciclo nuevo.</p>
+      </div>
+      <div class="kpis" id="kpisDueno"></div>
+    </div>
+    <div id="listaEmpleadas"></div>
+  </div>
+
   <div class="card">
     <div class="card-head con-datos">
       <div class="titulo">
-        <h2>👛 Sueldos</h2>
-        <p>Cargá tus horas y cuánto duró cada trabajo. El total se actualiza solo.</p>
+        <h2 id="tituloDetalle">👛 Sueldos</h2>
+        <p id="bajadaDetalle">Cargá tus horas y cuánto duró cada trabajo. El total se actualiza solo.</p>
       </div>
       <div class="quien">
-        <label for="quien">Quién sos</label>
+        <label for="quien" id="rotuloQuien">Quién sos</label>
         <select id="quien"></select>
       </div>
     </div>
     <div class="totales" id="totales"></div>
     <div id="cuerpo"></div>
+    <div id="cierre" data-dueno></div>
+  </div>
+
+  <div class="card" data-dueno id="cardLiquidaciones" style="display:none;">
+    <div class="card-head"><div class="titulo"><h2>🧾 Ya pagado</h2>
+      <p>Los cierres anteriores, con los números tal como estaban ese día.</p></div></div>
+    <div id="listaLiq"></div>
+  </div>
+
+  <div class="card" data-dueno>
+    <div class="card-head"><div class="titulo"><h2>⚙️ Cómo se calcula</h2>
+      <p>El valor de la hora y el porcentaje de comisión. Cambiarlos no toca lo ya pagado.</p></div></div>
+    <div class="agregar" style="margin-top:0; padding-top:0; border-top:none;">
+      <div><label for="cfgHora">Valor hora</label>
+        <input type="number" id="cfgHora" min="0" inputmode="numeric"></div>
+      <div><label for="cfgPct">Comisión %</label>
+        <input type="number" id="cfgPct" min="0" max="100" inputmode="numeric"></div>
+      <button class="b-ok" id="btnCfg">Guardar</button>
+    </div>
+
+    <div class="sub-h">Empleados</div>
+    <div id="listaEmpleados"></div>
+    <div class="agregar">
+      <div class="ancho"><label for="nvEmpleado">Nombre</label>
+        <input id="nvEmpleado" placeholder="Ej: Carla"></div>
+      <button class="b-ok" id="btnEmpleado">Agregar</button>
+    </div>
   </div>
 </div>
 
