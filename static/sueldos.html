@@ -52,6 +52,17 @@
           color:var(--text-tenue); }
   .vacio{ padding:var(--sp-4); text-align:center; color:var(--text-tenue); }
 
+  /* La puerta. Pocos controles y grandes: se usa parada, en una tablet, con la
+     mano mojada de tintura. */
+  .puerta-form{ display:flex; flex-wrap:wrap; gap:var(--sp-3); align-items:flex-end; }
+  .puerta-form > div{ display:flex; flex-direction:column; gap:2px; flex:1 1 180px; min-width:0; }
+  .puerta-form select, .puerta-form input{ width:100%; }
+  .puerta-form input.pin{ font-size:var(--fs-xl); letter-spacing:.3em; text-align:center; }
+  .puerta-form button{ flex:0 0 auto; }
+  .puerta-error{ margin:var(--sp-3) 0 0; color:var(--danger); font-size:var(--fs-sm); }
+  /* Quién abrió, arriba a la derecha, donde la dueña tiene el desplegable. */
+  .quien-nombre{ font-weight:var(--fw-bold); }
+
   /* Fila de una empleada en la vista de la dueña: nombre, de qué se compone lo
      que se le debe, el total y el botón para entrar. Misma grilla que .fila-dato
      para que las dos listas de la pantalla se lean parejas. */
@@ -102,7 +113,25 @@
   <nav class="menu"></nav>
 </header>
 
-<div class="wrap">
+<!-- La puerta. Con el usuario empleado, la pantalla no muestra nada hasta que
+     alguien dice quién es y pone su código: en el local hay una sola tablet y un
+     solo login, así que sin esto el sueldo de una queda a la vista de la otra y
+     de cualquiera que agarre el aparato. Se pide CADA vez que se entra, y el
+     permiso no se guarda en el navegador: vive mientras la pantalla está
+     abierta. El candado de verdad está en el servidor. -->
+<div class="wrap" id="puerta" hidden>
+  <div class="card">
+    <div class="card-head">
+      <div class="titulo">
+        <h2>👛 Sueldos</h2>
+        <p id="puertaAyuda">Elegí quién sos y poné tu código.</p>
+      </div>
+    </div>
+    <div id="puertaCuerpo"></div>
+  </div>
+</div>
+
+<div class="wrap" id="todo">
   <!-- La dueña entra a otra cosa: a ver a quién le debe cuánto y a cerrar. El
        detalle de una es el mismo que ve la empleada, así que la tarjeta de abajo
        la usan las dos y lo que cambia es lo que la rodea. -->

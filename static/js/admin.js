@@ -36,16 +36,32 @@ async function cargarCats(){
   if(catActual && cats.includes(catActual)) $("#selCat").value=catActual;
   catActual=$("#selCat").value;
   ITEMS_ALL=await (await authFetch("/api/items/all")).json();
-  if($("#buscarItem").value.trim()) filtrarItems(); else cargarItems();
+  filtrarItems();
 }
 
-$("#selCat").onchange=()=>{catActual=$("#selCat").value;$("#buscarItem").value="";cargarItems();};
+$("#selCat").onchange=()=>{catActual=$("#selCat").value;$("#buscarItem").value="";filtrarItems();};
 $("#buscarItem").oninput=filtrarItems;
+
+/* El filtro de comisión y el buscador son lo mismo: los dos dejan de mirar una
+   categoría y pasan a mirar el catálogo entero. Por eso están en la misma
+   función y se pueden usar juntos ("de los que van a comisión, los que dicen
+   color"). */
+$("#soloComision").onclick=()=>{
+  $("#soloComision").classList.toggle("on");
+  filtrarItems();
+};
 
 function filtrarItems(){
   const q=$("#buscarItem").value.trim().toLowerCase();
-  if(!q){ cargarItems(); return; }
-  const f=ITEMS_ALL.filter(i=>i.nombre.toLowerCase().includes(q));
+  const soloCom=$("#soloComision").classList.contains("on");
+  const cuenta=$("#cuentaComision");
+  if(!q && !soloCom){ cuenta.textContent=""; cargarItems(); return; }
+  let f=ITEMS_ALL;
+  if(soloCom) f=f.filter(i=>i.es_comision);
+  if(q) f=f.filter(i=>i.nombre.toLowerCase().includes(q));
+  cuenta.textContent = soloCom
+    ? `${f.length} ${f.length===1?"ítem":"ítems"} en ${new Set(f.map(i=>i.categoria)).size} ${new Set(f.map(i=>i.categoria)).size===1?"categoría":"categorías"}`
+    : "";
   renderItems(f, true);
 }
 
@@ -209,7 +225,7 @@ $("#btnEditarTodos").onclick=async()=>{
   b.className = modoEdicion ? "b-tinta" : "b-out";
   $("#panelNuevoItem").innerHTML="";
   cerrarPaneles();
-  if($("#buscarItem").value.trim()) filtrarItems(); else await cargarItems();
+  filtrarItems();
 };
 
 // Uno solo abierto en toda la tarjeta, el de crear incluido.
@@ -555,9 +571,143 @@ window.acotarLista = cont => { acotar(cont); cont.addEventListener("scroll", () 
 // cinco. Solo la ve la dueña: la tarjeta tiene data-dueno y ajustarPorRol() ya
 // la sacó del documento cuando entra el empleado, así que acá no hay nada que
 // dibujar y no se pide nada al servidor.
-const LISTA_EMPLEADOS = $("#listaEmpleados")
-  ? Listas.dibujar("#listaEmpleados", "empleados", () => cargarFusion())
-  : null;
+/* Empleados. Tiene su propio dibujante y no el de las listas configurables
+   porque además del nombre hay un código, y un código no se muestra: se pone o
+   se saca. Es la misma forma que la tarjeta de usuarios —fila de lectura, panel
+   que se abre al pedirlo— por la misma razón.
+
+   Todo esto es solo de la dueña: la tarjeta tiene data-dueno y ajustarPorRol()
+   ya la sacó del documento cuando entra el empleado, así que acá no hay nada que
+   dibujar ni nada que pedirle al servidor. */
+async function cargarEmpleados(){
+  const cont = $("#listaEmpleados");
+  if(!cont) return;
+  const emps = await (await authFetch("/api/empleados?todos=true")).json();
+  cont.innerHTML = "";
+
+  emps.forEach(e => {
+    const fila = document.createElement("div");
+    fila.className = "usuario-fila";
+
+    const nom = document.createElement("span");
+    nom.className = "n"; nom.textContent = e.nombre;   // lo escribe una persona
+    const meta = document.createElement("span");
+    meta.className = "meta";
+    meta.textContent = (e.activo ? "" : "de baja · ") + (e.tiene_pin ? "con código" : "sin código");
+    if(!e.tiene_pin) meta.style.color = "var(--danger)";
+
+    const quien = document.createElement("span");
+    quien.className = "quien"; quien.append(nom, meta);
+
+    const acc = document.createElement("span"); acc.className = "acc";
+    const bNom = Object.assign(document.createElement("button"),
+                               {className:"b-out", textContent:"Renombrar"});
+    const bPin = Object.assign(document.createElement("button"),
+                               {className:"b-out", textContent: e.tiene_pin ? "Cambiar código" : "Poner código"});
+    const bBaja = Object.assign(document.createElement("button"),
+                                {className: e.activo ? "b-del" : "b-ok",
+                                 textContent: e.activo ? "Dar de baja" : "Reactivar"});
+    acc.append(bNom, bPin, bBaja);
+    fila.append(quien, acc);
+    cont.appendChild(fila);
+
+    const abrir = tipo => {
+      cont.querySelectorAll(".panel-edicion").forEach(x => x.remove());
+      fila.after(panelEmpleado(e, tipo));
+    };
+    bNom.onclick = () => abrir("nombre");
+    bPin.onclick = () => abrir("pin");
+    bBaja.onclick = async () => {
+      if(e.activo && !confirm(`Dar de baja a "${e.nombre}" no borra nada: sus comprobantes y lo que se le pagó siguen estando. Solo deja de aparecer para elegir y no puede entrar a su sueldo.\n\n¿Seguimos?`)) return;
+      const r = await authFetch(`/api/empleados/${e.id}`, {method:"PUT",
+        headers:{"Content-Type":"application/json"}, body:JSON.stringify({activo: !e.activo})});
+      if(!r.ok){ toast((await r.json().catch(()=>({}))).detail || "No se pudo"); return; }
+      toast(e.activo ? "Dada de baja" : "Reactivada");
+      await refrescarEmpleados();
+    };
+  });
+
+  dibujarCrearEmpleado();
+  await cargarFusion();
+}
+
+/* Un panel por vez, como en usuarios: el nombre y el código no se cambian juntos
+   casi nunca, y tenerlos siempre a la vista convierte una lista que se mira en
+   un formulario a medio llenar. */
+function panelEmpleado(e, tipo){
+  const esPin = tipo === "pin";
+  const pan = document.createElement("div");
+  pan.className = "panel-edicion";
+  pan.innerHTML = `
+    <div class="campo"><label>${esPin ? "Código nuevo (4 a 8 números)" : "Nombre"}</label>
+      <input class="valor" type="${esPin ? "text" : "text"}" ${esPin ? 'inputmode="numeric" maxlength="8" autocomplete="off" placeholder="Ej: 2468"' : ""}></div>
+    <span class="acc">
+      <button class="b-ok aceptar">Guardar</button>
+      <button class="b-out cancelar">Cancelar</button>
+      ${esPin && e.tiene_pin ? `<button class="b-del sacar">Sacar el código</button>` : ""}
+    </span>
+    ${esPin ? `<p class="muted" style="flex:1 1 100%;margin:0;">El código no se puede volver a ver:
+       se guarda encriptado, como las contraseñas. Si se olvida, se pone uno nuevo.</p>` : ""}`;
+  const campo = pan.querySelector(".valor");
+  if(!esPin) campo.value = e.nombre;
+
+  pan.querySelector(".cancelar").onclick = () => pan.remove();
+  const sacar = pan.querySelector(".sacar");
+  if(sacar) sacar.onclick = async () => {
+    if(!confirm(`Sin código, ${e.nombre} no va a poder entrar a su sueldo. ¿Se lo sacamos?`)) return;
+    await guardarEmpleado(`/api/empleados/${e.id}/pin`, {pin: null}, "Código sacado");
+  };
+  pan.querySelector(".aceptar").onclick = async () => {
+    const v = campo.value.trim();
+    if(!v){ toast(esPin ? "Escribí el código nuevo" : "El nombre no puede quedar vacío"); return; }
+    if(esPin && (!/^\d{4,8}$/.test(v))){ toast("El código son de 4 a 8 números"); return; }
+    if(esPin) await guardarEmpleado(`/api/empleados/${e.id}/pin`, {pin: v}, "Código guardado");
+    else      await guardarEmpleado(`/api/empleados/${e.id}`, {nombre: v}, "Nombre cambiado");
+  };
+  campo.addEventListener("keydown", ev => {
+    if(ev.key === "Enter") pan.querySelector(".aceptar").click();
+    if(ev.key === "Escape") pan.remove();
+  });
+  setTimeout(() => campo.focus(), 0);
+  return pan;
+}
+
+async function guardarEmpleado(url, cuerpo, aviso){
+  const r = await authFetch(url, {method:"PUT", headers:{"Content-Type":"application/json"},
+                                  body: JSON.stringify(cuerpo)});
+  if(!r.ok){ toast((await r.json().catch(()=>({}))).detail || "No se pudo"); return false; }
+  toast(aviso);
+  await refrescarEmpleados();
+  return true;
+}
+
+function dibujarCrearEmpleado(){
+  const caja = $("#crearEmpleado");
+  if(!caja) return;
+  caja.innerHTML = `
+    <div class="panel-edicion crear">
+      <div class="campo"><label>Agregar empleado</label>
+        <input class="nuevo" placeholder="Ej: Carla"></div>
+      <span class="acc"><button class="b-ok agregar">Agregar</button></span>
+    </div>`;
+  const campo = caja.querySelector(".nuevo");
+  caja.querySelector(".agregar").onclick = async () => {
+    const nombre = campo.value.trim();
+    if(!nombre){ toast("Poné el nombre"); return; }
+    const r = await authFetch("/api/empleados", {method:"POST",
+      headers:{"Content-Type":"application/json"}, body: JSON.stringify({nombre})});
+    if(!r.ok){ toast((await r.json().catch(()=>({}))).detail || "No se pudo"); return; }
+    const d = await r.json();
+    toast(d.reactivado ? "Estaba dada de baja: volvió a la lista" : "Empleado agregado");
+    campo.value = "";
+    await refrescarEmpleados();
+  };
+  campo.addEventListener("keydown", ev => { if(ev.key === "Enter") caja.querySelector(".agregar").click(); });
+}
+
+async function refrescarEmpleados(){ await cargarEmpleados(); }
+
+if($("#listaEmpleados")) cargarEmpleados();
 
 /* Unificar dos empleados en uno.
 
@@ -592,10 +742,8 @@ if($("#btnFusion")) $("#btnFusion").onclick = async () => {
   if(!r.ok){ toast((await r.json().catch(()=>({}))).detail || "No se pudo unificar"); return; }
   const d = await r.json();
   toast(`Quedó ${d.nombre}` + (d.renombrados ? ` · ${d.renombrados} anotaciones actualizadas` : ""));
-  await LISTA_EMPLEADOS?.recargar();
-  await cargarFusion();
+  await refrescarEmpleados();
 };
-if($("#fusionEmpleados")) cargarFusion();
 
 ["#listaItems","#listaUsuarios","#listaEmpleados"].forEach(sel=>{
   const cont = $(sel);

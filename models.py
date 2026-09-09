@@ -100,6 +100,12 @@ class Empleado(Base):
     id = Column(Integer, primary_key=True)
     nombre = Column(String, unique=True, nullable=False)
     activo = Column(Boolean, default=True)
+    # El código con el que abre su sueldo. Guardado como hash y con sal, igual
+    # que las contraseñas: la base entera se descarga en cada backup, y un código
+    # en texto plano ahí es el código de todas para siempre. Sin código no puede
+    # entrar, y quién tiene y quién no lo maneja solo la dueña.
+    pin_salt = Column(String)
+    pin_hash = Column(String)
 
 class TipoEgreso(Base):
     __tablename__ = "tipos_egreso"

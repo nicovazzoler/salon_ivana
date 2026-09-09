@@ -52,7 +52,7 @@ ORDEN = [
     ("clientes", models.Cliente, ["id", "nombre", "telefono", "alias", "notas",
                                   "direccion", "dni", "activo"], ["creado"]),
     ("formas_pago", models.FormaPago, ["id", "nombre", "activo"], []),
-    ("empleados", models.Empleado, ["id", "nombre", "activo"], []),
+    ("empleados", models.Empleado, ["id", "nombre", "activo", "pin_salt", "pin_hash"], []),
     ("tipos_egreso", models.TipoEgreso, ["id", "nombre", "activo", "privado"], []),
     ("usuarios", models.Usuario, ["id", "usuario", "salt", "hash", "rol"], []),
     ("config", models.Config, ["clave", "valor"], []),

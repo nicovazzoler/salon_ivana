@@ -1,8 +1,8 @@
 /* Las listas configurables de la app, en un solo lugar.
  *
- * Son seis: formas de pago, tipos de egreso, empleados, descuentos, ajustes por
- * ítem y alias de transferencia. Antes cada una tenía su copia del mismo código
- * en admin.js, y solo se podían tocar desde Admin.
+ * Son cinco: formas de pago, tipos de egreso, descuentos, ajustes por ítem y
+ * alias de transferencia. (Empleados también es una lista, pero tiene la suya en
+ * admin.js: además del nombre hay un código, y un código no se muestra.)
  *
  * Este archivo hace dos cosas y las usan dos pantallas:
  *
@@ -70,21 +70,6 @@ const LISTAS = {
     // para lo mismo la caja muestra los sueldos partidos en dos renglones.
     trabada: t => t.fijo ? "Los cierres de sueldo anotan el egreso con este nombre: no se cambia ni se borra." : null,
     aCuerpo: v => v.nombre ? v : (avisar("Falta el nombre"), null),
-  },
-
-  /* Quién atendió. Es una lista y no texto libre porque de este nombre sale el
-     sueldo: escrito a mano salían "Carla", "carla " y "Karla", que para el
-     sistema son tres personas, y el trabajo de una quedaba repartido en tres que
-     no cobra nadie. Renombrar arrastra —es una clasificación, no lo que se le
-     dijo al cliente—, así que un comprobante viejo nunca queda a nombre de
-     alguien que no existe. */
-  empleados: {
-    titulo: "Empleados",
-    ayuda: "Los nombres que se pueden elegir en “Atendió” al facturar y en la agenda.",
-    ruta: "/api/empleados",
-    vacio: "Todavía no hay empleados.",
-    campos: [{k:"nombre", etiqueta:"Nombre", placeholder:"Ej: Carla"}],
-    aCuerpo: v => v.nombre ? {nombre: v.nombre} : (avisar("Falta el nombre"), null),
   },
 
   descuentos: {

@@ -73,6 +73,38 @@ def verificar_token(token: str):
         payload = json.loads(base64.urlsafe_b64decode(raw.encode()))
         if payload["exp"] < time.time():
             return None
+        # Los tokens que no son de sesión llevan "t" y NO valen para entrar a la
+        # app: los firma la misma clave, así que sin esto el código de sueldos
+        # —que no sabe ni de usuario ni de rol— pasaría como una sesión válida y
+        # el que lo tuviera entraría a todo lo demás. Los de sesión no llevan "t"
+        # para que los que ya están dando vueltas sigan andando.
+        if payload.get("t"):
+            return None
         return payload
+    except Exception:
+        return None
+
+# ---------- el código de la pantalla de sueldos ----------
+# Es otra cosa que la sesión: dice QUIÉN de las empleadas abrió su sueldo, no
+# quién entró a la app. Dura poco a propósito —se pide cada vez que se entra a la
+# pantalla— y el navegador lo guarda solo en memoria.
+SUELDO_MINUTOS = 240
+
+def crear_token_sueldo(empleado_id: int) -> str:
+    payload = {"t": "sueldo", "empleado": int(empleado_id),
+               "exp": int(time.time()) + SUELDO_MINUTOS * 60}
+    raw = base64.urlsafe_b64encode(json.dumps(payload).encode()).decode()
+    return f"{raw}.{_firmar(raw.encode())}"
+
+def verificar_token_sueldo(token: str):
+    """Devuelve el id de la empleada, o None."""
+    try:
+        raw, firma = token.split(".")
+        if not hmac.compare_digest(firma, _firmar(raw.encode())):
+            return None
+        payload = json.loads(base64.urlsafe_b64decode(raw.encode()))
+        if payload.get("t") != "sueldo" or payload["exp"] < time.time():
+            return None
+        return int(payload["empleado"])
     except Exception:
         return None

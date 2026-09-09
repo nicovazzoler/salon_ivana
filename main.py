@@ -80,6 +80,12 @@ def migrar():
                     con.execute(text("DROP TABLE trabajos_comision"))
                 else:
                     print("Aviso: trabajos_comision tiene datos y forma vieja; no se tocó.")
+    if insp.has_table("empleados"):
+        emcols = [c["name"] for c in insp.get_columns("empleados")]
+        if "pin_hash" not in emcols:
+            with engine.begin() as con:
+                con.execute(text("ALTER TABLE empleados ADD COLUMN pin_salt VARCHAR"))
+                con.execute(text("ALTER TABLE empleados ADD COLUMN pin_hash VARCHAR"))
     if insp.has_table("liquidaciones"):
         licols = [c["name"] for c in insp.get_columns("liquidaciones")]
         if "egreso_id" not in licols:
@@ -233,6 +239,10 @@ class EmpleadoEdit(BaseModel):
     nombre: str | None = None; activo: bool | None = None
 class FusionIn(BaseModel):
     origen_id: int; destino_id: int      # el origen desaparece dentro del destino
+class PinIn(BaseModel):
+    pin: str | None = None               # None o vacío = le saca el código
+class EntrarSueldoIn(BaseModel):
+    empleado_id: int; pin: str
 class SueldosConfigIn(BaseModel):
     # Los dos números con los que se arma el sueldo. Van juntos porque se miran
     # juntos: cambiar uno sin ver el otro es como no verlos.
@@ -735,7 +745,7 @@ def _puede_modificar(user, fecha) -> bool:
    de una instancia. No es un candado perfecto, es sacarle al que prueba la
    posibilidad de hacer miles de intentos por minuto, que es lo que importa.
 """
-TOPE = {"ip": 25, "us": 8}
+TOPE = {"ip": 25, "us": 8, "pin": 8}
 ESPERA_SEG = 300          # 5 minutos de castigo
 _fallos: dict[str, list[float]] = {}
 
@@ -1236,18 +1246,88 @@ def _empleado_o_404(db, emp_id: int):
     if not e: raise HTTPException(404, "Empleado no existe")
     return e
 
-# Quién es la empleada que está cargando lo llega por parámetro: hay un solo
-# login compartido y ella elige su nombre al entrar. Está en un solo lugar a
-# propósito, para que el día que haya un PIN por persona se cambie acá y no en
-# cada endpoint.
+def token_sueldo(x_sueldo: str = Header(default="")):
+    """El código con el que una empleada abrió su sueldo. None si no mandó ninguno."""
+    return auth.verificar_token_sueldo(x_sueldo.strip())
+
+def permitir_sueldo(db, user, quien, empleado_id: int):
+    """Frena de verdad, acá y no en la pantalla.
+
+    El login de la app es uno solo y compartido: sin esto, cualquiera que entre
+    como empleado puede pedir el sueldo de cualquier otra cambiando un número en
+    la dirección. La dueña sí ve a todas: es la que paga.
+    """
+    if es_dueno(user): return
+    if quien is None:
+        raise HTTPException(403, "Entrá con tu código")
+    if quien != empleado_id:
+        raise HTTPException(403, "Ese sueldo no es tuyo")
+
+@app.post("/api/sueldos/entrar")
+def entrar_a_sueldos(datos: EntrarSueldoIn, request: Request, db: Session = Depends(get_db),
+                     _ = Depends(usuario_actual)):
+    """Abre la pantalla de sueldos de una empleada con su código.
+
+    Se pide cada vez que se entra: en el local hay una sola tablet y un solo
+    login, así que sin esto el sueldo de una queda a la vista de la otra y de
+    cualquiera que agarre el aparato. El código no se guarda en el navegador —el
+    permiso vive en memoria mientras la pantalla está abierta— y se frena por
+    intentos, como el login: cuatro dígitos se adivinan a mano si se puede probar
+    sin límite.
+    """
+    ip = request.client.host if request.client else "?"
+    claves = [f"ip:{ip}", f"pin:{datos.empleado_id}"]
+    faltan = _frenado(claves)
+    if faltan:
+        raise HTTPException(429, f"Demasiados intentos. Probá de nuevo en {faltan//60+1} min.")
+
+    emp = db.get(models.Empleado, datos.empleado_id)
+    # Mismo mensaje para "no existe", "no tiene código" y "el código está mal":
+    # los tres son "no entrás", y distinguirlos le dice al que prueba por dónde
+    # seguir probando.
+    if not emp or not emp.pin_hash or not emp.pin_salt or not hmac.compare_digest(
+            emp.pin_hash, auth.hash_password(datos.pin.strip(), emp.pin_salt)):
+        ahora = time.monotonic()
+        for c in claves: _fallos.setdefault(c, []).append(ahora)
+        # 403 y no 401 a propósito: la sesión de la app está perfecta, lo que no
+        # abre es el código. Con 401 el frontend entiende "se venció la sesión",
+        # te saca a la pantalla de login y errarle al código una vez te deja
+        # afuera de la app entera.
+        raise HTTPException(403, "Código incorrecto")
+    for c in claves: _fallos.pop(c, None)
+    return {"token": auth.crear_token_sueldo(emp.id), "empleado": {"id": emp.id, "nombre": emp.nombre}}
+
+@app.put("/api/empleados/{emp_id}/pin")
+def poner_pin(emp_id: int, datos: PinIn, _ = Depends(solo_dueno), db: Session = Depends(get_db)):
+    """Pone o saca el código de una empleada. Solo la dueña.
+
+    Se guarda hasheado y nunca se devuelve: si se pudiera leer, cualquiera que
+    abra Admin —o que mire un backup— tiene el de todas. Cuando se olvida no se
+    recupera, se pone uno nuevo.
+    """
+    e = _empleado_o_404(db, emp_id)
+    pin = (datos.pin or "").strip()
+    if not pin:
+        e.pin_salt = e.pin_hash = None
+        db.commit(); return {"ok": True, "tiene_pin": False}
+    if not pin.isdigit() or not 4 <= len(pin) <= 8:
+        raise HTTPException(400, "El código son de 4 a 8 números")
+    e.pin_salt = auth.nuevo_salt()
+    e.pin_hash = auth.hash_password(pin, e.pin_salt)
+    db.commit(); return {"ok": True, "tiene_pin": True}
+
 @app.get("/api/sueldos/pendiente")
-def sueldo_pendiente(empleado_id: int, _ = Depends(usuario_actual), db: Session = Depends(get_db)):
+def sueldo_pendiente(empleado_id: int, user = Depends(usuario_actual),
+                     quien = Depends(token_sueldo), db: Session = Depends(get_db)):
+    permitir_sueldo(db, user, quien, empleado_id)
     return resumen_pendiente(db, _empleado_o_404(db, empleado_id))
 
 @app.put("/api/sueldos/horas")
-def cargar_horas(h: HorasIn, _ = Depends(usuario_actual), db: Session = Depends(get_db)):
+def cargar_horas(h: HorasIn, user = Depends(usuario_actual),
+                 quien = Depends(token_sueldo), db: Session = Depends(get_db)):
     """Las horas de un día. Se pisa el valor del día en vez de sumar: la empleada
     corrige lo que puso, no acumula intentos."""
+    permitir_sueldo(db, user, quien, h.empleado_id)
     _empleado_o_404(db, h.empleado_id)
     if h.minutos < 0: raise HTTPException(400, "Las horas no pueden ser negativas")
     if h.minutos > 24 * 60: raise HTTPException(400, "No entran más de 24 horas en un día")
@@ -1264,12 +1344,14 @@ def cargar_horas(h: HorasIn, _ = Depends(usuario_actual), db: Session = Depends(
     db.commit(); return {"ok": True}
 
 @app.put("/api/sueldos/trabajo-minutos")
-def cargar_minutos_trabajo(m: MinutosTrabajoIn, _ = Depends(usuario_actual), db: Session = Depends(get_db)):
+def cargar_minutos_trabajo(m: MinutosTrabajoIn, user = Depends(usuario_actual),
+                           quien = Depends(token_sueldo), db: Session = Depends(get_db)):
     """Cuánto duró un trabajo a comisión.
 
     Si viene de un comprobante la línea ya existe y esto es lo único que la
     empleada agrega; si es suelto, corrige lo que puso al cargarlo.
     """
+    permitir_sueldo(db, user, quien, m.empleado_id)
     _empleado_o_404(db, m.empleado_id)
     if m.minutos < 0 or m.minutos > 24 * 60:
         raise HTTPException(400, "Duración fuera de rango")
@@ -1358,7 +1440,8 @@ def cerrar_liquidacion(datos: CerrarIn, _ = Depends(solo_dueno), db: Session = D
             "egreso_numero": egreso.numero if egreso else None}
 
 @app.post("/api/sueldos/trabajo-suelto")
-def crear_trabajo_suelto(t: TrabajoSueltoIn, _ = Depends(usuario_actual), db: Session = Depends(get_db)):
+def crear_trabajo_suelto(t: TrabajoSueltoIn, user = Depends(usuario_actual),
+                         quien = Depends(token_sueldo), db: Session = Depends(get_db)):
     """Un trabajo a comisión que no quedó en ningún comprobante.
 
     Pasa: se atendió a alguien y no se facturó. Si no se pudiera cargar, la
@@ -1369,6 +1452,7 @@ def crear_trabajo_suelto(t: TrabajoSueltoIn, _ = Depends(usuario_actual), db: Se
     comprobante. Así la comisión se calcula siempre sobre la misma base y nadie
     puede escribir el número que le conviene.
     """
+    permitir_sueldo(db, user, quien, t.empleado_id)
     _empleado_o_404(db, t.empleado_id)
     item = db.get(models.Item, t.item_id)
     if not item: raise HTTPException(404, "Ese ítem no existe")
@@ -1386,9 +1470,11 @@ def crear_trabajo_suelto(t: TrabajoSueltoIn, _ = Depends(usuario_actual), db: Se
     return {"id": nuevo.id}
 
 @app.delete("/api/sueldos/trabajo-suelto/{trabajo_id}")
-def borrar_trabajo_suelto(trabajo_id: int, _ = Depends(usuario_actual), db: Session = Depends(get_db)):
+def borrar_trabajo_suelto(trabajo_id: int, user = Depends(usuario_actual),
+                          quien = Depends(token_sueldo), db: Session = Depends(get_db)):
     t = db.get(models.TrabajoComision, trabajo_id)
     if not t: raise HTTPException(404, "No existe")
+    permitir_sueldo(db, user, quien, t.empleado_id)
     if t.linea_id: raise HTTPException(400, "Ese trabajo viene de un comprobante: se saca anulando el comprobante")
     if t.liquidacion_id: raise HTTPException(400, "Ese trabajo ya está en una liquidación cerrada")
     db.delete(t); db.commit(); return {"ok": True}
@@ -1422,7 +1508,12 @@ def items_a_comision(_ = Depends(usuario_actual), db: Session = Depends(get_db))
 
 @app.get("/api/sueldos/liquidaciones")
 def listar_liquidaciones(empleado_id: int | None = None, limite: int = 20,
-                         _ = Depends(usuario_actual), db: Session = Depends(get_db)):
+                         user = Depends(usuario_actual), quien = Depends(token_sueldo),
+                         db: Session = Depends(get_db)):
+    # La empleada ve los suyos y nada más, aunque pida otro id o no pida ninguno.
+    if not es_dueno(user):
+        if quien is None: raise HTTPException(403, "Entrá con tu código")
+        empleado_id = quien
     q = db.query(models.Liquidacion)
     if empleado_id: q = q.filter(models.Liquidacion.empleado_id == empleado_id)
     return [{"id": l.id, "empleado_id": l.empleado_id,
@@ -1439,12 +1530,14 @@ def listar_liquidaciones(empleado_id: int | None = None, limite: int = 20,
             for l in q.order_by(models.Liquidacion.cerrada.desc()).limit(limite)]
 
 @app.get("/api/sueldos/liquidaciones/{liq_id}")
-def detalle_liquidacion(liq_id: int, _ = Depends(usuario_actual), db: Session = Depends(get_db)):
+def detalle_liquidacion(liq_id: int, user = Depends(usuario_actual),
+                        quien = Depends(token_sueldo), db: Session = Depends(get_db)):
     """Qué se pagó en un cierre. Los números salen de la FOTO guardada, no de
     recalcular: si mañana se corrige un comprobante viejo, lo que ya se pagó
     tiene que seguir diciendo lo mismo que decía el día que se pagó."""
     liq = db.get(models.Liquidacion, liq_id)
     if not liq: raise HTTPException(404, "Esa liquidación no existe")
+    permitir_sueldo(db, user, quien, liq.empleado_id)
     trabajos = (db.query(models.TrabajoComision)
                   .filter(models.TrabajoComision.liquidacion_id == liq.id)
                   .order_by(models.TrabajoComision.fecha).all())
@@ -1473,7 +1566,10 @@ def listar_empleados(todos: bool = False, _ = Depends(usuario_actual), db: Sessi
     q = db.query(models.Empleado)
     if not todos:
         q = q.filter(models.Empleado.activo == True)
-    return [{"id": e.id, "nombre": e.nombre, "activo": bool(e.activo)}
+    # tiene_pin y no el código: lo que hace falta saber es si puede entrar, y el
+    # código no sale de la base ni para la dueña.
+    return [{"id": e.id, "nombre": e.nombre, "activo": bool(e.activo),
+             "tiene_pin": bool(e.pin_hash)}
             for e in q.order_by(models.Empleado.nombre)]
 
 @app.post("/api/empleados")
@@ -2953,7 +3049,11 @@ def backup_completo(_ = Depends(solo_dueno), db: Session = Depends(get_db)):
             for e in db.query(models.Egreso).order_by(models.Egreso.fecha).all()
         ],
         "empleados": [
-            {"id": e.id, "nombre": e.nombre, "activo": e.activo}
+            # El código va hasheado, como las contraseñas de los usuarios. Tiene
+            # que estar: sin él, una base restaurada deja a todas afuera de su
+            # propia pantalla de sueldos hasta que la dueña los vuelva a cargar.
+            {"id": e.id, "nombre": e.nombre, "activo": e.activo,
+             "pin_salt": e.pin_salt, "pin_hash": e.pin_hash}
             for e in db.query(models.Empleado).all()
         ],
         "liquidaciones": [

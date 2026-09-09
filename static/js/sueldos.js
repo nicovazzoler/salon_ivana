@@ -15,9 +15,25 @@ const fmt=n=>"$"+(n||0).toLocaleString("es-AR");
 const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 function toast(m){const t=$("#toast");t.textContent=m;t.classList.add("show");setTimeout(()=>t.classList.remove("show"),2200);}
 
-/* Quién está cargando queda guardado en el aparato: hay un solo login compartido
-   y la tablet es siempre la misma, así que preguntárselo cada vez es una molestia
-   diaria. El día que haya un PIN por persona, esto se reemplaza por el login. */
+/* Con el usuario empleado, la pantalla se abre con un código por persona.
+
+   El permiso vive acá, en memoria, y no en localStorage: se pide cada vez que se
+   entra a la pantalla, que es lo que se pidió, y así el que agarra la tablet
+   después no encuentra la sesión de la otra abierta. Esto es comodidad y orden;
+   el candado de verdad lo pone el servidor, que sin este permiso no contesta el
+   sueldo de nadie.
+
+   La dueña no pasa por acá: es la que paga y ve a todas. */
+let PERMISO = null, YO = null;
+
+async function pedir(url, opts){
+  opts = opts || {};
+  if(PERMISO) opts.headers = Object.assign({}, opts.headers || {}, {"X-Sueldo": PERMISO});
+  return authFetch(url, opts);
+}
+
+/* Para la dueña, cuál de las empleadas está mirando queda guardado en el aparato:
+   entra muchas veces seguidas a la misma. */
 const RECUERDO = "sueldos_empleado";
 
 let EMPLEADOS = [], ITEMS = [], EMP = null, D = null, FORMAS = [];
@@ -68,7 +84,9 @@ function diaDe(iso){
 async function arranque(){
   // La dueña ve también a las dadas de baja: mientras tengan algo pendiente hay
   // que pagárselo, y esconderlas sería perderles el sueldo de la última semana.
-  EMPLEADOS = await (await authFetch("/api/empleados" + (DUENO ? "?todos=true" : ""))).json();
+  // La empleada se ve solo a ella: entró con su código y el resto no es asunto
+  // suyo (el servidor tampoco se lo contestaría).
+  EMPLEADOS = await listaEmpleados();
   const sel = $("#quien");
   sel.onchange = () => { localStorage.setItem(RECUERDO, sel.value); cargar(); };
   if(DUENO){
@@ -79,17 +97,22 @@ async function arranque(){
     $("#bajadaDetalle").textContent = "Lo que se le debe hoy. Se puede corregir acá mismo antes de cerrar.";
     $("#rotuloQuien").textContent = VOS.quien;
   }
-  ITEMS = await (await authFetch("/api/sueldos/items-comision")).json();
+  ITEMS = await (await pedir("/api/sueldos/items-comision")).json();
   if(DUENO){
     // Las mismas formas de pago con las que se cobra: el egreso del sueldo entra
     // a la caja como cualquier otro, y el arqueo lo suma si dice "Efectivo".
-    const cfg = await (await authFetch("/api/config")).json();
+    const cfg = await (await pedir("/api/config")).json();
     FORMAS = cfg.formas_pago || [];
   }
   llenarSelector();
   if(!EMPLEADOS.length) return;
   if(DUENO) await cargarPanelDueno();
   await cargar();
+}
+
+async function listaEmpleados(){
+  const todos = await (await pedir("/api/empleados" + (DUENO ? "?todos=true" : ""))).json();
+  return DUENO ? todos : todos.filter(e => e.id === YO);
 }
 
 /* El selector es de dónde sale TODO lo demás: si queda apuntando a alguien que
@@ -108,7 +131,7 @@ function llenarSelector(){
   sel.closest(".quien").style.display = "";
   sel.innerHTML = EMPLEADOS.map(e=>`<option value="${e.id}">${esc(e.nombre)}${e.activo===false?" (de baja)":""}</option>`).join("");
   if(antes && EMPLEADOS.some(e=>String(e.id)===String(antes))) sel.value = antes;
-  localStorage.setItem(RECUERDO, sel.value);
+  if(DUENO) localStorage.setItem(RECUERDO, sel.value);
 }
 
 /* Después de cualquier cambio se vuelve a leer todo del servidor: la cuenta la
@@ -116,7 +139,7 @@ function llenarSelector(){
    —son dos empleadas y una lista corta— y evita que la pantalla muestre un
    total viejo al lado de un detalle nuevo. */
 async function refrescar(){
-  EMPLEADOS = await (await authFetch("/api/empleados" + (DUENO ? "?todos=true" : ""))).json();
+  EMPLEADOS = await listaEmpleados();
   llenarSelector();
   if(!EMPLEADOS.length) return;
   if(DUENO) await cargarPanelDueno();
@@ -132,7 +155,7 @@ async function cargarPanelDueno(){
   // Un pedido por empleada: son dos o tres. Hacer un endpoint que devuelva todo
   // junto sería otra versión de la misma cuenta para mantener al lado de esta.
   const resumenes = await Promise.all(EMPLEADOS.map(async e =>
-    (await authFetch("/api/sueldos/pendiente?empleado_id="+e.id)).json()));
+    (await pedir("/api/sueldos/pendiente?empleado_id="+e.id)).json()));
   const total = resumenes.reduce((a,r)=>a+r.total, 0);
   $("#kpisDueno").innerHTML = `
     <div class="kpi"><span class="lbl">Total a pagar</span><span class="val">${fmt(total)}</span></div>
@@ -163,7 +186,7 @@ async function cargarPanelDueno(){
 }
 
 async function pintarLiquidaciones(){
-  const liqs = await (await authFetch("/api/sueldos/liquidaciones")).json();
+  const liqs = await (await pedir("/api/sueldos/liquidaciones")).json();
   const card = $("#cardLiquidaciones");
   if(!liqs.length){ card.style.display = "none"; return; }
   card.style.display = "";
@@ -180,7 +203,7 @@ async function pintarLiquidaciones(){
     b.onclick = async () => {
       const caja = $("#liq"+b.dataset.id);
       if(caja.style.display === "block"){ caja.style.display = "none"; return; }
-      const d = await (await authFetch("/api/sueldos/liquidaciones/"+b.dataset.id)).json();
+      const d = await (await pedir("/api/sueldos/liquidaciones/"+b.dataset.id)).json();
       caja.innerHTML = `
         <div class="sub-h">Días</div>
         ${d.dias.map(x=>`<div class="fila-dato"><div class="que"><b>${diaDe(x.fecha)} ${fechaCorta(x.fecha)}</b></div>
@@ -226,7 +249,7 @@ function pintarCierre(){
 
 async function cargar(){
   EMP = Number($("#quien").value);
-  D = await (await authFetch("/api/sueldos/pendiente?empleado_id="+EMP)).json();
+  D = await (await pedir("/api/sueldos/pendiente?empleado_id="+EMP)).json();
   pintar();
 }
 
@@ -411,7 +434,7 @@ async function agregarSuelto(){
    servidor, y repetirla acá sería tener dos versiones del sueldo. */
 async function mandar(url, metodo, cuerpo){
   try{
-    const r = await authFetch(url, {
+    const r = await pedir(url, {
       method: metodo,
       headers: cuerpo ? {"Content-Type":"application/json"} : {},
       body: cuerpo ? JSON.stringify(cuerpo) : undefined});
@@ -428,4 +451,83 @@ async function mandar(url, metodo, cuerpo){
   }
 }
 
-arranque();
+/* ---------- la puerta ---------- */
+
+/* Con el usuario empleado no se muestra nada hasta que alguien dice quién es y
+   pone su código. Se pide en CADA entrada a la pantalla: en el local la tablet
+   queda prendida y pasando de mano en mano, así que una sesión que quedara
+   abierta es el sueldo de una a la vista de la siguiente.
+
+   Sin ningún código cargado no se entra. Es a propósito: si se dejara pasar
+   "mientras no haya códigos", el día que la dueña carga el primero recién ahí
+   empieza a proteger, y hasta entonces la pantalla estuvo abierta sin que nadie
+   se enterara. */
+async function abrirPuerta(){
+  const puerta = $("#puerta"), cuerpo = $("#puertaCuerpo");
+  $("#todo").hidden = true;
+  puerta.hidden = false;
+
+  let emps = [];
+  try{ emps = (await (await authFetch("/api/empleados")).json()).filter(e => e.tiene_pin); }
+  catch(e){ emps = []; }
+
+  if(!emps.length){
+    $("#puertaAyuda").textContent = "El ingreso está cerrado.";
+    cuerpo.innerHTML = `<div class="vacio"><b>Todavía no hay códigos cargados</b>
+      La dueña los pone en Admin, en la lista de empleados. Hasta entonces esta
+      pantalla no se abre para nadie.</div>`;
+    return;
+  }
+
+  const guardado = localStorage.getItem(RECUERDO);
+  cuerpo.innerHTML = `
+    <div class="puerta-form">
+      <div>
+        <label for="pQuien">Quién sos</label>
+        <select id="pQuien">${emps.map(e=>`<option value="${e.id}"${String(e.id)===guardado?" selected":""}>${esc(e.nombre)}</option>`).join("")}</select>
+      </div>
+      <div style="flex:0 1 160px;">
+        <label for="pPin">Tu código</label>
+        <input id="pPin" class="pin" type="password" inputmode="numeric" autocomplete="off"
+               maxlength="8" placeholder="••••">
+      </div>
+      <button class="b-ok" id="pEntrar">Entrar</button>
+    </div>
+    <p class="puerta-error" id="pError" hidden></p>`;
+
+  const entrar = async () => {
+    const error = $("#pError");
+    error.hidden = true;
+    const pin = $("#pPin").value.trim();
+    if(!pin){ $("#pPin").focus(); return; }
+    const r = await authFetch("/api/sueldos/entrar", {
+      method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({empleado_id: Number($("#pQuien").value), pin})});
+    if(!r.ok){
+      error.textContent = (await r.json().catch(()=>({}))).detail || "No se pudo entrar";
+      error.hidden = false;
+      $("#pPin").value = ""; $("#pPin").focus();
+      return;
+    }
+    const d = await r.json();
+    PERMISO = d.token; YO = d.empleado.id;
+    localStorage.setItem(RECUERDO, String(YO));   // solo para preseleccionar el nombre
+    puerta.hidden = true; $("#todo").hidden = false;
+    // El desplegable de "quién sos" no tiene sentido cuando ya se dijo con el
+    // código: queda el nombre y un botón para que entre la otra. El select sigue
+    // existiendo escondido porque es de donde el resto de la pantalla lee de
+    // quién es lo que muestra.
+    const caja = $("#quien").closest(".quien");
+    caja.innerHTML = `<label>Sos</label>
+      <span class="quien-nombre">${esc(d.empleado.nombre)}</span>
+      <button class="b-out" id="salirSueldos" title="Cerrar y que entre otra">Salir</button>
+      <select id="quien" hidden></select>`;
+    $("#salirSueldos").onclick = () => location.reload();
+    arranque();
+  };
+  $("#pEntrar").onclick = entrar;
+  $("#pPin").addEventListener("keydown", ev => { if(ev.key === "Enter") entrar(); });
+  setTimeout(()=>$("#pPin").focus(), 0);
+}
+
+if(DUENO) arranque(); else abrirPuerta();

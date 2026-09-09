@@ -45,6 +45,13 @@
     <div style="margin-bottom:12px;">
       <input id="buscarItem" placeholder="🔎 Buscar por nombre (en todas las categorías)..." style="width:100%;">
     </div>
+    <!-- Ver de una cuáles están marcados a comisión. Están repartidos entre
+         categorías, así que sin esto la única forma de saber cuáles son es
+         abrirlas todas y acordarse. -->
+    <div class="pills" style="margin-bottom:12px;">
+      <button type="button" class="pill" id="soloComision">✂️ Solo los que van a comisión</button>
+      <span class="muted" id="cuentaComision"></span>
+    </div>
     <div class="fila">
       <div>
         <label>Categoría</label>
@@ -109,8 +116,12 @@
       <p>Los nombres que se eligen en “Atendió” al facturar y en la agenda. De
          acá sale el sueldo, así que un nombre tipeado distinto es plata que no
          le llega a nadie. Dar de baja no borra nada: deja de ofrecerse.</p>
+      <p>El <b>código</b> es con el que cada una abre su sueldo desde el usuario
+         empleado. Sin código no puede entrar, y el que no tiene código no le
+         aparece a nadie para elegir.</p>
     </div>
     <div id="listaEmpleados"></div>
+    <div id="crearEmpleado"></div>
 
     <!-- Unificar. Los nombres viejos se escribieron a mano durante meses y
          quedaron "Agus", "Agustina" y "Agustina R" para la misma chica. Es una
