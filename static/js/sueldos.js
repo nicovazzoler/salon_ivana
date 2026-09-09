@@ -317,6 +317,11 @@ function seccionTrabajos(){
   }).join("");
 
   const opciones = ITEMS.map(i=>`<option value="${i.id}">${esc(i.nombre)} — ${fmt(i.precio)}</option>`).join("");
+  /* El bloque para cargar un trabajo sin comprobante se muestra SIEMPRE. Antes
+     desaparecía si todavía no había ningún ítem marcado a comisión, que es
+     justo el estado en el que está el local el primer día: la pantalla no
+     ofrecía nada y parecía que cargar un trabajo a mano no se podía. Ahora, si
+     falta esa marca, lo dice y explica dónde se pone. */
   const agregar = ITEMS.length ? `<div class="agregar">
       <div class="ancho"><label for="nvItem">Trabajo sin comprobante</label>
         <select id="nvItem">${opciones}</select></div>
@@ -329,10 +334,18 @@ function seccionTrabajos(){
       <div><label for="nvTMin">Min</label>
         <input type="number" id="nvTMin" min="0" max="59" step="5" inputmode="numeric" placeholder="30"></div>
       <button class="b-ok" id="btnSuelto">Agregar trabajo</button>
-    </div>` : "";
+    </div>` : `<div class="agregar" style="display:block;">
+      <b>Trabajo sin comprobante</b>
+      <p class="muted" style="margin:var(--sp-1) 0 0;">Para cargar uno a mano falta
+        marcar cuáles son los trabajos que van a comisión: se hace en el catálogo
+        de <a href="/admin#catalogo">Admin</a>, con la casilla “comisión” de cada
+        ítem. El precio del trabajo sale de ahí, así que la comisión se calcula
+        siempre sobre la misma base.</p>
+    </div>`;
 
   return `<div class="sub-h">Trabajos a comisión — ${hhmm(D.minutos_comision)} que ya se pagan con la comisión</div>
-    ${filas || `<div class="vacio"><b>Ningún trabajo a comisión pendiente</b>${VOS.sinTrabajos}</div>`}
+    ${filas || `<div class="vacio"><b>Ningún trabajo a comisión pendiente</b>${VOS.sinTrabajos}
+       ${ITEMS.length ? "Si hiciste uno que no quedó en ningún ticket, cargalo acá abajo." : ""}</div>`}
     ${agregar}`;
 }
 

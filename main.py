@@ -231,6 +231,8 @@ class EmpleadoIn(BaseModel):
     nombre: str
 class EmpleadoEdit(BaseModel):
     nombre: str | None = None; activo: bool | None = None
+class FusionIn(BaseModel):
+    origen_id: int; destino_id: int      # el origen desaparece dentro del destino
 class SueldosConfigIn(BaseModel):
     # Los dos números con los que se arma el sueldo. Van juntos porque se miran
     # juntos: cambiar uno sin ver el otro es como no verlos.
@@ -1103,8 +1105,15 @@ def lineas_a_comision_pendientes(db, empleado):
     historia del local.
     """
     desde = db.query(models.Config).filter_by(clave="sueldos_desde").first()
+    # Ojo con el NULL, que acá es la misma trampa que la del `privado != True`:
+    # los trabajos SUELTOS no tienen línea, así que su linea_id es NULL, y en SQL
+    # `x NOT IN (1, 2, NULL)` no es verdadero NUNCA. Sin el isnot(None), bastaba
+    # que se pagara UN trabajo suelto para que a partir de ahí no le apareciera
+    # como pendiente ninguna comisión a nadie: el sueldo bajaba solo y en la
+    # pantalla no había nada que mirar para darse cuenta.
     ya = db.query(models.TrabajoComision.linea_id).filter(
-        models.TrabajoComision.liquidacion_id.isnot(None))
+        models.TrabajoComision.liquidacion_id.isnot(None),
+        models.TrabajoComision.linea_id.isnot(None))
     q = (db.query(models.ComprobanteLinea, models.Comprobante)
            .join(models.Comprobante, models.ComprobanteLinea.comprobante_id == models.Comprobante.id)
            .join(models.Item, models.ComprobanteLinea.item_id == models.Item.id)
@@ -1501,6 +1510,59 @@ def editar_empleado(emp_id: int, cambios: EmpleadoEdit, _ = Depends(solo_dueno),
     if cambios.activo is not None:
         e.activo = cambios.activo
     db.commit(); return {"ok": True}
+
+@app.post("/api/empleados/fusionar")
+def fusionar_empleados(datos: FusionIn, _ = Depends(solo_dueno), db: Session = Depends(get_db)):
+    """Dos nombres que son la misma persona pasan a ser uno.
+
+    Los nombres viejos se escribieron a mano durante meses: quedaron "Agus",
+    "Agustina" y "Agustina R" para la misma chica. Normalizar mayúsculas y
+    espacios no alcanza —son textos distintos de verdad— así que hay que poder
+    decir a mano cuál es cuál. Sin esto, su sueldo sale partido en tres y el
+    desplegable de facturar tiene tres opciones para elegir una sola persona.
+
+    Se mueve TODO lo que colgaba del que se va: los comprobantes, turnos y ventas
+    pasan a decir el nombre que queda, y sus horas, trabajos y liquidaciones
+    pasan a apuntar al que queda. Recién ahí se borra la fila, que ya no es la
+    fila de nadie: es un nombre repetido, no una persona que se fue (para eso
+    está dar de baja, que no borra nada).
+    """
+    if datos.origen_id == datos.destino_id:
+        raise HTTPException(400, "Son el mismo empleado")
+    origen = _empleado_o_404(db, datos.origen_id)
+    destino = _empleado_o_404(db, datos.destino_id)
+
+    # Lo ya escrito en los comprobantes es una clasificación, no lo que se le
+    # dijo al cliente: se arrastra, como cuando se renombra.
+    tocados = 0
+    for tabla in (models.Comprobante.peluquero, models.Turno.peluquero, models.Venta.peluquero):
+        tocados += _renombrar_en(db, tabla, origen.nombre, destino.nombre)
+
+    # Las horas pendientes del mismo día se SUMAN en una sola fila. Si quedaran
+    # dos, la pantalla mostraría una sola (la lista de días va por fecha) y el
+    # total sumaría las dos: el detalle diría una cosa y el total otra.
+    pendientes = {h.fecha: h for h in db.query(models.HoraTrabajada).filter(
+        models.HoraTrabajada.empleado_id == destino.id,
+        models.HoraTrabajada.liquidacion_id.is_(None)).all()}
+    for h in db.query(models.HoraTrabajada).filter(
+            models.HoraTrabajada.empleado_id == origen.id).all():
+        if h.liquidacion_id is None and h.fecha in pendientes:
+            pendientes[h.fecha].minutos = (pendientes[h.fecha].minutos or 0) + (h.minutos or 0)
+            db.delete(h)
+        else:
+            h.empleado_id = destino.id
+            if h.liquidacion_id is None: pendientes[h.fecha] = h
+
+    (db.query(models.TrabajoComision)
+       .filter(models.TrabajoComision.empleado_id == origen.id)
+       .update({"empleado_id": destino.id}, synchronize_session=False))
+    (db.query(models.Liquidacion)
+       .filter(models.Liquidacion.empleado_id == origen.id)
+       .update({"empleado_id": destino.id}, synchronize_session=False))
+
+    db.delete(origen)
+    db.commit()
+    return {"ok": True, "nombre": destino.nombre, "renombrados": tocados}
 
 @app.delete("/api/empleados/{emp_id}")
 def borrar_empleado(emp_id: int, _ = Depends(solo_dueno), db: Session = Depends(get_db)):

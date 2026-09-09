@@ -114,6 +114,20 @@
          le llega a nadie. Dar de baja no borra nada: deja de ofrecerse.</p>
     </div>
     <div id="listaEmpleados"></div>
+
+    <!-- Unificar. Los nombres viejos se escribieron a mano durante meses y
+         quedaron "Agus", "Agustina" y "Agustina R" para la misma chica. Es una
+         limpieza de una vez, no algo de todos los días, así que va abajo y
+         aparte de la lista. -->
+    <div class="sub-h" style="margin-top:var(--sp-4);">Unificar dos nombres</div>
+    <p class="muted" style="margin:0 0 var(--sp-2);">Si la misma persona quedó
+       cargada dos veces, elegí cuál sobra y con cuál se junta. Sus comprobantes,
+       turnos, horas y sueldos pasan al nombre que queda.</p>
+    <div class="fila fila-agregar" id="fusionEmpleados">
+      <div><label for="fusOrigen">Sacar</label><select id="fusOrigen"></select></div>
+      <div><label for="fusDestino">y pasarlo a</label><select id="fusDestino"></select></div>
+      <button class="b-tinta" id="btnFusion">Unificar</button>
+    </div>
   </div>
 
   <div class="card" id="backup" data-dueno>

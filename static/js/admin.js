@@ -323,7 +323,47 @@ window.acotarLista = cont => { acotar(cont); cont.addEventListener("scroll", () 
 // cinco. Solo la ve la dueña: la tarjeta tiene data-dueno y ajustarPorRol() ya
 // la sacó del documento cuando entra el empleado, así que acá no hay nada que
 // dibujar y no se pide nada al servidor.
-if($("#listaEmpleados")) Listas.dibujar("#listaEmpleados", "empleados");
+const LISTA_EMPLEADOS = $("#listaEmpleados")
+  ? Listas.dibujar("#listaEmpleados", "empleados", () => cargarFusion())
+  : null;
+
+/* Unificar dos empleados en uno.
+
+   Se elige a mano y no se adivina: "Agus" y "Agustina" pueden ser la misma
+   persona o dos distintas, y juntar a dos que no eran la misma le pasa el sueldo
+   de una a la otra. Por eso pide confirmación diciendo los dos nombres.
+
+   Se listan también las dadas de baja: una duplicada muchas veces está
+   justamente ahí, desactivada para sacarla del medio. */
+async function cargarFusion(){
+  const caja = $("#fusionEmpleados");
+  if(!caja) return;
+  const emps = await (await authFetch("/api/empleados?todos=true")).json();
+  const opts = e => emps.map(x =>
+    `<option value="${x.id}"${x.id===e?" selected":""}>${esc(x.nombre)}${x.activo?"":" (de baja)"}</option>`).join("");
+  $("#fusOrigen").innerHTML  = opts(null);
+  $("#fusDestino").innerHTML = opts(emps.length > 1 ? emps[1].id : null);
+  caja.style.display = emps.length > 1 ? "" : "none";
+}
+
+if($("#btnFusion")) $("#btnFusion").onclick = async () => {
+  const origen = Number($("#fusOrigen").value), destino = Number($("#fusDestino").value);
+  if(!origen || !destino) return;
+  if(origen === destino){ toast("Elegí dos nombres distintos"); return; }
+  const nOrigen  = $("#fusOrigen").selectedOptions[0].textContent.trim();
+  const nDestino = $("#fusDestino").selectedOptions[0].textContent.trim();
+  if(!confirm(`Todo lo de "${nOrigen}" pasa a "${nDestino}" y "${nOrigen}" desaparece de la lista.\n\n`
+            + `Sus comprobantes y turnos van a decir "${nDestino}", y sus horas y sueldos también.\n\n`
+            + `Esto no se puede deshacer. ¿Seguimos?`)) return;
+  const r = await authFetch("/api/empleados/fusionar", {method:"POST",
+    headers:{"Content-Type":"application/json"}, body:JSON.stringify({origen_id:origen, destino_id:destino})});
+  if(!r.ok){ toast((await r.json().catch(()=>({}))).detail || "No se pudo unificar"); return; }
+  const d = await r.json();
+  toast(`Quedó ${d.nombre}` + (d.renombrados ? ` · ${d.renombrados} anotaciones actualizadas` : ""));
+  await LISTA_EMPLEADOS?.recargar();
+  await cargarFusion();
+};
+if($("#fusionEmpleados")) cargarFusion();
 
 ["#listaItems","#listaUsuarios","#listaEmpleados"].forEach(sel=>{
   const cont = $(sel);
