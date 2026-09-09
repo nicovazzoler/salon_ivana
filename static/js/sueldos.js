@@ -20,7 +20,7 @@ function toast(m){const t=$("#toast");t.textContent=m;t.classList.add("show");se
    diaria. El día que haya un PIN por persona, esto se reemplaza por el login. */
 const RECUERDO = "sueldos_empleado";
 
-let EMPLEADOS = [], ITEMS = [], EMP = null, D = null;
+let EMPLEADOS = [], ITEMS = [], EMP = null, D = null, FORMAS = [];
 const DUENO = esDueno();
 /* La misma tarjeta la miran dos personas distintas: la empleada mira lo suyo y
    la dueña mira lo de otra. Los rótulos cambian con eso, porque "se te debe" en
@@ -80,6 +80,12 @@ async function arranque(){
     $("#rotuloQuien").textContent = VOS.quien;
   }
   ITEMS = await (await authFetch("/api/sueldos/items-comision")).json();
+  if(DUENO){
+    // Las mismas formas de pago con las que se cobra: el egreso del sueldo entra
+    // a la caja como cualquier otro, y el arqueo lo suma si dice "Efectivo".
+    const cfg = await (await authFetch("/api/config")).json();
+    FORMAS = cfg.formas_pago || [];
+  }
   llenarSelector();
   if(!EMPLEADOS.length) return;
   if(DUENO) await cargarPanelDueno();
@@ -153,43 +159,7 @@ async function cargarPanelDueno(){
       comision_pct: Math.max(0, parseInt($("#cfgPct").value,10)||0)});
   };
 
-  pintarEmpleados();
   pintarLiquidaciones();
-}
-
-/* La lista de empleados se dibuja para leer, como la de usuarios: los campos
-   aparecen cuando se piden. Renombrar arrastra —el nombre del peluquero es una
-   clasificación, no lo que se le dijo al cliente—, así que un comprobante viejo
-   nunca queda a nombre de alguien que ya no existe. */
-function pintarEmpleados(){
-  const cont = $("#listaEmpleados");
-  cont.innerHTML = EMPLEADOS.map(e=>`
-    <div class="fila-emp">
-      <div><b>${esc(e.nombre)}</b>
-        <span class="det">${e.activo ? "trabajando" : "dada de baja"}</span></div>
-      <button class="b-out renombrar" data-id="${e.id}">Renombrar</button>
-      <button class="${e.activo?"b-del":"b-ok"} baja" data-id="${e.id}" data-activo="${e.activo?1:0}">${e.activo?"Dar de baja":"Reactivar"}</button>
-    </div>`).join("") || `<div class="vacio">Todavía no hay nadie.</div>`;
-  cont.querySelectorAll(".renombrar").forEach(b=>{
-    b.onclick = async () => {
-      const e = EMPLEADOS.find(x=>x.id==b.dataset.id);
-      const nuevo = prompt(`Renombrar a "${e.nombre}":`, e.nombre);
-      if(!nuevo || nuevo.trim()===e.nombre) return;
-      await mandar(`/api/empleados/${e.id}`, "PUT", {nombre: nuevo.trim()});
-    };
-  });
-  cont.querySelectorAll(".baja").forEach(b=>{
-    b.onclick = async () => {
-      const activo = b.dataset.activo === "1";
-      if(activo && !confirm("Dar de baja no borra nada: sus comprobantes y lo que se le pagó siguen estando. Solo deja de aparecer para elegir. ¿Seguimos?")) return;
-      await mandar(`/api/empleados/${b.dataset.id}`, "PUT", {activo: !activo});
-    };
-  });
-  $("#btnEmpleado").onclick = async () => {
-    const nombre = $("#nvEmpleado").value.trim();
-    if(!nombre){ toast("Poné el nombre"); return; }
-    if(await mandar("/api/empleados", "POST", {nombre})) $("#nvEmpleado").value = "";
-  };
 }
 
 async function pintarLiquidaciones(){
@@ -200,7 +170,8 @@ async function pintarLiquidaciones(){
   $("#listaLiq").innerHTML = liqs.map(l=>`
     <div class="fila-emp">
       <div><b>${esc(l.empleado||"—")} · ${fechaCorta(l.hasta)}</b>
-        <span class="det">${fechaCorta(l.desde)} a ${fechaCorta(l.hasta)} · ${hhmm(l.minutos_pagados)} a ${fmt(l.valor_hora)} + comisiones al ${l.comision_pct}%${l.notas?" · "+esc(l.notas):""}</span></div>
+        <span class="det">${fechaCorta(l.desde)} a ${fechaCorta(l.hasta)} · ${hhmm(l.minutos_pagados)} a ${fmt(l.valor_hora)} + comisiones al ${l.comision_pct}%${
+          l.egreso_numero ? ` · egreso N-${String(l.egreso_numero).padStart(5,"0")}${l.forma_pago?" en "+esc(l.forma_pago):""}` : ""}${l.notas?" · "+esc(l.notas):""}</span></div>
       <div class="plata">${fmt(l.total)}</div>
       <button class="b-out verLiq" data-id="${l.id}">Ver</button>
     </div>
@@ -236,13 +207,20 @@ function pintarCierre(){
   const faltan = D.trabajos.filter(t=>!t.minutos).length;
   caja.className = "cierre";
   caja.innerHTML = `
+    <div style="display:flex;align-items:center;gap:var(--sp-2);">
+      <label for="formaCierre" style="margin:0;">Se paga con</label>
+      <select id="formaCierre" style="width:auto;">${FORMAS.map(f=>`<option${f==="Efectivo"?" selected":""}>${esc(f)}</option>`).join("")}</select>
+    </div>
     <input class="nota" id="notaCierre" placeholder="Nota (opcional): cómo se pagó, si quedó algo…">
     <button class="b-ok" id="btnCerrar">Cerrar y pagar ${fmt(D.total)} a ${esc(D.empleado.nombre)}</button>
+    <div class="aviso">Al cerrar se anota solo el egreso en la caja de hoy, privado: la empleada no lo ve.</div>
     ${faltan ? `<div class="aviso">⚠️ ${faltan} ${faltan===1?"trabajo":"trabajos"} sin duración cargada. Ese tiempo no se descuenta de las horas del día, así que si el día tiene horas puestas se paga dos veces: por hora y por comisión.</div>` : ""}`;
   $("#btnCerrar").onclick = async () => {
-    if(!confirm(`Se le pagan ${fmt(D.total)} a ${D.empleado.nombre} y arranca un ciclo nuevo.\n\nEsto no se puede deshacer. ¿Cerramos?`)) return;
+    const forma = $("#formaCierre").value || "Efectivo";
+    if(!confirm(`Se le pagan ${fmt(D.total)} a ${D.empleado.nombre} en ${forma} y arranca un ciclo nuevo.\n`
+              + `El egreso queda anotado en la caja de hoy.\n\nEsto no se puede deshacer. ¿Cerramos?`)) return;
     if(await mandar("/api/sueldos/cerrar", "POST",
-        {empleado_id: EMP, notas: $("#notaCierre").value.trim() || null})) toast("Pagado ✓");
+        {empleado_id: EMP, forma_pago: forma, notas: $("#notaCierre").value.trim() || null})) toast("Pagado ✓");
   };
 }
 

@@ -102,6 +102,20 @@
     <div id="crearUsuario"></div>
   </div>
 
+  <!-- Empleados. Es la única lista que quedó en Admin: las otras cinco se editan
+       desde el lapicito de Facturar, al lado del desplegable que las usa. Esta
+       no, porque solo la toca la dueña y se toca cuando entra o se va alguien,
+       no en medio de un cobro. -->
+  <div class="card" id="empleados" data-dueno>
+    <div class="card-head">
+      <h2>✂️ Empleados</h2>
+      <p>Los nombres que se eligen en “Atendió” al facturar y en la agenda. De
+         acá sale el sueldo, así que un nombre tipeado distinto es plata que no
+         le llega a nadie. Dar de baja no borra nada: deja de ofrecerse.</p>
+    </div>
+    <div id="listaEmpleados"></div>
+  </div>
+
   <div class="card" id="backup" data-dueno>
     <div class="card-head">
       <h2>💾 Backup completo</h2>
@@ -116,6 +130,7 @@
 <div class="toast" id="toast"></div>
 
 <script src="/static/auth.js"></script>
+<script src="/static/js/listas.js"></script>
 <script src="/static/js/admin.js"></script>
 </body>
 </html>

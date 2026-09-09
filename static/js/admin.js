@@ -319,7 +319,13 @@ function marcarFin(cont){
    simplemente no acota. */
 window.acotarLista = cont => { acotar(cont); cont.addEventListener("scroll", () => marcarFin(cont), {passive:true}); };
 
-["#listaItems","#listaUsuarios"].forEach(sel=>{
+// La lista de empleados la dibuja listas.js, el mismo dibujante que las otras
+// cinco. Solo la ve la dueña: la tarjeta tiene data-dueno y ajustarPorRol() ya
+// la sacó del documento cuando entra el empleado, así que acá no hay nada que
+// dibujar y no se pide nada al servidor.
+if($("#listaEmpleados")) Listas.dibujar("#listaEmpleados", "empleados");
+
+["#listaItems","#listaUsuarios","#listaEmpleados"].forEach(sel=>{
   const cont = $(sel);
   if(!cont) return;
   // Se escucha el cambio de contenido en vez de llamar a acotar() desde cada

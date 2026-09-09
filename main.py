@@ -80,6 +80,11 @@ def migrar():
                     con.execute(text("DROP TABLE trabajos_comision"))
                 else:
                     print("Aviso: trabajos_comision tiene datos y forma vieja; no se tocó.")
+    if insp.has_table("liquidaciones"):
+        licols = [c["name"] for c in insp.get_columns("liquidaciones")]
+        if "egreso_id" not in licols:
+            with engine.begin() as con:
+                con.execute(text("ALTER TABLE liquidaciones ADD COLUMN egreso_id INTEGER"))
     if "es_comision" not in icols:
         with engine.begin() as con:
             con.execute(text("ALTER TABLE items ADD COLUMN es_comision BOOLEAN DEFAULT FALSE"))
@@ -240,6 +245,10 @@ class MinutosTrabajoIn(BaseModel):
     linea_id: int | None = None; trabajo_id: int | None = None
 class CerrarIn(BaseModel):
     empleado_id: int; notas: str | None = None
+    # Con qué plata se le pagó. Importa: el arqueo suma comparando
+    # forma_pago == "Efectivo", así que un sueldo pagado en efectivo tiene que
+    # decir exactamente eso o la caja del día cierra de más.
+    forma_pago: str = "Efectivo"
 class TrabajoSueltoIn(BaseModel):
     empleado_id: int; item_id: int; fecha: str
     cantidad: int = 1; minutos: int = 0
@@ -896,6 +905,53 @@ def recalcular_transfer(_ = Depends(solo_dueno), db: Session = Depends(get_db)):
     return {"recalculados": len(items)}
 
 # tipos de egreso
+# El tipo de egreso con el que el cierre anota el sueldo en la caja. El nombre
+# tiene que ser SIEMPRE el mismo: los tipos son una clasificación, y si un cierre
+# dice "Sueldo" y el siguiente "Sueldos", la caja muestra dos renglones para lo
+# mismo. Por eso queda guardado en config la primera vez y después no se mueve.
+CLAVE_TIPO_SUELDO = "tipo_egreso_sueldo"
+TIPO_SUELDO_DEFECTO = "Sueldo"
+
+def nombre_tipo_sueldo(db) -> str:
+    fila = db.query(models.Config).filter_by(clave=CLAVE_TIPO_SUELDO).first()
+    return fila.valor if fila and fila.valor else TIPO_SUELDO_DEFECTO
+
+def tipo_de_sueldo(db):
+    """El tipo con el que se anota un sueldo, buscándolo o creándolo.
+
+    La primera vez NO crea uno nuevo si ya hay alguno que sirva: esta base viene
+    andando desde antes de que existieran los sueldos y el tipo "Sueldo" ya está,
+    con meses de egresos cargados a mano encima. Crear otro al lado partiría los
+    sueldos en dos renglones de la caja, que es justo lo que se quiere evitar.
+
+    Si no hay ninguno se crea privado: lo que se le paga a la empleada no es
+    asunto de la empleada.
+    """
+    fila = db.query(models.Config).filter_by(clave=CLAVE_TIPO_SUELDO).first()
+    if fila and fila.valor:
+        t = db.query(models.TipoEgreso).filter(models.TipoEgreso.nombre == fila.valor).first()
+    else:
+        t = (db.query(models.TipoEgreso)
+               .filter(func.lower(models.TipoEgreso.nombre).in_(("sueldo", "sueldos")))
+               .order_by(models.TipoEgreso.id).first())
+    if not t:
+        t = models.TipoEgreso(nombre=TIPO_SUELDO_DEFECTO, privado=True)
+        db.add(t); db.flush()
+    elif not t.activo:
+        # Si lo habían dado de baja vuelve: el egreso se va a anotar con ese
+        # nombre igual, y un tipo inactivo lo dejaría fuera de la lista donde se
+        # lo va a ir a buscar.
+        t.activo = True
+    # Y queda privado sí o sí. No es una preferencia: mientras no lo sea, "Sueldo"
+    # le aparece al empleado en el desplegable de egresos, y ahí ya se deduce lo
+    # que se quiso esconder. No toca nada hacia atrás: cada egreso guarda su
+    # propia marca del día que se cargó, así que lo que el empleado ya vio en su
+    # caja no desaparece de golpe.
+    t.privado = True
+    if fila: fila.valor = t.nombre
+    else: db.add(models.Config(clave=CLAVE_TIPO_SUELDO, valor=t.nombre))
+    return t
+
 def tipos_visibles(db, user):
     """Los tipos de egreso que le corresponde ver a quien pregunta.
 
@@ -914,7 +970,9 @@ def tipos_visibles(db, user):
 
 @app.get("/api/tipos-egreso")
 def listar_tipos(user = Depends(usuario_actual), db: Session = Depends(get_db)):
-    return [{"id": t.id, "nombre": t.nombre, "privado": bool(t.privado)}
+    fijo = nombre_tipo_sueldo(db)
+    return [{"id": t.id, "nombre": t.nombre, "privado": bool(t.privado),
+             "fijo": t.nombre == fijo}
             for t in tipos_visibles(db, user)]
 
 @app.post("/api/tipos-egreso")
@@ -936,6 +994,11 @@ def crear_tipo(t: TipoEgresoIn, user = Depends(usuario_actual), db: Session = De
 def editar_tipo(tipo_id: int, cambios: TipoEgresoEdit, user = Depends(usuario_actual), db: Session = Depends(get_db)):
     t = db.get(models.TipoEgreso, tipo_id)
     if not t or (t.privado and not es_dueno(user)): raise HTTPException(404, "Tipo no existe")
+    # Mismo motivo que "Efectivo" en las formas de pago: el cierre de sueldo
+    # escribe ese nombre exacto en el egreso que anota. Con dos nombres para lo
+    # mismo, la caja muestra los sueldos partidos en dos renglones.
+    if t.nombre == nombre_tipo_sueldo(db) and cambios.nombre is not None and cambios.nombre.strip() != t.nombre:
+        raise HTTPException(400, f'"{t.nombre}" no se puede renombrar: los cierres de sueldo anotan el egreso con ese nombre.')
     if cambios.nombre is not None:
         nombre = cambios.nombre.strip()
         if not nombre: raise HTTPException(400, "Falta el nombre")
@@ -955,6 +1018,8 @@ def borrar_tipo(tipo_id: int, user = Depends(usuario_actual), db: Session = Depe
     t = db.get(models.TipoEgreso, tipo_id)
     if not t: raise HTTPException(404, "Tipo no existe")
     if t.privado and not es_dueno(user): raise HTTPException(404, "Tipo no existe")
+    if t.nombre == nombre_tipo_sueldo(db):
+        raise HTTPException(400, f'"{t.nombre}" no se borra: es el tipo con el que se anotan los sueldos al cerrar.')
     t.activo = False; db.commit(); return {"ok": True}
 
 # usuarios
@@ -988,6 +1053,7 @@ def editar_usuario(uid: int, cambios: UsuarioEdit, _ = Depends(solo_dueno), db: 
 
 # alias de transferencia
 # ---------- sueldos ----------
+
 # El porcentaje vive en config y no en el código: cambiarlo no puede depender de
 # un deploy. 40 es lo acordado hoy.
 COMISION_PCT_DEFECTO = 40
@@ -1258,8 +1324,29 @@ def cerrar_liquidacion(datos: CerrarIn, _ = Depends(solo_dueno), db: Session = D
        .filter(models.HoraTrabajada.empleado_id == emp.id,
                models.HoraTrabajada.liquidacion_id.is_(None))
        .update({"liquidacion_id": liq.id}, synchronize_session=False))
+
+    # El egreso del sueldo lo anota el cierre, no la dueña. Antes lo cargaba a
+    # mano después de pagar, con lo que el número podía no coincidir con lo que
+    # el sistema calculó y, el día que se olvidaba, la caja decía que había más
+    # plata de la que había.
+    egreso = None
+    if liq.total > 0:
+        egreso = models.Egreso(
+            numero=siguiente_numero_egreso(db), tipo=tipo_de_sueldo(db).nombre,
+            concepto=f"Sueldo {emp.nombre}" + (f" ({r['desde']} a {hoy})" if r["desde"] else ""),
+            monto=liq.total, forma_pago=datos.forma_pago,
+            notas=datos.notas, fecha=fecha_hora_now_utc(),
+            # Privado siempre, y no según cómo esté marcado el tipo: esto lo
+            # crea la dueña desde la pantalla de sueldos, y lo que le paga a la
+            # empleada no es asunto de la empleada. Si dependiera de la marca del
+            # tipo, el día que alguien la saque el sueldo aparecería en la caja
+            # de ella.
+            privado=True)
+        db.add(egreso); db.flush()
+        liq.egreso_id = egreso.id
     db.commit()
-    return {"id": liq.id, "total": liq.total}
+    return {"id": liq.id, "total": liq.total,
+            "egreso_numero": egreso.numero if egreso else None}
 
 @app.post("/api/sueldos/trabajo-suelto")
 def crear_trabajo_suelto(t: TrabajoSueltoIn, _ = Depends(usuario_actual), db: Session = Depends(get_db)):
@@ -1337,7 +1424,9 @@ def listar_liquidaciones(empleado_id: int | None = None, limite: int = 20,
              "minutos_total": l.minutos_total, "minutos_comision": l.minutos_comision,
              "minutos_pagados": l.minutos_pagados,
              "total_comisiones": l.total_comisiones, "total_horas": l.total_horas,
-             "total": l.total, "notas": l.notas}
+             "total": l.total, "notas": l.notas,
+             "egreso_numero": l.egreso.numero if l.egreso else None,
+             "forma_pago": l.egreso.forma_pago if l.egreso else None}
             for l in q.order_by(models.Liquidacion.cerrada.desc()).limit(limite)]
 
 @app.get("/api/sueldos/liquidaciones/{liq_id}")
@@ -1362,6 +1451,8 @@ def detalle_liquidacion(liq_id: int, _ = Depends(usuario_actual), db: Session = 
         "minutos_pagados": liq.minutos_pagados,
         "total_comisiones": liq.total_comisiones, "total_horas": liq.total_horas,
         "total": liq.total, "notas": liq.notas,
+        "egreso_numero": liq.egreso.numero if liq.egreso else None,
+        "forma_pago": liq.egreso.forma_pago if liq.egreso else None,
         "dias": [{"fecha": h.fecha, "minutos": h.minutos or 0} for h in horas],
         "trabajos": [{"fecha": t.fecha, "nombre": t.nombre, "cantidad": t.cantidad or 1,
                       "minutos": t.minutos or 0, "base": t.base or 0, "comision": t.comision or 0,
@@ -1411,8 +1502,19 @@ def editar_empleado(emp_id: int, cambios: EmpleadoEdit, _ = Depends(solo_dueno),
         e.activo = cambios.activo
     db.commit(); return {"ok": True}
 
-# No hay DELETE a propósito: un empleado que se fue sigue teniendo comprobantes y
-# liquidaciones que tienen que poder leerse. Se desactiva con el PUT.
+@app.delete("/api/empleados/{emp_id}")
+def borrar_empleado(emp_id: int, _ = Depends(solo_dueno), db: Session = Depends(get_db)):
+    """Da de baja, no borra. Un empleado que se fue sigue teniendo comprobantes y
+    liquidaciones que tienen que poder leerse, y su nombre sigue escrito en los
+    tickets que hizo. Es el mismo criterio que el resto de las listas: dejan de
+    ofrecerse, no desaparecen.
+
+    Volver a darlo de alta es cargarlo de nuevo con el mismo nombre: el POST lo
+    reactiva en vez de chocar con el nombre repetido.
+    """
+    e = _empleado_o_404(db, emp_id)
+    e.activo = False
+    db.commit(); return {"ok": True}
 
 @app.put("/api/config/sueldos")
 def set_config_sueldos(datos: SueldosConfigIn, _ = Depends(solo_dueno), db: Session = Depends(get_db)):
@@ -2793,7 +2895,7 @@ def backup_completo(_ = Depends(solo_dueno), db: Session = Depends(get_db)):
              "comision_pct": l.comision_pct, "minutos_total": l.minutos_total,
              "minutos_comision": l.minutos_comision, "minutos_pagados": l.minutos_pagados,
              "total_comisiones": l.total_comisiones, "total_horas": l.total_horas,
-             "total": l.total, "notas": l.notas}
+             "total": l.total, "notas": l.notas, "egreso_id": l.egreso_id}
             for l in db.query(models.Liquidacion).order_by(models.Liquidacion.id).all()
         ],
         "horas_trabajadas": [
