@@ -72,7 +72,7 @@ async function cargarEgresosHoy(){
     // forma de saber cuál de los de hoy es el que el empleado no está viendo.
     const marca = e.privado ? '<span class="privado" title="El empleado no ve este egreso">privado</span>' : '';
     row.innerHTML=`
-      <span class="hora">${e.hora}</span>
+      <span class="hora">${e.numero ? "#"+e.numero+" · " : ""}${e.hora}</span>
       <span class="que"><b>${e.tipo}</b>${marca}${detalle?' <span class="det">'+detalle+'</span>':''}</span>
       <span class="monto">−${fmt(e.monto)}</span>
       <button class="quitar" title="Anular este egreso">×</button>`;

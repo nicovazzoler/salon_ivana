@@ -51,6 +51,11 @@ class VentaLinea(Base):
 class Egreso(Base):
     __tablename__ = "egresos"
     id = Column(Integer, primary_key=True)
+    # Correlativo propio, como el de los comprobantes: sirve para nombrar un
+    # egreso en voz alta ("el 47") sin leer el id de la base, que no significa
+    # nada para nadie. Es nullable porque los que ya estaban cargados no lo
+    # tienen: se los numera una vez en migrar().
+    numero = Column(Integer, index=True)
     fecha = Column(DateTime, default=fecha_hora_now_utc)
     tipo = Column(String)
     concepto = Column(String)

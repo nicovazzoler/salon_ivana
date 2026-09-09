@@ -60,7 +60,7 @@ ORDEN = [
                                       "mostrar_motivo", "activo"], []),
     ("ajustes_item", models.AjusteItem, ["id", "nombre", "porcentaje", "monto", "activo"], []),
     ("notas_diarias", models.NotaDiaria, ["id", "fecha", "texto", "activo"], ["creada"]),
-    ("egresos", models.Egreso, ["id", "tipo", "concepto", "monto",
+    ("egresos", models.Egreso, ["id", "numero", "tipo", "concepto", "monto",
                                 "forma_pago", "notas", "privado"], ["fecha"]),
     ("turnos", models.Turno, ["id", "fecha", "hora", "cliente_id", "cliente",
                               "servicio", "peluquero", "notas", "activo"], []),

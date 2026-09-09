@@ -66,6 +66,15 @@ def migrar():
             # todos los comprobantes viejos parecerían "anotados después".
             con.execute(text("UPDATE comprobantes SET cargado = fecha WHERE cargado IS NULL"))
     ecols = [c["name"] for c in insp.get_columns("egresos")]
+    if "numero" not in ecols:
+        with engine.begin() as con:
+            con.execute(text("ALTER TABLE egresos ADD COLUMN numero INTEGER"))
+            # Los egresos que ya estaban se numeran por orden de carga, una sola
+            # vez. Va acá y no con una marca en config porque la condición ya es
+            # la marca: si la columna existía, esto no corre.
+            filas = con.execute(text("SELECT id FROM egresos ORDER BY fecha, id")).fetchall()
+            for n, (eid,) in enumerate(filas, start=1):
+                con.execute(text("UPDATE egresos SET numero = :n WHERE id = :i"), {"n": n, "i": eid})
     if "privado" not in ecols:
         with engine.begin() as con:
             # FALSE y no 0: PostgreSQL no acepta un entero como default de un
@@ -561,6 +570,13 @@ def anotado_despues(comp) -> str | None:
     if hora_argentina(comp.cargado).date() == hora_argentina(comp.fecha).date():
         return None
     return comp.cargado.isoformat()
+
+def siguiente_numero_egreso(db) -> int:
+    """El próximo correlativo de egreso. Igual que el de los comprobantes: se
+    mira el mayor y se le suma uno, sin secuencia de la base, para que ande
+    igual en SQLite y en PostgreSQL."""
+    ultimo = db.query(models.Egreso).order_by(models.Egreso.numero.desc()).first()
+    return ((ultimo.numero or 0) + 1) if ultimo else 1
 
 def siguiente_numero(db, tipo: str) -> int:
     """Devuelve el próximo número de la secuencia para ese tipo de comprobante."""
@@ -1564,10 +1580,12 @@ def crear_egreso(e: EgresoIn, user = Depends(usuario_actual), db: Session = Depe
     # Después no se recalcula: un egreso que anotó el empleado le tiene que seguir
     # apareciendo aunque la dueña marque ese tipo como privado el mes que viene.
     privado = es_dueno(user) and _tipo_privado(db, e.tipo)
-    eg = models.Egreso(tipo=e.tipo, concepto=e.concepto, monto=e.monto,
+    eg = models.Egreso(numero=siguiente_numero_egreso(db),
+                       tipo=e.tipo, concepto=e.concepto, monto=e.monto,
                        forma_pago=e.forma_pago, notas=e.notas, privado=privado,
                        fecha=fecha_hora_now_utc())
-    db.add(eg); db.commit(); db.refresh(eg); return {"id": eg.id, "privado": privado}
+    db.add(eg); db.commit(); db.refresh(eg)
+    return {"id": eg.id, "numero": eg.numero, "privado": privado}
 
 @app.get("/api/egresos/dia")
 def egresos_dia(user = Depends(usuario_actual), db: Session = Depends(get_db)):
@@ -1577,7 +1595,8 @@ def egresos_dia(user = Depends(usuario_actual), db: Session = Depends(get_db)):
         q = q.filter(_no_privado(models.Egreso.privado))
     es = q.order_by(models.Egreso.id.desc()).all()
     return [{"id": e.id, "hora": hora_argentina(e.fecha).strftime("%H:%M"), "tipo": e.tipo, "concepto": e.concepto,
-             "monto": e.monto, "forma_pago": e.forma_pago, "privado": bool(e.privado)} for e in es]
+             "monto": e.monto, "forma_pago": e.forma_pago, "privado": bool(e.privado),
+             "numero": e.numero} for e in es]
 
 @app.put("/api/egresos/{egreso_id}")
 def editar_egreso(egreso_id: int, cambios: EgresoEdit, user = Depends(usuario_actual), db: Session = Depends(get_db)):
@@ -1662,7 +1681,8 @@ def caja_dia(fecha: str | None = None, user = Depends(usuario_actual), db: Sessi
             "fondo": fondo, "efectivo_ventas": efectivo_ventas, "efectivo_egresos": efectivo_egresos,
             "efectivo_esperado": fondo + efectivo_ventas - efectivo_egresos,
             "ventas_detalle": [_pago_detalle(p) for p in pagos],
-            "egresos_detalle": [{"id": e.id, "hora": hora_argentina(e.fecha).strftime("%H:%M"), "tipo": e.tipo,
+            "egresos_detalle": [{"id": e.id, "numero": e.numero,
+                                 "hora": hora_argentina(e.fecha).strftime("%H:%M"), "tipo": e.tipo,
                                  "concepto": e.concepto, "monto": e.monto, "forma_pago": e.forma_pago,
                                  "privado": bool(e.privado)}
                                 for e in egresos]}
@@ -2191,7 +2211,7 @@ def backup_completo(_ = Depends(solo_dueno), db: Session = Depends(get_db)):
             for v in db.query(models.Venta).order_by(models.Venta.fecha).all()
         ],
         "egresos": [
-            {"id": e.id, "fecha": _iso_utc(e.fecha), "tipo": e.tipo,
+            {"id": e.id, "numero": e.numero, "fecha": _iso_utc(e.fecha), "tipo": e.tipo,
              "concepto": e.concepto, "monto": e.monto,
              "forma_pago": e.forma_pago, "notas": e.notas, "privado": bool(e.privado)}
             for e in db.query(models.Egreso).order_by(models.Egreso.fecha).all()
