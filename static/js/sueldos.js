@@ -29,7 +29,12 @@ let PERMISO = null, YO = null;
 async function pedir(url, opts){
   opts = opts || {};
   if(PERMISO) opts.headers = Object.assign({}, opts.headers || {}, {"X-Sueldo": PERMISO});
-  return authFetch(url, opts);
+  const r = await authFetch(url, opts);
+  // 403 en esta pantalla es siempre lo mismo: el permiso no vale más (se venció
+  // el rato o se cerró de otro lado). En vez de dejar la pantalla mostrando
+  // números que ya no se pueden guardar, se vuelve a pedir el código.
+  if(r.status === 403 && PERMISO) cerrarPuerta("Se venció el rato. Poné tu código de nuevo.");
+  return r;
 }
 
 /* Para la dueña, cuál de las empleadas está mirando queda guardado en el aparato:
@@ -451,6 +456,49 @@ async function mandar(url, metodo, cuerpo){
   }
 }
 
+/* ---------- cerrar la puerta sola ---------- */
+
+/* La tablet queda prendida arriba del mostrador y pasa de mano en mano. Que el
+   permiso se pierda al navegar o recargar no alcanza: si la empleada deja la
+   pantalla abierta y se va a atender, su sueldo queda ahí para el que la agarre.
+
+   Así que se cierra sola en tres casos:
+     - cuando la pantalla deja de estar a la vista (cambió de app, de pestaña,
+       bloqueó la tablet),
+     - cuando pasan unos minutos sin que nadie la toque,
+     - y cuando el servidor contesta que el permiso ya no vale.
+
+   Cerrar es tirar el permiso Y esconder lo que está dibujado: si solo se tirara
+   el permiso, los números seguirían en pantalla hasta que alguien tocara algo. */
+const MINUTOS_QUIETA = 3;
+let relojQuieta = null;
+
+function cerrarPuerta(motivo){
+  if(DUENO || !PERMISO) return;
+  PERMISO = null; YO = null;
+  clearTimeout(relojQuieta);
+  $("#todo").hidden = true;
+  abrirPuerta(motivo);
+}
+
+function reiniciarRelojQuieta(){
+  if(DUENO || !PERMISO) return;
+  clearTimeout(relojQuieta);
+  relojQuieta = setTimeout(() => cerrarPuerta("Se cerró sola por seguridad. Poné tu código de nuevo."),
+                           MINUTOS_QUIETA * 60 * 1000);
+}
+
+function vigilarPantalla(){
+  if(DUENO) return;
+  // visibilitychange cubre cambiar de app, de pestaña y bloquear la tablet.
+  document.addEventListener("visibilitychange", () => {
+    if(document.hidden) cerrarPuerta("Saliste de la pantalla. Poné tu código de nuevo.");
+  });
+  // Y el reloj de inactividad, que se reinicia con cualquier cosa que se toque.
+  ["pointerdown","keydown","input","touchstart"].forEach(ev =>
+    document.addEventListener(ev, reiniciarRelojQuieta, {passive:true}));
+}
+
 /* ---------- la puerta ---------- */
 
 /* Con el usuario empleado no se muestra nada hasta que alguien dice quién es y
@@ -462,10 +510,11 @@ async function mandar(url, metodo, cuerpo){
    "mientras no haya códigos", el día que la dueña carga el primero recién ahí
    empieza a proteger, y hasta entonces la pantalla estuvo abierta sin que nadie
    se enterara. */
-async function abrirPuerta(){
+async function abrirPuerta(motivo){
   const puerta = $("#puerta"), cuerpo = $("#puertaCuerpo");
   $("#todo").hidden = true;
   puerta.hidden = false;
+  $("#puertaAyuda").textContent = motivo || "Elegí quién sos y poné tu código.";
 
   let emps = [];
   try{ emps = (await (await authFetch("/api/empleados")).json()).filter(e => e.tiene_pin); }
@@ -522,7 +571,8 @@ async function abrirPuerta(){
       <span class="quien-nombre">${esc(d.empleado.nombre)}</span>
       <button class="b-out" id="salirSueldos" title="Cerrar y que entre otra">Salir</button>
       <select id="quien" hidden></select>`;
-    $("#salirSueldos").onclick = () => location.reload();
+    $("#salirSueldos").onclick = () => cerrarPuerta("Listo. El código lo pide de nuevo para entrar.");
+    reiniciarRelojQuieta();
     arranque();
   };
   $("#pEntrar").onclick = entrar;
@@ -530,4 +580,4 @@ async function abrirPuerta(){
   setTimeout(()=>$("#pPin").focus(), 0);
 }
 
-if(DUENO) arranque(); else abrirPuerta();
+if(DUENO){ arranque(); } else { vigilarPantalla(); abrirPuerta(); }

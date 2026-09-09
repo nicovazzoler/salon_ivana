@@ -86,9 +86,11 @@ def verificar_token(token: str):
 
 # ---------- el código de la pantalla de sueldos ----------
 # Es otra cosa que la sesión: dice QUIÉN de las empleadas abrió su sueldo, no
-# quién entró a la app. Dura poco a propósito —se pide cada vez que se entra a la
-# pantalla— y el navegador lo guarda solo en memoria.
-SUELDO_MINUTOS = 240
+# quién entró a la app. El navegador lo guarda solo en memoria y lo tira al salir
+# de la pantalla, así que este vencimiento es el último techo: lo que dura, como
+# mucho, un permiso que se hubiera escapado. Media hora alcanza de sobra para
+# cargar las horas del día; si se pasa, la pantalla vuelve a pedir el código.
+SUELDO_MINUTOS = 30
 
 def crear_token_sueldo(empleado_id: int) -> str:
     payload = {"t": "sueldo", "empleado": int(empleado_id),
