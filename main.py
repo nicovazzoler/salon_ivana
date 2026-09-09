@@ -66,6 +66,20 @@ def migrar():
             # todos los comprobantes viejos parecerían "anotados después".
             con.execute(text("UPDATE comprobantes SET cargado = fecha WHERE cargado IS NULL"))
     ecols = [c["name"] for c in insp.get_columns("egresos")]
+    # trabajos_comision cambió de forma antes de salir a producción: linea_id pasó
+    # a poder ser NULL, para los trabajos sin comprobante. En SQLite sacar un NOT
+    # NULL es rehacer la tabla, y como todavía está vacía en todos lados, se la
+    # borra y create_all la vuelve a crear bien. El guard de filas es para que
+    # esto no toque nada si alguna vez tuviera datos.
+    if insp.has_table("trabajos_comision"):
+        tcols = [c["name"] for c in insp.get_columns("trabajos_comision")]
+        if "item_id" not in tcols:
+            with engine.begin() as con:
+                filas = con.execute(text("SELECT COUNT(*) FROM trabajos_comision")).scalar()
+                if not filas:
+                    con.execute(text("DROP TABLE trabajos_comision"))
+                else:
+                    print("Aviso: trabajos_comision tiene datos y forma vieja; no se tocó.")
     if "es_comision" not in icols:
         with engine.begin() as con:
             con.execute(text("ALTER TABLE items ADD COLUMN es_comision BOOLEAN DEFAULT FALSE"))
@@ -218,6 +232,11 @@ class MinutosTrabajoIn(BaseModel):
     empleado_id: int; linea_id: int; minutos: int
 class CerrarIn(BaseModel):
     empleado_id: int; notas: str | None = None
+class TrabajoSueltoIn(BaseModel):
+    empleado_id: int; item_id: int; fecha: str
+    cantidad: int = 1; minutos: int = 0
+class PeluqueroIn(BaseModel):
+    peluquero: str
 class NombreEdit(BaseModel):
     nombre: str
 class AjusteItemEdit(BaseModel):
@@ -973,6 +992,12 @@ def valor_hora(db) -> int:
 def comision_pct(db) -> int:
     return _cfg_int(db, "comision_pct", COMISION_PCT_DEFECTO)
 
+def base_suelto(t, item) -> int:
+    """La base de un trabajo sin comprobante: el precio efectivo del ítem por la
+    cantidad. Mismo criterio que los que vienen de una línea, pero sin ajuste:
+    no hubo comprobante donde ajustar nada."""
+    return (item.precio or 0) * (t.cantidad or 1)
+
 def base_comision(linea) -> int:
     """Sobre cuánta plata se calcula la comisión de una línea.
 
@@ -1028,17 +1053,51 @@ def resumen_pendiente(db, empleado) -> dict:
           .filter(models.TrabajoComision.empleado_id == empleado.id,
                   models.TrabajoComision.liquidacion_id.is_(None)).all())
 
+    # Los que vienen de un comprobante. Se guarda el id del trabajo si ya existe,
+    # que es lo que la pantalla necesita para guardar los minutos.
+    id_por_linea = dict(
+        db.query(models.TrabajoComision.linea_id, models.TrabajoComision.id)
+          .filter(models.TrabajoComision.empleado_id == empleado.id,
+                  models.TrabajoComision.linea_id.isnot(None),
+                  models.TrabajoComision.liquidacion_id.is_(None)).all())
+
     trabajos, total_com, min_com = [], 0, 0
     for linea, comp in lineas_a_comision_pendientes(db, empleado):
         c = comision_de(linea, pct)
         m = minutos_por_linea.get(linea.id, 0) or 0
         total_com += c; min_com += m
         trabajos.append({
-            "linea_id": linea.id, "comprobante_id": comp.id, "numero": comp.numero,
+            "id": id_por_linea.get(linea.id), "linea_id": linea.id,
+            "comprobante_id": comp.id, "numero": comp.numero,
+            # Para que la pantalla pueda linkear a la cuenta del cliente. Sin
+            # cliente_id no hay adónde ir: fue una venta de mostrador.
+            "cliente_id": comp.cliente_id,
             "fecha": hora_argentina(comp.fecha).date().isoformat(),
             "nombre": linea.nombre, "cantidad": linea.cantidad,
             "base": base_comision(linea), "comision": c, "minutos": m,
-            "cliente": comp.cliente_nombre})
+            "cliente": comp.cliente_nombre, "suelto": False})
+
+    # Y los sueltos, que no tienen comprobante detrás.
+    sueltos = (db.query(models.TrabajoComision)
+                 .filter(models.TrabajoComision.empleado_id == empleado.id,
+                         models.TrabajoComision.linea_id.is_(None),
+                         models.TrabajoComision.liquidacion_id.is_(None))
+                 .order_by(models.TrabajoComision.fecha).all())
+    for t in sueltos:
+        item = db.get(models.Item, t.item_id) if t.item_id else None
+        b = base_suelto(t, item) if item else 0
+        c = round(b * pct / 100)
+        m = t.minutos or 0
+        total_com += c; min_com += m
+        trabajos.append({
+            "id": t.id, "linea_id": None, "comprobante_id": None, "numero": None,
+            "cliente_id": None, "fecha": t.fecha,
+            "nombre": t.nombre or (item.nombre if item else "—"),
+            "cantidad": t.cantidad or 1,
+            "base": b, "comision": c, "minutos": m,
+            "cliente": None, "suelto": True})
+
+    trabajos.sort(key=lambda t: (t["fecha"] or "", t["numero"] or 0))
 
     horas = (db.query(models.HoraTrabajada)
                .filter(models.HoraTrabajada.empleado_id == empleado.id,
@@ -1138,10 +1197,15 @@ def cerrar_liquidacion(datos: CerrarIn, _ = Depends(solo_dueno), db: Session = D
     db.add(liq); db.flush()
 
     for t in r["trabajos"]:
-        fila = db.query(models.TrabajoComision).filter_by(linea_id=t["linea_id"]).first()
+        # Los sueltos ya son una fila; los que vienen de una línea pueden no
+        # tenerla todavía, si nadie les cargó los minutos.
+        fila = db.get(models.TrabajoComision, t["id"]) if t["id"] else None
+        if not fila and t["linea_id"]:
+            fila = db.query(models.TrabajoComision).filter_by(linea_id=t["linea_id"]).first()
         if not fila:
             fila = models.TrabajoComision(linea_id=t["linea_id"], empleado_id=emp.id,
-                                          minutos=t["minutos"])
+                                          minutos=t["minutos"], fecha=t["fecha"],
+                                          nombre=t["nombre"], cantidad=t["cantidad"])
             db.add(fila)
         fila.liquidacion_id = liq.id
         fila.base = t["base"]; fila.comision = t["comision"]
@@ -1151,6 +1215,69 @@ def cerrar_liquidacion(datos: CerrarIn, _ = Depends(solo_dueno), db: Session = D
        .update({"liquidacion_id": liq.id}, synchronize_session=False))
     db.commit()
     return {"id": liq.id, "total": liq.total}
+
+@app.post("/api/sueldos/trabajo-suelto")
+def crear_trabajo_suelto(t: TrabajoSueltoIn, _ = Depends(usuario_actual), db: Session = Depends(get_db)):
+    """Un trabajo a comisión que no quedó en ningún comprobante.
+
+    Pasa: se atendió a alguien y no se facturó. Si no se pudiera cargar, la
+    empleada trabajaría gratis o tendría que reclamarlo de memoria. Queda marcado
+    para que la dueña vea, antes de pagar, cuál no tiene respaldo.
+
+    El monto no se tipea: sale del precio del ítem, igual que los que vienen de un
+    comprobante. Así la comisión se calcula siempre sobre la misma base y nadie
+    puede escribir el número que le conviene.
+    """
+    _empleado_o_404(db, t.empleado_id)
+    item = db.get(models.Item, t.item_id)
+    if not item: raise HTTPException(404, "Ese ítem no existe")
+    if not item.es_comision: raise HTTPException(400, "Ese ítem no se paga por comisión")
+    if t.cantidad < 1: raise HTTPException(400, "La cantidad tiene que ser al menos 1")
+    if t.minutos < 0 or t.minutos > 24 * 60: raise HTTPException(400, "Duración fuera de rango")
+    try:
+        date.fromisoformat(t.fecha)
+    except ValueError:
+        raise HTTPException(400, "Fecha inválida")
+    nuevo = models.TrabajoComision(
+        empleado_id=t.empleado_id, item_id=item.id, nombre=item.nombre,
+        cantidad=t.cantidad, fecha=t.fecha, minutos=t.minutos)
+    db.add(nuevo); db.commit(); db.refresh(nuevo)
+    return {"id": nuevo.id}
+
+@app.delete("/api/sueldos/trabajo-suelto/{trabajo_id}")
+def borrar_trabajo_suelto(trabajo_id: int, _ = Depends(usuario_actual), db: Session = Depends(get_db)):
+    t = db.get(models.TrabajoComision, trabajo_id)
+    if not t: raise HTTPException(404, "No existe")
+    if t.linea_id: raise HTTPException(400, "Ese trabajo viene de un comprobante: se saca anulando el comprobante")
+    if t.liquidacion_id: raise HTTPException(400, "Ese trabajo ya está en una liquidación cerrada")
+    db.delete(t); db.commit(); return {"ok": True}
+
+@app.put("/api/comprobantes/{comp_id}/peluquero")
+def poner_peluquero(comp_id: int, datos: PeluqueroIn, _ = Depends(usuario_actual),
+                    db: Session = Depends(get_db)):
+    """Completa quién atendió en un comprobante ya hecho.
+
+    Es lo único editable de un comprobante cobrado, y a propósito: los importes no
+    se tocan nunca después de emitido. Pero el peluquero se olvida seguido y sin
+    él la comisión de ese trabajo no le llega a nadie.
+    """
+    comp = db.get(models.Comprobante, comp_id)
+    if not comp or not comp.activo: raise HTTPException(404, "Comprobante no existe")
+    nombre = nombre_propio(datos.peluquero.strip())
+    if not nombre: raise HTTPException(400, "Falta el nombre")
+    emp = db.query(models.Empleado).filter(models.Empleado.nombre == nombre).first()
+    if not emp:
+        raise HTTPException(400, f"'{nombre}' no está en la lista de empleados")
+    comp.peluquero = emp.nombre
+    db.commit(); return {"ok": True, "peluquero": emp.nombre}
+
+@app.get("/api/sueldos/items-comision")
+def items_a_comision(_ = Depends(usuario_actual), db: Session = Depends(get_db)):
+    """El catálogo que sirve para cargar un trabajo suelto."""
+    return [{"id": i.id, "nombre": i.nombre, "categoria": i.categoria, "precio": i.precio}
+            for i in db.query(models.Item)
+                       .filter(models.Item.activo == True, models.Item.es_comision == True)
+                       .order_by(models.Item.categoria, models.Item.nombre)]
 
 @app.get("/api/sueldos/liquidaciones")
 def listar_liquidaciones(empleado_id: int | None = None, limite: int = 20,
@@ -2583,7 +2710,8 @@ def backup_completo(_ = Depends(solo_dueno), db: Session = Depends(get_db)):
         ],
         "trabajos_comision": [
             {"id": t.id, "linea_id": t.linea_id, "empleado_id": t.empleado_id,
-             "minutos": t.minutos, "liquidacion_id": t.liquidacion_id,
+             "item_id": t.item_id, "nombre": t.nombre, "cantidad": t.cantidad,
+             "fecha": t.fecha, "minutos": t.minutos, "liquidacion_id": t.liquidacion_id,
              "base": t.base, "comision": t.comision}
             for t in db.query(models.TrabajoComision).order_by(models.TrabajoComision.id).all()
         ],

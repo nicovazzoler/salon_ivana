@@ -318,9 +318,19 @@ class TrabajoComision(Base):
     """
     __tablename__ = "trabajos_comision"
     id = Column(Integer, primary_key=True)
-    linea_id = Column(Integer, ForeignKey("comprobante_lineas.id"), nullable=False,
-                      unique=True, index=True)
+    # Nullable: un trabajo puede no tener comprobante. Pasa —se atendió a alguien
+    # y no se facturó— y si no se pudiera cargar, la empleada trabajaría gratis o
+    # tendría que reclamarlo de memoria. Se marca en la pantalla para que la dueña
+    # vea cuál no tiene respaldo antes de pagarlo.
+    # El unique sigue valiendo para los que SÍ tienen línea: ni SQLite ni
+    # PostgreSQL cuentan los NULL como repetidos.
+    linea_id = Column(Integer, ForeignKey("comprobante_lineas.id"), unique=True, index=True)
     empleado_id = Column(Integer, ForeignKey("empleados.id"), nullable=False, index=True)
+    # Solo para los sueltos: de dónde sale la plata cuando no hay línea.
+    item_id = Column(Integer, ForeignKey("items.id"))
+    nombre = Column(String)                  # snapshot, por si el ítem se renombra
+    cantidad = Column(Integer, default=1)
+    fecha = Column(String)                   # 'YYYY-MM-DD' argentino
     minutos = Column(Integer, default=0)
     liquidacion_id = Column(Integer, ForeignKey("liquidaciones.id"), index=True)
     # Se llenan al cerrar. Antes son None: lo pendiente se calcula en vivo, así

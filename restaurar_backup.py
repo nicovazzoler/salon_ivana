@@ -209,7 +209,8 @@ def restaurar(archivo, destino, vaciar=False, sin_preguntar=False):
         # comprobantes: cada trabajo apunta a una de ellas.
         total["trabajos_comision"] = _insertar(db, models.TrabajoComision, _filas(
             datos, "trabajos_comision",
-            ["id", "linea_id", "empleado_id", "minutos", "liquidacion_id", "base", "comision"],
+            ["id", "linea_id", "empleado_id", "item_id", "nombre", "cantidad",
+             "fecha", "minutos", "liquidacion_id", "base", "comision"],
             [], version))
 
         total["pagos"] = _insertar(db, models.Pago, _filas(
