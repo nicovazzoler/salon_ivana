@@ -100,6 +100,7 @@
 <div class="toast" id="toast"></div>
 
 <script src="/static/auth.js"></script>
+<script src="/static/js/peluquero.js"></script>
 <script src="/static/escpos.js"></script>
 <script>
 requireLogin(); pintarNav();
@@ -427,7 +428,11 @@ function renderComprobantes(){
           ${lineas}${extra}${filaDescEf}${filaSubtotal}${filaDescEfvoReal}${filaDescJub}
           <div class="fila fila-total"><span>Total</span><span>${fmt(d.ingresado + d.saldo)}</span></div>
           <div style="font-weight:700;margin:10px 0 6px;">Pagos</div>
-          ${pagos}${filaPendiente}`;
+          ${pagos}${filaPendiente}
+          <div class="quien-atendio"></div>`;
+        // Solo en tickets: un presupuesto no es trabajo hecho, así que no hay
+        // comisión que atribuirle a nadie.
+        pintarPeluquero(boxDet.querySelector(".quien-atendio"), d);
       }
       boxDet.style.display="block";
     };

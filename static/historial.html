@@ -185,6 +185,7 @@
 <div class="toast" id="toast"></div>
 
 <script src="/static/auth.js"></script>
+<script src="/static/js/peluquero.js"></script>
 <script src="/static/escpos.js"></script>
 <script>
 requireLogin(); pintarNav();
@@ -511,7 +512,11 @@ function crearFila(comp){
         ${lineas}${extra}${esPresu?'':filaDescEf+filaSubtotal+filaDescEfvoReal+filaDescJub}
         ${totales}
         ${d.tipo==="ticket"?`<div style="font-weight:700;margin:10px 0 6px;">Pagos</div>${pagos}${filaPendiente}`:''}
+        ${d.tipo==="ticket"?`<div class="quien-atendio"></div>`:''}
         <a class="btnAbonar" href="/ticket?id=${d.id}" style="margin-top:10px;">🖨️ Imprimir</a>`;
+      // Acá se completa quién atendió: es la única pantalla donde aparece un
+      // ticket de mostrador, que no tiene cuenta de cliente adónde ir a buscarlo.
+      pintarPeluquero(box.querySelector(".quien-atendio"), d);
       box.style.display="block";
     };
     div.querySelector(".btnPrint").onclick = e=>e.stopPropagation();   // que no despliegue el detalle

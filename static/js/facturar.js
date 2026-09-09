@@ -3,6 +3,7 @@ const $=s=>document.querySelector(s);
 const fmt=n=>"$"+(n||0).toLocaleString("es-AR");
 const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 let CATALOGO=[], DESCUENTOS=[], CLIENTES=[], ticket=[], NEGOCIO={};
+let EMPLEADOS=[];               // los nombres que pueden aparecer en "Atendió"
 let TIPOS_PRIVADOS=new Set();   // tipos de egreso que son privados siempre (vacío para el empleado)
 let tipo="ticket", descPct=0, descNombre=null, formaPago="efectivo";
 let totalActual=0;
@@ -91,6 +92,7 @@ async function init(){
   NEGOCIO=cfg.negocio||{};              // encabezado del papel impreso
   CATALOGO=await (await authFetch("/api/catalogo")).json();
   CLIENTES=await (await authFetch("/api/clientes")).json();
+  await cargarEmpleados();
   await cargarListas(cfg);
   ponerLapices();
   pintarRail();
@@ -98,6 +100,27 @@ async function init(){
   cargarEgresosHoy(); avisoEgresoPrivado();
   const cliParam=new URLSearchParams(location.search).get("cliente");
   if(cliParam){ $("#cliente").value=cliParam; }
+}
+
+/* Quién atendió dejó de ser texto libre: es la lista de empleados.
+
+   Escrito a mano salían "Carla", "carla " y "Karla", y el sueldo de una persona
+   quedaba partido en tres nombres que el sistema no puede juntar. Y es
+   obligatorio, porque de este nombre sale la comisión: un ticket sin él es un
+   trabajo que no se le paga a nadie y que después hay que reconstruir de memoria.
+
+   Si todavía no hay nadie cargado en la lista, no frena el cobro: el local tiene
+   que poder facturar igual, y ese ticket se completa después desde el detalle
+   del comprobante. */
+async function cargarEmpleados(){
+  try{ EMPLEADOS = await (await authFetch("/api/empleados")).json(); }
+  catch(e){ EMPLEADOS = []; }
+  // Sin preselección a propósito: si viniera con una elegida, el día que atiende
+  // la otra se cobra a nombre de quien no trabajó y la comisión se la lleva la
+  // que no estaba. Un renglón más por cobro es más barato que eso.
+  $("#peluquero").innerHTML = EMPLEADOS.length
+    ? `<option value="">Elegí…</option>` + EMPLEADOS.map(e=>`<option>${e.nombre}</option>`).join("")
+    : `<option value="">(no hay empleados cargados)</option>`;
 }
 
 /* ---------- Las listas configurables ----------
@@ -863,6 +886,13 @@ async function imprimirComprobante(id){
 async function crearComprobante(){
   const nom=$("#cliente").value.trim();
   if(!nom){ toast("Falta el nombre del cliente"); $("#cliente").focus(); return null; }
+  // Obligatorio en el ticket y no en el presupuesto: el presupuesto es un precio
+  // que se pasa, no trabajo hecho, así que no hay comisión que atribuirle. Si
+  // después se convierte en ticket, se completa desde el detalle del
+  // comprobante, que es donde está el "Atendió" editable.
+  if(tipo === "ticket" && EMPLEADOS.length && !$("#peluquero").value){
+    toast("Elegí quién atendió"); $("#peluquero").focus(); return null;
+  }
  let cliId = clienteIdSel;                     // lo que elegiste del dropdown (o null)
 
   // Si no elegiste del dropdown, resolvemos por nombre: match exacto, o crear con confirmación.
@@ -886,7 +916,7 @@ async function crearComprobante(){
     tipo,
     cliente_id: cliId,
     cliente_nombre: null,
-    peluquero: $("#peluquero").value.trim() || null,
+    peluquero: $("#peluquero").value || null,
     forma_pago: formaPago,
     descuento_pct: descPct,
     descuento_nombre: descNombre,
