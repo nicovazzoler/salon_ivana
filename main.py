@@ -66,6 +66,10 @@ def migrar():
             # todos los comprobantes viejos parecerían "anotados después".
             con.execute(text("UPDATE comprobantes SET cargado = fecha WHERE cargado IS NULL"))
     ecols = [c["name"] for c in insp.get_columns("egresos")]
+    if "es_comision" not in icols:
+        with engine.begin() as con:
+            con.execute(text("ALTER TABLE items ADD COLUMN es_comision BOOLEAN DEFAULT FALSE"))
+            con.execute(text("UPDATE items SET es_comision = FALSE WHERE es_comision IS NULL"))
     if "numero" not in ecols:
         with engine.begin() as con:
             con.execute(text("ALTER TABLE egresos ADD COLUMN numero INTEGER"))
@@ -202,6 +206,12 @@ class TipoEgresoIn(BaseModel):
     nombre: str; privado: bool = False    # privado solo lo puede pedir la dueña
 class TipoEgresoEdit(BaseModel):
     nombre: str | None = None; privado: bool | None = None
+class EmpleadoIn(BaseModel):
+    nombre: str
+class EmpleadoEdit(BaseModel):
+    nombre: str | None = None; activo: bool | None = None
+class ValorHoraIn(BaseModel):
+    valor: int
 class NombreEdit(BaseModel):
     nombre: str
 class AjusteItemEdit(BaseModel):
@@ -291,6 +301,60 @@ def nombre_propio(s: str) -> str:
 # Un paréntesis AL FINAL del nombre: "Mónica (mamá de Sofía)" → "Mónica" + "mamá de Sofía".
 _COLA_PARENTESIS = re.compile(r"\s*\(([^()]*)\)\s*$")
 
+# Vive acá arriba y no al lado de los endpoints que lo usan porque la
+# migración de peluqueros, que corre al importar el módulo, lo necesita antes.
+def _renombrar_en(db, columna, viejo: str, nuevo: str) -> int:
+    """Cambia el nombre copiado en los movimientos ya cargados."""
+    if viejo == nuevo: return 0
+    return db.query(columna.class_).filter(columna == viejo).update(
+        {columna: nuevo}, synchronize_session=False)
+
+def migrar_peluqueros_a_empleados():
+    """Los nombres que ya se escribieron a mano pasan a ser empleados.
+
+    Antes `peluquero` era texto libre y en la base hay meses de nombres tipeados.
+    Si la lista arrancara vacía, la dueña tendría que volver a cargarlos a mano y,
+    peor, los comprobantes viejos quedarían apuntando a nombres que no existen en
+    ninguna lista.
+
+    Corre UNA vez, con marca en config: si no, cada reinicio le devolvería los
+    empleados que la dueña desactivó a propósito.
+    """
+    MARCA_EMPLEADOS = "migro_peluqueros_a_empleados"
+    from sqlalchemy.orm import Session as _S
+    with _S(engine) as db:
+        if db.query(models.Config).filter_by(clave=MARCA_EMPLEADOS).first():
+            return
+        # Cada nombre crudo se lleva a su forma canónica con nombre_propio(), que
+        # es la misma que usa el alta. Sin esto "Carla", "carla " y "CARLA" serían
+        # tres empleadas distintas y el sueldo de Carla saldría partido en tres,
+        # que es exactamente lo que esta tabla viene a evitar.
+        canonico = {}
+        for tabla in (models.Comprobante.peluquero, models.Turno.peluquero, models.Venta.peluquero):
+            for (n,) in db.query(tabla).filter(tabla.isnot(None)).distinct():
+                if n and n.strip():
+                    canonico[n] = nombre_propio(n.strip())
+
+        # Y lo ya cargado se normaliza también. Si la lista dice "Carla" pero los
+        # comprobantes siguen diciendo "carla ", no hay forma de asociarlos y la
+        # tabla no arregló nada.
+        for crudo, limpio in canonico.items():
+            if crudo != limpio:
+                _renombrar_en(db, models.Comprobante.peluquero, crudo, limpio)
+                _renombrar_en(db, models.Turno.peluquero, crudo, limpio)
+                _renombrar_en(db, models.Venta.peluquero, crudo, limpio)
+
+        # Ordenados para que el alta sea igual en cualquier base, y así los id de
+        # una restauración coincidan con los del original.
+        nuevos = 0
+        for n in sorted(set(canonico.values())):
+            if not db.query(models.Empleado).filter(models.Empleado.nombre == n).first():
+                db.add(models.Empleado(nombre=n)); nuevos += 1
+        db.add(models.Config(clave=MARCA_EMPLEADOS, valor=str(nuevos)))
+        db.commit()
+        if nuevos:
+            print(f"Migración: {nuevos} empleado(s) dados de alta desde los nombres ya cargados.")
+
 def migrar_notas_entre_parentesis():
     """Saca del nombre el aclarador entre paréntesis y lo pasa a las notas.
 
@@ -331,6 +395,11 @@ try:
     migrar_notas_entre_parentesis()
 except Exception as _e:
     print("Aviso: no se pudo migrar los nombres entre paréntesis:", _e)
+
+try:
+    migrar_peluqueros_a_empleados()
+except Exception as _e:
+    print("Aviso: no se pudo pasar los peluqueros a empleados:", _e)
 
 # ---------- auth ----------
 def usuario_actual(authorization: str = Header(default="")):
@@ -754,8 +823,10 @@ def config(user = Depends(usuario_actual), db: Session = Depends(get_db)):
     # los devuelve, y primero, que son los que carga ella.
     tipos = [t.nombre for t in tipos_visibles(db, user)]
     alias = [a.nombre for a in db.query(models.Alias).filter(models.Alias.activo == True)]
+    vh = db.query(models.Config).filter_by(clave="valor_hora").first()
     return {"formas_pago": formas, "tipos_egreso": tipos, "alias": alias,
             "negocio": NEGOCIO,
+            "valor_hora": int(vh.valor) if vh and str(vh.valor).isdigit() else 0,
             "tipos_privados": [t.nombre for t in db.query(models.TipoEgreso).filter(
                 models.TipoEgreso.activo == True, models.TipoEgreso.privado == True)] if es_dueno(user) else []}
 
@@ -871,6 +942,63 @@ def editar_usuario(uid: int, cambios: UsuarioEdit, _ = Depends(solo_dueno), db: 
     db.commit(); return {"ok": True}
 
 # alias de transferencia
+# ---------- empleados ----------
+# La lista la lee cualquiera: el desplegable de "peluquero" está en facturar y en
+# la agenda, que usa el empleado todos los días. Tocarla es solo de la dueña.
+@app.get("/api/empleados")
+def listar_empleados(todos: bool = False, _ = Depends(usuario_actual), db: Session = Depends(get_db)):
+    q = db.query(models.Empleado)
+    if not todos:
+        q = q.filter(models.Empleado.activo == True)
+    return [{"id": e.id, "nombre": e.nombre, "activo": bool(e.activo)}
+            for e in q.order_by(models.Empleado.nombre)]
+
+@app.post("/api/empleados")
+def crear_empleado(e: EmpleadoIn, _ = Depends(solo_dueno), db: Session = Depends(get_db)):
+    nombre = nombre_propio(e.nombre.strip())
+    if not nombre: raise HTTPException(400, "Falta el nombre")
+    ya = db.query(models.Empleado).filter(models.Empleado.nombre == nombre).first()
+    if ya:
+        # Volver a darlo de alta reactiva al que estaba: si no, el nombre único
+        # choca y la dueña no entiende por qué no puede agregar a alguien que ve
+        # que no está en la lista.
+        if ya.activo: raise HTTPException(400, "Ese empleado ya está en la lista")
+        ya.activo = True; db.commit(); return {"id": ya.id, "reactivado": True}
+    nuevo = models.Empleado(nombre=nombre)
+    db.add(nuevo); db.commit(); db.refresh(nuevo)
+    return {"id": nuevo.id, "reactivado": False}
+
+@app.put("/api/empleados/{emp_id}")
+def editar_empleado(emp_id: int, cambios: EmpleadoEdit, _ = Depends(solo_dueno), db: Session = Depends(get_db)):
+    e = db.get(models.Empleado, emp_id)
+    if not e: raise HTTPException(404, "Empleado no existe")
+    if cambios.nombre is not None:
+        nombre = nombre_propio(cambios.nombre.strip())
+        if not nombre: raise HTTPException(400, "Falta el nombre")
+        otro = db.query(models.Empleado).filter(models.Empleado.nombre == nombre,
+                                                models.Empleado.id != emp_id).first()
+        if otro: raise HTTPException(400, "Ya hay un empleado con ese nombre")
+        # Arrastra, como los tipos de egreso: el nombre del peluquero es una
+        # clasificación, no lo que se le dijo al cliente. Si no arrastrara, un
+        # comprobante viejo quedaría a nombre de alguien que ya no existe.
+        _renombrar_en(db, models.Comprobante.peluquero, e.nombre, nombre)
+        _renombrar_en(db, models.Turno.peluquero, e.nombre, nombre)
+        e.nombre = nombre
+    if cambios.activo is not None:
+        e.activo = cambios.activo
+    db.commit(); return {"ok": True}
+
+# No hay DELETE a propósito: un empleado que se fue sigue teniendo comprobantes y
+# liquidaciones que tienen que poder leerse. Se desactiva con el PUT.
+
+@app.put("/api/config/valor-hora")
+def set_valor_hora(datos: ValorHoraIn, _ = Depends(solo_dueno), db: Session = Depends(get_db)):
+    if datos.valor < 0: raise HTTPException(400, "El valor hora no puede ser negativo")
+    fila = db.query(models.Config).filter_by(clave="valor_hora").first()
+    if fila: fila.valor = str(datos.valor)
+    else: db.add(models.Config(clave="valor_hora", valor=str(datos.valor)))
+    db.commit(); return {"ok": True, "valor": datos.valor}
+
 @app.get("/api/alias")
 def listar_alias(_ = Depends(usuario_actual), db: Session = Depends(get_db)):
     return [{"id": a.id, "nombre": a.nombre}
@@ -1172,12 +1300,6 @@ def borrar_forma(forma_id: int, _ = Depends(usuario_actual), db: Session = Depen
        imprimirlo tiene que seguir diciendo eso. No se arrastra: el nombre nuevo
        vale para lo que se cobre de acá en adelante.
 """
-def _renombrar_en(db, columna, viejo: str, nuevo: str) -> int:
-    """Cambia el nombre copiado en los movimientos ya cargados."""
-    if viejo == nuevo: return 0
-    return db.query(columna.class_).filter(columna == viejo).update(
-        {columna: nuevo}, synchronize_session=False)
-
 # ---------- log de stock ----------
 def log_stock(db, item, tipo, cambio, motivo, usuario="sistema"):
     antes = item.stock_actual or 0
@@ -2195,7 +2317,8 @@ def backup_completo(_ = Depends(solo_dueno), db: Session = Depends(get_db)):
              # Va guardado y no recalculado al restaurar: calcular_transfer da el
              # valor de catálogo, pero este puede haberse editado a mano.
              "precio_transfer": i.precio_transfer,
-             "es_producto": i.es_producto, "stock_actual": i.stock_actual,
+             "es_producto": i.es_producto, "es_comision": bool(i.es_comision),
+             "stock_actual": i.stock_actual,
              "stock_minimo": i.stock_minimo, "activo": i.activo}
             for i in db.query(models.Item).all()
         ],
@@ -2215,6 +2338,10 @@ def backup_completo(_ = Depends(solo_dueno), db: Session = Depends(get_db)):
              "concepto": e.concepto, "monto": e.monto,
              "forma_pago": e.forma_pago, "notas": e.notas, "privado": bool(e.privado)}
             for e in db.query(models.Egreso).order_by(models.Egreso.fecha).all()
+        ],
+        "empleados": [
+            {"id": e.id, "nombre": e.nombre, "activo": e.activo}
+            for e in db.query(models.Empleado).all()
         ],
         "formas_pago": [
             {"id": f.id, "nombre": f.nombre, "activo": f.activo}

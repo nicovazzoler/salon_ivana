@@ -20,6 +20,10 @@ class Item(Base):
     precio = Column(Integer, nullable=False)
     precio_transfer = Column(Integer, default=0)   # calculado: efectivo redondeado a transferencia
     es_producto = Column(Boolean, default=False)
+    # Trabajo que se paga por comisión: el 40% de lo que salió en efectivo con su
+    # ajuste de línea. Va en el ítem y no en el comprobante porque es una
+    # propiedad del trabajo ("un corte se paga a comisión"), no de la venta.
+    es_comision = Column(Boolean, default=False)
     stock_actual = Column(Integer, default=0)   # solo aplica a productos
     stock_minimo = Column(Integer, default=0)
     activo = Column(Boolean, default=True)
@@ -80,6 +84,22 @@ class Usuario(Base):
     salt = Column(String, nullable=False)
     hash = Column(String, nullable=False)
     rol = Column(String, default="empleado")  # "dueno" o "empleado"
+
+class Empleado(Base):
+    """Quién trabaja en el local.
+
+    Sale del texto libre que había en `peluquero`: escrito a mano, "Carla",
+    "carla" y "Carla " son tres personas distintas, y el sueldo de cada una sale
+    mal sin que nada avise. Es una tabla y no una de las listas configurables
+    porque de acá cuelga plata: las horas y las comisiones apuntan a un empleado.
+
+    No se borran, se desactivan: un empleado que se fue sigue teniendo
+    liquidaciones viejas que tienen que poder leerse.
+    """
+    __tablename__ = "empleados"
+    id = Column(Integer, primary_key=True)
+    nombre = Column(String, unique=True, nullable=False)
+    activo = Column(Boolean, default=True)
 
 class TipoEgreso(Base):
     __tablename__ = "tipos_egreso"
