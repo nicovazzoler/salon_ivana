@@ -59,8 +59,28 @@
     display:inline-flex; align-items:center; gap:4px; margin:0;
     white-space:nowrap; cursor:pointer;
     font-size:var(--fs-sm); color:var(--text-tenue);
+    /* Es una palabra suelta, no el rótulo de un campo: sin el mayúsculas de los
+       <label> de la tarjeta, que la hacía pesar más que el nombre del ítem. */
+    text-transform:none; letter-spacing:normal; font-weight:var(--fw-normal);
   }
   .item-row .chk-com input{ margin:0; }
+
+  /* Fila tocada y todavía sin guardar, en el modo edición del catálogo. Mismo
+     filete que usan las listas configurables: mirando la lista con todo abierto
+     ya no se sabe qué está en la base y qué está solo tipeado. */
+  .item-row.sucia{
+    box-shadow:inset 3px 0 0 var(--acento);
+    padding-left:var(--sp-2);
+  }
+  /* La barra de guardar del modo edición. Queda pegada abajo de la lista para
+     que no haya que buscarla después de tocar el último renglón. */
+  .barra-guardar{
+    position:sticky; bottom:0;
+    display:flex; align-items:center; gap:var(--sp-2); flex-wrap:wrap;
+    margin-top:var(--sp-2); padding:var(--sp-2) 0;
+    background:var(--bg-card);
+    border-top:1px solid var(--border-sutil);
+  }
 
   /* Listas simples (formas de pago, egresos, alias): nombre + eliminar */
   .item-row.simple{ grid-template-columns:1fr auto; }

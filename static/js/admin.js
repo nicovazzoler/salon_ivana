@@ -13,6 +13,16 @@ const fmt=n=>"$"+(n||0).toLocaleString("es-AR");
 const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 let catActual=null;
 let ITEMS_ALL=[];
+/* Dos modos para la misma lista.
+
+   Leyendo, que es como se entra casi siempre —a mirar un precio—, la fila no
+   tiene ni un casillero abierto: un campo abierto invita a escribir, y un precio
+   cambiado sin querer se cobra.
+
+   Editando, que es cuando hay que actualizar precios y son veinte de una
+   sentada, se abren todos juntos como estaban antes. Ir de a uno ahí es abrir y
+   cerrar veinte paneles. */
+let modoEdicion=false;
 
 function toast(m){const t=$("#toast");t.textContent=m;t.classList.add("show");setTimeout(()=>t.classList.remove("show"),2200);}
 
@@ -57,6 +67,7 @@ function renderItems(items, mostrarCat){
   cerrarPaneles();
   if(items.length===0){cont.innerHTML='<p class="muted">Sin ítems para mostrar.</p>';return;}
   cont.innerHTML="";
+  if(modoEdicion){ renderItemsEditables(items, mostrarCat); return; }
   items.forEach(it=>{
     const fila=document.createElement("div"); fila.className="item-fila";
 
@@ -90,6 +101,116 @@ function renderItems(items, mostrarCat){
     };
   });
 }
+
+/* La lista entera abierta: nombre, precio y comisión de cada ítem.
+
+   Se guarda con un solo botón al final, no con uno por renglón: la razón de
+   estar acá es cambiar varios, y veinte Guardar es veinte viajes al servidor y
+   veinte chances de dejar uno sin apretar. Lo que se tocó queda marcado hasta
+   que se guarda, porque mirando la lista ya no se puede saber qué está en la
+   base y qué está solo tipeado.
+
+   Eliminar y la categoría no están acá: van en el panel de Editar, de a uno.
+   Borrar un ítem entre veinte casilleros abiertos se aprieta sin mirar. */
+function renderItemsEditables(items, mostrarCat){
+  const cont=$("#listaItems");
+  const filas=[];
+  items.forEach(it=>{
+    const row=document.createElement("div"); row.className="item-row";
+    const cat = mostrarCat ? `<span class="tag neutro">${esc(it.categoria)}</span>` : "";
+    row.innerHTML=`
+      <input class="n" value="${esc(it.nombre)}" aria-label="Nombre">
+      <input class="p" type="number" min="0" value="${it.precio}" aria-label="Precio efectivo">
+      <span class="meta">
+        <span class="transf" style="white-space:nowrap;">→ transf ${fmt(it.precio_transfer||0)}</span>
+        ${cat}${it.es_producto?'<span class="tag">prod</span>':''}
+        <label class="chk-com" title="La empleada que lo haga cobra comisión por este trabajo">
+          <input type="checkbox" class="com" ${it.es_comision?"checked":""}> comisión
+        </label>
+      </span>
+      <span class="acc"></span>`;
+    const leer=()=>({nombre:row.querySelector(".n").value.trim(),
+                     precio:parseInt(row.querySelector(".p").value,10),
+                     es_comision:row.querySelector(".com").checked});
+    const original=JSON.stringify(leer());
+    const marcar=()=>{
+      const sucia = JSON.stringify(leer())!==original;
+      row.classList.toggle("sucia", sucia);
+      // El de transferencia lo calcula el servidor al guardar. Mientras el
+      // precio está tocado, el que se ve al lado es el viejo: mostrarlo pegado a
+      // un efectivo nuevo se lee como si fueran los dos de ahora. Y calcularlo
+      // acá sería tener la cuenta de la plata escrita en dos lugares.
+      row.querySelector(".transf").textContent = sucia
+        ? "→ transf: se calcula al guardar"
+        : `→ transf ${fmt(it.precio_transfer||0)}`;
+      pintarBarra();
+    };
+    row.querySelectorAll("input").forEach(el=>{
+      el.addEventListener("input", marcar); el.addEventListener("change", marcar);
+    });
+    cont.appendChild(row);
+    filas.push({it, row, leer, sucia:()=>row.classList.contains("sucia")});
+  });
+
+  /* El botón se crea UNA vez y después solo se le cambia el texto.
+
+     Redibujando la barra entera en cada tecla, el click se perdía: al apretar
+     Guardar, el casillero pierde el foco y dispara su `change`, eso rehacía la
+     barra, y el botón desaparecía entre el mousedown y el mouseup. El navegador
+     entonces no manda ningún click y no pasa nada — había que apretar dos veces
+     para que guardara. */
+  const barra=document.createElement("div");
+  barra.className="barra-guardar";
+  const btn=Object.assign(document.createElement("button"),
+                          {className:"b-ok", type:"button", id:"btnGuardarTodos"});
+  const nota=Object.assign(document.createElement("span"), {className:"muted"});
+  btn.onclick=guardarTodos;
+  barra.append(btn, nota);
+  cont.appendChild(barra);
+
+  function pintarBarra(){
+    const cuantos=filas.filter(f=>f.sucia()).length;
+    btn.style.display = cuantos ? "" : "none";
+    btn.textContent = `Guardar ${cuantos} ${cuantos===1?"cambio":"cambios"}`;
+    nota.textContent = cuantos
+      ? "Sin guardar todavía."
+      : "Tocá los precios o los nombres que haya que cambiar y guardalos todos juntos.";
+  }
+
+  async function guardarTodos(){
+    const cambiadas=filas.filter(f=>f.sucia());
+    const malos=[];
+    for(const f of cambiadas){
+      const v=f.leer();
+      if(!v.nombre || !(v.precio>0)){ malos.push(f.it.nombre + " (nombre o precio vacío)"); continue; }
+      const r=await authFetch(`/api/items/${f.it.id}`,{method:"PUT",
+        headers:{"Content-Type":"application/json"}, body:JSON.stringify(v)});
+      if(!r.ok) malos.push(f.it.nombre);
+    }
+    if(malos.length) toast("No se pudieron guardar: " + malos.join(", "));
+    else toast(`${cambiadas.length} ${cambiadas.length===1?"ítem guardado":"ítems guardados"}`);
+    ITEMS_ALL=await (await authFetch("/api/items/all")).json();
+    await cargarCats();          // redibuja con los precios de transferencia nuevos
+  }
+
+  pintarBarra();
+}
+
+/* El botón que cambia de modo. Al apagarlo se redibuja de cero: si quedó algo
+   tipeado sin guardar, la lista vuelve a mostrar lo que está en la base y no lo
+   que se había escrito, que es lo que corresponde ver cuando se está leyendo. */
+$("#btnEditarTodos").onclick=async()=>{
+  const pendientes=document.querySelectorAll("#listaItems .item-row.sucia").length;
+  if(modoEdicion && pendientes &&
+     !confirm(`Hay ${pendientes} ${pendientes===1?"cambio":"cambios"} sin guardar.\n\n¿Salir igual y perderlos?`)) return;
+  modoEdicion=!modoEdicion;
+  const b=$("#btnEditarTodos");
+  b.textContent = modoEdicion ? "✓ Listo" : "✏️ Editar todos";
+  b.className = modoEdicion ? "b-tinta" : "b-out";
+  $("#panelNuevoItem").innerHTML="";
+  cerrarPaneles();
+  if($("#buscarItem").value.trim()) filtrarItems(); else await cargarItems();
+};
 
 // Uno solo abierto en toda la tarjeta, el de crear incluido.
 function cerrarPaneles(){
