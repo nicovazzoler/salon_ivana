@@ -704,7 +704,9 @@ function restaurarBorrador(){
   if(!raw) return;
   try{
     const d = JSON.parse(raw);
-    if(Date.now() - (d.guardado||0) > 12*3600*1000){ localStorage.removeItem(BORRADOR_KEY); return; }  // más de 12hs: lo descartamos
+    // el plazo lo define auth.js, así que el menú y esta pantalla no pueden
+    // quedar con dos ideas distintas de cuándo un borrador dejó de servir
+    if(Date.now() - (d.guardado||0) > BORRADOR_HORAS*3600*1000){ localStorage.removeItem(BORRADOR_KEY); return; }
     if(!d.ticket || d.ticket.length === 0) return;   // nada útil que restaurar
     // Un ítem extra sin precio confirmado se restaura en modo edición (no como línea fija en $0).
     ticket = d.ticket.map(l => {

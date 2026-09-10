@@ -53,22 +53,29 @@
       <span class="muted" id="cuentaComision"></span>
     </div>
     <div class="fila">
-      <div>
-        <label>Categoría</label>
-        <select id="selCat"></select>
-      </div>
       <button class="b-out" id="btnRenombrar">Renombrar categoría</button>
-      <!-- Modo edición. La lista se lee de un vistazo casi siempre, pero cuando
-           hay que actualizar precios son veinte de una sentada: ahí se prende
-           esto y quedan todos los casilleros abiertos a la vez, como antes. -->
+      <!-- Modo edición. Se mira de a un ítem casi siempre, pero cuando hay que
+           actualizar precios son veinte de una sentada: ahí se prende esto y la
+           grilla se convierte en una lista con todos los casilleros abiertos. -->
       <button class="b-out" id="btnEditarTodos">✏️ Editar todos</button>
       <button class="b-ok" id="btnNuevoItem">+ Ítem nuevo</button>
+      <!-- El select sigue existiendo escondido: es de donde el resto de la
+           pantalla lee qué categoría se está mirando, y el rail lo mueve. -->
+      <select id="selCat" hidden></select>
     </div>
     <!-- El formulario de alta aparece cuando se lo pide. Estaba siempre abierto,
          arriba de la lista, y con cinco campos vacíos que casi nunca se usan:
          para mirar un precio había que pasarlos por arriba todas las veces. -->
     <div id="panelNuevoItem"></div>
-    <div id="listaItems"></div>
+    <!-- El mismo mueble que el catálogo de facturar: el rail de categorías al
+         costado y los ítems en tarjetas. Es la misma lista y se busca igual, así
+         que se ve igual; lo que cambia es qué pasa al tocar uno. -->
+    <div class="catalogo-cuerpo">
+      <div id="catRail" class="cat-rail"></div>
+      <div class="catalogo-items">
+        <div id="listaItems"></div>
+      </div>
+    </div>
     <datalist id="cats"></datalist>
   </div>
 
@@ -81,7 +88,13 @@
        de "seguís con la contraseña de fábrica" le aparece también al empleado, y
        un aviso que no se puede obedecer no sirve de nada. Por eso está en su
        propia tarjeta y no adentro de la de usuarios, que es solo de la dueña. -->
-  <div class="card" id="miclave">
+  <!-- Solo el empleado. Para la dueña es lo mismo que cambiarla desde Usuarios,
+       donde además cambia las de todos; tenerlo dos veces en la misma pantalla
+       es una tarjeta más para leer que no agrega nada. Al empleado NO se le
+       puede sacar: Usuarios no lo ve, y sin esto no tendría forma de cambiar su
+       propia contraseña —justo la que el cartel de "seguís con la de fábrica" le
+       pide cambiar—. -->
+  <div class="card" id="miclave" data-empleado>
     <div class="card-head">
       <h2>🔑 Mi contraseña</h2>
       <p>La de tu propio usuario. Nadie más la ve, ni siquiera desde acá.</p>
@@ -90,20 +103,6 @@
       <div style="max-width:240px;"><label>Nueva contraseña</label><input id="miPass" type="text"></div>
       <button class="b-tinta" id="btnMiPass">Cambiar</button>
     </div>
-  </div>
-
-  <!-- La lista se dibuja para LEERSE: quién entra y con qué rol. Los campos
-       aparecen recién cuando se pide cambiar algo. Antes estaba todo editable a
-       la vez —nombre, rol, contraseña, guardar y eliminar en cada renglón— y con
-       dos usuarios eran catorce controles habilitados compitiendo por atención,
-       para una pantalla que se toca dos veces por año. -->
-  <div class="card" id="usuarios" data-dueno>
-    <div class="card-head">
-      <h2>👥 Usuarios</h2>
-      <p>Quién entra a la app. Hay uno por rol: una dueña y un empleado.</p>
-    </div>
-    <div id="listaUsuarios"></div>
-    <div id="crearUsuario"></div>
   </div>
 
   <!-- Empleados. Es la única lista que quedó en Admin: las otras cinco se editan
@@ -136,6 +135,20 @@
       <div><label for="fusDestino">y pasarlo a</label><select id="fusDestino"></select></div>
       <button class="b-tinta" id="btnFusion">Unificar</button>
     </div>
+  </div>
+
+  <!-- La lista se dibuja para LEERSE: quién entra y con qué rol. Los campos
+       aparecen recién cuando se pide cambiar algo. Antes estaba todo editable a
+       la vez —nombre, rol, contraseña, guardar y eliminar en cada renglón— y con
+       dos usuarios eran catorce controles habilitados compitiendo por atención,
+       para una pantalla que se toca dos veces por año. -->
+  <div class="card" id="usuarios" data-dueno>
+    <div class="card-head">
+      <h2>👥 Usuarios</h2>
+      <p>Quién entra a la app. Hay uno por rol: una dueña y un empleado.</p>
+    </div>
+    <div id="listaUsuarios"></div>
+    <div id="crearUsuario"></div>
   </div>
 
   <div class="card" id="backup" data-dueno>

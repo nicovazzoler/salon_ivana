@@ -108,6 +108,18 @@ async function avisarPasswordDeFabrica(){
   document.body.insertBefore(barra, document.body.firstChild);
 }
 
+/* Cuánto vive un ticket a medio cargar antes de descartarse solo.
+
+   Una hora: el borrador existe para el ida y vuelta de un rato —se va a fijar
+   algo a la agenda y vuelve— y no para retomar mañana. Pasado ese rato, lo que
+   quedó en pantalla es casi siempre basura de otro cobro, y ofrecerlo como si
+   fuera el ticket de la clienta que está adelante es peor que perderlo.
+
+   Vive acá, en el archivo que cargan las once pantallas, para que la marca del
+   menú y la pantalla de facturar no puedan quedar con dos plazos distintos. */
+const BORRADOR_HORAS = 1;
+window.BORRADOR_HORAS = BORRADOR_HORAS;
+
 /* Si quedó un ticket a medio cargar, el link de Facturar lo muestra con un
    puntito. Se lee del borrador en localStorage, así que la marca aparece en
    TODAS las pantallas, no solo en facturar: la idea es enterarse mientras
@@ -118,8 +130,8 @@ function marcarBorradorEnMenu(){
   let hay = false, cuantos = 0;
   try{
     const d = JSON.parse(localStorage.getItem("ticketBorrador") || "null");
-    // el borrador se descarta solo a las 12 horas; acá se respeta lo mismo
-    if(d && Date.now() - (d.guardado||0) < 12*3600*1000){
+    // el mismo plazo con el que facturar lo descarta
+    if(d && Date.now() - (d.guardado||0) < BORRADOR_HORAS*3600*1000){
       cuantos = (d.ticket||[]).length;
       hay = cuantos > 0 || (d.extras||[]).length > 0;
     }

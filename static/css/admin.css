@@ -65,6 +65,17 @@
   }
   .item-row .chk-com input{ margin:0; }
 
+  /* La tarjeta del catálogo abierta para editar: se marca cuál es, porque el
+     panel se abre abajo de toda la grilla y si no no se sabe de cuál salió. */
+  .btn-item.abierto{
+    border-color:var(--acento);
+    box-shadow:0 0 0 1px var(--acento);
+  }
+  .btn-item .marcas-item{ display:flex; flex-wrap:wrap; gap:4px; }
+  /* El panel del catálogo cuelga de la grilla entera, no de una fila. */
+  #catalogo .panel-edicion{ border-top:1px solid var(--border-sutil);
+                            border-radius:var(--r-md); margin-top:var(--sp-3); }
+
   /* Fila tocada y todavía sin guardar, en el modo edición del catálogo. Mismo
      filete que usan las listas configurables: mirando la lista con todo abierto
      ya no se sabe qué está en la base y qué está solo tipeado. */
