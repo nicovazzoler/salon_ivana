@@ -196,7 +196,7 @@ function renderItemsEditables(items, mostrarCat){
         </label>
         <span class="pct-fila"${v.es_comision?"":" hidden"}>
           <input type="number" class="pct" min="0" max="100" inputmode="numeric"
-                 value="${v.comision_pct ?? ""}" placeholder="${COMISION_GENERAL}"
+                 value="${v.comision_pct ?? ""}" placeholder="general (${COMISION_GENERAL}%)"
                  aria-label="Porcentaje de comisión"><span class="u">%</span>
         </span>
       </span>
@@ -369,7 +369,7 @@ function fichaItem(it){
       </button>
       <div class="campo pct" hidden><label>Su porcentaje</label>
         <div class="con-signo"><input class="f-pct" type="number" min="0" max="100" inputmode="numeric"
-             placeholder="${COMISION_GENERAL}"><span>%</span></div></div>
+             placeholder="general (${COMISION_GENERAL}%)"><span>%</span></div></div>
     </div>
     <p class="ficha-pie">La categoría se escribe: nace con el primer ítem que la use y
       desaparece sola cuando se queda sin ninguno. El precio de transferencia se
