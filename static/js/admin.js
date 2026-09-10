@@ -32,6 +32,9 @@ let ITEMS_ALL=[];
    suyo. Se muestra como sugerencia en la ficha para que se vea contra qué se
    está eligiendo; el que manda es el del servidor. */
 let COMISION_GENERAL = 40;
+/* El valor hora general, el mismo que se edita en Sueldos. Acá se lee para
+   mostrar contra qué se está eligiendo cuando alguien cobra distinto. */
+let VALOR_HORA_GENERAL = 0;
 /* El mismo mínimo que pide el servidor. Se chequea acá para avisar antes de
    mandar, no en lugar de allá: el que frena de verdad es el backend. */
 const LARGO_MINIMO_PASS = 8;
@@ -52,6 +55,8 @@ function toast(m){const t=$("#toast");t.textContent=m;t.classList.add("show");se
 // mostrarlo como referencia en la ficha del ítem.
 authFetch("/api/config").then(r=>r.json()).then(c=>{
   if(c && c.comision_pct != null) COMISION_GENERAL = c.comision_pct;
+  if(c && c.valor_hora  != null) VALOR_HORA_GENERAL = c.valor_hora;
+  if($("#listaEmpleados")) cargarEmpleados();   // redibuja con el general ya sabido
 }).catch(()=>{});
 
 async function cargarCats(){
@@ -936,7 +941,13 @@ async function cargarEmpleados(){
     nom.className = "n"; nom.textContent = e.nombre;   // lo escribe una persona
     const meta = document.createElement("span");
     meta.className = "meta";
-    meta.textContent = (e.activo ? "" : "de baja · ") + (e.tiene_pin ? "con código" : "sin código");
+    /* El valor hora va en la línea de datos y no en una columna: casi nadie
+       cobra distinto, y una columna que dice lo mismo en todas las filas ocupa
+       lugar sin decir nada. Cuando alguien tiene el suyo, ahí sí salta. */
+    const propio = e.valor_hora != null;
+    meta.textContent = (e.activo ? "" : "de baja · ") + (e.tiene_pin ? "con código" : "sin código")
+      + " · " + (propio ? `$${e.valor_hora.toLocaleString("es-AR")} la hora`
+                        : `$${VALOR_HORA_GENERAL.toLocaleString("es-AR")} la hora (el general)`);
     if(!e.tiene_pin) meta.style.color = "var(--danger)";
 
     const quien = document.createElement("span");
@@ -947,10 +958,12 @@ async function cargarEmpleados(){
                                {className:"b-out", textContent:"Renombrar"});
     const bPin = Object.assign(document.createElement("button"),
                                {className:"b-out", textContent: e.tiene_pin ? "Cambiar código" : "Poner código"});
+    const bVh = Object.assign(document.createElement("button"),
+                              {className:"b-out", textContent:"Valor hora"});
     const bBaja = Object.assign(document.createElement("button"),
                                 {className: e.activo ? "b-del" : "b-ok",
                                  textContent: e.activo ? "Sacar" : "Reactivar"});
-    acc.append(bNom, bPin, bBaja);
+    acc.append(bNom, bPin, bVh, bBaja);
     fila.append(quien, acc);
     cont.appendChild(fila);
 
@@ -960,6 +973,7 @@ async function cargarEmpleados(){
     };
     bNom.onclick = () => abrir("nombre");
     bPin.onclick = () => abrir("pin");
+    bVh.onclick = () => abrir("vh");
     bBaja.onclick = async () => {
       if(!e.activo){
         const r = await authFetch(`/api/empleados/${e.id}`, {method:"PUT",
@@ -995,21 +1009,31 @@ async function cargarEmpleados(){
    casi nunca, y tenerlos siempre a la vista convierte una lista que se mira en
    un formulario a medio llenar. */
 function panelEmpleado(e, tipo){
-  const esPin = tipo === "pin";
+  const esPin = tipo === "pin", esVh = tipo === "vh";
+  const rotulo = esPin ? "Código nuevo (4 a 8 números)"
+               : esVh ? "Lo que cobra la hora" : "Nombre";
   const pan = document.createElement("div");
   pan.className = "panel-edicion";
   pan.innerHTML = `
-    <div class="campo"><label>${esPin ? "Código nuevo (4 a 8 números)" : "Nombre"}</label>
-      <input class="valor" type="${esPin ? "text" : "text"}" ${esPin ? 'inputmode="numeric" maxlength="8" autocomplete="off" placeholder="Ej: 2468"' : ""}></div>
+    <div class="campo"><label>${rotulo}</label>
+      <input class="valor" type="${esVh ? "number" : "text"}" ${
+        esPin ? 'inputmode="numeric" maxlength="8" autocomplete="off" placeholder="Ej: 2468"' : ""}${
+        esVh ? ` min="0" inputmode="numeric" placeholder="${VALOR_HORA_GENERAL} (el general)"` : ""}></div>
     <span class="acc">
       <button class="b-ok aceptar">Guardar</button>
       <button class="b-out cancelar">Cancelar</button>
       ${esPin && e.tiene_pin ? `<button class="b-del sacar">Sacar el código</button>` : ""}
+      ${esVh && e.valor_hora != null ? `<button class="b-out general">Que use el general</button>` : ""}
     </span>
     ${esPin ? `<p class="muted" style="flex:1 1 100%;margin:0;">El código no se puede volver a ver:
-       se guarda encriptado, como las contraseñas. Si se olvida, se pone uno nuevo.</p>` : ""}`;
+       se guarda encriptado, como las contraseñas. Si se olvida, se pone uno nuevo.</p>` : ""}
+    ${esVh ? `<p class="muted" style="flex:1 1 100%;margin:0;">Vacío quiere decir que cobra el general
+       ($${VALOR_HORA_GENERAL.toLocaleString("es-AR")}), que se cambia en Sueldos. Esto es solo para
+       quien cobre distinto. Los sueldos ya cerrados no se tocan: cada liquidación guarda el valor
+       con el que se pagó.</p>` : ""}`;
   const campo = pan.querySelector(".valor");
-  if(!esPin) campo.value = e.nombre;
+  if(!esPin && !esVh) campo.value = e.nombre;
+  if(esVh && e.valor_hora != null) campo.value = e.valor_hora;
 
   pan.querySelector(".cancelar").onclick = () => pan.remove();
   const sacar = pan.querySelector(".sacar");
@@ -1017,10 +1041,24 @@ function panelEmpleado(e, tipo){
     if(!confirm(`Sin código, ${e.nombre} no va a poder entrar a su sueldo. ¿Se lo sacamos?`)) return;
     await guardarEmpleado(`/api/empleados/${e.id}/pin`, {pin: null}, "Código sacado");
   };
+  const general = pan.querySelector(".general");
+  // -1 es el centinela de "sacale el propio": mandar null sería "no lo toques".
+  if(general) general.onclick = () =>
+    guardarEmpleado(`/api/empleados/${e.id}`, {valor_hora: -1}, "Vuelve al valor general");
   pan.querySelector(".aceptar").onclick = async () => {
     const v = campo.value.trim();
-    if(!v){ toast(esPin ? "Escribí el código nuevo" : "El nombre no puede quedar vacío"); return; }
+    if(!v){
+      // En el valor hora, vacío es una respuesta válida: quiere decir el general.
+      if(esVh){ await guardarEmpleado(`/api/empleados/${e.id}`, {valor_hora: -1}, "Vuelve al valor general"); return; }
+      toast(esPin ? "Escribí el código nuevo" : "El nombre no puede quedar vacío"); return;
+    }
     if(esPin && (!/^\d{4,8}$/.test(v))){ toast("El código son de 4 a 8 números"); return; }
+    if(esVh){
+      const n = parseInt(v, 10);
+      if(isNaN(n) || n < 0){ toast("El valor hora tiene que ser un número"); return; }
+      await guardarEmpleado(`/api/empleados/${e.id}`, {valor_hora: n}, "Valor hora guardado");
+      return;
+    }
     if(esPin) await guardarEmpleado(`/api/empleados/${e.id}/pin`, {pin: v}, "Código guardado");
     else      await guardarEmpleado(`/api/empleados/${e.id}`, {nombre: v}, "Nombre cambiado");
   };

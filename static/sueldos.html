@@ -54,7 +54,7 @@
                    display:flex; align-items:center; gap:var(--sp-3); }
   .quien-empleada button{ font-size:var(--fs-sm); padding:4px 10px; }
 
-  /* Un ciclo: la semana de trabajo (martes a sábado) con sus días adentro. */
+  /* Un ciclo: la semana de trabajo (sábado a viernes) con sus días adentro. */
   .ciclo{ border:1px solid var(--border-sutil); border-radius:var(--r-lg);
           margin-top:var(--sp-4); overflow:hidden; }
   .ciclo-cab{ display:flex; flex-wrap:wrap; align-items:baseline; gap:var(--sp-2);
@@ -218,7 +218,10 @@
 
   <div class="card" data-dueno>
     <div class="card-head"><div class="titulo"><h2>⚙️ Cómo se calcula</h2>
-      <p>El valor de la hora y el porcentaje de comisión. Cambiarlos no toca lo ya pagado.</p></div></div>
+      <p>El valor de la hora y el porcentaje de comisión que se usan por defecto.
+      Cambiarlos no toca lo ya pagado. Quien cobre distinto lleva el suyo en
+      <a href="/admin">Admin → Empleados</a>, y el porcentaje de un servicio en particular,
+      en el catálogo.</p></div></div>
     <div class="agregar" style="margin-top:0; padding-top:0; border-top:none;">
       <div><label for="cfgHora">Valor hora</label>
         <input type="number" id="cfgHora" min="0" inputmode="numeric"></div>

@@ -86,6 +86,9 @@ def migrar():
             with engine.begin() as con:
                 con.execute(text("ALTER TABLE empleados ADD COLUMN pin_salt VARCHAR"))
                 con.execute(text("ALTER TABLE empleados ADD COLUMN pin_hash VARCHAR"))
+        if "valor_hora" not in emcols:
+            with engine.begin() as con:
+                con.execute(text("ALTER TABLE empleados ADD COLUMN valor_hora INTEGER"))
     if insp.has_table("liquidaciones"):
         licols = [c["name"] for c in insp.get_columns("liquidaciones")]
         if "egreso_id" not in licols:
@@ -247,6 +250,9 @@ class EmpleadoIn(BaseModel):
     nombre: str
 class EmpleadoEdit(BaseModel):
     nombre: str | None = None; activo: bool | None = None
+    # -1 = sacale el propio y que use el general. El centinela hace falta porque
+    # None ya significa "este campo no vino", igual que en el % de los ítems.
+    valor_hora: int | None = None
 class FusionIn(BaseModel):
     origen_id: int; destino_id: int      # el origen desaparece dentro del destino
 class PinIn(BaseModel):
@@ -268,8 +274,8 @@ class MinutosTrabajoIn(BaseModel):
 class CerrarIn(BaseModel):
     empleado_id: int; notas: str | None = None
     desde: str | None = None             # qué ciclo se cierra; None = el más viejo
-    # Cerrar la semana aunque todavía no haya terminado: el sábado cae feriado, o
-    # se decide pagar el viernes. Sin esto, un cierre antes de tiempo es un pago
+    # Cerrar la semana aunque todavía no haya terminado: el viernes cae feriado, o
+    # se decide pagar el jueves. Sin esto, un cierre antes de tiempo es un pago
     # parcial y el resto de la semana se sigue acumulando en el mismo ciclo.
     anticipado: bool = False
     # Con qué plata se le pagó. Importa: el arqueo suma comparando
@@ -1124,6 +1130,17 @@ def valor_hora(db) -> int:
 def comision_pct(db) -> int:
     return _cfg_int(db, "comision_pct", COMISION_PCT_DEFECTO)
 
+def vh_de(empleado, general: int) -> int:
+    """Lo que cobra la hora esta persona.
+
+    Mismo criterio que el porcentaje por ítem: el propio si lo tiene, el general
+    si no. Se resuelve acá y no en cada cuenta para que haya UN solo lugar donde
+    dice cuál gana, y para que el día que alguien cobre distinto no haya que
+    acordarse de tocar tres funciones.
+    """
+    propio = getattr(empleado, "valor_hora", None) if empleado else None
+    return propio if propio is not None else general
+
 def pct_de(item, pct_general: int) -> int:
     """El porcentaje que le toca a un ítem: el suyo si tiene, si no el general.
 
@@ -1196,24 +1213,30 @@ def lineas_a_comision_pendientes(db, empleado):
 def ciclo_de(f: date) -> tuple[date, date]:
     """A qué ciclo de sueldo pertenece un día.
 
-    El ciclo es de MARTES a SÁBADO, que es la semana del local. No es una ventana
-    para filtrar: es la unidad con la que se paga. Un ciclo que no se cerró queda
+    El ciclo va de SÁBADO a VIERNES, que es la semana del local: se paga el
+    viernes lo que se hizo desde el sábado anterior. No es una ventana para
+    filtrar, es la unidad con la que se paga. Un ciclo que no se cerró queda
     pendiente y sigue apareciendo, así que atrasarse en pagar no mezcla dos
     semanas en un solo número.
 
+    Ojo con el calendario: el ciclo ARRANCA el sábado, no termina ahí. El sábado
+    12 no pertenece a la semana que se paga el viernes 11 sino a la siguiente.
+    Con el orden de Python (lunes=0), sábado y domingo caen después del viernes
+    en el número pero antes en el ciclo, y de ahí sale el `dow + 2`.
+
     El lunes es su propio ciclo de un día. El local no abre los lunes; si un día
-    se trabaja uno, es un extra y se paga como tal, no metido adentro de la
-    semana que arranca al día siguiente.
+    se trabaja uno —la depilación, una vez por mes— es un extra y se paga como
+    tal, no metido adentro de una semana con la que no tiene nada que ver.
 
     El domingo tampoco se trabaja, pero si aparece algo cargado ahí se lo lleva
-    el ciclo que acaba de terminar: es la continuación de esa semana, no el
-    arranque de la próxima.
+    el ciclo que arrancó el sábado: es la continuación de esa semana.
     """
-    dow = f.weekday()                       # 0=lunes … 5=sábado, 6=domingo
-    if dow == 0: return f, f
-    if dow == 6: return f - timedelta(days=5), f - timedelta(days=1)
-    ini = f - timedelta(days=dow - 1)       # el martes de esa semana
-    return ini, ini + timedelta(days=4)     # y su sábado
+    dow = f.weekday()                                  # 0=lunes … 5=sábado, 6=domingo
+    if dow == 0: return f, f                           # el lunes, suelto
+    if dow == 5: return f, f + timedelta(days=6)       # sábado: arranca la semana
+    if dow == 6: return f - timedelta(days=1), f + timedelta(days=5)   # domingo: sigue al sábado
+    ini = f - timedelta(days=dow + 2)                  # martes..viernes → el sábado anterior
+    return ini, ini + timedelta(days=6)                # y su viernes
 
 def resumen_pendiente(db, empleado) -> dict:
     """Lo que se le debe a una empleada, partido en ciclos.
@@ -1229,7 +1252,10 @@ def resumen_pendiente(db, empleado) -> dict:
     puede cerrar hasta que estén todos completos.
     """
     pct = comision_pct(db)
-    vh = valor_hora(db)
+    # El de la persona si lo tiene; si no, el general. La foto que se guarda al
+    # cerrar sigue saliendo de acá, así que una liquidación vieja conserva el
+    # valor con el que se pagó aunque después se le cambie el sueldo.
+    vh = vh_de(empleado, valor_hora(db))
 
     minutos_por_linea = dict(
         db.query(models.TrabajoComision.linea_id, models.TrabajoComision.minutos)
@@ -1552,9 +1578,16 @@ def cerrar_liquidacion(datos: CerrarIn, _ = Depends(solo_dueno), db: Session = D
     # Cerrar un miércoles no es cerrar la semana: es pagar lo que va. Mientras el
     # ciclo no haya terminado, el cierre es PARCIAL y lo que se trabaje después
     # sigue cayendo en el mismo ciclo, que vuelve a aparecer con el saldo. Para
-    # el caso de que la semana sí terminó antes —el sábado es feriado, se paga el
-    # viernes y se cierra— está `anticipado`, que la da por cerrada igual.
-    parcial = hoy_argentina() <= date.fromisoformat(ciclo["hasta"]) and not datos.anticipado
+    # el caso de que la semana sí terminó antes —el viernes es feriado, se paga
+    # el jueves y se cierra— está `anticipado`, que la da por cerrada igual.
+    #
+    # El día del cierre normal NO es parcial. Antes decía `<=` y el viernes es el
+    # último día del ciclo Y el día de pago, así que el cierre de todas las
+    # semanas quedaba etiquetado "pago parcial": el cartel dejaba de significar
+    # algo justo cuando aparecía siempre. Si después de cobrar se sigue
+    # trabajando ese mismo viernes, eso vuelve a aparecer como pendiente igual;
+    # el rótulo dice con qué intención se cerró, no adivina el futuro.
+    parcial = hoy_argentina() < date.fromisoformat(ciclo["hasta"]) and not datos.anticipado
     liq = models.Liquidacion(
         empleado_id=emp.id, desde=ciclo["desde"], hasta=ciclo["hasta"],
         valor_hora=r["valor_hora"], comision_pct=r["comision_pct"],
@@ -1750,7 +1783,7 @@ def listar_empleados(todos: bool = False, _ = Depends(usuario_actual), db: Sessi
     # tiene_pin y no el código: lo que hace falta saber es si puede entrar, y el
     # código no sale de la base ni para la dueña.
     return [{"id": e.id, "nombre": e.nombre, "activo": bool(e.activo),
-             "tiene_pin": bool(e.pin_hash)}
+             "tiene_pin": bool(e.pin_hash), "valor_hora": e.valor_hora}
             for e in q.order_by(models.Empleado.nombre)]
 
 @app.post("/api/empleados")
@@ -1784,6 +1817,13 @@ def editar_empleado(emp_id: int, cambios: EmpleadoEdit, _ = Depends(solo_dueno),
         _renombrar_en(db, models.Comprobante.peluquero, e.nombre, nombre)
         _renombrar_en(db, models.Turno.peluquero, e.nombre, nombre)
         e.nombre = nombre
+    if cambios.valor_hora is not None:
+        if cambios.valor_hora < 0:
+            e.valor_hora = None                       # vuelve al general
+        elif cambios.valor_hora > 10_000_000:
+            raise HTTPException(400, "Ese valor hora no parece un número real")
+        else:
+            e.valor_hora = cambios.valor_hora
     if cambios.activo is not None:
         e.activo = cambios.activo
     db.commit(); return {"ok": True}
@@ -3269,7 +3309,8 @@ def backup_completo(_ = Depends(solo_dueno), db: Session = Depends(get_db)):
             # que estar: sin él, una base restaurada deja a todas afuera de su
             # propia pantalla de sueldos hasta que la dueña los vuelva a cargar.
             {"id": e.id, "nombre": e.nombre, "activo": e.activo,
-             "pin_salt": e.pin_salt, "pin_hash": e.pin_hash}
+             "pin_salt": e.pin_salt, "pin_hash": e.pin_hash,
+             "valor_hora": e.valor_hora}
             for e in db.query(models.Empleado).all()
         ],
         "liquidaciones": [

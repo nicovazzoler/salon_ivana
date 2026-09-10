@@ -105,6 +105,12 @@ class Empleado(Base):
     id = Column(Integer, primary_key=True)
     nombre = Column(String, unique=True, nullable=False)
     activo = Column(Boolean, default=True)
+    # Lo que cobra la hora, si cobra distinto del resto. NULL = el general de
+    # Sueldos, que sigue siendo el que manda para las que no tienen el suyo.
+    # Es nullable y no 0 a propósito: 0 es un valor hora válido —alguien que
+    # cobra solo comisión— y con 0 por defecto no habría forma de distinguir
+    # "no cobra por hora" de "todavía no se lo cargaron".
+    valor_hora = Column(Integer)
     # El código con el que abre su sueldo. Guardado como hash y con sal, igual
     # que las contraseñas: la base entera se descarga en cada backup, y un código
     # en texto plano ahí es el código de todas para siempre. Sin código no puede

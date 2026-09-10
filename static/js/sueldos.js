@@ -182,17 +182,25 @@ async function cargarPanelDueno(){
   // mientras haya algo pendiente hay que pagárselo, pero una que se fue hace
   // meses y ya cobró todo no tiene por qué seguir en la lista de todos los días.
   const resumenes = todos.filter(r => r.activo || r.total > 0 || r.ciclos.length);
+  /* El general sale de config y NO del resumen de la primera de la lista.
+     Cuando cada una podía tener el suyo, `resumenes[0].valor_hora` pasó a ser el
+     de esa persona: el casillero de abajo edita el general, y con eso adentro,
+     guardarlo le ponía a todas el sueldo de la primera del abecedario. */
+  const gral = await pedir("/api/config").then(r=>r.json()).catch(()=>({}));
+  const distintas = resumenes.filter(r => r.valor_hora !== (gral.valor_hora ?? 0)).length;
   const total = resumenes.reduce((a,r)=>a+r.total, 0);
   const ciclosViejos = resumenes.reduce((a,r)=>a + Math.max(r.ciclos.length - 1, 0), 0);
   $("#kpisDueno").innerHTML = `
     <div class="kpi"><span class="lbl">Total a pagar</span><span class="val">${fmt(total)}</span></div>
-    <div class="kpi"><span class="lbl">Valor hora</span><span class="val">${fmt(resumenes[0] ? resumenes[0].valor_hora : 0)}</span></div>
+    <div class="kpi"><span class="lbl">Valor hora</span><span class="val">${fmt(gral.valor_hora ?? 0)}</span>${
+      distintas ? `<span class="nota">${distintas} ${distintas===1?"cobra":"cobran"} distinto</span>` : ""}</div>
     ${ciclosViejos ? `<div class="kpi"><span class="lbl">Semanas atrasadas</span><span class="val">${ciclosViejos}</span></div>` : ""}`;
   $("#listaEmpleadas").innerHTML = resumenes.map(r=>`
     <div class="fila-emp${r.empleado.id===EMP?" abierta":""}">
       <div>
         <b>${esc(r.empleado.nombre)}${r.activo ? "" : " · de baja"}</b>
-        <span class="det">${r.ciclos.length ? `${r.ciclos.length} ${r.ciclos.length===1?"ciclo":"ciclos"} · ${hhmm(r.minutos_total)}` : "sin nada pendiente"}${
+        <span class="det">${r.valor_hora !== (gral.valor_hora ?? 0) ? `${fmt(r.valor_hora)} la hora · ` : ""}${
+          r.ciclos.length ? `${r.ciclos.length} ${r.ciclos.length===1?"ciclo":"ciclos"} · ${hhmm(r.minutos_total)}` : "sin nada pendiente"}${
           r.sin_tiempo ? ` · <span style="color:var(--danger);">${r.sin_tiempo===1 ? "falta 1 duración" : `faltan ${r.sin_tiempo} duraciones`}</span>` : ""}</span>
       </div>
       <div class="plata">${fmt(r.total)}</div>
@@ -203,8 +211,8 @@ async function cargarPanelDueno(){
     b.onclick = () => { $("#quien").value = b.dataset.emp; localStorage.setItem(RECUERDO, b.dataset.emp); cargar(); };
   });
 
-  $("#cfgHora").value = resumenes[0] ? resumenes[0].valor_hora : 0;
-  $("#cfgPct").value  = resumenes[0] ? resumenes[0].comision_pct : 40;
+  $("#cfgHora").value = gral.valor_hora ?? 0;
+  $("#cfgPct").value  = gral.comision_pct ?? 40;
   $("#btnCfg").onclick = async () => {
     await mandar("/api/config/sueldos", "PUT", {
       valor_hora: Math.max(0, parseInt($("#cfgHora").value,10)||0),
@@ -344,7 +352,8 @@ function bloqueHoy(){
   </div>`;
 }
 
-/* Un ciclo es la semana del local: de martes a sábado. No es una ventana para
+/* Un ciclo es la semana del local: de sábado a viernes, que es cuando se paga.
+   No es una ventana para
    filtrar, es la unidad con la que se paga. Si una semana no se cerró, sigue
    apareciendo entera al lado de la nueva en vez de mezclarse con ella. */
 function dibujarCiclo(c){
@@ -431,15 +440,18 @@ function filaAgregarDia(c){
 
 /* Cerrar antes de que termine la semana NO es cerrar la semana.
 
-   El sábado es el final del ciclo. Si se paga un miércoles, lo que se paga es lo
-   que va hasta ahí: el ciclo sigue abierto y lo que se trabaje el jueves y el
-   viernes cae en el mismo. Por eso el botón dice "pago parcial" y no "cerrar".
+   El viernes es el final del ciclo y el día de pago. Si se paga un miércoles, lo
+   que se paga es lo que va hasta ahí: el ciclo sigue abierto y lo que se trabaje
+   el jueves y el viernes cae en el mismo. Por eso el botón dice "pago parcial" y
+   no "cerrar".
 
    Al lado queda el cierre anticipado, para el caso en el que la semana sí se
-   terminó antes —el sábado cae feriado, se paga el viernes—: ahí la da por
+   terminó antes —el viernes cae feriado, se paga el jueves—: ahí la da por
    cerrada igual. Son dos cosas distintas y por eso son dos botones. */
 function filaCerrar(c, listo){
-  const termino = hoyArg() > c.hasta;
+  // El viernes mismo YA es cerrar la semana: es el último día y el de pago. Con
+  // ">" el cierre normal de todas las semanas salía como "pago parcial".
+  const termino = hoyArg() >= c.hasta;
   const aviso = c.sin_tiempo
     ? `<div class="aviso">⚠️ ${c.sin_tiempo} ${c.sin_tiempo===1?"trabajo":"trabajos"} sin duración. Hasta que la tengan no se sabe cuántas horas hay que pagar aparte, así que este ciclo no se puede cerrar.</div>`
     : (termino ? "" : `<div class="aviso">Esta semana no terminó todavía. Lo que se pague ahora es lo que va hasta hoy: lo que trabaje después vuelve a aparecer en este mismo ciclo.</div>`);
@@ -452,7 +464,7 @@ function filaCerrar(c, listo){
     <button class="b-ok btn-cerrar" ${listo ? "" : "disabled"}>${
       termino ? `Cerrar y pagar ${fmt(c.total)}` : `Pago parcial de ${fmt(c.total)}`}</button>
     ${termino ? "" : `<button class="b-out btn-cerrar anticipado" ${listo ? "" : "disabled"}
-        title="La semana terminó antes: sábado feriado, por ejemplo">Cerrar la semana igual</button>`}
+        title="La semana terminó antes: viernes feriado, por ejemplo">Cerrar la semana igual</button>`}
     ${aviso}
   </div>`;
 }
