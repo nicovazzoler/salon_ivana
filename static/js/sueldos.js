@@ -253,7 +253,7 @@ async function pintarLiquidaciones(){
       <div class="ciclo-cuerpo">
         ${c.liqs.map(l => `
           <div class="fila-emp">
-            <div><b>${esc(l.empleado||"—")}</b>
+            <div><b>${esc(l.empleado||"—")}${l.parcial ? ` <span class="saldo-de">pago parcial</span>` : ""}</b>
               <span class="det">${hhmm(l.minutos_total)} trabajadas · ${hhmm(l.minutos_pagados)} a ${fmt(l.valor_hora)} = ${fmt(l.total_horas)} · comisiones ${fmt(l.total_comisiones)}${
                 l.egreso_numero ? ` · egreso N-${String(l.egreso_numero).padStart(5,"0")}${l.forma_pago?" en "+esc(l.forma_pago):""}` : ""}${l.notas?" · "+esc(l.notas):""}</span></div>
             <div class="plata">${fmt(l.total)}</div>
@@ -330,8 +330,8 @@ function dibujarCiclo(c){
   return `<div class="ciclo${enCurso ? " en-curso" : ""}" data-desde="${c.desde}">
     <div class="ciclo-cab">
       <div>
-        <h3>${rangoLargo(c.desde, c.hasta)}</h3>
-        <div class="det">${hhmm(c.minutos_total)} declaradas · ${hhmm(c.minutos_comision)} de trabajos · comisiones ${fmt(c.total_comisiones)} + horas ${fmt(c.total_horas)}</div>
+        <h3>${rangoLargo(c.desde, c.hasta)}${c.pagado_antes ? ` <span class="saldo-de">saldo</span>` : ""}</h3>
+        <div class="det">${c.pagado_antes ? `ya se pagaron ${fmt(c.pagado_antes)} de esta semana · ` : ""}${hhmm(c.minutos_total)} declaradas · ${hhmm(c.minutos_comision)} de trabajos · comisiones ${fmt(c.total_comisiones)} + horas ${fmt(c.total_horas)}</div>
       </div>
       <div class="plata">${fmt(c.total)}</div>
     </div>
@@ -402,17 +402,30 @@ function filaAgregarDia(c){
   </div>`;
 }
 
+/* Cerrar antes de que termine la semana NO es cerrar la semana.
+
+   El sábado es el final del ciclo. Si se paga un miércoles, lo que se paga es lo
+   que va hasta ahí: el ciclo sigue abierto y lo que se trabaje el jueves y el
+   viernes cae en el mismo. Por eso el botón dice "pago parcial" y no "cerrar".
+
+   Al lado queda el cierre anticipado, para el caso en el que la semana sí se
+   terminó antes —el sábado cae feriado, se paga el viernes—: ahí la da por
+   cerrada igual. Son dos cosas distintas y por eso son dos botones. */
 function filaCerrar(c, listo){
+  const termino = hoyArg() > c.hasta;
   const aviso = c.sin_tiempo
     ? `<div class="aviso">⚠️ ${c.sin_tiempo} ${c.sin_tiempo===1?"trabajo":"trabajos"} sin duración. Hasta que la tengan no se sabe cuántas horas hay que pagar aparte, así que este ciclo no se puede cerrar.</div>`
-    : "";
+    : (termino ? "" : `<div class="aviso">Esta semana no terminó todavía. Lo que se pague ahora es lo que va hasta hoy: lo que trabaje después vuelve a aparecer en este mismo ciclo.</div>`);
   return `<div class="cierre">
     <div style="display:flex;align-items:center;gap:var(--sp-2);">
       <label style="margin:0;">Se paga con</label>
       <select class="formaCierre" style="width:auto;">${FORMAS.map(f=>`<option${f==="Efectivo"?" selected":""}>${esc(f)}</option>`).join("")}</select>
     </div>
     <input class="nota notaCierre" placeholder="Nota (opcional)">
-    <button class="b-ok btn-cerrar" ${listo ? "" : "disabled"}>Cerrar y pagar ${fmt(c.total)}</button>
+    <button class="b-ok btn-cerrar" ${listo ? "" : "disabled"}>${
+      termino ? `Cerrar y pagar ${fmt(c.total)}` : `Pago parcial de ${fmt(c.total)}`}</button>
+    ${termino ? "" : `<button class="b-out btn-cerrar anticipado" ${listo ? "" : "disabled"}
+        title="La semana terminó antes: sábado feriado, por ejemplo">Cerrar la semana igual</button>`}
     ${aviso}
   </div>`;
 }
@@ -491,11 +504,18 @@ function enganchar(){
       const ciclo = b.closest(".ciclo").dataset.desde;
       const forma = caja.querySelector(".formaCierre").value || "Efectivo";
       const c = D.ciclos.find(x => x.desde === ciclo);
-      if(!confirm(`Se le pagan ${fmt(c.total)} a ${D.empleado.nombre} por ${rangoLargo(c.desde, c.hasta)}, en ${forma}.\n`
-                + `El egreso queda anotado en la caja de hoy.\n\nEsto no se puede deshacer. ¿Cerramos?`)) return;
+      const anticipado = b.classList.contains("anticipado");
+      const termino = hoyArg() > c.hasta;
+      const parcial = !termino && !anticipado;
+      const que = parcial
+        ? `Pago parcial de ${fmt(c.total)} a ${D.empleado.nombre} por lo que va de ${rangoLargo(c.desde, c.hasta)}.\n`
+          + `La semana sigue abierta: lo que trabaje después vuelve a aparecer acá.`
+        : `Se le pagan ${fmt(c.total)} a ${D.empleado.nombre} por ${rangoLargo(c.desde, c.hasta)}, y la semana queda cerrada.`;
+      if(!confirm(`${que}\n\nSe paga en ${forma} y el egreso queda anotado en la caja de hoy.\n\nEsto no se puede deshacer. ¿Seguimos?`)) return;
       if(await mandar("/api/sueldos/cerrar", "POST", {empleado_id: EMP, desde: ciclo, forma_pago: forma,
+                                                      anticipado,
                                                       notas: caja.querySelector(".notaCierre").value.trim() || null}))
-        toast("Pagado ✓");
+        toast(parcial ? "Pago parcial hecho ✓" : "Pagado ✓");
     };
   });
 }

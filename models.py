@@ -297,6 +297,12 @@ class Liquidacion(Base):
     total_horas = Column(Integer, default=0)
     total = Column(Integer, default=0)
     notas = Column(String)
+    # Un pago que se hizo antes de que la semana terminara: se paga lo que va
+    # hasta ahí y lo que se trabaje después sigue cayendo en el mismo ciclo. No es
+    # lo mismo que cerrar la semana, y la diferencia importa para leer el
+    # historial: dos pagos del mismo rango son un adelanto y su saldo, no dos
+    # semanas iguales ni un error.
+    parcial = Column(Boolean, default=False)
     # El egreso que sale de este cierre. Pagar un sueldo es plata que sale del
     # local, así que el cierre lo anota solo: si hubiera que cargarlo a mano, el
     # día que se olvide la caja de ese día dice que hay más plata de la que hay.

@@ -94,6 +94,14 @@
   .falta-tiempo{ font-size:var(--fs-xs); color:var(--danger); text-transform:uppercase;
                  letter-spacing:.04em; }
   .btn-mini{ font-size:var(--fs-sm); padding:3px 10px; }
+  /* Marca de "esto no es una semana entera": un saldo que quedó de un pago
+     parcial, o el pago parcial mismo en el historial. */
+  .saldo-de{
+    display:inline-block; padding:1px 7px; border-radius:var(--r-full);
+    font-size:var(--fs-xs); font-weight:var(--fw-normal); text-transform:uppercase;
+    letter-spacing:.04em; vertical-align:middle;
+    background:var(--bg-sutil); color:var(--text-tenue); border:1px solid var(--border-sutil);
+  }
   .dia-acciones{ margin-top:var(--sp-2); }
 
   .sub-h{ margin:var(--sp-4) 0 var(--sp-2); font-size:var(--fs-base);

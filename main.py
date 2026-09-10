@@ -91,6 +91,10 @@ def migrar():
         if "egreso_id" not in licols:
             with engine.begin() as con:
                 con.execute(text("ALTER TABLE liquidaciones ADD COLUMN egreso_id INTEGER"))
+        if "parcial" not in licols:
+            with engine.begin() as con:
+                con.execute(text("ALTER TABLE liquidaciones ADD COLUMN parcial BOOLEAN DEFAULT FALSE"))
+                con.execute(text("UPDATE liquidaciones SET parcial = FALSE WHERE parcial IS NULL"))
     if "es_comision" not in icols:
         with engine.begin() as con:
             con.execute(text("ALTER TABLE items ADD COLUMN es_comision BOOLEAN DEFAULT FALSE"))
@@ -258,6 +262,10 @@ class MinutosTrabajoIn(BaseModel):
 class CerrarIn(BaseModel):
     empleado_id: int; notas: str | None = None
     desde: str | None = None             # qué ciclo se cierra; None = el más viejo
+    # Cerrar la semana aunque todavía no haya terminado: el sábado cae feriado, o
+    # se decide pagar el viernes. Sin esto, un cierre antes de tiempo es un pago
+    # parcial y el resto de la semana se sigue acumulando en el mismo ciclo.
+    anticipado: bool = False
     # Con qué plata se le pagó. Importa: el arqueo suma comparando
     # forma_pago == "Efectivo", así que un sueldo pagado en efectivo tiene que
     # decir exactamente eso o la caja del día cierra de más.
@@ -1267,7 +1275,13 @@ def resumen_pendiente(db, empleado) -> dict:
         # que duraron sus trabajos, no se le puede descontar plata por eso.
         min_pagados = max(min_total - min_com, 0)
         total_horas = round(min_pagados * vh / 60)
+        # Si de esta misma semana ya se pagó algo, el ciclo que reaparece es un
+        # saldo, no una semana nueva: la pantalla tiene que poder decirlo.
+        pagado_antes = (db.query(func.coalesce(func.sum(models.Liquidacion.total), 0))
+                          .filter(models.Liquidacion.empleado_id == empleado.id,
+                                  models.Liquidacion.desde == c["desde"]).scalar() or 0)
         c.update({
+            "pagado_antes": pagado_antes,
             "minutos_total": min_total, "minutos_comision": min_com,
             "minutos_pagados": min_pagados,
             "total_comisiones": total_com, "total_horas": total_horas,
@@ -1489,13 +1503,19 @@ def cerrar_liquidacion(datos: CerrarIn, _ = Depends(solo_dueno), db: Session = D
         raise HTTPException(400, "Ese ciclo no tiene nada para pagar")
 
     trabajos = [t for d in ciclo["dias"] for t in d["trabajos"]]
+    # Cerrar un miércoles no es cerrar la semana: es pagar lo que va. Mientras el
+    # ciclo no haya terminado, el cierre es PARCIAL y lo que se trabaje después
+    # sigue cayendo en el mismo ciclo, que vuelve a aparecer con el saldo. Para
+    # el caso de que la semana sí terminó antes —el sábado es feriado, se paga el
+    # viernes y se cierra— está `anticipado`, que la da por cerrada igual.
+    parcial = hoy_argentina() <= date.fromisoformat(ciclo["hasta"]) and not datos.anticipado
     liq = models.Liquidacion(
         empleado_id=emp.id, desde=ciclo["desde"], hasta=ciclo["hasta"],
         valor_hora=r["valor_hora"], comision_pct=r["comision_pct"],
         minutos_total=ciclo["minutos_total"], minutos_comision=ciclo["minutos_comision"],
         minutos_pagados=ciclo["minutos_pagados"],
         total_comisiones=ciclo["total_comisiones"], total_horas=ciclo["total_horas"],
-        total=ciclo["total"], notas=datos.notas)
+        total=ciclo["total"], notas=datos.notas, parcial=parcial)
     db.add(liq); db.flush()
 
     for t in trabajos:
@@ -1534,7 +1554,8 @@ def cerrar_liquidacion(datos: CerrarIn, _ = Depends(solo_dueno), db: Session = D
     if liq.total > 0:
         egreso = models.Egreso(
             numero=siguiente_numero_egreso(db), tipo=tipo_de_sueldo(db).nombre,
-            concepto=f"Sueldo {emp.nombre} ({ciclo['desde']} a {ciclo['hasta']})",
+            concepto=(f"Sueldo {emp.nombre} ({ciclo['desde']} a {ciclo['hasta']})"
+                      + (" · pago parcial" if parcial else "")),
             monto=liq.total, forma_pago=datos.forma_pago,
             notas=datos.notas, fecha=fecha_hora_now_utc(),
             # Privado siempre, y no según cómo esté marcado el tipo: esto lo
@@ -1546,7 +1567,7 @@ def cerrar_liquidacion(datos: CerrarIn, _ = Depends(solo_dueno), db: Session = D
         db.add(egreso); db.flush()
         liq.egreso_id = egreso.id
     db.commit()
-    return {"id": liq.id, "total": liq.total,
+    return {"id": liq.id, "total": liq.total, "parcial": parcial,
             "egreso_numero": egreso.numero if egreso else None}
 
 @app.post("/api/sueldos/trabajo-suelto")
@@ -1637,7 +1658,7 @@ def listar_liquidaciones(empleado_id: int | None = None, limite: int = 20,
              "minutos_total": l.minutos_total, "minutos_comision": l.minutos_comision,
              "minutos_pagados": l.minutos_pagados,
              "total_comisiones": l.total_comisiones, "total_horas": l.total_horas,
-             "total": l.total, "notas": l.notas,
+             "total": l.total, "notas": l.notas, "parcial": bool(l.parcial),
              "egreso_numero": l.egreso.numero if l.egreso else None,
              "forma_pago": l.egreso.forma_pago if l.egreso else None}
             for l in q.order_by(models.Liquidacion.cerrada.desc()).limit(limite)]
@@ -1665,7 +1686,7 @@ def detalle_liquidacion(liq_id: int, user = Depends(usuario_actual),
         "minutos_total": liq.minutos_total, "minutos_comision": liq.minutos_comision,
         "minutos_pagados": liq.minutos_pagados,
         "total_comisiones": liq.total_comisiones, "total_horas": liq.total_horas,
-        "total": liq.total, "notas": liq.notas,
+        "total": liq.total, "notas": liq.notas, "parcial": bool(liq.parcial),
         "egreso_numero": liq.egreso.numero if liq.egreso else None,
         "forma_pago": liq.egreso.forma_pago if liq.egreso else None,
         "dias": [{"fecha": h.fecha, "minutos": h.minutos or 0} for h in horas],
@@ -3195,7 +3216,8 @@ def backup_completo(_ = Depends(solo_dueno), db: Session = Depends(get_db)):
              "comision_pct": l.comision_pct, "minutos_total": l.minutos_total,
              "minutos_comision": l.minutos_comision, "minutos_pagados": l.minutos_pagados,
              "total_comisiones": l.total_comisiones, "total_horas": l.total_horas,
-             "total": l.total, "notas": l.notas, "egreso_id": l.egreso_id}
+             "total": l.total, "notas": l.notas, "egreso_id": l.egreso_id,
+             "parcial": bool(l.parcial)}
             for l in db.query(models.Liquidacion).order_by(models.Liquidacion.id).all()
         ],
         "horas_trabajadas": [

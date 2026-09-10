@@ -76,7 +76,7 @@ ORDEN = [
     ("liquidaciones", models.Liquidacion,
      ["id", "empleado_id", "desde", "hasta", "valor_hora", "comision_pct",
       "minutos_total", "minutos_comision", "minutos_pagados",
-      "total_comisiones", "total_horas", "total", "notas", "egreso_id"], ["cerrada"]),
+      "total_comisiones", "total_horas", "total", "notas", "egreso_id", "parcial"], ["cerrada"]),
     ("horas_trabajadas", models.HoraTrabajada,
      ["id", "empleado_id", "fecha", "minutos", "liquidacion_id"], ["cargado"]),
 ]
