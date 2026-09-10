@@ -1386,6 +1386,23 @@ def cargar_horas(h: HorasIn, user = Depends(usuario_actual),
               .filter(models.HoraTrabajada.empleado_id == h.empleado_id,
                       models.HoraTrabajada.fecha == h.fecha,
                       models.HoraTrabajada.liquidacion_id.is_(None)).first())
+    # Un día que ya se pagó no se vuelve a declarar. Pasa solo, sin mala fe: se
+    # cierra la semana, después se factura un ticket con fecha de esa semana, el
+    # día reaparece pendiente (por la comisión, que sí falta pagar) y con el
+    # casillero de horas vacío. Cargarlas ahí es pagar dos veces las mismas
+    # horas, y en la pantalla se ve igual que un día normal.
+    if not fila:
+        pagado = (db.query(models.HoraTrabajada)
+                    .filter(models.HoraTrabajada.empleado_id == h.empleado_id,
+                            models.HoraTrabajada.fecha == h.fecha,
+                            models.HoraTrabajada.liquidacion_id.isnot(None))
+                    .join(models.Liquidacion,
+                          models.HoraTrabajada.liquidacion_id == models.Liquidacion.id)
+                    .with_entities(models.Liquidacion.hasta).first())
+        if pagado:
+            raise HTTPException(400,
+                f"Las horas de ese día ya se pagaron en el cierre del {pagado[0]}. "
+                "La comisión de un trabajo nuevo sí se paga; las horas no se cargan de nuevo.")
     # La empleada completa las horas de los días que YA están —los que aparecen
     # solos porque ese día hizo algo—; agregar un día de la nada es de la dueña.
     # Un día sin ningún trabajo detrás no se puede verificar contra nada, y son
