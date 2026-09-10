@@ -12,6 +12,14 @@ const $=s=>document.querySelector(s);
 const fmt=n=>"$"+(n||0).toLocaleString("es-AR");
 const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 let catActual=null;
+/* La categoría elegida MIENTRAS hay un filtro puesto, que no es lo mismo que
+   `catActual`. Sin filtro, la categoría ES la vista: se le piden al servidor los
+   ítems de esa y nada más. Con el filtro de comisión prendido la vista es el
+   catálogo entero filtrado, y la categoría pasa a ser un recorte de arriba de
+   eso —"de los que van a comisión, los de color"—. Son dos cosas distintas y
+   guardarlas en la misma variable dejaba la pantalla mostrando una y el rail
+   marcando la otra. null = todas. */
+let catFiltro=null;
 let ITEMS_ALL=[];
 /* El porcentaje general de comisión, el que rige cuando el ítem no tiene el
    suyo. Se muestra como sugerencia en la ficha para que se vea contra qué se
@@ -53,7 +61,9 @@ async function cargarCats(){
 }
 
 $("#selCat").onchange=()=>{catActual=$("#selCat").value;$("#buscarItem").value="";filtrarItems();};
-$("#buscarItem").oninput=filtrarItems;
+// Escribir en el buscador sale del recorte por categoría: buscar dentro de una
+// sola es justo lo que no sirve cuando no te acordás en cuál lo pusiste.
+$("#buscarItem").oninput=()=>{ catFiltro=null; filtrarItems(); };
 
 /* El filtro de comisión y el buscador son lo mismo: los dos dejan de mirar una
    categoría y pasan a mirar el catálogo entero. Por eso están en la misma
@@ -61,6 +71,14 @@ $("#buscarItem").oninput=filtrarItems;
    color"). */
 $("#soloComision").onclick=()=>{
   $("#soloComision").classList.toggle("on");
+  if(!$("#soloComision").classList.contains("on")){
+    /* Apagar el filtro no tiene por qué mudarte de categoría: si venías mirando
+       los de comisión de CORTES, la vista normal se queda en CORTES. Sin esto
+       volvía a la última categoría que se había pedido al servidor, que podía
+       ser cualquiera de hace diez clicks. */
+    if(catFiltro){ catActual = catFiltro; $("#selCat").value = catFiltro; }
+    catFiltro=null;
+  }
   filtrarItems();
 };
 
@@ -68,12 +86,17 @@ function filtrarItems(){
   const q=$("#buscarItem").value.trim().toLowerCase();
   const soloCom=$("#soloComision").classList.contains("on");
   const cuenta=$("#cuentaComision");
-  if(!q && !soloCom){ cuenta.textContent=""; cargarItems(); return; }
+  if(!q && !soloCom){ cuenta.textContent=""; catFiltro=null; cargarItems(); return; }
   // Con el buscador o el filtro prendidos se sale de la categoría y se mira el
   // catálogo entero: buscar dentro de una sola es justo lo que no sirve cuando
   // no te acordás en cuál lo pusiste.
   let f=ITEMS_ALL;
   if(soloCom) f=f.filter(i=>i.es_comision);
+  /* Si a la categoría recortada se le sacó la comisión al último ítem, el rail
+     ya no la muestra: sin esto quedaba recortando por una categoría que no está
+     en ninguna parte y la lista aparecía vacía sin decir por qué. */
+  if(catFiltro && !f.some(i=>i.categoria===catFiltro)) catFiltro=null;
+  if(soloCom && catFiltro) f=f.filter(i=>i.categoria===catFiltro);
   if(q) f=f.filter(i=>i.nombre.toLowerCase().includes(q));
   cuenta.textContent = soloCom
     ? `${f.length} ${f.length===1?"ítem":"ítems"} en ${new Set(f.map(i=>i.categoria)).size} ${new Set(f.map(i=>i.categoria)).size===1?"categoría":"categorías"}`
@@ -140,9 +163,14 @@ function renderItems(items, mostrarCat){
 function pintarRail(){
   const rail=$("#catRail");
   if(!rail) return;
+  const soloCom = $("#soloComision").classList.contains("on");
+  /* Con el filtro de comisión prendido el rail cuenta SOLO los que van a
+     comisión y esconde las categorías que no tienen ninguno: "CORTES 24" y que
+     al tocarla no aparezca nada se lee como que la pantalla se rompió. */
+  const base = soloCom ? ITEMS_ALL.filter(i=>i.es_comision) : ITEMS_ALL;
   const cuentas=new Map();
-  ITEMS_ALL.forEach(i=>cuentas.set(i.categoria,(cuentas.get(i.categoria)||0)+1));
-  const buscando = $("#buscarItem").value.trim() || $("#soloComision").classList.contains("on");
+  base.forEach(i=>cuentas.set(i.categoria,(cuentas.get(i.categoria)||0)+1));
+  const buscando = $("#buscarItem").value.trim() || soloCom;
   rail.innerHTML="";
   const agregar=(nombre, etiqueta, cuenta, activa)=>{
     const b=document.createElement("button");
@@ -150,15 +178,22 @@ function pintarRail(){
     b.innerHTML=`<span class="nom">${esc(etiqueta)}</span><span class="cuenta">${cuenta}</span>`;
     b.onclick=()=>{
       $("#buscarItem").value="";
-      $("#soloComision").classList.remove("on");
-      if(nombre) { catActual = nombre; $("#selCat").value = nombre; }
+      /* Tocar una categoría con el filtro de comisión prendido NO lo apaga: es
+         justo la combinación que hace falta para revisar los porcentajes de una
+         categoría entera. Apagándolo, el que venía a eso perdía el filtro y no
+         entendía por qué le aparecieron de golpe los otros veinte ítems. */
+      if(soloCom){ catFiltro = nombre; }
+      else {
+        catFiltro = null;
+        if(nombre) { catActual = nombre; $("#selCat").value = nombre; }
+      }
       filtrarItems();
     };
     rail.appendChild(b);
   };
-  agregar(null, "Todas", ITEMS_ALL.length, buscando);
+  agregar(null, "Todas", base.length, buscando && !catFiltro);
   [...cuentas.keys()].sort().forEach(c =>
-    agregar(c, c, cuentas.get(c), !buscando && c === catActual));
+    agregar(c, c, cuentas.get(c), buscando ? c === catFiltro : c === catActual));
 }
 
 /* La lista entera abierta: nombre, precio y comisión de cada ítem.
@@ -173,8 +208,15 @@ function pintarRail(){
    Borrar un ítem entre veinte casilleros abiertos se aprieta sin mirar. */
 function renderItemsEditables(items, mostrarCat){
   const cont=$("#listaItems");
+  if(items.length===0){ cont.innerHTML='<p class="muted">Sin ítems para mostrar.</p>'; return; }
+  /* Elegir de a varios aparece solo con el filtro de comisión puesto. En la
+     lista común no serviría de nada —lo único que se pone en tanda es el
+     porcentaje— y una columna de casilleros que no hacen nada se toca igual. */
+  const eligiendo = $("#soloComision").classList.contains("on") && items.length > 1;
+  if(eligiendo) cont.appendChild(barraSeleccion());
   items.forEach(it=>{
-    const row=document.createElement("div"); row.className="item-row";
+    const row=document.createElement("div");
+    row.className = "item-row" + (eligiendo ? " con-sel" : "");
     const cat = mostrarCat ? `<span class="tag neutro">${esc(it.categoria)}</span>` : "";
     // Si este ítem ya venía tocado desde otra categoría, se muestra como quedó y
     // no como está en la base: el cambio sigue pendiente hasta que se guarde.
@@ -186,6 +228,7 @@ function renderItemsEditables(items, mostrarCat){
        entrás a editar y quedan todos los porcentajes del catálogo uno abajo del
        otro. De a un ítem por vez, cambiar diez es abrir y cerrar diez fichas. */
     row.innerHTML=`
+      ${eligiendo ? `<input type="checkbox" class="sel" aria-label="Elegir ${esc(it.nombre)}">` : ""}
       <input class="n" value="${esc(v.nombre)}" aria-label="Nombre">
       <input class="p" type="number" min="0" value="${v.precio}" aria-label="Precio efectivo">
       <span class="meta">
@@ -236,9 +279,11 @@ function renderItemsEditables(items, mostrarCat){
       row.querySelector(".pct-fila").hidden = !row.querySelector(".com").checked;
       pintarBarra();
     };
-    row.querySelectorAll("input").forEach(el=>{
+    row.querySelectorAll("input:not(.sel)").forEach(el=>{
       el.addEventListener("input", marcar); el.addEventListener("change", marcar);
     });
+    // El de elegir no es un dato del ítem: no lo ensucia, solo refresca la barra.
+    if(eligiendo) row.querySelector(".sel").addEventListener("change", pintarSeleccion);
     if(pend) row.classList.add("sucia");
     cont.appendChild(row);
   });
@@ -259,6 +304,88 @@ function renderItemsEditables(items, mostrarCat){
   barra.append(btn, nota);
   cont.appendChild(barra);
   pintarBarra();
+  pintarSeleccion();
+}
+
+/* Ponerle el mismo porcentaje a varios de una.
+
+   Cambiar el porcentaje de una categoría entera era tipear el mismo número
+   quince veces, y quince veces es una en la que se tipea otro sin darse cuenta.
+   Acá se eligen —todos los que están a la vista, o los que se marquen a mano— y
+   se pone una sola vez.
+
+   No guarda: escribe en los mismos casilleros por los que se hubiera pasado
+   tipeando, y de ahí sigue el camino de siempre —queda marcado como tocado y se
+   guarda con el botón de abajo—. Así se ve qué va a pasar antes de que pase, y
+   si se erró el número se sale del modo edición y no quedó nada. */
+function barraSeleccion(){
+  const barra=document.createElement("div");
+  barra.className="barra-sel";
+  barra.innerHTML=`
+    <span class="cuantos">Ninguno elegido</span>
+    <button type="button" class="b-out todos">Elegir todos</button>
+    <button type="button" class="b-out ninguno" disabled>Ninguno</button>
+    <span class="separa"></span>
+    <label class="rot">Ponerles</label>
+    <input type="number" class="pct-todos" min="0" max="100" inputmode="numeric"
+           placeholder="%" aria-label="Porcentaje para los elegidos">
+    <button type="button" class="b-tinta poner" disabled>Aplicar</button>
+    <button type="button" class="b-out general" disabled>Que usen el general</button>`;
+
+  const filas = () => [...$("#listaItems").querySelectorAll(".item-row")];
+  const marcar = (v) => { filas().forEach(r=>{ r.querySelector(".sel").checked=v; }); pintarSeleccion(); };
+  barra.querySelector(".todos").onclick   = () => marcar(true);
+  barra.querySelector(".ninguno").onclick = () => marcar(false);
+
+  const aplicar = (valor) => {
+    const elegidas = filas().filter(r => r.querySelector(".sel").checked);
+    let n=0, sinComision=0;
+    elegidas.forEach(r=>{
+      // Un porcentaje en un ítem que no va a comisión no quiere decir nada, así
+      // que se lo saltea en vez de escribirle un número que no se va a usar.
+      if(!r.querySelector(".com").checked){ sinComision++; return; }
+      const casillero = r.querySelector(".pct");
+      casillero.value = valor;
+      // Por el mismo camino que tipearlo: así queda en CAMBIOS, la fila se marca
+      // y la barra de guardar cuenta bien, sin repetir nada de eso acá.
+      casillero.dispatchEvent(new Event("input"));
+      n++;
+    });
+    const hubo = `${n} ${n===1?"ítem":"ítems"}`;
+    toast(n === 0
+      ? "No quedó ninguno para cambiar"
+      : (valor === "" ? `${hubo} vuelven al general` : `${hubo} al ${valor}%`)
+        + (sinComision ? ` · ${sinComision} sin comisión, sin tocar` : ""));
+  };
+
+  barra.querySelector(".poner").onclick = () => {
+    const t = barra.querySelector(".pct-todos").value.trim();
+    const n = parseInt(t,10);
+    if(t === "" || isNaN(n) || n < 0 || n > 100){
+      toast("Escribí un porcentaje de 0 a 100"); barra.querySelector(".pct-todos").focus(); return;
+    }
+    aplicar(String(n));
+  };
+  barra.querySelector(".general").onclick = () => aplicar("");
+  barra.querySelector(".pct-todos").addEventListener("keydown", e=>{
+    if(e.key === "Enter") barra.querySelector(".poner").click();
+  });
+  return barra;
+}
+
+/* Cuántos hay elegidos y qué botones tienen sentido con eso. Lee del DOM en vez
+   de llevar una lista aparte: la lista se redibuja entera al cambiar de
+   categoría y una copia se queda hablando de filas que ya no existen. */
+function pintarSeleccion(){
+  const barra=$("#listaItems").querySelector(".barra-sel");
+  if(!barra) return;
+  const filas=[...$("#listaItems").querySelectorAll(".item-row .sel")];
+  const n=filas.filter(c=>c.checked).length;
+  barra.querySelector(".cuantos").textContent =
+    n === 0 ? "Ninguno elegido" : `${n} de ${filas.length} elegido${n===1?"":"s"}`;
+  barra.classList.toggle("hay", n > 0);
+  ["poner","general","ninguno"].forEach(c => barra.querySelector("."+c).disabled = n === 0);
+  barra.querySelector(".todos").disabled = n === filas.length;
 }
 
 /* Lo tocado en el modo edición, de TODAS las categorías, hasta que se guarda.
