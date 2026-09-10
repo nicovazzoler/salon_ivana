@@ -49,27 +49,6 @@
   .rango .aplicar{ padding:6px 12px; font-size:var(--fs-base); }
 
   /* ----- KPIs ----- */
-  .kpis{
-    display:grid;
-    grid-template-columns:repeat(auto-fit, minmax(150px, 1fr));
-    gap:var(--sp-3);
-  }
-  .kpi{
-    padding:var(--sp-3) var(--sp-4);
-    border:1px solid var(--border-sutil);
-    border-radius:var(--r-lg);
-    background:var(--bg-sutil);
-  }
-  .kpi .lbl{
-    display:block;
-    font-size:var(--fs-xs); color:var(--text-tenue);
-    text-transform:uppercase; letter-spacing:.04em;
-  }
-  .kpi .val{
-    display:block; margin-top:2px;
-    font-size:var(--fs-2xl); font-weight:var(--fw-black);
-    color:var(--text-titulo);
-  }
   .kpi .val.neg{ color:var(--danger); }
   .kpi .pie{ display:block; margin-top:2px; font-size:var(--fs-xs); color:var(--text-tenue); }
 
@@ -210,18 +189,23 @@
   <!-- FILTRO GLOBAL: manda sobre resumen, gráficos y registro (la deuda NO depende del período) -->
   <div class="card" id="cFiltro">
     <div class="periodo">
-      <button data-d="1">Hoy</button><button data-d="7">7d</button><button data-d="30" class="on">30d</button>
-      <button data-d="90">90d</button><button data-d="0">Todo</button>
+      <button data-d="1">Hoy</button><button data-d="7">7d</button>
+      <!-- Un mes es un desde/hasta como cualquier otro rango, así que el backend
+           no se entera: la lista se arma en JS y setea las dos fechas. -->
+      <select class="mes" aria-label="Mes"></select>
+      <button data-d="0">Todo</button>
       <span class="rango"><input type="date" class="desde"> a <input type="date" class="hasta"><button class="aplicar">Aplicar</button></span>
     </div>
   </div>
 
   <div class="card" id="resumen">
-    <div class="card-head">
-      <h2>📈 Resumen del período</h2>
-      <p>Lo que entró, lo que salió y cuántos tickets se emitieron.</p>
+    <div class="card-head con-datos">
+      <div class="titulo">
+        <h2>📈 Resumen del período</h2>
+        <p>Lo que entró, lo que salió y cuántos tickets se emitieron.</p>
+      </div>
+      <div class="kpis" id="kpis"></div>
     </div>
-    <div class="kpis" id="kpis"></div>
   </div>
 
   <div class="card" id="evolucion">
@@ -256,13 +240,15 @@
   </div>
 
   <div class="card" id="deuda">
-    <div class="card-head">
-      <h2>🧾 Cuenta corriente</h2>
-      <p>Foto de hoy: no depende del período de arriba. Tocá un cliente para ver su cuenta.</p>
-    </div>
-    <div class="kpis" style="margin-bottom:var(--sp-4);">
-      <div class="kpi"><span class="lbl">Deuda total</span><span class="val" id="deudaTotal">—</span></div>
-      <div class="kpi"><span class="lbl">Clientes con saldo</span><span class="val" id="deudaTickets">—</span></div>
+    <div class="card-head con-datos">
+      <div class="titulo">
+        <h2>🧾 Cuenta corriente</h2>
+        <p>Foto de hoy: no depende del período de arriba. Tocá un cliente para ver su cuenta.</p>
+      </div>
+      <div class="kpis">
+        <div class="kpi"><span class="lbl">Deuda total</span><span class="val" id="deudaTotal">—</span></div>
+        <div class="kpi"><span class="lbl">Clientes con saldo</span><span class="val" id="deudaTickets">—</span></div>
+      </div>
     </div>
     <div class="barras" id="rankDeuda"></div>
     <button id="verTodos" class="b-out" style="display:none;margin-top:10px;">Ver todos</button>
@@ -550,21 +536,62 @@ async function descargarExcel(){
 // Filtro global: cambia el período y recarga todo lo que depende de él
 (function(){
   const root=$("#cFiltro");
+  const selMes=root.querySelector(".mes");
+
+  /* Los últimos 13 meses, del actual para atrás.
+
+     Las fechas se arman a mano con getFullYear/getMonth/getDate y NO con
+     toISOString(), que pasa a UTC: a la noche argentina eso devuelve el día
+     siguiente, y el mes de la lista arrancaría un día corrido. Es el mismo
+     UTC-3 de siempre, pero del lado del navegador. */
+  const MESES=["enero","febrero","marzo","abril","mayo","junio","julio",
+               "agosto","septiembre","octubre","noviembre","diciembre"];
+  const iso=(a,m,d)=>`${a}-${String(m+1).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
+  const hoy=new Date();
+  let opciones='<option value="">Elegir mes…</option>';
+  for(let i=0;i<13;i++){
+    const d=new Date(hoy.getFullYear(), hoy.getMonth()-i, 1);
+    const a=d.getFullYear(), m=d.getMonth();
+    const ultimo=new Date(a, m+1, 0).getDate();     // día 0 del siguiente = último de este
+    const etiqueta=MESES[m][0].toUpperCase()+MESES[m].slice(1)+
+                   (a!==hoy.getFullYear() ? " "+a : "");
+    opciones+=`<option value="${iso(a,m,1)}|${iso(a,m,ultimo)}">${etiqueta}</option>`;
+  }
+  selMes.innerHTML=opciones;
+
+  const limpiarBotones=()=>root.querySelectorAll("button[data-d]").forEach(x=>x.classList.remove("on"));
+
   root.querySelectorAll("button[data-d]").forEach(b=>{
     b.onclick=()=>{
-      root.querySelectorAll("button[data-d]").forEach(x=>x.classList.remove("on"));
+      limpiarBotones();
       b.classList.add("on");
       state.dias=parseInt(b.dataset.d); state.desde=""; state.hasta="";
       root.querySelector(".desde").value=""; root.querySelector(".hasta").value="";
+      selMes.value="";
       recargarTodo();
     };
   });
+
+  selMes.onchange=()=>{
+    if(!selMes.value) return;
+    const [desde,hasta]=selMes.value.split("|");
+    state.desde=desde; state.hasta=hasta;
+    limpiarBotones();
+    root.querySelector(".desde").value=desde; root.querySelector(".hasta").value=hasta;
+    recargarTodo();
+  };
+
   root.querySelector(".aplicar").onclick=()=>{
     state.desde=root.querySelector(".desde").value;
     state.hasta=root.querySelector(".hasta").value;
-    if(state.desde||state.hasta) root.querySelectorAll("button[data-d]").forEach(x=>x.classList.remove("on"));
+    if(state.desde||state.hasta){ limpiarBotones(); selMes.value=""; }
     recargarTodo();
   };
+
+  // Arranca en el mes en curso: es el período con el que se mira un negocio, y
+  // antes el default eran "los últimos 30 días", que a mitad de mes mezcla dos.
+  selMes.selectedIndex=1;
+  selMes.onchange();
 })();
 
 // Controles del ranking: solo recargan ese gráfico

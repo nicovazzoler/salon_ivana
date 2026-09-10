@@ -27,25 +27,16 @@
 
   <nav class="indice">
     <a class="pill" href="#catalogo">✂️ Catálogo</a>
-    <a class="pill" href="#pagos">💳 Formas de pago</a>
-    <a class="pill" href="#egresos">📤 Egresos</a>
-    <a class="pill" href="#descuentos">🏷️ Descuentos</a>
-    <a class="pill" href="#ajustes">🔧 Ajustes x ítem</a>
-    <a class="pill" href="#usuarios">👥 Usuarios</a>
-    <a class="pill" href="#alias">🏦 Alias</a>
-    <a class="pill" href="#backup">💾 Backup</a>
+    <a class="pill" href="#miclave">🔑 Mi contraseña</a>
+    <a class="pill" href="#usuarios" data-dueno>👥 Usuarios</a>
+    <a class="pill" href="#backup" data-dueno>💾 Backup</a>
   </nav>
 
-  <div class="card" id="resumen">
-    <div class="card-head">
-      <h2>📊 Resumen del catálogo</h2>
-      <p>Cómo está parada la lista de precios hoy.</p>
-    </div>
-    <div class="kpis" id="kpis"></div>
-    <div class="sub-h">Precio promedio por categoría</div>
-    <div class="barras" id="graficoCats"></div>
-  </div>
-
+  <!-- Las cinco listas configurables —formas de pago, tipos de egreso,
+       descuentos, ajustes por ítem y alias— salieron de acá. Se editan con el
+       lapicito que está al lado del desplegable donde se usan, en Facturar, que
+       es donde uno se da cuenta de que falta una: tener el mismo editor en dos
+       pantallas obligaba a irse de un cobro a medio hacer para venir hasta acá. -->
   <div class="card" id="catalogo">
     <div class="card-head">
       <h2>✂️ Servicios y productos</h2>
@@ -54,138 +45,100 @@
     <div style="margin-bottom:12px;">
       <input id="buscarItem" placeholder="🔎 Buscar por nombre (en todas las categorías)..." style="width:100%;">
     </div>
+    <!-- Ver de una cuáles están marcados a comisión. Están repartidos entre
+         categorías, así que sin esto la única forma de saber cuáles son es
+         abrirlas todas y acordarse. -->
+    <div class="pills" style="margin-bottom:12px;">
+      <button type="button" class="pill" id="soloComision">✂️ Solo los que van a comisión</button>
+      <span class="muted" id="cuentaComision"></span>
+    </div>
     <div class="fila">
       <div>
         <label>Categoría</label>
         <select id="selCat"></select>
       </div>
       <button class="b-out" id="btnRenombrar">Renombrar categoría</button>
+      <!-- Modo edición. La lista se lee de un vistazo casi siempre, pero cuando
+           hay que actualizar precios son veinte de una sentada: ahí se prende
+           esto y quedan todos los casilleros abiertos a la vez, como antes. -->
+      <button class="b-out" id="btnEditarTodos">✏️ Editar todos</button>
+      <button class="b-ok" id="btnNuevoItem">+ Ítem nuevo</button>
     </div>
+    <!-- El formulario de alta aparece cuando se lo pide. Estaba siempre abierto,
+         arriba de la lista, y con cinco campos vacíos que casi nunca se usan:
+         para mirar un precio había que pasarlos por arriba todas las veces. -->
+    <div id="panelNuevoItem"></div>
     <div id="listaItems"></div>
-    <hr>
-    <div class="sub-h">Agregar nuevo ítem</div>
-    <div class="fila">
-      <div><label>Categoría</label><input id="nCat" list="cats" placeholder="existente o nueva"></div>
-      <div><label>Nombre</label><input id="nNom" placeholder="Ej: Corte nuevo"></div>
-      <div><label>Precio</label><input id="nPre" type="number" placeholder="0"></div>
-      <div class="check">
-        <input type="checkbox" id="nProd"><label for="nProd">Es producto</label>
-      </div>
-      <button class="b-ok" id="btnAgregar">Agregar</button>
-    </div>
     <datalist id="cats"></datalist>
   </div>
 
-  <div class="card" id="pagos">
-    <div class="card-head">
-      <h2>💳 Formas de pago</h2>
-      <p>Las opciones que se ofrecen al cobrar un ticket.</p>
-    </div>
-    <div id="listaFormas"></div>
-    <hr>
-    <div class="fila">
-      <div><label>Nueva forma de pago</label><input id="nForma" placeholder="Ej: Cuenta DNI"></div>
-      <button class="b-ok" id="btnForma">Agregar</button>
-    </div>
-  </div>
 
-  <div class="card" id="egresos">
-    <div class="card-head">
-      <h2>📤 Tipos de egreso</h2>
-      <p>Las categorías con las que se clasifica lo que sale de la caja.</p>
-    </div>
-    <div id="listaTipos"></div>
-    <hr>
-    <div class="fila">
-      <div><label>Nuevo tipo de egreso</label><input id="nTipo" placeholder="Ej: Alquiler"></div>
-      <button class="b-ok" id="btnTipo">Agregar</button>
-    </div>
-  </div>
 
-  <div class="card" id="descuentos">
-    <div class="card-head">
-      <h2>🏷️ Descuentos</h2>
-      <p>Descuentos por porcentaje que se pueden aplicar a un ticket o presupuesto.</p>
-    </div>
-    <div id="listaDescuentos"></div>
-    <hr>
-    <div class="fila">
-      <div><label>Nombre</label><input id="nDescNombre" placeholder="Ej: Jubilado"></div>
-      <div style="flex:0;min-width:110px;"><label>Porcentaje</label><input id="nDescPct" type="number" placeholder="10"></div>
-      <div class="check">
-        <input type="checkbox" id="nDescMotivo"><label for="nDescMotivo">Mostrar motivo</label>
-      </div>
-      <button class="b-ok" id="btnDesc">Agregar</button>
-    </div>
-  </div>
 
-  <div class="card" id="ajustes">
-    <div class="card-head">
-      <h2>🔧 Ajustes por ítem</h2>
-      <p>Descuentos y recargos que se aplican a <b>una línea sola</b> del servicio,
-         no al total. Al facturar aparecen en un desplegable en cada ítem, y ahí
-         también se puede tipear uno suelto.</p>
-    </div>
-    <div id="listaAjustes"></div>
-    <hr>
-    <div class="fila">
-      <div><label>Nombre</label><input id="nAjNombre" placeholder="Ej: Pelo largo"></div>
-      <div style="flex:0;min-width:150px;">
-        <label>Tipo</label>
-        <select id="nAjSigno">
-          <option value="-">Descuento (−)</option>
-          <option value="+">Recargo (+)</option>
-        </select>
-      </div>
-      <div style="flex:0;min-width:130px;">
-        <label>Unidad</label>
-        <select id="nAjUnidad">
-          <option value="%">Porcentaje (%)</option>
-          <option value="$">Monto fijo ($)</option>
-        </select>
-      </div>
-      <div style="flex:0;min-width:120px;"><label id="nAjLabel">Porcentaje</label><input id="nAjPct" type="number" min="1" max="100" placeholder="10"></div>
-      <button class="b-ok" id="btnAjuste">Agregar</button>
-    </div>
-  </div>
 
-  <div class="card" id="usuarios">
+
+  <!-- Cambiar la propia contraseña lo tiene que poder hacer cualquiera: el cartel
+       de "seguís con la contraseña de fábrica" le aparece también al empleado, y
+       un aviso que no se puede obedecer no sirve de nada. Por eso está en su
+       propia tarjeta y no adentro de la de usuarios, que es solo de la dueña. -->
+  <div class="card" id="miclave">
     <div class="card-head">
-      <h2>👥 Usuarios y contraseñas</h2>
-      <p>Quién entra a la app y con qué permisos. El dueño ve todas las pantallas.</p>
+      <h2>🔑 Mi contraseña</h2>
+      <p>La de tu propio usuario. Nadie más la ve, ni siquiera desde acá.</p>
     </div>
-    <div id="listaUsuarios"></div>
-    <hr>
-    <div class="sub-h">Crear usuario</div>
-    <div class="fila">
-      <div><label>Usuario</label><input id="uNom" placeholder="Ej: maria"></div>
-      <div><label>Contraseña</label><input id="uPass" type="text" placeholder="clave inicial"></div>
-      <div style="flex:0;min-width:120px;"><label>Rol</label>
-        <select id="uRol"><option value="empleado">Empleado</option><option value="dueno">Dueño</option></select></div>
-      <button class="b-ok" id="btnUsuario">Crear</button>
-    </div>
-    <hr>
-    <div class="sub-h">Cambiar mi contraseña</div>
     <div class="fila">
       <div style="max-width:240px;"><label>Nueva contraseña</label><input id="miPass" type="text"></div>
       <button class="b-tinta" id="btnMiPass">Cambiar</button>
     </div>
   </div>
 
-  <div class="card" id="alias">
+  <!-- La lista se dibuja para LEERSE: quién entra y con qué rol. Los campos
+       aparecen recién cuando se pide cambiar algo. Antes estaba todo editable a
+       la vez —nombre, rol, contraseña, guardar y eliminar en cada renglón— y con
+       dos usuarios eran catorce controles habilitados compitiendo por atención,
+       para una pantalla que se toca dos veces por año. -->
+  <div class="card" id="usuarios" data-dueno>
     <div class="card-head">
-      <h2>🏦 Alias de transferencia</h2>
-      <p>Las cuentas que aparecen como opción al cobrar por transferencia.</p>
+      <h2>👥 Usuarios</h2>
+      <p>Quién entra a la app. Hay uno por rol: una dueña y un empleado.</p>
     </div>
-    <div id="listaAlias"></div>
-    <hr>
-    <div class="fila">
-      <div><label>Nuevo alias</label><input id="nAlias" placeholder="Ej: pelu.mp"></div>
-      <button class="b-ok" id="btnAlias">Agregar</button>
+    <div id="listaUsuarios"></div>
+    <div id="crearUsuario"></div>
+  </div>
+
+  <!-- Empleados. Es la única lista que quedó en Admin: las otras cinco se editan
+       desde el lapicito de Facturar, al lado del desplegable que las usa. Esta
+       no, porque solo la toca la dueña y se toca cuando entra o se va alguien,
+       no en medio de un cobro. -->
+  <div class="card" id="empleados" data-dueno>
+    <div class="card-head">
+      <h2>✂️ Empleados</h2>
+      <p>Los nombres que se eligen en “Atendió” al facturar y en la agenda. De
+         acá sale el sueldo, así que un nombre tipeado distinto es plata que no
+         le llega a nadie. Dar de baja no borra nada: deja de ofrecerse.</p>
+      <p>El <b>código</b> es con el que cada una abre su sueldo desde el usuario
+         empleado. Sin código no puede entrar, y el que no tiene código no le
+         aparece a nadie para elegir.</p>
+    </div>
+    <div id="listaEmpleados"></div>
+    <div id="crearEmpleado"></div>
+
+    <!-- Unificar. Los nombres viejos se escribieron a mano durante meses y
+         quedaron "Agus", "Agustina" y "Agustina R" para la misma chica. Es una
+         limpieza de una vez, no algo de todos los días, así que va abajo y
+         aparte de la lista. -->
+    <div class="sub-h" style="margin-top:var(--sp-4);">Unificar dos nombres</div>
+    <p class="muted" style="margin:0 0 var(--sp-2);">Si la misma persona quedó
+       cargada dos veces, elegí cuál sobra y con cuál se junta. Sus comprobantes,
+       turnos, horas y sueldos pasan al nombre que queda.</p>
+    <div class="fila fila-agregar" id="fusionEmpleados">
+      <div><label for="fusOrigen">Sacar</label><select id="fusOrigen"></select></div>
+      <div><label for="fusDestino">y pasarlo a</label><select id="fusDestino"></select></div>
+      <button class="b-tinta" id="btnFusion">Unificar</button>
     </div>
   </div>
 
-  <div class="card" id="backup">
+  <div class="card" id="backup" data-dueno>
     <div class="card-head">
       <h2>💾 Backup completo</h2>
       <p>Un archivo JSON con todos los datos de la app: catálogo, ventas, egresos,
@@ -199,6 +152,7 @@
 <div class="toast" id="toast"></div>
 
 <script src="/static/auth.js"></script>
+<script src="/static/js/listas.js"></script>
 <script src="/static/js/admin.js"></script>
 </body>
 </html>

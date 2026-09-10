@@ -47,11 +47,13 @@ def _a_utc_naive(iso, version):
 # carga en dos pasadas, más abajo.
 ORDEN = [
     ("items", models.Item, ["id", "categoria", "nombre", "precio", "precio_transfer",
-                            "es_producto", "stock_actual", "stock_minimo", "activo"], []),
+                            "es_producto", "es_comision", "stock_actual",
+                            "stock_minimo", "activo"], []),
     ("clientes", models.Cliente, ["id", "nombre", "telefono", "alias", "notas",
                                   "direccion", "dni", "activo"], ["creado"]),
     ("formas_pago", models.FormaPago, ["id", "nombre", "activo"], []),
-    ("tipos_egreso", models.TipoEgreso, ["id", "nombre", "activo"], []),
+    ("empleados", models.Empleado, ["id", "nombre", "activo", "pin_salt", "pin_hash"], []),
+    ("tipos_egreso", models.TipoEgreso, ["id", "nombre", "activo", "privado"], []),
     ("usuarios", models.Usuario, ["id", "usuario", "salt", "hash", "rol"], []),
     ("config", models.Config, ["clave", "valor"], []),
     ("fondo_caja", models.FondoCaja, ["fecha", "monto"], []),
@@ -60,8 +62,8 @@ ORDEN = [
                                       "mostrar_motivo", "activo"], []),
     ("ajustes_item", models.AjusteItem, ["id", "nombre", "porcentaje", "monto", "activo"], []),
     ("notas_diarias", models.NotaDiaria, ["id", "fecha", "texto", "activo"], ["creada"]),
-    ("egresos", models.Egreso, ["id", "tipo", "concepto", "monto",
-                                "forma_pago", "notas"], ["fecha"]),
+    ("egresos", models.Egreso, ["id", "numero", "tipo", "concepto", "monto",
+                                "forma_pago", "notas", "privado"], ["fecha"]),
     ("turnos", models.Turno, ["id", "fecha", "hora", "cliente_id", "cliente",
                               "servicio", "peluquero", "notas", "activo"], []),
     ("movimientos_stock", models.MovimientoStock, ["id", "item_id", "tipo", "antes",
@@ -71,6 +73,12 @@ ORDEN = [
                               "peluquero", "total"], ["fecha"]),
     ("pagos", models.Pago, ["id", "comprobante_id", "monto", "saldado", "forma_pago",
                             "alias", "desc_aplicado"], ["fecha"]),
+    ("liquidaciones", models.Liquidacion,
+     ["id", "empleado_id", "desde", "hasta", "valor_hora", "comision_pct",
+      "minutos_total", "minutos_comision", "minutos_pagados",
+      "total_comisiones", "total_horas", "total", "notas", "egreso_id", "parcial"], ["cerrada"]),
+    ("horas_trabajadas", models.HoraTrabajada,
+     ["id", "empleado_id", "fecha", "minutos", "liquidacion_id"], ["cargado"]),
 ]
 
 # Tablas que viven anidadas adentro de otra en el JSON.
@@ -196,6 +204,14 @@ def restaurar(archivo, destino, vaciar=False, sin_preguntar=False):
                     d[fk] = p.get("id")
                     filas.append(d)
             total[f"{padre}.{hija}"] = _insertar(db, modelo, filas)
+
+        # Después de las líneas, que se insertan anidadas dentro de los
+        # comprobantes: cada trabajo apunta a una de ellas.
+        total["trabajos_comision"] = _insertar(db, models.TrabajoComision, _filas(
+            datos, "trabajos_comision",
+            ["id", "linea_id", "empleado_id", "item_id", "nombre", "cantidad",
+             "fecha", "minutos", "liquidacion_id", "base", "comision"],
+            [], version))
 
         total["pagos"] = _insertar(db, models.Pago, _filas(
             datos, "pagos",

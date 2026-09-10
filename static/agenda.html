@@ -200,7 +200,7 @@
         <div class="campo chico"><label>Hora</label><input type="time" id="fHora" value="10:00"></div>
         <div class="campo"><label>Cliente</label><input id="fCliente" list="clientesList" placeholder="Nombre"><datalist id="clientesList"></datalist></div>
         <div class="campo"><label>Servicio</label><input id="fServicio" list="serviciosList" placeholder="Corte, color..."><datalist id="serviciosList"></datalist></div>
-        <div class="campo"><label>Peluquero/a (opc) <span class="muted"></span></label><input id="fPeluquero"></div>
+        <div class="campo"><label>Atiende (opc) <span class="muted"></span></label><select id="fPeluquero"></select></div>
         <div class="campo"><label>Notas (opc)<span class="muted"></span></label><input id="fNotas"></div>
         <button id="btnAgregar">Agendar</button>
       </div>
@@ -243,6 +243,14 @@ async function init(){
     $("#serviciosList").innerHTML=SERVICIOS.map(s=>`<option value="${s}">`).join("");
     CLIENTES=await (await authFetch("/api/clientes")).json();
     $("#clientesList").innerHTML=CLIENTES.map(c=>`<option value="${c.nombre}">`).join("");
+    /* Quién atiende sale de la lista de empleados, igual que en facturar. Acá
+       sigue siendo opcional —un turno se agenda muchas veces sin saber todavía
+       quién lo va a tomar—, pero elegido de la lista y no tipeado: si acá se
+       escribe "Karla" y en el ticket dice "Carla", el turno y el trabajo no se
+       pueden juntar. */
+    const emps = await (await authFetch("/api/empleados")).json();
+    $("#fPeluquero").innerHTML = `<option value="">Sin asignar</option>`
+      + emps.map(e=>`<option>${e.nombre}</option>`).join("");
   }catch(e){}
   render();
 }
@@ -373,7 +381,7 @@ function formBody(){
   if(!cliente||!servicio){ toast("Completá cliente y servicio"); return null; }
   return { fecha:fechaActual, hora:$("#fHora").value, cliente,
     cliente_id:(CLIENTES.find(c=>c.nombre.toLowerCase()===cliente.toLowerCase())||{}).id||null,
-    servicio, peluquero:$("#fPeluquero").value.trim()||null, notas:$("#fNotas").value.trim()||null };
+    servicio, peluquero:$("#fPeluquero").value||null, notas:$("#fNotas").value.trim()||null };
 }
 function limpiarForm(){
   $("#fHora").value="10:00"; $("#fCliente").value=""; $("#fServicio").value="";

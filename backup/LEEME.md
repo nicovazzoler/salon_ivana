@@ -10,7 +10,7 @@ corren solas; la tercera es un botón.
 | | Qué es | Cada cuánto | De qué NO te salva |
 |---|---|---|---|
 | 1 | Backups de Railway | — | **no disponible en el plan Hobby** |
-| 2 | `pg_dump` en la PC → Drive | diario, 22:30 | si la PC está apagada, ese día no hay |
+| 2 | `pg_dump` en la PC → Drive | 14:00 y 23:30 | si la PC está apagada, esas horas no hay |
 | 3 | GitHub Actions → artifact privado | diario, 00:00 arg. | si se pierde la cuenta de GitHub |
 
 Las capas 2 y 3 son independientes a propósito: distinta máquina, distinta
@@ -60,8 +60,13 @@ quedan las dos copias, la del disco y la de la nube, las dos afuera de Railway.
 
    Guardar, cerrar, y el script agenda la tarea y corre un backup de prueba.
 
-Queda corriendo todos los días a las 22:30. Si a esa hora la PC estaba apagada,
-corre apenas se prende: no se saltea el día.
+Queda corriendo **dos veces por día, a las 14:00 y a las 23:30**. Si a esa hora
+la PC estaba apagada, corre apenas se prende: no se saltea la corrida.
+
+Son dos y no una porque en el plan Hobby no hay backups del lado de Railway: con
+una sola corrida diaria, el peor caso es perder un día entero de tickets. Con la
+del mediodía, medio día. Para volver a una sola:
+`.\instalar_tarea.ps1 -Horas "23:30"`.
 
 ### Cómo saber que sigue andando
 
@@ -93,15 +98,20 @@ es un archivo.
    Tiene que ser privado. Los artifacts de un repo público los baja cualquiera,
    y el dump tiene datos de los clientes y los hash de las contraseñas.
 
-2. **Copiar tres archivos** de `backup/github-actions/` de este repo:
+2. **Copiar cuatro archivos** de `backup/github-actions/` de este repo:
 
    ```
    .github/workflows/backup.yml   <- backup.yml
    scripts/hacer_backup.sh        <- hacer_backup.sh
    scripts/verificar_restore.sh   <- verificar_restore.sh
+   .gitattributes                 <- .gitattributes
    ```
 
-   Que los `.sh` queden ejecutables: `git update-index --chmod=+x scripts/*.sh`
+   El `.gitattributes` no es opcional: sin él, git puede subir los `.sh` con
+   finales de línea de Windows y en el runner de Linux fallan con
+   `$'\r': command not found`, un error que no menciona en ningún lado que el
+   problema sean los finales de línea.
+
 
 3. **Cargar la URL de la base** en ese repo: *Settings → Secrets and variables →
    Actions → New repository secret*.

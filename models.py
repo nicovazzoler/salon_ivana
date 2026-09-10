@@ -20,6 +20,10 @@ class Item(Base):
     precio = Column(Integer, nullable=False)
     precio_transfer = Column(Integer, default=0)   # calculado: efectivo redondeado a transferencia
     es_producto = Column(Boolean, default=False)
+    # Trabajo que se paga por comisión: el 40% de lo que salió en efectivo con su
+    # ajuste de línea. Va en el ítem y no en el comprobante porque es una
+    # propiedad del trabajo ("un corte se paga a comisión"), no de la venta.
+    es_comision = Column(Boolean, default=False)
     stock_actual = Column(Integer, default=0)   # solo aplica a productos
     stock_minimo = Column(Integer, default=0)
     activo = Column(Boolean, default=True)
@@ -51,12 +55,21 @@ class VentaLinea(Base):
 class Egreso(Base):
     __tablename__ = "egresos"
     id = Column(Integer, primary_key=True)
+    # Correlativo propio, como el de los comprobantes: sirve para nombrar un
+    # egreso en voz alta ("el 47") sin leer el id de la base, que no significa
+    # nada para nadie. Es nullable porque los que ya estaban cargados no lo
+    # tienen: se los numera una vez en migrar().
+    numero = Column(Integer, index=True)
     fecha = Column(DateTime, default=fecha_hora_now_utc)
     tipo = Column(String)
     concepto = Column(String)
     monto = Column(Integer)
     forma_pago = Column(String)
     notas = Column(String)
+    # Egreso que el empleado no ve. La dueña anota el alquiler y los sueldos en
+    # la misma pantalla que todo lo demás, pero eso no es asunto de quien atiende:
+    # ni aparece en su lista ni entra en los totales de su caja.
+    privado = Column(Boolean, default=False)
 
 class FormaPago(Base):
     __tablename__ = "formas_pago"
@@ -72,11 +85,37 @@ class Usuario(Base):
     hash = Column(String, nullable=False)
     rol = Column(String, default="empleado")  # "dueno" o "empleado"
 
+class Empleado(Base):
+    """Quién trabaja en el local.
+
+    Sale del texto libre que había en `peluquero`: escrito a mano, "Carla",
+    "carla" y "Carla " son tres personas distintas, y el sueldo de cada una sale
+    mal sin que nada avise. Es una tabla y no una de las listas configurables
+    porque de acá cuelga plata: las horas y las comisiones apuntan a un empleado.
+
+    No se borran, se desactivan: un empleado que se fue sigue teniendo
+    liquidaciones viejas que tienen que poder leerse.
+    """
+    __tablename__ = "empleados"
+    id = Column(Integer, primary_key=True)
+    nombre = Column(String, unique=True, nullable=False)
+    activo = Column(Boolean, default=True)
+    # El código con el que abre su sueldo. Guardado como hash y con sal, igual
+    # que las contraseñas: la base entera se descarga en cada backup, y un código
+    # en texto plano ahí es el código de todas para siempre. Sin código no puede
+    # entrar, y quién tiene y quién no lo maneja solo la dueña.
+    pin_salt = Column(String)
+    pin_hash = Column(String)
+
 class TipoEgreso(Base):
     __tablename__ = "tipos_egreso"
     id = Column(Integer, primary_key=True)
     nombre = Column(String, unique=True, nullable=False)
     activo = Column(Boolean, default=True)
+    # Tipo reservado para la dueña ("Alquiler", "Sueldo"): no se le ofrece al
+    # empleado y, cuando la dueña lo elige, el egreso nace privado sin que haya
+    # que acordarse de tildar nada.
+    privado = Column(Boolean, default=False)
 
 class Config(Base):
     __tablename__ = "config"
@@ -226,6 +265,96 @@ class Descuento(Base):
     porcentaje = Column(Integer, nullable=False)        # 10, 15, 20...
     mostrar_motivo = Column(Boolean, default=False)     # default de si se imprime el motivo
     activo = Column(Boolean, default=True)
+
+class Liquidacion(Base):
+    """Un ciclo de sueldo ya cerrado y pagado.
+
+    El período NO es una semana fija: es "todo lo que estaba pendiente hasta que
+    se cerró". Con ventanas de fechas siempre hay algo que queda afuera —se pagó
+    un día tarde, alguien cargó las horas del jueves el martes siguiente— y eso,
+    en un sueldo, es plata que se pierde sin que nadie se entere. Acá cada hora y
+    cada trabajo está pendiente o está adentro de una liquidación, y lo que se
+    carga después cae solo en el ciclo que viene.
+
+    Los totales se guardan calculados. Es una foto: si mañana se anula un ticket
+    de la semana pasada, el sueldo que ya se pagó no cambia solo. La corrección va
+    como ajuste en el ciclo siguiente, que es como funciona un sueldo de verdad.
+    """
+    __tablename__ = "liquidaciones"
+    id = Column(Integer, primary_key=True)
+    empleado_id = Column(Integer, ForeignKey("empleados.id"), nullable=False, index=True)
+    cerrada = Column(DateTime, default=fecha_hora_now_utc)
+    # Informativos: de cuándo a cuándo terminó abarcando lo que entró. No definen
+    # qué entra, eso lo define estar pendiente.
+    desde = Column(String)                  # 'YYYY-MM-DD' argentino, o None
+    hasta = Column(String)
+    valor_hora = Column(Integer)            # el que regía al cerrar
+    comision_pct = Column(Integer)          # ídem, por si algún día cambia
+    minutos_total = Column(Integer, default=0)      # lo que declaró la empleada
+    minutos_comision = Column(Integer, default=0)   # de trabajos a comisión
+    minutos_pagados = Column(Integer, default=0)    # total - comisión, nunca < 0
+    total_comisiones = Column(Integer, default=0)
+    total_horas = Column(Integer, default=0)
+    total = Column(Integer, default=0)
+    notas = Column(String)
+    # Un pago que se hizo antes de que la semana terminara: se paga lo que va
+    # hasta ahí y lo que se trabaje después sigue cayendo en el mismo ciclo. No es
+    # lo mismo que cerrar la semana, y la diferencia importa para leer el
+    # historial: dos pagos del mismo rango son un adelanto y su saldo, no dos
+    # semanas iguales ni un error.
+    parcial = Column(Boolean, default=False)
+    # El egreso que sale de este cierre. Pagar un sueldo es plata que sale del
+    # local, así que el cierre lo anota solo: si hubiera que cargarlo a mano, el
+    # día que se olvide la caja de ese día dice que hay más plata de la que hay.
+    # Se guarda el id para no anotarlo dos veces y para poder mostrarlo después.
+    egreso_id = Column(Integer, ForeignKey("egresos.id"))
+    empleado = relationship("Empleado")
+    egreso = relationship("Egreso")
+
+class HoraTrabajada(Base):
+    """Las horas de un día, cargadas por la empleada.
+
+    En minutos y no en horas decimales: 7,5 y 7,50000001 son el mismo día de
+    trabajo pero no el mismo número, y de acá sale plata.
+    """
+    __tablename__ = "horas_trabajadas"
+    id = Column(Integer, primary_key=True)
+    empleado_id = Column(Integer, ForeignKey("empleados.id"), nullable=False, index=True)
+    fecha = Column(String, nullable=False, index=True)   # 'YYYY-MM-DD' argentino
+    minutos = Column(Integer, default=0)
+    # NULL = pendiente. Es lo único que decide si entra en el próximo cierre.
+    liquidacion_id = Column(Integer, ForeignKey("liquidaciones.id"), index=True)
+    cargado = Column(DateTime, default=fecha_hora_now_utc)
+
+class TrabajoComision(Base):
+    """Un trabajo a comisión, atado a la línea del comprobante de donde salió.
+
+    La línea es la fuente: el trabajo aparece solo en la lista de la empleada
+    porque el comprobante la nombra como peluquera y el ítem está marcado a
+    comisión. Acá se guarda lo que la línea no sabe —cuánto duró, que lo carga
+    ella— y, al cerrar, la foto de la plata.
+    """
+    __tablename__ = "trabajos_comision"
+    id = Column(Integer, primary_key=True)
+    # Nullable: un trabajo puede no tener comprobante. Pasa —se atendió a alguien
+    # y no se facturó— y si no se pudiera cargar, la empleada trabajaría gratis o
+    # tendría que reclamarlo de memoria. Se marca en la pantalla para que la dueña
+    # vea cuál no tiene respaldo antes de pagarlo.
+    # El unique sigue valiendo para los que SÍ tienen línea: ni SQLite ni
+    # PostgreSQL cuentan los NULL como repetidos.
+    linea_id = Column(Integer, ForeignKey("comprobante_lineas.id"), unique=True, index=True)
+    empleado_id = Column(Integer, ForeignKey("empleados.id"), nullable=False, index=True)
+    # Solo para los sueltos: de dónde sale la plata cuando no hay línea.
+    item_id = Column(Integer, ForeignKey("items.id"))
+    nombre = Column(String)                  # snapshot, por si el ítem se renombra
+    cantidad = Column(Integer, default=1)
+    fecha = Column(String)                   # 'YYYY-MM-DD' argentino
+    minutos = Column(Integer, default=0)
+    liquidacion_id = Column(Integer, ForeignKey("liquidaciones.id"), index=True)
+    # Se llenan al cerrar. Antes son None: lo pendiente se calcula en vivo, así
+    # que si se corrige el comprobante el número se corrige solo hasta que se paga.
+    base = Column(Integer)          # precio efectivo con ajuste, por la cantidad
+    comision = Column(Integer)      # el porcentaje de esa base
 
 class AjusteItem(Base):
     """Descuentos y recargos que se aplican a UNA línea, no al comprobante entero.

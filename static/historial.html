@@ -27,6 +27,35 @@
   /* La flecha en tabular para que el botón no cambie de ancho al darla vuelta */
   .orden .flecha{ font-variant-numeric:tabular-nums; }
 
+  /* ----- Período -----
+     Mismo gesto que la barra de orden: la etiqueta adelante y las pastillas al
+     lado, para que se lea como una frase ("Período: 30 días"). El rango a mano
+     va al final, separado, porque es lo que se usa de vez en cuando. */
+  .periodo{
+    display:flex; flex-wrap:wrap; align-items:center; gap:6px;
+    margin-bottom:var(--sp-3);
+  }
+  .periodo .eti{
+    margin-right:2px;
+    font-size:var(--fs-xs); font-weight:var(--fw-bold);
+    text-transform:uppercase; letter-spacing:var(--tracking-eti);
+    color:var(--text-tenue);
+  }
+  .periodo .rango{ display:flex; align-items:center; gap:4px; margin-left:auto; }
+  .periodo .rango input{ padding:5px 8px; font-size:var(--fs-sm); width:auto; }
+  .periodo .rango .hasta{ font-size:var(--fs-sm); color:var(--text-tenue); }
+  @media (max-width:560px){
+    .periodo .rango{ margin-left:0; width:100%; }
+    .periodo .rango input{ flex:1; min-width:0; }
+  }
+
+  /* Aviso de que la búsqueda se llevó puesto el período elegido. Va pegado a la
+     barra de período porque explica por qué se movió sola la pastilla. */
+  .nota-periodo{
+    margin:-4px 0 var(--sp-3);
+    font-size:var(--fs-sm); color:var(--text-marca);
+  }
+
   /* Pie de la lista: "Ver más" o el aviso de que ya está completa */
   .ver-mas{ margin:var(--sp-4) 0 var(--sp-5); text-align:center; }
   .ver-mas button{ padding:10px 22px; }
@@ -80,6 +109,19 @@
     font-weight:var(--fw-bold);
   }
   .comp-total{ color:var(--text-titulo); }
+
+  /* Encabezado del detalle: "Detalle" a la izquierda y cuándo se facturó a la
+     derecha, en tenue. La hora completa va acá y no en el rótulo de arriba para
+     que el renglón de la lista siga entrando de un vistazo. */
+  .detalle-cab{
+    display:flex; justify-content:space-between; align-items:baseline;
+    gap:var(--sp-2);
+    font-weight:700; margin-bottom:6px;
+  }
+  .detalle-cab .cuando{
+    font-weight:var(--fw-normal); font-size:var(--fs-sm);
+    color:var(--text-tenue); font-variant-numeric:tabular-nums;
+  }
   
 </style>
 </head><body>
@@ -101,6 +143,26 @@
     <input id="filtroCliente" placeholder="Buscar cliente..." style="flex:1;">
     <input id="filtroNum" placeholder="N° serv." style="width:110px;" inputmode="numeric">
   </div>
+
+  <!-- Período. Arranca en el último mes, que es lo que se mira el 99% de las
+       veces, pero "Todo" y el rango a mano siguen estando a un toque: poder
+       buscar de cualquier fecha y de cualquier año es de las cosas que más se
+       usan de esta pantalla. -->
+  <div class="periodo" id="periodo">
+    <span class="eti">Período</span>
+    <button class="pill on" data-p="30">30 días</button>
+    <button class="pill" data-p="90">90 días</button>
+    <button class="pill" data-p="anio">Este año</button>
+    <button class="pill" data-p="todo">Todo</button>
+    <span class="rango">
+      <input type="date" id="desde" aria-label="Desde">
+      <span class="hasta">a</span>
+      <input type="date" id="hasta" aria-label="Hasta">
+    </span>
+  </div>
+
+  <div class="nota-periodo" id="notaPeriodo" style="display:none;"></div>
+
   <div class="pills" id="filtroEstado">
     <button class="pill on" data-f="todos">Todos</button>
     <button class="pill" data-f="deuda">Con deuda</button>
@@ -123,13 +185,13 @@
 <div class="toast" id="toast"></div>
 
 <script src="/static/auth.js"></script>
+<script src="/static/js/peluquero.js"></script>
 <script src="/static/escpos.js"></script>
 <script>
 requireLogin(); pintarNav();
 const $=s=>document.querySelector(s);
 const fmt=n=>"$"+(n||0).toLocaleString("es-AR");
 let tipo="ticket";
-let todosComps=[];
 let estadoFiltro="todos";   // todos | deuda | convertidos | sinconvertir
 
 /* Orden. Por defecto fecha de la más nueva a la más vieja: eso es lo que hace
@@ -141,106 +203,208 @@ let orden = { campo:"fecha", desc:true };
    de mayor a menor, los nombres de la A a la Z. */
 const ORDEN_INICIAL = { fecha:true, numero:true, monto:true, cliente:false };
 
-const POR_TRAMO=60;         // cuántos comprobantes se dibujan por vez
-let FILTRADOS=[];           // los que pasan los filtros (todos, aunque no estén dibujados)
-let mostrados=0;            // cuántos de FILTRADOS ya están en pantalla
+/* ---------- Período ----------
+
+   El historial de un año son más de mil servicios. Antes se traían TODOS en cada
+   apertura de la pantalla —con sus líneas, sus extras y sus pagos— para mostrar
+   sesenta: la tablet se quedaba pensando en la primera pantalla, no en el
+   "Ver más".
+
+   Ahora se pide una ventana. Arranca en el último mes, que es lo que se mira
+   casi siempre, y "Todo" sigue estando a un toque. Lo que NO se recorta nunca es
+   la búsqueda: apenas escribís un cliente o un número, el período salta solo a
+   "Todo" (y se ve saltar, con la pastilla y un renglón que lo dice), porque
+   buscar un servicio de hace dos años es justo para lo que se usa esto. */
+let periodo="30";           // 30 | 90 | anio | todo | rango
+const POR_TRAMO=60;
+
+let CARGADOS=[];            // los comprobantes que están dibujados
+let TOTAL=0;                // cuántos coinciden con los filtros (los dibuje o no)
+let TOTAL_SIN_FILTROS=0;
+let DEUDA_TOTAL=null;
+let pidiendo=false;         // hay una consulta en vuelo (solo frena el "Ver más")
+let consulta=0;             // número de la consulta actual, para descartar respuestas viejas
 
 function toast(m){const t=$("#toast");t.textContent=m;t.classList.add("show");setTimeout(()=>t.classList.remove("show"),2200);}
 function numComp(t,n){ return (t==="ticket"?"N-":"P-")+String(n).padStart(5,"0"); }
 
-async function cargar(){
-  todosComps=await (await authFetch("/api/comprobantes?tipo="+tipo)).json();
-  renderLista();
+function isoLocal(d){
+  // el input date quiere AAAA-MM-DD en hora local, no el ISO en UTC
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
 }
 
-function renderLista(){
-  const filtCli = ($("#filtroCliente").value||"").trim().toLowerCase();
-  const filtNum = ($("#filtroNum").value||"").trim();
-  const comps = todosComps.filter(comp=>{
-    if(filtCli && !(comp.cliente_nombre||"").toLowerCase().includes(filtCli)) return false;
-    if(filtNum && !String(comp.numero).includes(filtNum)) return false;
-    if(estadoFiltro==="deuda"        && !(comp.saldo>0)) return false;
-    if(estadoFiltro==="convertidos"  && !comp.convertido_a) return false;
-    if(estadoFiltro==="sinconvertir" && comp.convertido_a) return false;
-    return true;
-  });
+/* La ventana que se le pide al servidor. Devuelve {} para "Todo": sin desde ni
+   hasta, el backend no filtra por fecha. */
+function ventana(){
+  const hoy = new Date();
+  if(periodo === "todo") return {};
+  if(periodo === "rango"){
+    const d = $("#desde").value, h = $("#hasta").value;
+    const w = {};
+    if(d) w.desde = d;
+    if(h) w.hasta = h;
+    return w;
+  }
+  if(periodo === "anio") return { desde: `${hoy.getFullYear()}-01-01` };
+  const dias = parseInt(periodo);
+  const atras = new Date(hoy); atras.setDate(atras.getDate() - dias);
+  return { desde: isoLocal(atras) };
+}
 
-  // resumen del filtro activo: cuántos y, si es deuda, cuánto
-  const cajaResumen=$("#resumenFiltro");
-  if(estadoFiltro==="deuda"){
-    const deuda=comps.reduce((a,c)=>a+(c.saldo||0),0);
-    cajaResumen.textContent = comps.length ? `${comps.length} con deuda · ${fmt(deuda)}` : "";
+function hayBusqueda(){
+  return !!(($("#filtroCliente").value||"").trim() || ($("#filtroNum").value||"").trim());
+}
+
+function pintarPeriodo(){
+  document.querySelectorAll("#periodo .pill").forEach(b =>
+    b.classList.toggle("on", b.dataset.p === periodo));
+  const nota = $("#notaPeriodo");
+  // El renglón solo aparece cuando la búsqueda movió el período sola: si lo
+  // pusiste vos en "Todo", no hay nada que explicar.
+  const explicar = hayBusqueda() && periodo === "todo";
+  nota.style.display = explicar ? "" : "none";
+  if(explicar) nota.textContent = "Buscando en todo el historial. Tocá un período para acotarlo.";
+}
+
+/* ---------- Traer una página ----------
+
+   `reiniciar` distingue las dos formas de pedir: cambiar un filtro (se vuelve a
+   empezar de cero) y "Ver más" (se agrega abajo, sin tocar lo que ya está
+   dibujado, así el detalle que tengas abierto se queda abierto).
+
+   Cada pedido lleva número. Si escribís rápido y salen tres consultas, la que
+   llega tarde con datos viejos se descarta en vez de pisar a la buena. */
+async function traer(reiniciar){
+  /* Un pedido nuevo PISA al que esté en vuelo; solo se frena el "Ver más".
+
+     Al principio esto frenaba cualquier pedido mientras hubiera otro en curso, y
+     estaba mal: si tocabas dos filtros seguidos —poner el "desde" y después el
+     "hasta"— el segundo se descartaba sin decir nada y la pantalla te mostraba
+     el resultado del primero mientras los dos campos decían otra cosa. Peor que
+     lento: mentiroso.
+
+     Ahora cada pedido lleva número y la respuesta que llega tarde se tira. Lo
+     único que sí se frena es traer la página siguiente, porque ahí dos clicks
+     seguidos en "Ver más" pedirían dos veces el mismo tramo y se verían
+     duplicados. */
+  if(pidiendo && !reiniciar) return;
+  pidiendo = true;
+  const mio = ++consulta;
+  const desdeFila = reiniciar ? 0 : CARGADOS.length;
+
+  const p = new URLSearchParams({
+    tipo, estado: estadoFiltro, orden: orden.campo,
+    desc: orden.desc ? "true" : "false",
+    limite: POR_TRAMO, offset: desdeFila,
+  });
+  const w = ventana();
+  if(w.desde) p.set("desde", w.desde);
+  if(w.hasta) p.set("hasta", w.hasta);
+  const cli = ($("#filtroCliente").value||"").trim();
+  const num = ($("#filtroNum").value||"").trim();
+  if(cli) p.set("q", cli);
+  if(num) p.set("numero", num);
+
+  $("#verMas").innerHTML = '<span class="muted">Buscando…</span>';
+  try{
+    const r = await authFetch("/api/comprobantes?" + p.toString());
+    if(mio !== consulta) return;              // llegó tarde: ya hay otra consulta
+    if(!r.ok){ $("#verMas").innerHTML = '<span class="muted">No se pudo cargar.</span>'; return; }
+    const d = await r.json();
+    TOTAL = d.total; TOTAL_SIN_FILTROS = d.total_sin_filtros; DEUDA_TOTAL = d.deuda_total;
+    CARGADOS = reiniciar ? d.comprobantes : CARGADOS.concat(d.comprobantes);
+    pintar(reiniciar ? [] : d.comprobantes, reiniciar);
+  } catch(e){
+    // Sin esto, cualquier error dejaba el pie diciendo "Buscando…" para siempre
+    // y la pantalla parecía colgada. En el local eso es un llamado por teléfono.
+    if(mio === consulta) $("#verMas").innerHTML = '<span class="muted">No se pudo cargar. Probá de nuevo.</span>';
+    throw e;
+  } finally {
+    if(mio === consulta) pidiendo = false;
+  }
+}
+
+/* Dibuja. Si `reiniciar`, rehace la lista entera; si no, agrega la tanda nueva
+   al final y no toca nada de lo que ya estaba. */
+function pintar(tanda, reiniciar){
+  const cont = $("#lista");
+  if(reiniciar){
+    cont.innerHTML = "";
+    const frag = document.createDocumentFragment();
+    CARGADOS.forEach(c => frag.appendChild(crearFila(c)));
+    cont.appendChild(frag);
   } else {
-    cajaResumen.textContent = comps.length!==todosComps.length ? `${comps.length} de ${todosComps.length}` : "";
+    const frag = document.createDocumentFragment();
+    tanda.forEach(c => frag.appendChild(crearFila(c)));
+    cont.appendChild(frag);
   }
 
-  const cont=$("#lista"); cont.innerHTML="";
-  if(comps.length===0){
+  if(CARGADOS.length === 0){
     const porQue = estadoFiltro==="deuda" ? "con deuda"
                  : estadoFiltro==="convertidos" ? "pasados a ticket"
                  : estadoFiltro==="sinconvertir" ? "sin convertir" : "";
-    cont.innerHTML=`<p class="muted">No hay ${tipo==="ticket"?"tickets":"presupuestos"} ${porQue} para mostrar.</p>`;
-    $("#verMas").innerHTML="";
-    return;
+    const acotado = periodo !== "todo" ? " en este período" : "";
+    cont.innerHTML = `<p class="muted">No hay ${tipo==="ticket"?"tickets":"presupuestos"} ${porQue}${acotado} para mostrar.`
+      + (periodo !== "todo" ? ` <a href="#" id="verTodo">Buscar en todo el historial</a>.` : "") + `</p>`;
+    const a = $("#verTodo");
+    // Se limpian también las fechas: si no, la pastilla queda en "Todo" y los dos
+    // campos siguen mostrando el rango que acaba de quedar sin resultados.
+    if(a) a.onclick = e => {
+      e.preventDefault();
+      periodo="todo"; $("#desde").value=""; $("#hasta").value="";
+      pintarPeriodo(); traer(true);
+    };
   }
-  FILTRADOS = ordenar(comps);
-  mostrados = 0;
-  pintarMas();
+
+  pintarResumen();
+  pintarVerMas();
 }
 
-/* Ordena la lista COMPLETA, no solo lo que está dibujado: si ordenás por monto
-   y hay 1.400 comprobantes, el más caro tiene que quedar arriba de todo, no el
-   más caro de los primeros 60.
-
-   Los nombres van con localeCompare en español, que es el único que ordena bien
-   con acentos y con la ñ: con una comparación común, "Núñez" cae después de
-   "Nuñez" y "Zárate" antes que "Zapata". */
-function ordenar(lista){
-  const dir = orden.desc ? -1 : 1;
-  const cmp = {
-    fecha:   (a,b) => new Date(a.fecha) - new Date(b.fecha),
-    numero:  (a,b) => a.numero - b.numero,
-    monto:   (a,b) => (a.ingresado + a.saldo) - (b.ingresado + b.saldo),
-    // sin cliente es "Mostrador"; se ordena por ese texto, como se ve en pantalla
-    cliente: (a,b) => (a.cliente_nombre || "Mostrador")
-                        .localeCompare(b.cliente_nombre || "Mostrador", "es", {sensitivity:"base"}),
-  }[orden.campo];
-
-  // El desempate siempre es por número, para que el orden sea estable: dos
-  // comprobantes del mismo cliente o del mismo día no se cambian de lugar solos.
-  return [...lista].sort((a,b) => (cmp(a,b) * dir) || (b.numero - a.numero));
+function pintarResumen(){
+  const caja = $("#resumenFiltro");
+  if(estadoFiltro === "deuda"){
+    caja.textContent = TOTAL ? `${TOTAL} con deuda · ${fmt(DEUDA_TOTAL||0)}` : "";
+  } else {
+    caja.textContent = TOTAL !== TOTAL_SIN_FILTROS ? `${TOTAL} de ${TOTAL_SIN_FILTROS}` : `${TOTAL}`;
+  }
 }
 
-/* Dibuja el siguiente tramo de la lista.
-
-   Los comprobantes de un año son más de mil, y dibujarlos todos de una deja
-   veinte mil elementos en la pantalla: la tablet se arrastra para scrollear y
-   cualquier cosa que repinte (cambiar de tema, girar la tablet) se nota. Se
-   filtra sobre TODOS —la búsqueda por cliente y por número sigue mirando el
-   historial completo—, pero se dibuja de a tramos.
-
-   Se agrega al final en vez de rehacer la lista, así lo que ya estaba dibujado
-   ni se toca y el detalle que tengas abierto se queda abierto. */
-function pintarMas(){
-  const cont=$("#lista");
-  const hasta = Math.min(mostrados + POR_TRAMO, FILTRADOS.length);
-  const tanda = document.createDocumentFragment();
-  for(let i=mostrados; i<hasta; i++) tanda.appendChild(crearFila(FILTRADOS[i]));
-  cont.appendChild(tanda);
-  mostrados = hasta;
-
-  const quedan = FILTRADOS.length - mostrados;
-  $("#verMas").innerHTML = quedan>0
-    ? `<button class="b-out" id="btnVerMas">Ver ${Math.min(quedan,POR_TRAMO)} más
+function pintarVerMas(){
+  const quedan = TOTAL - CARGADOS.length;
+  $("#verMas").innerHTML = quedan > 0
+    ? `<button class="b-out" id="btnVerMas">Ver ${Math.min(quedan, POR_TRAMO)} más
          <span class="muted">· quedan ${quedan}</span></button>`
-    : (FILTRADOS.length>POR_TRAMO ? `<span class="muted">Ya está toda la lista (${FILTRADOS.length}).</span>` : "");
-  const b=$("#btnVerMas");
-  if(b) b.onclick=pintarMas;
+    : (CARGADOS.length > POR_TRAMO ? `<span class="muted">Ya está toda la lista (${TOTAL}).</span>` : "");
+  const b = $("#btnVerMas");
+  if(b) b.onclick = () => traer(false);
+}
+
+/* Fecha y hora de facturación.
+
+   La hora es el dato que faltaba para reconocer un ticket entre los cinco del
+   mismo cliente en el mismo día. Sale del mismo campo que el papel impreso.
+
+   La "Z" no es un detalle: el backend guarda UTC sin marcar la zona, y sin ella
+   el navegador lee "2026-09-07T23:40" como hora local argentina. La fecha salía
+   corrida para todo lo facturado después de las 21:00 (que en UTC ya es el día
+   siguiente) y la hora habría salido tres horas adelantada siempre. Es el mismo
+   truco que usa escpos.js para el papel.
+
+   Ojo con los servicios anotados de otro día: ahí `fecha` no es un momento sino
+   un día, y el backend le pone las 12:00 para que caiga en la caja correcta.
+   Mostrar "12:00" sería inventar una hora de atención, así que en esos va la
+   fecha sola y la aclaración de cuándo se anotó, que ya estaba. */
+function fechaHora(comp){
+  const iso = comp.fecha.endsWith("Z") ? comp.fecha : comp.fecha + "Z";
+  const d = new Date(iso);
+  const dia = d.toLocaleDateString("es-AR");
+  if(comp.anotado_despues) return dia;
+  return dia + " " + d.toLocaleTimeString("es-AR",{hour:"2-digit",minute:"2-digit",hour12:false});
 }
 
 function crearFila(comp){
     const div=document.createElement("div"); div.className="comp";
-    const fecha=new Date(comp.fecha).toLocaleDateString("es-AR");
+    const fecha=fechaHora(comp);
     const quien=comp.cliente_nombre||"Mostrador";
     const pendiente = (comp.tipo==="ticket" && comp.saldo>0)
       ? ` · <span style="color:var(--warn);">Pendiente ${fmt(comp.saldo)}</span>`
@@ -312,7 +476,7 @@ function crearFila(comp){
         ? `<div class="fila" style="color:var(--text-tenue);"><span>Extra dificultad</span><span>+${fmt(d.extra_dificultad)}</span></div>` : "";
 
       const pagos=d.pagos.length
-        ? d.pagos.map(p=>{const f=new Date(p.fecha).toLocaleDateString("es-AR");
+        ? d.pagos.map(p=>{const f=new Date(p.fecha.endsWith("Z")?p.fecha:p.fecha+"Z").toLocaleDateString("es-AR");
             return `<div class="fila" style="color:var(--text-tenue);"><span>✓ ${f} · ${p.forma_pago}${p.alias?' ('+p.alias+')':''}</span><span>${fmt(p.monto)}</span></div>`;
           }).join("")
         : (d.tipo==="ticket"?'<div class="muted">Sin pagos.</div>':'');
@@ -343,11 +507,16 @@ function crearFila(comp){
         totales=`<div class="fila fila-total"><span>Total</span><span>${fmt(d.ingresado + d.saldo)}</span></div>`;
       }
 
-      box.innerHTML=`<div style="font-weight:700;margin-bottom:6px;">Detalle</div>
+      box.innerHTML=`<div class="detalle-cab">Detalle
+          <span class="cuando">${fechaHora(d)}</span></div>
         ${lineas}${extra}${esPresu?'':filaDescEf+filaSubtotal+filaDescEfvoReal+filaDescJub}
         ${totales}
         ${d.tipo==="ticket"?`<div style="font-weight:700;margin:10px 0 6px;">Pagos</div>${pagos}${filaPendiente}`:''}
+        ${d.tipo==="ticket"?`<div class="quien-atendio"></div>`:''}
         <a class="btnAbonar" href="/ticket?id=${d.id}" style="margin-top:10px;">🖨️ Imprimir</a>`;
+      // Acá se completa quién atendió: es la única pantalla donde aparece un
+      // ticket de mostrador, que no tiene cuenta de cliente adónde ir a buscarlo.
+      pintarPeluquero(box.querySelector(".quien-atendio"), d);
       box.style.display="block";
     };
     div.querySelector(".btnPrint").onclick = e=>e.stopPropagation();   // que no despliegue el detalle
@@ -355,7 +524,7 @@ function crearFila(comp){
       e.stopPropagation();
       if(!confirm("¿Anular este servicio?")) return;
       const r = await authFetch("/api/comprobantes/"+comp.id, {method:"DELETE"});
-      if(r.ok){ toast("Servicio anulado"); cargar(); }
+      if(r.ok){ toast("Servicio anulado"); traer(true); }
       else { toast("No se pudo anular"); }
     };
     if(comp.tipo==="presupuesto" && !comp.convertido_a){
@@ -366,7 +535,7 @@ function crearFila(comp){
         if(!r.ok){ const er=await r.json(); toast(er.detail||"No se pudo"); return; }
         const d=await r.json();
         toast("Convertido a N-"+String(d.numero).padStart(5,"0"));
-        cargar();
+        traer(true);
       };
     }
     return div;
@@ -387,22 +556,53 @@ function ajustarFiltros(){
   }
 }
 
-$("#tabTicket").onclick=()=>{ tipo="ticket"; $("#tabTicket").classList.add("on"); $("#tabPresu").classList.remove("on"); ajustarFiltros(); cargar(); };
-$("#tabPresu").onclick=()=>{ tipo="presupuesto"; $("#tabPresu").classList.add("on"); $("#tabTicket").classList.remove("on"); ajustarFiltros(); cargar(); };
+$("#tabTicket").onclick=()=>{ tipo="ticket"; $("#tabTicket").classList.add("on"); $("#tabPresu").classList.remove("on"); ajustarFiltros(); traer(true); };
+$("#tabPresu").onclick=()=>{ tipo="presupuesto"; $("#tabPresu").classList.add("on"); $("#tabTicket").classList.remove("on"); ajustarFiltros(); traer(true); };
 
-$("#filtroCliente").oninput = ()=> renderLista();
-$("#filtroNum").oninput = ()=> renderLista();
+/* Ahora cada tecla es una consulta al servidor, así que se espera a que la
+   persona termine de tipear. Un cuarto de segundo alcanza para no mandar una
+   consulta por letra y no se siente como una demora. */
+let tecleando=null;
+function buscarDespacio(){
+  // Buscar mira SIEMPRE el historial entero: el período se corre solo a "Todo"
+  // y se ve que se corrió. Si borrás la búsqueda, se queda en "Todo": volver al
+  // último mes sin avisar te escondería lo que acabás de encontrar.
+  if(hayBusqueda() && periodo !== "todo"){ periodo = "todo"; }
+  pintarPeriodo();
+  clearTimeout(tecleando);
+  tecleando = setTimeout(() => traer(true), 250);
+}
+$("#filtroCliente").oninput = buscarDespacio;
+$("#filtroNum").oninput = buscarDespacio;
+
+document.querySelectorAll("#periodo .pill").forEach(b=>{
+  b.onclick=()=>{
+    periodo = b.dataset.p;
+    $("#desde").value = ""; $("#hasta").value = "";
+    pintarPeriodo(); traer(true);
+  };
+});
+
+/* Poner una fecha a mano es elegir el rango: las pastillas se apagan solas. */
+["#desde","#hasta"].forEach(sel=>{
+  $(sel).onchange = () => {
+    periodo = ($("#desde").value || $("#hasta").value) ? "rango" : "todo";
+    pintarPeriodo(); traer(true);
+  };
+});
 
 document.querySelectorAll("#filtroEstado .pill").forEach(b=>{
   b.onclick=()=>{
     estadoFiltro=b.dataset.f;
     document.querySelectorAll("#filtroEstado .pill").forEach(x=>x.classList.toggle("on", x===b));
-    renderLista();
+    traer(true);
   };
 });
 
 /* Tocar un criterio nuevo lo activa en su dirección natural; tocar el que ya
-   está activo la da vuelta. */
+   está activo la da vuelta. El orden lo resuelve el servidor: ordenar solo lo
+   que está dibujado dejaría el más caro de la primera página arriba, no el más
+   caro de todos. */
 document.querySelectorAll("#orden .pill").forEach(b=>{
   b.onclick=()=>{
     const campo = b.dataset.o;
@@ -410,7 +610,7 @@ document.querySelectorAll("#orden .pill").forEach(b=>{
       ? { campo, desc: !orden.desc }
       : { campo, desc: ORDEN_INICIAL[campo] };
     pintarOrden();
-    renderLista();
+    traer(true);
   };
 });
 
@@ -433,7 +633,8 @@ function pintarOrden(){
 }
 
 pintarOrden();
+pintarPeriodo();
 ajustarFiltros();
-cargar();
+traer(true);
 </script>
 </body></html>

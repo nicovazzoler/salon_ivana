@@ -4,18 +4,6 @@
   .fila{ align-items:flex-end; margin-bottom:10px; }
   .fila > div{ min-width:90px; }
 
-  /* ----- Listas largas: 5 filas y el resto se desliza adentro ----- */
-  .lista-scroll{
-    overflow-y:auto;
-    -webkit-overflow-scrolling:touch;      /* que quede la inercia al deslizar */
-    padding-right:6px;                     /* que la barra no se coma el borde */
-    /* Un degradé al pie avisa que sigue: sin eso la lista parece terminar justo
-       ahí y nadie prueba deslizarla. Se apaga al llegar al final. */
-    -webkit-mask-image:linear-gradient(to bottom, #000 calc(100% - 26px), transparent);
-            mask-image:linear-gradient(to bottom, #000 calc(100% - 26px), transparent);
-  }
-  .lista-scroll.al-fin{ -webkit-mask-image:none; mask-image:none; }
-
   /* ----- Cabecera de cada bloque de ajustes ----- */
   .card{ scroll-margin-top:96px; }        /* que el ancla no quede bajo el header */
   .card-head{ margin-bottom:var(--sp-4); }
@@ -46,76 +34,6 @@
   }
   .indice a{ text-decoration:none; }
 
-  /* ----- Resumen del catálogo ----- */
-  .kpis{
-    display:grid;
-    grid-template-columns:repeat(auto-fit, minmax(150px, 1fr));
-    gap:var(--sp-3);
-    margin-bottom:var(--sp-5);
-  }
-  .kpi{
-    padding:var(--sp-3) var(--sp-4);
-    border:1px solid var(--border-sutil);
-    border-radius:var(--r-lg);
-    background:var(--bg-sutil);
-  }
-  .kpi .lbl{
-    display:block;
-    font-size:var(--fs-xs); color:var(--text-tenue);
-    text-transform:uppercase; letter-spacing:.04em;
-  }
-  .kpi .val{
-    display:block; margin-top:2px;
-    font-size:var(--fs-2xl); font-weight:var(--fw-black);
-    color:var(--text-titulo);
-  }
-  .kpi .val small{ font-size:var(--fs-md); font-weight:var(--fw-bold); color:var(--text-tenue); }
-
-  /* ----- Gráfico: precio promedio por categoría -----
-     Barras horizontales en HTML. Una sola serie (los nombres de categoría son
-     identidad, no magnitud), así que van todas del mismo dorado y no hace falta
-     leyenda: el título dice qué se está midiendo. El valor va etiquetado en la
-     punta, por eso tampoco hace falta eje. */
-  .barras{ display:grid; gap:var(--sp-2); }
-  .barra{
-    display:grid;
-    grid-template-columns:minmax(0,185px) 1fr auto;
-    align-items:center;
-    gap:var(--sp-3);
-    padding:3px var(--sp-2);
-    border-radius:var(--r-sm);
-  }
-  .barra:hover{ background:var(--bg-hover); }
-  .barra .cat{
-    display:flex; align-items:baseline; gap:4px;
-    min-width:0;
-    font-size:var(--fs-base);
-    color:var(--text-suave);
-  }
-  /* recorta el nombre largo, pero el conteo nunca se pierde */
-  .barra .cat .nom{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-  .barra .cat i{ flex:0 0 auto; font-style:normal; color:var(--text-tenue); }
-  .barra .track{ display:block; min-width:0; }
-  .barra .fill{
-    display:block;
-    height:14px;                        /* marca fina: la barra no llena el renglón */
-    min-width:2px;
-    border-radius:0 4px 4px 0;          /* punta redondeada, cuadrada en la base */
-    background:#b08f3a;                 /* fijo: medido contra el papel y el carbón */
-  }
-  .barra .val{
-    font-size:var(--fs-base);
-    font-weight:var(--fw-bold);
-    font-variant-numeric:tabular-nums;
-    color:var(--text);
-  }
-  @media (max-width:560px){
-    .barra{ grid-template-columns:1fr auto; row-gap:2px; }
-    .barra .cat{ grid-column:1; }
-    .barra .val{ grid-column:2; }
-    .barra .track{ grid-column:1 / -1; }
-  }
-
   /* Renglón editable de la lista: grilla para que los botones caigan siempre
      en la misma columna, midan lo que midan el nombre y las etiquetas. */
   .item-row{
@@ -134,15 +52,130 @@
     font-size:var(--fs-sm); color:var(--text-tenue);
   }
   .item-row .acc{ display:flex; gap:6px; }
+  /* La marca de comisión va con el resto de los datos del ítem y no en una
+     columna propia: es de los pocos ítems que la llevan, y una columna vacía en
+     todas las filas para el caso raro estira la fila sin decir nada. */
+  .item-row .chk-com{
+    display:inline-flex; align-items:center; gap:4px; margin:0;
+    white-space:nowrap; cursor:pointer;
+    font-size:var(--fs-sm); color:var(--text-tenue);
+    /* Es una palabra suelta, no el rótulo de un campo: sin el mayúsculas de los
+       <label> de la tarjeta, que la hacía pesar más que el nombre del ítem. */
+    text-transform:none; letter-spacing:normal; font-weight:var(--fw-normal);
+  }
+  .item-row .chk-com input{ margin:0; }
+
+  /* Fila tocada y todavía sin guardar, en el modo edición del catálogo. Mismo
+     filete que usan las listas configurables: mirando la lista con todo abierto
+     ya no se sabe qué está en la base y qué está solo tipeado. */
+  .item-row.sucia{
+    box-shadow:inset 3px 0 0 var(--acento);
+    padding-left:var(--sp-2);
+  }
+  /* La barra de guardar del modo edición. Queda pegada abajo de la lista para
+     que no haya que buscarla después de tocar el último renglón. */
+  .barra-guardar{
+    position:sticky; bottom:0;
+    display:flex; align-items:center; gap:var(--sp-2); flex-wrap:wrap;
+    margin-top:var(--sp-2); padding:var(--sp-2) 0;
+    background:var(--bg-card);
+    border-top:1px solid var(--border-sutil);
+  }
 
   /* Listas simples (formas de pago, egresos, alias): nombre + eliminar */
   .item-row.simple{ grid-template-columns:1fr auto; }
-  /* Usuarios: nombre + rol + clave nueva + acciones */
-  .item-row.usuario{ grid-template-columns:minmax(0,1.6fr) 130px minmax(0,1fr) auto; }
+  /* Filas de LECTURA: el dato y los botones que abren lo que haga falta. El
+     panel de edición se inserta debajo y solo hay uno abierto por vez, así la
+     tarjeta nunca muestra más de un formulario.
+
+     Lo usan usuarios y el catálogo. Antes el catálogo tenía cada nombre y cada
+     precio en un casillero editable, todos a la vez: con veinte ítems eran
+     cuarenta campos habilitados para una pantalla en la que casi siempre se
+     viene a mirar un precio, y el que se quería tocar había que encontrarlo
+     entre los otros treinta y nueve. */
+  .usuario-fila, .item-fila{
+    display:grid;
+    grid-template-columns:minmax(0,1fr) auto;
+    align-items:center;
+    gap:var(--sp-2);
+    padding:var(--sp-2) 0;
+    border-bottom:1px solid var(--border-sutil);
+  }
+  .usuario-fila .quien, .item-fila .quien{
+    display:flex; align-items:baseline; gap:var(--sp-2);
+    min-width:0;
+  }
+  .usuario-fila .n, .item-fila .n{ min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .usuario-fila .meta, .item-fila .meta{ font-size:var(--fs-sm); color:var(--text-tenue); white-space:nowrap; }
+  .usuario-fila .acc, .item-fila .acc{ display:flex; gap:6px; }
+  /* En el catálogo el dato de al lado del nombre es largo (precio, transfer y
+     las marcas), así que ahí sí se deja partir en dos renglones en pantalla
+     angosta en vez de recortarse. */
+  .item-fila .quien{ flex-wrap:wrap; }
+  .item-fila .meta{ white-space:normal; }
+  /* Eliminar se despega del resto: lo que no se deshace no va pegado a lo
+     rutinario, donde se aprieta sin mirar. */
+  .usuario-fila .acc .b-del{ margin-left:var(--sp-2); }
+
+  .usuario-panel, .panel-edicion{
+    display:flex; align-items:flex-end; flex-wrap:wrap;
+    gap:var(--sp-2);
+    padding:var(--sp-2);
+    margin-bottom:var(--sp-2);
+    border:1px solid var(--border-sutil);
+    border-top:none;
+    border-radius:0 0 var(--r-md) var(--r-md);
+    background:var(--bg-header);
+  }
+  .usuario-panel label, .panel-edicion label{ flex:0 0 100%; margin:0; font-size:var(--fs-sm); color:var(--text-tenue); }
+  .usuario-panel input, .usuario-panel select,
+  .panel-edicion input, .panel-edicion select{ flex:1 1 160px; min-width:0; }
+  .usuario-panel .acc, .panel-edicion .acc{ display:flex; gap:6px; }
+  /* El de crear no cuelga de ninguna fila: lleva el borde completo. */
+  .usuario-panel.crear, .panel-edicion.crear{ border-top:1px solid var(--border-sutil); border-radius:var(--r-md); margin-top:var(--sp-3); }
+
+  /* El panel del catálogo tiene varios campos: cada uno con su rótulo arriba,
+     en su propia columna, en vez de la fila de un solo campo de usuarios. */
+  .panel-edicion .campo{ display:flex; flex-direction:column; gap:2px; flex:1 1 150px; min-width:0; }
+  .panel-edicion .campo.chico{ flex:0 1 110px; }
+  .panel-edicion .campo label{ flex:none; }
+  .panel-edicion .campo input{ flex:none; width:100%; }
+  .panel-edicion .marcas{ display:flex; gap:var(--sp-3); flex:1 1 100%; }
+  /* Las marcas son frases, no rótulos de campo: van en minúscula. Con el
+     text-transform de los <label> de la tarjeta salían gritadas ("ES PRODUCTO
+     (DESCUENTA STOCK)") y pesaban más que el nombre del ítem. */
+  .panel-edicion .marcas label{ flex:none; display:inline-flex; align-items:center; gap:5px;
+                                margin:0; cursor:pointer; color:var(--text);
+                                text-transform:none; letter-spacing:normal;
+                                font-size:var(--fs-sm); font-weight:var(--fw-normal); }
+  .panel-edicion .marcas input{ flex:none; width:auto; margin:0; }
+  /* Eliminar se despega, como en usuarios: lo que no se deshace no va pegado a
+     Guardar, donde se aprieta sin mirar. */
+  .panel-edicion .acc .b-del{ margin-left:var(--sp-2); }
+
+  .nota-vacio{
+    margin:var(--sp-3) 0 0;
+    font-size:var(--fs-sm); color:var(--text-tenue);
+  }
+
+  /* Tipos de egreso: entre el nombre y el botón se cuela la marca de "privado",
+     que solo existe para la dueña. La fila tiene dos formas y cada una declara
+     sus columnas: sin la marca sigue siendo la lista simple de siempre. */
+  .item-row.simple.con-marca{ grid-template-columns:1fr auto auto; }
+  .marca-privado{
+    display:flex; align-items:center; gap:5px;
+    font-size:var(--fs-sm); color:var(--text-tenue);
+    white-space:nowrap; cursor:pointer;
+  }
+  .marca-privado input{ width:auto; margin:0; }
 
   @media (max-width:640px){
-    .item-row, .item-row.simple, .item-row.usuario{ grid-template-columns:1fr auto; row-gap:6px; }
-    .item-row .p, .item-row .uRolEd, .item-row .uClave{ grid-column:1 / -1; }
+    .item-row, .item-row.simple, .item-row.simple.con-marca{ grid-template-columns:1fr auto; row-gap:6px; }
+    .item-row .marca-privado{ grid-column:1; }
+    .item-row .p{ grid-column:1 / -1; }
+    /* En pantalla chica la fila de usuario apila el rol debajo del nombre. */
+    .usuario-fila{ grid-template-columns:1fr; row-gap:6px; }
+    .usuario-fila .acc{ justify-content:flex-start; flex-wrap:wrap; }
     .item-row .meta{ grid-column:1 / -1; }
     .item-row .acc{ grid-column:2; grid-row:1; }
   }

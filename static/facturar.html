@@ -60,14 +60,18 @@
         </div>
       </div>
       <div class="fila">
-        <label>Peluquero</label>
-        <input id="peluquero" placeholder="(opcional)" style="flex:1;">
+        <label>Atendió <span style="color:var(--danger);">*</span></label>
+        <select id="peluquero" style="flex:1;"></select>
       </div>
 
       <!-- Anotar un servicio de otro día. Va plegado porque el 99% de las veces
            se factura en el momento: abierto, sería un campo más que leer en cada
-           cobro y una fecha más que se puede tocar sin querer. -->
-      <details class="otro-dia" id="otroDiaBox">
+           cobro y una fecha más que se puede tocar sin querer.
+
+           Solo para la dueña: cambiar la fecha del servicio mueve el cobro de la
+           caja de un día a la de otro, y esa decisión no es de quien atiende.
+           El backend rebota el intento igual. -->
+      <details class="otro-dia" id="otroDiaBox" data-dueno>
         <summary>Es de otro día <span class="aclara">(se olvidaron de cargarlo)</span></summary>
         <div class="fila alta-fecha">
           <label>Fecha del servicio</label>
@@ -127,7 +131,7 @@
       <div id="panelCobro" class="panel-cobro" style="display:none;">
         <div class="panel-titulo" id="cobroTitulo"> Cobrar</div>
         <div class="tot-row"><span>Total</span><span id="cobroTotal">$0</span></div>
-        <div class="tot-row" style="font-weight:700;"><span>Saldo</span><span id="cobroSaldo">$0</span></div>
+        <div class="tot-row principal"><span>Saldo</span><span id="cobroSaldo">$0</span></div>
         <div id="cobroAbonos" style="margin:8px 0;"></div>
         <div class="fila" style="margin-top:10px;">
           <select id="cobroForma" style="flex:1;"></select>
@@ -199,6 +203,13 @@
         </div>
         <button id="btnGuardarEgreso" class="b-ok">Registrar</button>
       </div>
+      <!-- Ya no hay casilla de "privado": lo decide el TIPO de egreso. Eran dos
+           formas de decir lo mismo —la casilla acá y la marca del tipo en Admin—
+           y tarde o temprano se contradecían entre sí. Queda solo el aviso, que
+           es lo único que no se puede deducir mirando la pantalla. -->
+      <div class="eg-privado" data-dueno>
+        <div class="eg-aviso" id="egAvisoPrivado" style="display:none;"></div>
+      </div>
       <!-- Antes esta lista estaba adentro de OTRO desplegable: dos toques para
            ver lo que salió hoy. Ahora se muestra directo. -->
       <div class="eg-hoy" id="egresosHoy"></div>
@@ -210,5 +221,6 @@
 
 <script src="/static/auth.js"></script>
 <script src="/static/escpos.js"></script>
+<script src="/static/js/listas.js"></script>
 <script src="/static/js/facturar.js"></script>
 </body></html>

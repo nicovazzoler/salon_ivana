@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="es"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#f2ece0"><title>Sueldos — Ivana Salón</title>
+<link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/static/css/app.css">
+<script src="/static/tema.js"></script>
+<style>
+  .wrap{ max-width:900px; }
+  .card-head{ margin-bottom:var(--sp-4); }
+  .card-head h2{ margin:0; }
+  .card-head p{ margin:var(--sp-1) 0 0; font-size:var(--fs-base); color:var(--text-tenue); max-width:64ch; }
+
+  .quien{ display:flex; align-items:center; gap:var(--sp-2); flex-wrap:wrap; }
+  .quien label{ margin:0; }
+  .quien select{ width:auto; min-width:170px; }
+
+  /* El total va arriba y grande: es lo que la empleada entra a mirar. Todo lo
+     de abajo es el detalle de cómo se llegó a ese número. */
+  .totales{ display:flex; flex-wrap:wrap; gap:var(--sp-3); }
+  .totales .kpi{ flex:1 1 150px; }
+  .kpi.destacado{ background:var(--bg-header); border-color:var(--acento); }
+  .kpi.destacado .val{ color:var(--acento); }
+  .kpi .nota{ display:block; margin-top:2px; font-size:var(--fs-xs); color:var(--text-tenue); }
+
+  .fila-dato{
+    display:grid; grid-template-columns:minmax(0,1fr) auto auto;
+    align-items:center; gap:var(--sp-2);
+    padding:var(--sp-2) 0; border-bottom:1px solid var(--border-sutil);
+  }
+  .fila-dato .que{ min-width:0; }
+  .fila-dato .que b{ display:block; }
+  .fila-dato .det{ font-size:var(--fs-sm); color:var(--text-tenue); }
+  .fila-dato .plata{ font-variant-numeric:tabular-nums; white-space:nowrap; text-align:right; min-width:72px; }
+  /* Un día que apareció solo, todavía sin horas cargadas: se ve que falta. */
+  .fila-dato.sugerido .que b{ color:var(--text-tenue); }
+
+  .mins{ display:flex; align-items:center; gap:4px; white-space:nowrap; }
+  .mins input{ width:56px; text-align:right; }
+  .mins .u{ font-size:var(--fs-sm); color:var(--text-tenue); }
+
+  .sin-comp{
+    display:inline-block; margin-left:6px; padding:1px 6px; border-radius:var(--r-full);
+    font-size:var(--fs-xs); text-transform:uppercase; letter-spacing:.04em;
+    background:var(--rojo-bg); color:var(--danger); border:1px solid var(--rojo-borde);
+    vertical-align:middle;
+  }
+  a.ver-comp{ color:var(--acento); text-decoration:none; white-space:nowrap; }
+
+  /* El nombre de la empleada, en lugar del desplegable: es lo único que hace
+     falta decir y se lee de lejos. */
+  .quien-empleada{ font-family:var(--font-display); font-size:var(--fs-2xl);
+                   font-weight:var(--fw-black); color:var(--text-titulo);
+                   display:flex; align-items:center; gap:var(--sp-3); }
+  .quien-empleada button{ font-size:var(--fs-sm); padding:4px 10px; }
+
+  /* Un ciclo: la semana de trabajo (martes a sábado) con sus días adentro. */
+  .ciclo{ border:1px solid var(--border-sutil); border-radius:var(--r-lg);
+          margin-top:var(--sp-4); overflow:hidden; }
+  .ciclo-cab{ display:flex; flex-wrap:wrap; align-items:baseline; gap:var(--sp-2);
+              padding:var(--sp-3) var(--sp-4); background:var(--bg-sutil);
+              border-bottom:1px solid var(--border-sutil); }
+  .ciclo-cab h3{ margin:0; font-size:var(--fs-lg); }
+  .ciclo-cab .plata{ margin-left:auto; font-family:var(--font-display);
+                     font-size:var(--fs-xl); font-weight:var(--fw-black);
+                     font-variant-numeric:tabular-nums; }
+  .ciclo-cab .det{ font-size:var(--fs-sm); color:var(--text-tenue); }
+  .ciclo-cuerpo{ padding:0 var(--sp-4) var(--sp-3); }
+  /* El ciclo de esta semana, el que todavía se está llenando. */
+  .ciclo.en-curso .ciclo-cab{ background:var(--bg-header); }
+  .ciclo.en-curso .ciclo-cab h3::after{ content:" · en curso"; font-weight:var(--fw-normal);
+                                        font-size:var(--fs-sm); color:var(--text-tenue); }
+
+  /* Un día adentro del ciclo: rótulo, horas y sus trabajos debajo. */
+  .dia{ padding:var(--sp-3) 0; border-bottom:1px solid var(--border-sutil); }
+  .dia:last-child{ border-bottom:none; }
+  .dia-cab{ display:flex; flex-wrap:wrap; align-items:center; gap:var(--sp-2); }
+  .dia-cab b{ min-width:110px; }
+  .dia-cab .plata{ margin-left:auto; font-variant-numeric:tabular-nums; white-space:nowrap; }
+  .dia-horas{ display:flex; align-items:center; gap:6px; color:var(--text-tenue);
+              font-size:var(--fs-sm); }
+  .dia-horas .valor{ color:var(--text-titulo); font-weight:var(--fw-bold); }
+  .dia-horas.falta .valor{ color:var(--danger); }
+  .dia .trabajos{ margin-top:var(--sp-2); padding-left:var(--sp-3);
+                  border-left:2px solid var(--border-sutil); }
+  .trabajo{ display:grid; grid-template-columns:minmax(0,1fr) auto auto;
+            align-items:center; gap:var(--sp-2); padding:var(--sp-2) 0; }
+  .trabajo + .trabajo{ border-top:1px dashed var(--border-sutil); }
+  .trabajo .que{ min-width:0; }
+  .trabajo .que b{ display:block; }
+  .trabajo .det{ font-size:var(--fs-sm); color:var(--text-tenue); }
+  .trabajo.sin-tiempo{ background:var(--rojo-bg); border-radius:var(--r-md);
+                       padding-left:var(--sp-2); padding-right:var(--sp-2); }
+  .falta-tiempo{ font-size:var(--fs-xs); color:var(--danger); text-transform:uppercase;
+                 letter-spacing:.04em; }
+  .btn-mini{ font-size:var(--fs-sm); padding:3px 10px; }
+  /* Marca de "esto no es una semana entera": un saldo que quedó de un pago
+     parcial, o el pago parcial mismo en el historial. */
+  .saldo-de{
+    display:inline-block; padding:1px 7px; border-radius:var(--r-full);
+    font-size:var(--fs-xs); font-weight:var(--fw-normal); text-transform:uppercase;
+    letter-spacing:.04em; vertical-align:middle;
+    background:var(--bg-sutil); color:var(--text-tenue); border:1px solid var(--border-sutil);
+  }
+  .dia-acciones{ margin-top:var(--sp-2); }
+
+  .sub-h{ margin:var(--sp-4) 0 var(--sp-2); font-size:var(--fs-base);
+          font-weight:var(--fw-bold); text-transform:uppercase; letter-spacing:.04em;
+          color:var(--text-tenue); }
+  .vacio{ padding:var(--sp-4); text-align:center; color:var(--text-tenue); }
+
+  /* La puerta. Pocos controles y grandes: se usa parada, en una tablet, con la
+     mano mojada de tintura. */
+  .puerta-form{ display:flex; flex-wrap:wrap; gap:var(--sp-3); align-items:flex-end; }
+  .puerta-form > div{ display:flex; flex-direction:column; gap:2px; flex:1 1 180px; min-width:0; }
+  .puerta-form select, .puerta-form input{ width:100%; }
+  .puerta-form input.pin{ font-size:var(--fs-xl); letter-spacing:.3em; text-align:center; }
+  .puerta-form button{ flex:0 0 auto; }
+  .puerta-error{ margin:var(--sp-3) 0 0; color:var(--danger); font-size:var(--fs-sm); }
+  /* Quién abrió, arriba a la derecha, donde la dueña tiene el desplegable. */
+  .quien-nombre{ font-weight:var(--fw-bold); }
+
+  /* Fila de una empleada en la vista de la dueña: nombre, de qué se compone lo
+     que se le debe, el total y el botón para entrar. Misma grilla que .fila-dato
+     para que las dos listas de la pantalla se lean parejas. */
+  .fila-emp{
+    display:grid; grid-template-columns:minmax(0,1fr) auto auto;
+    align-items:center; gap:var(--sp-2);
+    padding:var(--sp-2) 0; border-bottom:1px solid var(--border-sutil);
+  }
+  .fila-emp b{ display:block; }
+  .fila-emp .det{ font-size:var(--fs-sm); color:var(--text-tenue); }
+  .fila-emp .plata{ font-variant-numeric:tabular-nums; white-space:nowrap;
+                    text-align:right; font-weight:var(--fw-bold); }
+  .fila-emp.abierta{ background:var(--bg-sutil); }
+  .cierre{ margin-top:var(--sp-4); padding-top:var(--sp-3);
+           border-top:1px solid var(--border-sutil);
+           display:flex; flex-wrap:wrap; gap:var(--sp-2); align-items:center; }
+  .cierre .nota{ flex:1 1 220px; }
+  .cierre .aviso{ flex:1 1 100%; font-size:var(--fs-sm); color:var(--text-tenue); }
+  /* El detalle de un cierre va metido adentro de la lista y hundido, para que se
+     vea que pertenece a la fila de arriba y no que es otra sección. */
+  .detalle-liq{ padding:0 0 var(--sp-3) var(--sp-3);
+                border-left:2px solid var(--border-sutil); margin:var(--sp-2) 0 var(--sp-3); }
+  .detalle-liq .sub-h{ margin-top:var(--sp-2); }
+  .detalle-liq .mins{ color:var(--text-tenue); font-size:var(--fs-sm); }
+  .vacio b{ display:block; color:var(--text-titulo); margin-bottom:var(--sp-1); }
+
+  .agregar{ display:flex; flex-wrap:wrap; gap:var(--sp-2); align-items:flex-end;
+            margin-top:var(--sp-3); padding-top:var(--sp-3);
+            border-top:1px solid var(--border-sutil); }
+  /* min-width:0 en cada casillero: sin eso el desplegable de ítems, que tiene
+     nombres largos, se estira por encima del rótulo del casillero de al lado y
+     se lee "CANT" pisado por el nombre del trabajo. */
+  .agregar > div{ min-width:110px; }
+  .agregar > div{ display:flex; flex-direction:column; min-width:0; }
+  .agregar label{ margin-bottom:2px; }
+  .agregar select, .agregar input{ width:100%; max-width:100%; }
+  .agregar .ancho{ flex:2 1 220px; }
+
+  @media (max-width:600px){
+    .fila-dato{ grid-template-columns:1fr auto; row-gap:6px; }
+    .fila-dato .mins{ grid-column:1; }
+    .fila-dato .plata{ grid-column:2; grid-row:2; }
+  }
+</style>
+</head><body>
+<header>
+  <span>👛 Sueldos</span>
+  <nav class="menu"></nav>
+</header>
+
+<!-- La puerta. Con el usuario empleado, la pantalla no muestra nada hasta que
+     alguien dice quién es y pone su código: en el local hay una sola tablet y un
+     solo login, así que sin esto el sueldo de una queda a la vista de la otra y
+     de cualquiera que agarre el aparato. Se pide CADA vez que se entra, y el
+     permiso no se guarda en el navegador: vive mientras la pantalla está
+     abierta. El candado de verdad está en el servidor. -->
+<div class="wrap" id="puerta" hidden>
+  <div class="card">
+    <div class="card-head">
+      <div class="titulo">
+        <h2>👛 Sueldos</h2>
+        <p id="puertaAyuda">Elegí quién sos y poné tu código.</p>
+      </div>
+    </div>
+    <div id="puertaCuerpo"></div>
+  </div>
+</div>
+
+<div class="wrap" id="todo">
+  <!-- La dueña entra a otra cosa: a ver a quién le debe cuánto y a cerrar. El
+       detalle de una es el mismo que ve la empleada, así que la tarjeta de abajo
+       la usan las dos y lo que cambia es lo que la rodea. -->
+  <div class="card" id="cardDueno" data-dueno style="display:none;">
+    <div class="card-head con-datos">
+      <div class="titulo">
+        <h2>💰 A pagar</h2>
+        <p>Lo que se debe hasta hoy. Al cerrar, esos números quedan fijos y arranca un ciclo nuevo.</p>
+      </div>
+      <div class="kpis" id="kpisDueno"></div>
+    </div>
+    <div id="listaEmpleadas"></div>
+  </div>
+
+  <div class="card" data-dueno>
+    <div class="card-head"><div class="titulo"><h2>⚙️ Cómo se calcula</h2>
+      <p>El valor de la hora y el porcentaje de comisión. Cambiarlos no toca lo ya pagado.</p></div></div>
+    <div class="agregar" style="margin-top:0; padding-top:0; border-top:none;">
+      <div><label for="cfgHora">Valor hora</label>
+        <input type="number" id="cfgHora" min="0" inputmode="numeric"></div>
+      <div><label for="cfgPct">Comisión %</label>
+        <input type="number" id="cfgPct" min="0" max="100" inputmode="numeric"></div>
+      <button class="b-ok" id="btnCfg">Guardar</button>
+    </div>
+
+    <p class="muted" style="margin:var(--sp-3) 0 0;">Los empleados se cargan en
+       <a href="/admin#empleados">Admin</a>, con el resto de las listas.</p>
+  </div>
+  <div class="card">
+    <div class="card-head con-datos">
+      <div class="titulo">
+        <h2 id="tituloDetalle">👛 Sueldos</h2>
+        <p id="bajadaDetalle">Cargá tus horas y cuánto duró cada trabajo. El total se actualiza solo.</p>
+      </div>
+      <div class="quien">
+        <label for="quien" id="rotuloQuien">Quién sos</label>
+        <select id="quien"></select>
+      </div>
+      <div class="quien-empleada" id="quienEmpleada" hidden></div>
+    </div>
+    <div class="totales" id="totales"></div>
+    <div id="cuerpo"></div>
+    <div id="cierre" data-dueno></div>
+  </div>
+
+  <!-- Lo ya pagado lo miran las dos: la dueña todos los cierres, la empleada los
+       suyos (el servidor no le contesta otra cosa). -->
+  <div class="card" id="cardLiquidaciones" style="display:none;">
+    <div class="card-head"><div class="titulo"><h2 id="tituloPagado">🧾 Ya pagado</h2>
+      <p id="bajadaPagado">Los cierres anteriores, con los números tal como estaban ese día.</p></div></div>
+    <div id="listaLiq"></div>
+  </div>
+
+</div>
+
+<div id="toast" class="toast"></div>
+<script src="/static/auth.js"></script>
+<script src="/static/js/sueldos.js"></script>
+</body></html>

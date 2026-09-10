@@ -1,0 +1,8 @@
+# Los .sh los corre Linux, aunque se suban desde Windows.
+#
+# Si git les mete finales de línea de Windows (CRLF), bash lee el retorno de
+# carro como parte del comando y falla con "$'\r': command not found", un error
+# que no dice en ningún lado que el problema son los finales de línea. Esto
+# fuerza LF sin importar cómo esté configurado el git de cada máquina.
+*.sh text eol=lf
+*.yml text eol=lf

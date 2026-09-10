@@ -1,8 +1,10 @@
-requireLogin(); pintarNav();
+requireLogin(); pintarNav(); ajustarPorRol();
 const $=s=>document.querySelector(s);
 const fmt=n=>"$"+(n||0).toLocaleString("es-AR");
 const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 let CATALOGO=[], DESCUENTOS=[], CLIENTES=[], ticket=[], NEGOCIO={};
+let EMPLEADOS=[];               // los nombres que pueden aparecer en "Atendió"
+let TIPOS_PRIVADOS=new Set();   // tipos de egreso que son privados siempre (vacío para el empleado)
 let tipo="ticket", descPct=0, descNombre=null, formaPago="efectivo";
 let totalActual=0;
 let mxDeudaActual=0;
@@ -24,8 +26,32 @@ $("#btnGuardarEgreso").onclick=async()=>{
   await authFetch("/api/egresos",{method:"POST",headers:{"Content-Type":"application/json"},
     body:JSON.stringify({tipo, concepto:$("#egConcepto").value, monto, forma_pago:$("#egPago").value})});
   $("#egTipo").value=""; $("#egConcepto").value=""; $("#egMonto").value="";
-  toast("Egreso registrado"); cargarEgresosHoy();
+  toast("Egreso registrado"); avisoEgresoPrivado(); cargarEgresosHoy();
 };
+
+/* Aviso del arqueo.
+
+   Un egreso privado en EFECTIVO le deja el arqueo mal al empleado: la plata sale
+   del cajón, pero como él no ve el egreso, la app le va a decir que tendría que
+   haber más de lo que hay. No se prohíbe —a veces el alquiler se paga con la
+   plata del cajón y listo—, pero tiene que estar dicho antes de guardarlo, no
+   descubrirse al cerrar la caja.
+
+   Que sea privado ahora sale del TIPO y de ningún otro lado, así que el aviso se
+   recalcula al tocar el tipo o la forma de pago. TIPOS_PRIVADOS llega vacío para
+   el empleado: para él este aviso no existe, como el resto del asunto. */
+function avisoEgresoPrivado(){
+  const caja = $("#egAvisoPrivado");
+  if(!caja) return;
+  const privado = TIPOS_PRIVADOS.has(($("#egTipo").value||"").trim().toLowerCase());
+  const efectivo = ($("#egPago").value || "").toLowerCase() === "efectivo";
+  caja.style.display = (privado && efectivo) ? "" : "none";
+  if(privado && efectivo)
+    caja.textContent = "Sale plata del cajón y el empleado no lo va a ver: al cerrar, "
+                     + "su arqueo le va a dar de más por este monto.";
+}
+$("#egPago").addEventListener("change", avisoEgresoPrivado);
+$("#egTipo").addEventListener("input", avisoEgresoPrivado);
 
 async function cargarEgresosHoy(){
   const es=await (await authFetch("/api/egresos/dia")).json();
@@ -43,9 +69,12 @@ async function cargarEgresosHoy(){
   es.forEach(e=>{
     const row=document.createElement("div"); row.className="eg-row";
     const detalle=[e.concepto, e.forma_pago].filter(Boolean).join(" · ");
+    // La dueña ve los suyos mezclados con los del local: sin la marca no hay
+    // forma de saber cuál de los de hoy es el que el empleado no está viendo.
+    const marca = e.privado ? '<span class="privado" title="El empleado no ve este egreso">privado</span>' : '';
     row.innerHTML=`
-      <span class="hora">${e.hora}</span>
-      <span class="que"><b>${e.tipo}</b>${detalle?' <span class="det">'+detalle+'</span>':''}</span>
+      <span class="hora">${e.numero ? "#"+e.numero+" · " : ""}${e.hora}</span>
+      <span class="que"><b>${e.tipo}</b>${marca}${detalle?' <span class="det">'+detalle+'</span>':''}</span>
       <span class="monto">−${fmt(e.monto)}</span>
       <button class="quitar" title="Anular este egreso">×</button>`;
     row.querySelector(".quitar").onclick=async()=>{
@@ -63,18 +92,113 @@ async function init(){
   NEGOCIO=cfg.negocio||{};              // encabezado del papel impreso
   CATALOGO=await (await authFetch("/api/catalogo")).json();
   CLIENTES=await (await authFetch("/api/clientes")).json();
+  await cargarEmpleados();
+  await cargarListas(cfg);
+  ponerLapices();
+  pintarRail();
+  renderCategorias(); restaurarBorrador(); pintarOtroDia(); renderTicket(); mostrarBotones();
+  cargarEgresosHoy(); avisoEgresoPrivado();
+  const cliParam=new URLSearchParams(location.search).get("cliente");
+  if(cliParam){ $("#cliente").value=cliParam; }
+}
+
+/* Quién atendió dejó de ser texto libre: es la lista de empleados.
+
+   Escrito a mano salían "Carla", "carla " y "Karla", y el sueldo de una persona
+   quedaba partido en tres nombres que el sistema no puede juntar. Y es
+   obligatorio, porque de este nombre sale la comisión: un ticket sin él es un
+   trabajo que no se le paga a nadie y que después hay que reconstruir de memoria.
+
+   Si todavía no hay nadie cargado en la lista, no frena el cobro: el local tiene
+   que poder facturar igual, y ese ticket se completa después desde el detalle
+   del comprobante. */
+async function cargarEmpleados(){
+  try{ EMPLEADOS = await (await authFetch("/api/empleados")).json(); }
+  catch(e){ EMPLEADOS = []; }
+  // Sin preselección a propósito: si viniera con una elegida, el día que atiende
+  // la otra se cobra a nombre de quien no trabajó y la comisión se la lleva la
+  // que no estaba. Un renglón más por cobro es más barato que eso.
+  $("#peluquero").innerHTML = EMPLEADOS.length
+    ? `<option value="">Elegí…</option>` + EMPLEADOS.map(e=>`<option>${e.nombre}</option>`).join("")
+    : `<option value="">(no hay empleados cargados)</option>`;
+}
+
+/* ---------- Las listas configurables ----------
+
+   Formas de pago, tipos de egreso, descuentos, ajustes por ítem y alias salen
+   de listas que se editan. Se cargan de una acá, y se vuelven a cargar cuando
+   alguien las toca desde el panel del lapicito: si cargaste un descuento nuevo
+   y el desplegable sigue mostrando los de antes, el viaje no sirvió de nada.
+
+   Se guarda y se repone lo que estaba elegido. Cambiar la lista no tiene por
+   qué cambiar el ticket que estás armando. */
+async function cargarListas(cfg){
+  if(!cfg) cfg = await (await authFetch("/api/config")).json();
+  const eraPago   = $("#egPago").value;
+  const eraCobro  = $("#cobroForma").value;
+  const eraDesc   = descNombre;
+
   $("#cobroForma").innerHTML=(cfg.formas_pago||[]).map(f=>`<option>${f}</option>`).join("");
   $("#egPago").innerHTML=(cfg.formas_pago||[]).map(f=>`<option>${f}</option>`).join("");
-  $("#egTipos").innerHTML=(cfg.tipos_egreso||[]).map(t=>`<option value="${t}">`).join("");
+  TIPOS_PRIVADOS = new Set((cfg.tipos_privados||[]).map(t=>t.toLowerCase()));
+  // El backend ya los manda con los privados primero. Acá solo se los rotula:
+  // en un datalist un tipo privado y uno común se ven exactamente igual, y
+  // elegir el equivocado significa que el egreso lo ve quien no tiene que verlo.
+  $("#egTipos").innerHTML=(cfg.tipos_egreso||[]).map(t=>
+    TIPOS_PRIVADOS.has(t.toLowerCase())
+      ? `<option value="${t}" label="${t} · privado">`
+      : `<option value="${t}">`).join("");
   $("#aliasList").innerHTML=(cfg.alias||[]).map(a=>`<option value="${a}">`).join("");
   DESCUENTOS=await (await authFetch("/api/descuentos")).json();
   $("#descuento").innerHTML='<option value="">Sin descuento</option>'+
-    DESCUENTOS.map((d,i)=>`<option value="${i}">${d.nombre} ${d.porcentaje}%</option>`).join("");
+    DESCUENTOS.map((d,i)=>`<option value="${i}">${esc(d.nombre)} ${d.porcentaje}%</option>`).join("");
   AJUSTES=await (await authFetch("/api/ajustes-item")).json();   // descuentos/recargos por línea
-  pintarRail();
-  renderCategorias(); restaurarBorrador(); pintarOtroDia(); renderTicket(); mostrarBotones(); cargarEgresosHoy();
-  const cliParam=new URLSearchParams(location.search).get("cliente");
-  if(cliParam){ $("#cliente").value=cliParam; }
+
+  // reponer lo que estaba elegido, si sigue existiendo
+  if(eraPago  && [...$("#egPago").options].some(o=>o.value===eraPago))       $("#egPago").value = eraPago;
+  if(eraCobro && [...$("#cobroForma").options].some(o=>o.value===eraCobro))  $("#cobroForma").value = eraCobro;
+  if(eraDesc){
+    const i = DESCUENTOS.findIndex(d => d.nombre === eraDesc);
+    if(i >= 0){ $("#descuento").value = String(i); descPct = DESCUENTOS[i].porcentaje; }
+    else { descPct = 0; descNombre = null; }   // lo borraron mientras tanto
+  }
+}
+
+/* El lapicito al lado de cada desplegable que sale de una lista.
+
+   Es la respuesta a algo que pasaba todos los días: estás cobrando, falta un
+   descuento o el alias de una cuenta nueva, y la única forma de cargarlo era
+   irse a Admin, buscarlo entre seis tarjetas y volver con el ticket a medio
+   hacer. Ahora se abre la lista ahí mismo.
+
+   Se ponen desde acá y no en el HTML para no repetir seis veces la misma
+   envoltura, y porque el campo tiene que quedar adentro de un contenedor
+   flexible junto al botón. */
+function ponerLapiz(selCampo, cualLista){
+  const campo = $(selCampo);
+  if(!campo || campo.parentElement.classList.contains("con-lapiz")) return;
+  const caja = document.createElement("span");
+  caja.className = "con-lapiz";
+  // El campo puede traer un flex del HTML; ahora ese flex es de la caja.
+  caja.style.flex = campo.style.flex || "";
+  campo.style.flex = "";
+  campo.parentElement.insertBefore(caja, campo);
+  caja.appendChild(campo);
+  caja.appendChild(Listas.botonEditar(cualLista, async hubo => {
+    if(!hubo) return;
+    await cargarListas();
+    renderTicket();              // el descuento puede haber cambiado el total
+    avisoEgresoPrivado();        // y un tipo puede haber pasado a privado
+  }));
+}
+
+function ponerLapices(){
+  ponerLapiz("#descuento",     "descuentos");
+  ponerLapiz("#aliasTransfer", "alias");
+  ponerLapiz("#cobroAlias",    "alias");
+  ponerLapiz("#egTipo",        "tipos");
+  ponerLapiz("#egPago",        "formas");
+  ponerLapiz("#cobroForma",    "formas");
 }
 
 // El precio de lista lleva el peso; el de descuento va de apoyo, chiquito al lado.
@@ -348,8 +472,16 @@ function renderTicket(){
         <select class="aj-sel">
           <option value="">Sin ajuste</option>
           ${AJUSTES.map(a=>`<option value="${a.id}"${coincideAj(l,a)?" selected":""}>${esc(a.nombre)} (${etiquetaAj(a)})</option>`).join("")}
-          <option value="libre"${aj && !l.ajusteNombre?" selected":""}>Otro…</option>
+          <!-- "Otro…" queda elegido para cualquier ajuste que no sea igualito a
+               uno de la lista: el tipeado a mano, y también el que salió de un
+               ajuste que después se editó o se borró. Antes solo se fijaba en si
+               tenía nombre, así que una línea con "Pelo largo −10%" a la que le
+               cambiaban el porcentaje en la lista quedaba con el desplegable en
+               "Sin ajuste" mientras el renglón seguía descontando. -->
+          <option value="libre"${aj && !AJUSTES.some(a=>coincideAj(l,a))?" selected":""}>Otro…</option>
         </select>
+        <button class="editar-lista aj-editar" type="button"
+                title="Editar la lista de ajustes por ítem" aria-label="Editar la lista de ajustes por ítem">✎</button>
         <div class="aj-unidad">
           <button class="u-pct${enPesos?"":" on"}" type="button" title="Ajuste en porcentaje">Porc. %</button>
           <button class="u-mon${enPesos?" on":""}" type="button" title="Ajuste en pesos">Pesos</button>
@@ -419,6 +551,17 @@ function renderTicket(){
       };
       row.querySelector(".u-pct").onclick = () => cambiarUnidad("%");
       row.querySelector(".u-mon").onclick = () => cambiarUnidad("$");
+
+      /* Editar la lista de ajustes desde el propio renglón. Acá ya se podía
+         tipear un ajuste suelto con "Otro…", así que esto es para el otro caso:
+         el que vas a volver a usar y querés dejar cargado. Lo que la línea ya
+         tiene no se toca —el ajuste está aplicado y su nombre quedó copiado en
+         ella—; lo que se refresca es el desplegable. */
+      row.querySelector(".aj-editar").onclick = () => Listas.abrir("ajustes", async hubo => {
+        if(!hubo) return;
+        await cargarListas();
+        renderTicket();
+      });
 
       inp.oninput = () => {
         let v = parseInt(inp.value);
@@ -549,7 +692,7 @@ function guardarBorrador(){
     notaCliente: $("#notaCliente").textContent,
     peluquero: $("#peluquero").value,
     descPct, descNombre,
-    fechaServicio: $("#fechaServicio").value,
+    fechaServicio: hayOtroDia() ? $("#fechaServicio").value : "",
     descuentoSel: $("#descuento").value,   // el índice elegido en el select de descuento
     formaPago,
     extras: EXTRAS
@@ -574,7 +717,7 @@ function restaurarBorrador(){
     $("#peluquero").value = d.peluquero || "";
     descPct = d.descPct || 0;
     descNombre = d.descNombre || null;
-    $("#fechaServicio").value = d.fechaServicio || "";
+    if(hayOtroDia()) $("#fechaServicio").value = d.fechaServicio || "";
     $("#descuento").value = d.descuentoSel || "";
     EXTRAS = Array.isArray(d.extras) ? d.extras : [];
     renderExtras();
@@ -681,14 +824,22 @@ function fechaHoyLocal(){
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
 }
 
+/* Para el empleado el bloque entero no está en la pantalla (ajustarPorRol lo
+   borró), así que todo lo de acá abajo tiene que aguantar que el campo no
+   exista. Sin fecha elegida el comprobante sale con la de hoy, que es
+   exactamente lo que tiene que pasar. */
+const hayOtroDia = () => !!$("#fechaServicio");
+
 // La fecha elegida, o null si es hoy (que es lo mismo que no mandar nada).
 function fechaElegida(){
+  if(!hayOtroDia()) return null;
   const v = $("#fechaServicio").value;
   return (v && v !== fechaHoyLocal()) ? v : null;
 }
 const esDeOtroDia = () => fechaElegida() !== null;
 
 function pintarOtroDia(){
+  if(!hayOtroDia()){ actualizarAcciones(); return; }
   const f = fechaElegida();
   $("#otroDiaBox").classList.toggle("activo", !!f);
   const nota = $("#notaOtroDia");
@@ -702,8 +853,10 @@ function pintarOtroDia(){
   actualizarAcciones();
 }
 
-$("#fechaServicio").onchange = () => { pintarOtroDia(); guardarBorrador(); };
-$("#btnHoy").onclick = () => { $("#fechaServicio").value = fechaHoyLocal(); pintarOtroDia(); guardarBorrador(); };
+if(hayOtroDia()){
+  $("#fechaServicio").onchange = () => { pintarOtroDia(); guardarBorrador(); };
+  $("#btnHoy").onclick = () => { $("#fechaServicio").value = fechaHoyLocal(); pintarOtroDia(); guardarBorrador(); };
+}
 
 /* ---- Impresión ----
 
@@ -733,6 +886,13 @@ async function imprimirComprobante(id){
 async function crearComprobante(){
   const nom=$("#cliente").value.trim();
   if(!nom){ toast("Falta el nombre del cliente"); $("#cliente").focus(); return null; }
+  // Obligatorio en el ticket y no en el presupuesto: el presupuesto es un precio
+  // que se pasa, no trabajo hecho, así que no hay comisión que atribuirle. Si
+  // después se convierte en ticket, se completa desde el detalle del
+  // comprobante, que es donde está el "Atendió" editable.
+  if(tipo === "ticket" && EMPLEADOS.length && !$("#peluquero").value){
+    toast("Elegí quién atendió"); $("#peluquero").focus(); return null;
+  }
  let cliId = clienteIdSel;                     // lo que elegiste del dropdown (o null)
 
   // Si no elegiste del dropdown, resolvemos por nombre: match exacto, o crear con confirmación.
@@ -756,7 +916,7 @@ async function crearComprobante(){
     tipo,
     cliente_id: cliId,
     cliente_nombre: null,
-    peluquero: $("#peluquero").value.trim() || null,
+    peluquero: $("#peluquero").value || null,
     forma_pago: formaPago,
     descuento_pct: descPct,
     descuento_nombre: descNombre,
@@ -893,7 +1053,9 @@ function limpiar(){
   // La fecha vuelve a hoy sí o sí. Si quedara pegada, el servicio siguiente se
   // cargaría sin querer en el día viejo y a nadie se le ocurriría mirar ahí.
   ticket=[]; $("#cliente").value=""; clienteIdSel=null; $("#peluquero").value="";
-  $("#fechaServicio").value=""; compEsDeOtroDia=false; $("#otroDiaBox").open=false; pintarOtroDia();
+  compEsDeOtroDia=false;
+  if(hayOtroDia()){ $("#fechaServicio").value=""; $("#otroDiaBox").open=false; }
+  pintarOtroDia();
   $("#descuento").value=""; descPct=0; descNombre=null;
   $("#aliasTransfer").value="";
   EXTRAS=[]; renderExtras(); $("#extrasBox").open=false;
