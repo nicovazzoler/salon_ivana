@@ -589,3 +589,115 @@ body.con-panel{ overflow:hidden; }
 .quien-atendio .quien{ font-weight:var(--fw-bold); }
 .quien-atendio select{ width:auto; min-width:140px; }
 .quien-atendio button{ padding:4px 10px; font-size:var(--fs-sm); }
+
+/* ===== Catálogo: rail de categorías + grilla de ítems =====
+   Lo usan dos pantallas: Facturar, donde tocar un ítem lo agrega al ticket, y el
+   catálogo de Admin, donde tocarlo lo abre para editar. Es el mismo mueble y
+   tiene que verse igual en las dos; si cada una tuviera su copia, un día se
+   arregla el alto de la tarjeta en una y en la otra queda como estaba.
+
+   Pensado para tablet: el dedo necesita blanco alrededor, así que las tarjetas
+   son altas y con poco borde. El rail no envuelve nunca en apaisada; en angosto
+   se convierte en una franja que se desliza de costado. */
+.catalogo-cuerpo{
+  display:grid;
+  grid-template-columns:150px minmax(0,1fr);
+  gap:var(--sp-3);
+  margin-top:var(--sp-3);
+}
+.catalogo-items{ min-width:0; }
+
+.cat-rail{
+  display:flex; flex-direction:column; gap:4px;
+  max-height:560px; overflow-y:auto;
+  padding-right:4px;
+}
+.cat-pill{
+  display:flex; align-items:center; gap:6px;
+  min-height:44px;                    /* objetivo táctil cómodo */
+  padding:8px 12px;
+  background:transparent;
+  border:1px solid transparent;
+  border-radius:var(--r-md);
+  font-size:var(--fs-base);
+  font-weight:var(--fw-medium);
+  color:var(--text-suave);
+  text-align:left;
+  cursor:pointer;
+  /* Siempre en mayúscula. Además empareja los datos: casi todas las categorías
+     están cargadas en mayúscula pero alguna quedó como "Productos". */
+  text-transform:uppercase;
+  letter-spacing:.03em;               /* la versalita necesita aire para respirar */
+}
+.cat-pill:hover{ background:var(--bg-sutil); color:var(--text); }
+.cat-pill.on{
+  background:var(--bronce-400);
+  border-color:var(--bronce-500);
+  color:var(--text-sobre-oro);
+  font-weight:var(--fw-bold);
+}
+.cat-pill.on .cuenta{ color:var(--text-sobre-oro); opacity:.65; }
+.cat-pill .cuenta{
+  margin-left:auto;
+  font-size:var(--fs-xs); font-weight:var(--fw-normal);
+  color:var(--text-tenue);
+}
+
+/* --- grilla del catálogo --- */
+.grid-items{
+  display:grid;
+  grid-template-columns:repeat(auto-fill, minmax(152px, 1fr));
+  gap:var(--sp-2);
+}
+.btn-item{
+  display:flex; flex-direction:column; align-items:stretch; gap:6px;
+  min-height:72px;                    /* que el dedo no falle */
+  padding:11px 13px;
+  background:var(--blanco-a04);
+  border:1px solid var(--border-sutil);
+  border-radius:var(--r-lg);
+  color:var(--text);
+  text-align:left;
+  cursor:pointer;
+}
+.btn-item:hover{ background:var(--bg-sutil); border-color:var(--border); }
+.btn-item:active{ border-color:var(--acento); background:var(--acento-bg); }
+.btn-item .n{
+  font-size:var(--fs-md);
+  font-weight:var(--fw-medium);
+  line-height:1.3;
+  overflow-wrap:anywhere;             /* corta nombres largos en vez de desbordar */
+  color:var(--text-titulo);           /* tinta firme: el nombre es lo que se busca */
+  text-transform:uppercase;
+  letter-spacing:.02em;
+}
+/* Precios: el de lista lleva el peso, el otro queda de apoyo.
+   Antes los dos iban en dorado y negrita y competían entre sí. */
+.btn-item .precios{
+  display:flex; align-items:baseline; gap:6px;
+  margin-top:auto;                    /* pegado abajo: las tarjetas quedan parejas */
+}
+/* El precio en bronce: al facturar rápido el ojo va derecho al número. */
+.btn-item .p-tr{ font-size:var(--fs-lg); font-weight:var(--fw-bold); color:var(--text-marca); }
+.btn-item .p-ef{ font-size:var(--fs-xs); color:var(--text-tenue); }
+.btn-item .cat-mini{ font-size:var(--fs-xs); color:var(--text-tenue); }
+
+/* Tablet en vertical y celular: el rail se acuesta y se desliza de costado,
+   así deja de comerse 5 renglones antes del primer ítem. */
+@media (max-width:900px){
+  .catalogo-cuerpo{ grid-template-columns:minmax(0,1fr); }
+  .cat-rail{
+    flex-direction:row; flex-wrap:nowrap;
+    max-height:none; overflow-x:auto; overflow-y:hidden;
+    padding-bottom:4px;
+    scrollbar-width:thin;
+  }
+  .cat-pill{
+    flex:0 0 auto;
+    border-radius:var(--r-full);
+    border-color:var(--border-sutil);
+    white-space:nowrap;
+  }
+  .cat-pill .cuenta{ margin-left:4px; }
+}
+

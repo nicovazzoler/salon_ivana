@@ -56,6 +56,9 @@ function filtrarItems(){
   const soloCom=$("#soloComision").classList.contains("on");
   const cuenta=$("#cuentaComision");
   if(!q && !soloCom){ cuenta.textContent=""; cargarItems(); return; }
+  // Con el buscador o el filtro prendidos se sale de la categoría y se mira el
+  // catálogo entero: buscar dentro de una sola es justo lo que no sirve cuando
+  // no te acordás en cuál lo pusiste.
   let f=ITEMS_ALL;
   if(soloCom) f=f.filter(i=>i.es_comision);
   if(q) f=f.filter(i=>i.nombre.toLowerCase().includes(q));
@@ -70,52 +73,79 @@ async function cargarItems(){
   renderItems(items, false);
 }
 
-/* El catálogo se dibuja para LEER: nombre, precio y las marcas. Los casilleros
-   aparecen cuando se toca Editar, y de a uno por vez.
+/* El catálogo se dibuja igual que en facturar: el rail de categorías al costado
+   y los ítems en tarjetas. Es la misma lista y se busca de la misma manera, así
+   que se ve igual; lo único que cambia es qué pasa al tocar uno —allá se agrega
+   al ticket, acá se abre para editar—.
 
-   Antes cada renglón tenía el nombre y el precio en campos habilitados, con
-   Guardar y Eliminar al lado. Con veinte ítems eran cuarenta campos abiertos en
-   una pantalla a la que casi siempre se entra a mirar un precio, y el que se
-   quería tocar había que encontrarlo entre los otros treinta y nueve. Peor: un
-   campo abierto invita a escribir, y un precio cambiado sin querer se cobra. */
+   Para LEER y no para editar: la tarjeta no tiene ni un casillero abierto. Antes
+   cada renglón tenía el nombre y el precio habilitados, con Guardar y Eliminar
+   al lado: cuarenta campos abiertos en una pantalla a la que casi siempre se
+   entra a mirar un precio. Y un campo abierto invita a escribir, que en un
+   precio se cobra. */
 function renderItems(items, mostrarCat){
   const cont=$("#listaItems");
   cerrarPaneles();
-  if(items.length===0){cont.innerHTML='<p class="muted">Sin ítems para mostrar.</p>';return;}
+  pintarRail();
+  if(modoEdicion){ cont.className=""; cont.innerHTML=""; renderItemsEditables(items, mostrarCat); return; }
+  cont.className="grid-items";
+  if(items.length===0){ cont.className=""; cont.innerHTML='<p class="muted">Sin ítems para mostrar.</p>'; return; }
   cont.innerHTML="";
-  if(modoEdicion){ renderItemsEditables(items, mostrarCat); return; }
   items.forEach(it=>{
-    const fila=document.createElement("div"); fila.className="item-fila";
+    const b=document.createElement("button");
+    b.type="button"; b.className="btn-item";
+    const marcas=[];
+    if(mostrarCat) marcas.push(`<span class="cat-mini">${esc(it.categoria)}</span>`);
+    if(it.es_producto) marcas.push(`<span class="tag">prod</span>`);
+    if(it.es_comision) marcas.push(`<span class="tag">comisión</span>`);
+    b.innerHTML = `<span class="n">${esc(it.nombre)}</span>
+      <span class="precios">
+        <span class="p-tr">${fmt(it.precio)}</span>
+        <span class="p-ef">transf ${fmt(it.precio_transfer||0)}</span>
+      </span>
+      ${marcas.length ? `<span class="marcas-item">${marcas.join("")}</span>` : ""}`;
+    cont.appendChild(b);
 
-    const nom=document.createElement("span"); nom.className="n";
-    nom.textContent=it.nombre;                 // textContent y no innerHTML: el
-                                               // nombre lo escribe una persona
-    const meta=document.createElement("span"); meta.className="meta";
-    const partes=[fmt(it.precio), `transf ${fmt(it.precio_transfer||0)}`];
-    if(mostrarCat) partes.push(it.categoria);
-    if(it.es_producto) partes.push("producto");
-    if(it.es_comision) partes.push("comisión");
-    meta.textContent = partes.join(" · ");
-
-    const quien=document.createElement("span"); quien.className="quien";
-    quien.append(nom, meta);
-
-    const acc=document.createElement("span"); acc.className="acc";
-    const bEd=Object.assign(document.createElement("button"),
-                            {className:"b-out", textContent:"Editar"});
-    acc.appendChild(bEd);
-    fila.append(quien, acc);
-    cont.appendChild(fila);
-
-    // Un solo panel abierto por vez en toda la pantalla: dos formularios
-    // abiertos a la vez son otra vez el problema que se quería sacar.
-    bEd.onclick=()=>{
-      const yaEstaba = fila.nextElementSibling?.classList.contains("panel-edicion");
+    // Un solo panel abierto por vez, y debajo de la grilla entera: metido
+    // adentro de una tarjeta rompería la grilla, y al lado dejaría la mitad de
+    // los campos fuera de la pantalla en la tablet.
+    b.onclick=()=>{
+      const abierto = $("#catalogo .panel-edicion");
+      const mismo = abierto && abierto.dataset.item === String(it.id);
       cerrarPaneles();
-      if(yaEstaba) return;                     // el mismo botón cierra lo que abrió
-      fila.after(panelItem(it));
+      if(mismo) return;                        // el mismo ítem cierra lo que abrió
+      const pan = panelItem(it);
+      pan.dataset.item = it.id;
+      cont.after(pan);
+      b.classList.add("abierto");
     };
   });
+}
+
+/* El rail de categorías. "Todas" primero, y cada una con cuántos ítems tiene:
+   sirve para encontrar la que quedó con dos y darse cuenta de que sobra. */
+function pintarRail(){
+  const rail=$("#catRail");
+  if(!rail) return;
+  const cuentas=new Map();
+  ITEMS_ALL.forEach(i=>cuentas.set(i.categoria,(cuentas.get(i.categoria)||0)+1));
+  const buscando = $("#buscarItem").value.trim() || $("#soloComision").classList.contains("on");
+  rail.innerHTML="";
+  const agregar=(nombre, etiqueta, cuenta, activa)=>{
+    const b=document.createElement("button");
+    b.type="button"; b.className="cat-pill" + (activa ? " on" : "");
+    b.innerHTML=`<span class="nom">${esc(etiqueta)}</span><span class="cuenta">${cuenta}</span>`;
+    b.onclick=()=>{
+      $("#buscarItem").value="";
+      $("#soloComision").classList.remove("on");
+      if(nombre) { catActual = nombre; $("#selCat").value = nombre; }
+      filtrarItems();
+    };
+    rail.appendChild(b);
+  };
+  agregar(null, "Todas", ITEMS_ALL.length, buscando);
+  [...cuentas.keys()].sort().forEach(c =>
+    agregar(c, c, cuentas.get(c), !buscando && c === catActual));
 }
 
 /* La lista entera abierta: nombre, precio y comisión de cada ítem.
@@ -242,7 +272,8 @@ function panelItem(it){
   pan.innerHTML=`
     <div class="campo"><label>Nombre</label><input class="f-nombre" type="text"></div>
     <div class="campo chico"><label>Precio efectivo</label><input class="f-precio" type="number" min="0"></div>
-    <div class="campo chico"><label>Categoría</label><input class="f-cat" list="cats"></div>
+    <div class="campo chico"><label>Categoría</label><input class="f-cat" list="cats"
+      title="Escribí una que no exista para crearla"></div>
     <div class="marcas">
       <label><input type="checkbox" class="f-prod"> Es producto (descuenta stock)</label>
       <label><input type="checkbox" class="f-com"> Va a comisión</label>
@@ -302,7 +333,8 @@ $("#btnNuevoItem").onclick=()=>{
   pan.innerHTML=`
     <div class="campo"><label>Nombre</label><input class="f-nombre" placeholder="Ej: Corte nuevo"></div>
     <div class="campo chico"><label>Precio efectivo</label><input class="f-precio" type="number" min="0" placeholder="0"></div>
-    <div class="campo chico"><label>Categoría</label><input class="f-cat" list="cats" placeholder="existente o nueva"></div>
+    <div class="campo chico"><label>Categoría</label><input class="f-cat" list="cats" placeholder="existente o nueva"
+      title="Escribí una que no exista para crearla"></div>
     <div class="marcas">
       <label><input type="checkbox" class="f-prod"> Es producto (descuenta stock)</label>
       <label><input type="checkbox" class="f-com"> Va a comisión</label>
@@ -310,7 +342,10 @@ $("#btnNuevoItem").onclick=()=>{
     <span class="acc">
       <button class="b-ok guardar">Agregar</button>
       <button class="b-out cancelar">Cancelar</button>
-    </span>`;
+    </span>
+    <p class="muted" style="flex:1 1 100%;margin:0;">La categoría se elige de la lista
+      o se escribe una nueva: no hay que crearla antes, nace con el primer ítem que
+      la use (y desaparece sola cuando se queda sin ninguno).</p>`;
   const $$=s=>pan.querySelector(s);
   $$(".f-cat").value=catActual||"";            // la que se está mirando, que es
                                                // casi siempre donde va el nuevo
@@ -494,7 +529,10 @@ function dibujarCrearUsuario(us){
   cont.appendChild(caja);
 }
 
-$("#btnMiPass").onclick=async()=>{
+// La tarjeta de "mi contraseña" es solo del empleado: para la dueña, cambiar la
+// suya es lo mismo que hacerlo desde Usuarios, donde además cambia las de todos.
+// Con el empleado la tarjeta está y esto se cablea; con la dueña no está.
+if($("#btnMiPass")) $("#btnMiPass").onclick=async()=>{
   const p=$("#miPass").value;if(!p){toast("Escribí la nueva contraseña");return;}
   await authFetch("/api/usuarios/password",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify({nueva:p})});
   $("#miPass").value="";toast("Contraseña cambiada");
@@ -546,10 +584,15 @@ const ASOMO = 18;
 function acotar(cont){
   cont.classList.remove("lista-scroll", "al-fin");
   cont.style.maxHeight = "";
-  const filas = [...cont.children];
-  if(filas.length <= TOPE_FILAS) return;
-  const cinco = filas[TOPE_FILAS].offsetTop - filas[0].offsetTop;
-  cont.style.maxHeight = (cinco + ASOMO) + "px";
+  const hijos = [...cont.children];
+  if(!hijos.length) return;
+  /* Se cuentan RENGLONES, no elementos. En una lista es lo mismo —un hijo por
+     renglón—, pero el catálogo ahora es una grilla de tarjetas de a cinco: ahí
+     contar elementos cortaba en el segundo renglón y dejaba una franja de 123px
+     con ocho tarjetas adentro. */
+  const renglones = [...new Set(hijos.map(h => h.offsetTop))].sort((a,b) => a - b);
+  if(renglones.length <= TOPE_FILAS) return;
+  cont.style.maxHeight = (renglones[TOPE_FILAS] - renglones[0] + ASOMO) + "px";
   cont.classList.add("lista-scroll");
   marcarFin(cont);
 }
