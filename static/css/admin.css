@@ -155,6 +155,14 @@
   .barra-sel .cuantos{ font-weight:var(--fw-bold); white-space:nowrap; }
   .barra-sel .rot{ color:var(--text-tenue); margin:0; }
   .barra-sel .pct-todos{ width:64px; text-align:right; padding:4px 6px; }
+  .barra-sel .cat-todos{ width:150px; padding:4px 6px; }
+  /* Un corte entre las dos cosas que se hacen de a varios: poner porcentaje y
+     mover de categoría. Sin él se leían como un solo formulario y "Mover"
+     parecía que iba a mover al porcentaje que estaba escrito al lado. */
+  .barra-sel .corte{ width:1px; align-self:stretch; background:var(--border-sutil); margin:0 var(--sp-1); }
+  @media (max-width:640px){ .barra-sel .corte{ display:none; } }
+  /* La categoría a la que se movió un ítem, todavía sin guardar. */
+  .item-row .tag.movido{ background:var(--acento-bg); color:var(--acento); font-weight:var(--fw-bold); }
   .barra-sel button[disabled]{ opacity:.45; cursor:default; }
   /* Con algo elegido la barra se marca: los botones de al lado dejan de ser
      decoración y pasan a poder cambiarle el porcentaje a varios ítems de una. */

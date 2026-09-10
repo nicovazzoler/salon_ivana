@@ -2857,8 +2857,14 @@ def _movimientos(db, ini, fin):
     for e in egresos:
         det = (e.tipo or "")
         if e.concepto: det += f" — {e.concepto}"
+        # El egreso tiene su propio correlativo y hasta acá no llegaba: el registro
+        # mostraba la columna vacía y no había forma de atar un renglón del reporte
+        # con el egreso de la caja. Va con "#" y no con "N-": el "N-" es el
+        # prefijo de los tickets y en una tabla que mezcla los dos se leía como si
+        # el egreso fuera un comprobante de venta. Es el mismo "#47" de la caja.
         movs.append({"fecha": e.fecha, "clase": "egreso",
-                     "comprobante": "", "cliente": "", "detalle": det,
+                     "comprobante": f"#{e.numero}" if e.numero else "",
+                     "cliente": "", "detalle": det,
                      "forma_pago": e.forma_pago or "", "monto": e.monto or 0})
     movs.sort(key=lambda m: m["fecha"], reverse=True)
     return movs

@@ -11,7 +11,14 @@ const DUENO = esDueno();
 const $=s=>document.querySelector(s);
 const fmt=n=>"$"+(n||0).toLocaleString("es-AR");
 const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
-let catActual=null;
+/* La categoría que se está mirando, con tres estados y no dos:
+   - un nombre  → esa categoría, que es lo que se le pide al servidor;
+   - null       → "Todas", que es una VISTA y no una categoría;
+   - undefined  → todavía no se eligió nada (la primera carga elige la primera).
+   El "Todas" no se podía representar y por eso el botón no hacía nada: caía en
+   `cargarItems()`, que pedía los ítems de la categoría en la que estabas parado
+   y volvía a dibujar exactamente lo mismo. */
+let catActual;
 /* La categoría elegida MIENTRAS hay un filtro puesto, que no es lo mismo que
    `catActual`. Sin filtro, la categoría ES la vista: se le piden al servidor los
    ítems de esa y nada más. Con el filtro de comisión prendido la vista es el
@@ -55,7 +62,9 @@ async function cargarCats(){
   // devolvía la lista a la primera categoría del abecedario y había que volver a
   // buscar dónde estabas para tocar el ítem de al lado.
   if(catActual && cats.includes(catActual)) $("#selCat").value=catActual;
-  catActual=$("#selCat").value;
+  // Solo en la primera carga se adopta la primera del abecedario. Después manda
+  // lo que eligió el usuario, "Todas" incluido, que es null y no hay que pisar.
+  if(catActual === undefined) catActual=$("#selCat").value;
   ITEMS_ALL=await (await authFetch("/api/items/all")).json();
   filtrarItems();
 }
@@ -105,6 +114,10 @@ function filtrarItems(){
 }
 
 async function cargarItems(){
+  /* "Todas" no se le pide al servidor: ya está todo en ITEMS_ALL, que se trae
+     entero al cargar la pantalla. Pedirlo sería un viaje al pedo, y además no
+     hay nada que pedir —no existe la categoría "todas"—. */
+  if(catActual == null){ renderItems(ITEMS_ALL, true); return; }
   const items=await (await authFetch("/api/items?categoria="+encodeURIComponent(catActual))).json();
   renderItems(items, false);
 }
@@ -185,13 +198,14 @@ function pintarRail(){
       if(soloCom){ catFiltro = nombre; }
       else {
         catFiltro = null;
-        if(nombre) { catActual = nombre; $("#selCat").value = nombre; }
+        catActual = nombre;                       // null = Todas, y es un estado
+        if(nombre) $("#selCat").value = nombre;
       }
       filtrarItems();
     };
     rail.appendChild(b);
   };
-  agregar(null, "Todas", base.length, buscando && !catFiltro);
+  agregar(null, "Todas", base.length, buscando ? !catFiltro : catActual == null);
   [...cuentas.keys()].sort().forEach(c =>
     agregar(c, c, cuentas.get(c), buscando ? c === catFiltro : c === catActual));
 }
@@ -209,20 +223,26 @@ function pintarRail(){
 function renderItemsEditables(items, mostrarCat){
   const cont=$("#listaItems");
   if(items.length===0){ cont.innerHTML='<p class="muted">Sin ítems para mostrar.</p>'; return; }
-  /* Elegir de a varios aparece solo con el filtro de comisión puesto. En la
-     lista común no serviría de nada —lo único que se pone en tanda es el
-     porcentaje— y una columna de casilleros que no hacen nada se toca igual. */
-  const eligiendo = $("#soloComision").classList.contains("on") && items.length > 1;
+  /* Elegir de a varios está en todo el modo edición: en tanda se ponen dos cosas
+     —el porcentaje y la categoría— y mover de categoría hace falta justamente
+     cuando estás mirando una sola y ves los tres que no van ahí. */
+  const eligiendo = items.length > 1;
   if(eligiendo) cont.appendChild(barraSeleccion());
   items.forEach(it=>{
     const row=document.createElement("div");
     row.className = "item-row" + (eligiendo ? " con-sel" : "");
-    const cat = mostrarCat ? `<span class="tag neutro">${esc(it.categoria)}</span>` : "";
     // Si este ítem ya venía tocado desde otra categoría, se muestra como quedó y
     // no como está en la base: el cambio sigue pendiente hasta que se guarde.
     const pend = CAMBIOS.get(it.id);
     const v = pend || {nombre:it.nombre, precio:it.precio, es_comision:!!it.es_comision,
-                       comision_pct:it.comision_pct};
+                       comision_pct:it.comision_pct, categoria:it.categoria};
+    /* El chip de categoría aparece siempre que la fila esté MOVIDA, aunque se
+       esté mirando una sola categoría: sin eso, mover un ítem afuera lo dejaba
+       en la lista sin ninguna señal de que ya no pertenece ahí. */
+    const movida = (v.categoria || it.categoria) !== it.categoria;
+    const cat = (mostrarCat || movida)
+      ? `<span class="tag ${movida?"movido":"neutro"}">${movida?"→ ":""}${esc(v.categoria || it.categoria)}</span>`
+      : "";
     /* El porcentaje se edita acá adentro, al lado de la marca de comisión. Es la
        razón principal para entrar a este modo: prendés el filtro de comisión,
        entrás a editar y quedan todos los porcentajes del catálogo uno abajo del
@@ -249,13 +269,17 @@ function renderItemsEditables(items, mostrarCat){
       // "" = sin porcentaje propio. Se guarda como null y el ítem usa el general.
       return t === "" ? null : Math.max(0, Math.min(100, parseInt(t,10) || 0));
     };
+    // La categoría no tiene casillero en la fila: se cambia desde la barra de
+    // arriba, para varios de una. La fila la lleva puesta para saber si se movió.
+    let catFila = v.categoria || it.categoria;
     const leer=()=>({nombre:row.querySelector(".n").value.trim(),
                      precio:parseInt(row.querySelector(".p").value,10),
                      es_comision:row.querySelector(".com").checked,
-                     comision_pct:leerPct()});
+                     comision_pct:leerPct(), categoria:catFila});
     const original=JSON.stringify({nombre:it.nombre, precio:it.precio,
                                    es_comision:!!it.es_comision,
-                                   comision_pct:it.comision_pct ?? null});
+                                   comision_pct:it.comision_pct ?? null,
+                                   categoria:it.categoria});
     const marcar=()=>{
       const ahora=leer();
       const sucia = JSON.stringify(ahora)!==original;
@@ -264,7 +288,12 @@ function renderItemsEditables(items, mostrarCat){
          lo tipeado: había que acordarse de guardar antes de moverse, o se perdía
          sin aviso. Así se pueden recorrer todas las categorías y guardar una vez
          al final. */
-      if(sucia) CAMBIOS.set(it.id, {...ahora, categoria:it.categoria, nombreViejo:it.nombre});
+      /* `catOriginal` es de DÓNDE salió la fila, no a dónde va: sirve para contar
+         cuántas categorías se tocaron. Antes se guardaba como `categoria` y le
+         pisaba a la de `ahora`, así que mover un ítem se veía en pantalla —el
+         chip, la fila marcada, la cuenta— pero al guardar se mandaba la
+         categoría vieja y no se movía nada. */
+      if(sucia) CAMBIOS.set(it.id, {...ahora, catOriginal:it.categoria, nombreViejo:it.nombre});
       else CAMBIOS.delete(it.id);
       row.classList.toggle("sucia", sucia);
       // El de transferencia lo calcula el servidor al guardar. Mientras el
@@ -284,6 +313,17 @@ function renderItemsEditables(items, mostrarCat){
     });
     // El de elegir no es un dato del ítem: no lo ensucia, solo refresca la barra.
     if(eligiendo) row.querySelector(".sel").addEventListener("change", pintarSeleccion);
+    // La barra mueve de categoría llamando acá: la fila sigue siendo la única que
+    // sabe leerse y marcarse, así no hay dos lugares que escriban en CAMBIOS.
+    row.mover = (destino) => {
+      catFila = destino;
+      row.querySelector(".meta .tag")?.remove();
+      const chip = document.createElement("span");
+      chip.className = "tag" + (destino !== it.categoria ? " movido" : " neutro");
+      chip.textContent = (destino !== it.categoria ? "→ " : "") + destino;
+      row.querySelector(".transf").after(chip);
+      marcar();
+    };
     if(pend) row.classList.add("sucia");
     cont.appendChild(row);
   });
@@ -330,7 +370,11 @@ function barraSeleccion(){
     <input type="number" class="pct-todos" min="0" max="100" inputmode="numeric"
            placeholder="%" aria-label="Porcentaje para los elegidos">
     <button type="button" class="b-tinta poner" disabled>Aplicar</button>
-    <button type="button" class="b-out general" disabled>Que usen el general</button>`;
+    <button type="button" class="b-out general" disabled>Que usen el general</button>
+    <span class="corte"></span>
+    <label class="rot">Mover a</label>
+    <input class="cat-todos" list="cats" placeholder="categoría" aria-label="Categoría destino">
+    <button type="button" class="b-tinta mover" disabled>Mover</button>`;
 
   const filas = () => [...$("#listaItems").querySelectorAll(".item-row")];
   const marcar = (v) => { filas().forEach(r=>{ r.querySelector(".sel").checked=v; }); pintarSeleccion(); };
@@ -367,6 +411,22 @@ function barraSeleccion(){
     aplicar(String(n));
   };
   barra.querySelector(".general").onclick = () => aplicar("");
+
+  /* Mover de categoría, que es la otra cosa que se hace de a varios: entrás a
+     una categoría, ves los tres que no van ahí y los mandás juntos. Tampoco
+     guarda solo —queda como cambio pendiente, con el chip diciendo a dónde van—
+     porque mover veinte ítems sin poder mirarlos antes es de las cosas que se
+     arreglan de a una. */
+  barra.querySelector(".mover").onclick = () => {
+    const destino = barra.querySelector(".cat-todos").value.trim();
+    if(!destino){ toast("Escribí o elegí la categoría destino"); barra.querySelector(".cat-todos").focus(); return; }
+    const elegidas = filas().filter(r => r.querySelector(".sel").checked);
+    elegidas.forEach(r => r.mover(destino));
+    toast(`${elegidas.length} ${elegidas.length===1?"ítem":"ítems"} a "${destino}" · falta guardar`);
+  };
+  barra.querySelector(".cat-todos").addEventListener("keydown", e=>{
+    if(e.key === "Enter") barra.querySelector(".mover").click();
+  });
   barra.querySelector(".pct-todos").addEventListener("keydown", e=>{
     if(e.key === "Enter") barra.querySelector(".poner").click();
   });
@@ -384,7 +444,7 @@ function pintarSeleccion(){
   barra.querySelector(".cuantos").textContent =
     n === 0 ? "Ninguno elegido" : `${n} de ${filas.length} elegido${n===1?"":"s"}`;
   barra.classList.toggle("hay", n > 0);
-  ["poner","general","ninguno"].forEach(c => barra.querySelector("."+c).disabled = n === 0);
+  ["poner","general","ninguno","mover"].forEach(c => barra.querySelector("."+c).disabled = n === 0);
   barra.querySelector(".todos").disabled = n === filas.length;
 }
 
@@ -396,7 +456,7 @@ function pintarBarra(){
   const btn=$("#btnGuardarTodos"), nota=btn && btn.nextElementSibling;
   if(!btn) return;
   const n = CAMBIOS.size;
-  const cats = new Set([...CAMBIOS.values()].map(c=>c.categoria)).size;
+  const cats = new Set([...CAMBIOS.values()].map(c=>c.catOriginal)).size;
   btn.style.display = n ? "" : "none";
   btn.textContent = `Guardar ${n} ${n===1?"cambio":"cambios"}`;
   nota.textContent = n
@@ -416,6 +476,7 @@ async function guardarTodos(){
       headers:{"Content-Type":"application/json"},
       // -1 es "sacale el propio y que use el general"; null sería "no lo toques".
       body: JSON.stringify({nombre:v.nombre, precio:v.precio, es_comision:v.es_comision,
+                            categoria: v.categoria,
                             comision_pct: v.comision_pct == null ? -1 : v.comision_pct})});
     if(r.ok) CAMBIOS.delete(id); else malos.push(v.nombreViejo);
   }
@@ -593,10 +654,16 @@ function cerrarPaneles(){
 }
 
 $("#btnRenombrar").onclick=async()=>{
-  const nuevo=prompt(`Renombrar la categoría "${catActual}" a:`,catActual);
-  if(!nuevo||nuevo.trim()===catActual)return;
+  // Renombrar necesita UNA categoría. Con "Todas" o con un filtro puesto no hay
+  // ninguna elegida, y antes esto abría un prompt que decía "undefined".
+  const cat = catFiltro || catActual;
+  if(!cat){ toast("Elegí una categoría para renombrarla"); return; }
+  const nuevo=prompt(`Renombrar la categoría "${cat}" a:`,cat);
+  if(!nuevo||nuevo.trim()===cat)return;
   await authFetch("/api/categorias",{method:"PUT",headers:{"Content-Type":"application/json"},
-    body:JSON.stringify({viejo:catActual,nuevo:nuevo.trim()})});
+    body:JSON.stringify({viejo:cat,nuevo:nuevo.trim()})});
+  if(catActual === cat) catActual = nuevo.trim();
+  if(catFiltro === cat) catFiltro = nuevo.trim();
   toast("Categoría renombrada");await cargarCats();
 };
 
