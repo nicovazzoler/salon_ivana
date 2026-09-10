@@ -104,6 +104,19 @@
   }
   .dia-acciones{ margin-top:var(--sp-2); }
 
+  /* La puerta de "un trabajo de hoy": siempre visible al final, tenga o no
+     ciclos arriba. Con borde punteado para que se lea como un lugar donde
+     agregar y no como un renglón más de lo que ya se debe. */
+  .hoy-suelto{
+    display:flex; flex-wrap:wrap; align-items:center; gap:var(--sp-3);
+    margin-top:var(--sp-4); padding:var(--sp-3) var(--sp-4);
+    border:1px dashed var(--border); border-radius:var(--r-lg);
+  }
+  .hoy-suelto b{ display:block; }
+  .hoy-suelto .det{ font-size:var(--fs-sm); color:var(--text-tenue); }
+  .hoy-suelto button{ margin-left:auto; }
+  .hoy-suelto .form-trabajo{ flex:1 1 100%; margin-top:0; border-top:none; padding-top:0; }
+
   .sub-h{ margin:var(--sp-4) 0 var(--sp-2); font-size:var(--fs-base);
           font-weight:var(--fw-bold); text-transform:uppercase; letter-spacing:.04em;
           color:var(--text-tenue); }

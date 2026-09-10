@@ -95,6 +95,9 @@ def migrar():
             with engine.begin() as con:
                 con.execute(text("ALTER TABLE liquidaciones ADD COLUMN parcial BOOLEAN DEFAULT FALSE"))
                 con.execute(text("UPDATE liquidaciones SET parcial = FALSE WHERE parcial IS NULL"))
+    if "comision_pct" not in icols:
+        with engine.begin() as con:
+            con.execute(text("ALTER TABLE items ADD COLUMN comision_pct INTEGER"))
     if "es_comision" not in icols:
         with engine.begin() as con:
             con.execute(text("ALTER TABLE items ADD COLUMN es_comision BOOLEAN DEFAULT FALSE"))
@@ -190,10 +193,13 @@ class ClienteEdit(BaseModel):
     nombre: str | None = None; telefono: str | None = None; alias: str | None = None; notas: str | None = None; activo: bool | None = None; direccion: str | None = None; dni: str | None = None
 class ItemIn(BaseModel):
     categoria: str; nombre: str; precio: int; es_producto: bool = False
-    es_comision: bool = False
+    es_comision: bool = False; comision_pct: int | None = None
 class ItemEdit(BaseModel):
     categoria: str | None = None; nombre: str | None = None; precio: int | None = None; activo: bool | None = None
     es_comision: bool | None = None; es_producto: bool | None = None
+    # None = no lo toques; -1 = sacale el propio y que use el general. Hace falta
+    # el centinela porque None ya significa "este campo no vino".
+    comision_pct: int | None = None
 class RenombrarCat(BaseModel):
     viejo: str; nuevo: str
 class LineaCompIn(BaseModel):
@@ -849,11 +855,26 @@ def _chequear_rol_libre(db, rol: str, salvo_id: int | None = None):
         raise HTTPException(400, f"Ya hay un usuario {comose} ({ya.usuario}). "
                                  f"Cambiale la contraseña a ese, o borralo antes de crear otro.")
 
+# Largo mínimo de una contraseña nueva.
+#
+# Ocho no es un número mágico, es el piso donde probar todas las combinaciones
+# deja de ser gratis. Se pide al PONERLA, no al usarla: las que ya están siguen
+# andando aunque sean más cortas. Y no es que se dejen pasar por comodidad —es
+# que la app no puede saber cuánto miden. Guarda el hash, no la contraseña, y de
+# un hash no se saca el largo: la única forma de "revisarlas" sería obligar a
+# todas a cambiarla, que es peor que el problema.
+LARGO_MINIMO_PASS = 8
+
+def _validar_password(p: str):
+    if len(p or "") < LARGO_MINIMO_PASS:
+        raise HTTPException(400, f"La contraseña tiene que tener al menos {LARGO_MINIMO_PASS} caracteres")
+
 @app.post("/api/usuarios")
 def crear_usuario(u: UsuarioIn, _ = Depends(solo_dueno), db: Session = Depends(get_db)):
     if db.query(models.Usuario).filter(models.Usuario.usuario == u.usuario.strip()).first():
         raise HTTPException(400, "Ese usuario ya existe")
     _chequear_rol_libre(db, u.rol)
+    _validar_password(u.password)
     s = auth.nuevo_salt()
     db.add(models.Usuario(usuario=u.usuario.strip(), salt=s, hash=auth.hash_password(u.password, s), rol=u.rol))
     db.commit(); return {"ok": True}
@@ -861,6 +882,7 @@ def crear_usuario(u: UsuarioIn, _ = Depends(solo_dueno), db: Session = Depends(g
 @app.put("/api/usuarios/password")
 def cambiar_password(p: PasswordIn, user = Depends(usuario_actual), db: Session = Depends(get_db)):
     u = db.query(models.Usuario).filter(models.Usuario.usuario == user["usuario"]).first()
+    _validar_password(p.nueva)
     u.salt = auth.nuevo_salt(); u.hash = auth.hash_password(p.nueva, u.salt)
     db.commit(); return {"ok": True}
 
@@ -873,14 +895,20 @@ def categorias(_ = Depends(usuario_actual), db: Session = Depends(get_db)):
 @app.get("/api/items")
 def items(categoria: str, _ = Depends(usuario_actual), db: Session = Depends(get_db)):
     q = db.query(models.Item).filter(models.Item.categoria == categoria, models.Item.activo == True)
-    return [{"id": i.id, "nombre": i.nombre, "precio": i.precio, "precio_transfer": i.precio_transfer,
-             "es_producto": i.es_producto, "es_comision": bool(i.es_comision)} for i in q]
+    # La categoría viene aunque se haya pedido por categoría: quien recibe esto no
+    # siempre sabe cuál pidió —el modo edición de Admin junta ítems de varias— y
+    # sin el dato no puede decir de dónde salió cada uno.
+    return [{"id": i.id, "nombre": i.nombre, "precio": i.precio, "categoria": i.categoria,
+             "precio_transfer": i.precio_transfer,
+             "es_producto": i.es_producto, "es_comision": bool(i.es_comision),
+             "comision_pct": i.comision_pct} for i in q]
 
 @app.get("/api/items/all")
 def items_all(_ = Depends(usuario_actual), db: Session = Depends(get_db)):
     q = db.query(models.Item).filter(models.Item.activo == True).order_by(models.Item.nombre)
     return [{"id": i.id, "nombre": i.nombre, "precio": i.precio, "categoria": i.categoria, "precio_transfer": i.precio_transfer,
-             "es_producto": i.es_producto, "es_comision": bool(i.es_comision)} for i in q]
+             "es_producto": i.es_producto, "es_comision": bool(i.es_comision),
+             "comision_pct": i.comision_pct} for i in q]
 
 @app.get("/api/catalogo")
 def catalogo(_ = Depends(usuario_actual), db: Session = Depends(get_db)):
@@ -902,6 +930,9 @@ def config(user = Depends(usuario_actual), db: Session = Depends(get_db)):
     return {"formas_pago": formas, "tipos_egreso": tipos, "alias": alias,
             "negocio": NEGOCIO,
             "valor_hora": int(vh.valor) if vh and str(vh.valor).isdigit() else 0,
+            # El porcentaje general de comisión: Admin lo muestra como referencia
+            # cuando un ítem no tiene el suyo.
+            "comision_pct": comision_pct(db),
             "tipos_privados": [t.nombre for t in db.query(models.TipoEgreso).filter(
                 models.TipoEgreso.activo == True, models.TipoEgreso.privado == True)] if es_dueno(user) else []}
 
@@ -1069,6 +1100,7 @@ def editar_usuario(uid: int, cambios: UsuarioEdit, _ = Depends(solo_dueno), db: 
         _chequear_rol_libre(db, cambios.rol, salvo_id=uid)
         u.rol = cambios.rol
     if cambios.password:
+        _validar_password(cambios.password)
         u.salt = auth.nuevo_salt(); u.hash = auth.hash_password(cambios.password, u.salt)
     db.commit(); return {"ok": True}
 
@@ -1091,6 +1123,17 @@ def valor_hora(db) -> int:
 
 def comision_pct(db) -> int:
     return _cfg_int(db, "comision_pct", COMISION_PCT_DEFECTO)
+
+def pct_de(item, pct_general: int) -> int:
+    """El porcentaje que le toca a un ítem: el suyo si tiene, si no el general.
+
+    Se resuelve en un solo lugar porque lo usan tres caminos distintos (la línea
+    de un comprobante, el trabajo suelto y la pantalla), y con la cuenta escrita
+    en cada uno, el día que se agregue una regla más queda arreglada en dos de
+    los tres.
+    """
+    propio = getattr(item, "comision_pct", None) if item else None
+    return propio if propio is not None else pct_general
 
 def base_suelto(t, item) -> int:
     """La base de un trabajo sin comprobante: el precio efectivo del ítem por la
@@ -1133,7 +1176,7 @@ def lineas_a_comision_pendientes(db, empleado):
     ya = db.query(models.TrabajoComision.linea_id).filter(
         models.TrabajoComision.liquidacion_id.isnot(None),
         models.TrabajoComision.linea_id.isnot(None))
-    q = (db.query(models.ComprobanteLinea, models.Comprobante)
+    q = (db.query(models.ComprobanteLinea, models.Comprobante, models.Item)
            .join(models.Comprobante, models.ComprobanteLinea.comprobante_id == models.Comprobante.id)
            .join(models.Item, models.ComprobanteLinea.item_id == models.Item.id)
            .filter(models.Comprobante.activo == True,
@@ -1202,16 +1245,18 @@ def resumen_pendiente(db, empleado) -> dict:
                   models.TrabajoComision.liquidacion_id.is_(None)).all())
 
     trabajos = []
-    for linea, comp in lineas_a_comision_pendientes(db, empleado):
+    for linea, comp, item in lineas_a_comision_pendientes(db, empleado):
+        pct_linea = pct_de(item, pct)
         trabajos.append({
             "id": id_por_linea.get(linea.id), "linea_id": linea.id,
             "comprobante_id": comp.id, "numero": comp.numero,
+            "pct": pct_linea,
             # Para que la pantalla pueda linkear a la cuenta del cliente. Sin
             # cliente_id no hay adónde ir: fue una venta de mostrador.
             "cliente_id": comp.cliente_id,
             "fecha": hora_argentina(comp.fecha).date().isoformat(),
             "nombre": linea.nombre, "cantidad": linea.cantidad,
-            "base": base_comision(linea), "comision": comision_de(linea, pct),
+            "base": base_comision(linea), "comision": comision_de(linea, pct_linea),
             "minutos": minutos_por_linea.get(linea.id, 0) or 0,
             "cliente": comp.cliente_nombre, "suelto": False})
 
@@ -1224,12 +1269,13 @@ def resumen_pendiente(db, empleado) -> dict:
     for t in sueltos:
         item = db.get(models.Item, t.item_id) if t.item_id else None
         b = base_suelto(t, item) if item else 0
+        p = pct_de(item, pct)
         trabajos.append({
             "id": t.id, "linea_id": None, "comprobante_id": None, "numero": None,
-            "cliente_id": None, "fecha": t.fecha,
+            "cliente_id": None, "fecha": t.fecha, "pct": p,
             "nombre": t.nombre or (item.nombre if item else "—"),
             "cantidad": t.cantidad or 1,
-            "base": b, "comision": round(b * pct / 100), "minutos": t.minutos or 0,
+            "base": b, "comision": round(b * p / 100), "minutos": t.minutos or 0,
             "cliente": None, "suelto": True})
 
     horas = (db.query(models.HoraTrabajada)
@@ -1635,7 +1681,8 @@ def poner_peluquero(comp_id: int, datos: PeluqueroIn, _ = Depends(usuario_actual
 @app.get("/api/sueldos/items-comision")
 def items_a_comision(_ = Depends(usuario_actual), db: Session = Depends(get_db)):
     """El catálogo que sirve para cargar un trabajo suelto."""
-    return [{"id": i.id, "nombre": i.nombre, "categoria": i.categoria, "precio": i.precio}
+    return [{"id": i.id, "nombre": i.nombre, "categoria": i.categoria, "precio": i.precio,
+             "comision_pct": i.comision_pct}
             for i in db.query(models.Item)
                        .filter(models.Item.activo == True, models.Item.es_comision == True)
                        .order_by(models.Item.categoria, models.Item.nombre)]
@@ -2041,7 +2088,8 @@ def proximo_turno(cliente_id: int, _ = Depends(usuario_actual), db: Session = De
 def crear_item(item: ItemIn, _ = Depends(usuario_actual), db: Session = Depends(get_db)):
     nuevo = models.Item(categoria=item.categoria.strip(), nombre=item.nombre.strip(),
                         precio=item.precio, precio_transfer=calcular_transfer(item.precio),
-                        es_producto=item.es_producto, es_comision=item.es_comision)
+                        es_producto=item.es_producto, es_comision=item.es_comision,
+                        comision_pct=item.comision_pct)
     db.add(nuevo); db.commit(); db.refresh(nuevo); return {"id": nuevo.id}
 
 @app.put("/api/items/{item_id}")
@@ -2064,6 +2112,13 @@ def editar_item(item_id: int, cambios: ItemEdit, _ = Depends(usuario_actual), db
     # descuenta stock en cada venta, y quedaba descontando para siempre. No toca
     # nada hacia atrás; cambia de la próxima venta en adelante.
     if cambios.es_producto is not None: item.es_producto = cambios.es_producto
+    if cambios.comision_pct is not None:
+        if cambios.comision_pct < 0:
+            item.comision_pct = None                 # vuelve al general
+        elif cambios.comision_pct > 100:
+            raise HTTPException(400, "La comisión va de 0 a 100")
+        else:
+            item.comision_pct = cambios.comision_pct
     db.commit(); return {"ok": True}
 
 @app.delete("/api/items/{item_id}")
@@ -3181,6 +3236,7 @@ def backup_completo(_ = Depends(solo_dueno), db: Session = Depends(get_db)):
              # valor de catálogo, pero este puede haberse editado a mano.
              "precio_transfer": i.precio_transfer,
              "es_producto": i.es_producto, "es_comision": bool(i.es_comision),
+             "comision_pct": i.comision_pct,
              "stock_actual": i.stock_actual,
              "stock_minimo": i.stock_minimo, "activo": i.activo}
             for i in db.query(models.Item).all()

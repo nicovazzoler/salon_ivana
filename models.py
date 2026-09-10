@@ -24,6 +24,11 @@ class Item(Base):
     # ajuste de línea. Va en el ítem y no en el comprobante porque es una
     # propiedad del trabajo ("un corte se paga a comisión"), no de la venta.
     es_comision = Column(Boolean, default=False)
+    # Porcentaje propio de este ítem. NULL = el general de config. Existe porque
+    # no todos los trabajos pagan lo mismo: un color lleva tres horas y un
+    # flequillo diez minutos, y con un solo porcentaje para todo la única forma
+    # de emparejarlo era no marcar la mitad de los ítems.
+    comision_pct = Column(Integer)
     stock_actual = Column(Integer, default=0)   # solo aplica a productos
     stock_minimo = Column(Integer, default=0)
     activo = Column(Boolean, default=True)

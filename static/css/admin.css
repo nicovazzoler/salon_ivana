@@ -65,6 +65,85 @@
   }
   .item-row .chk-com input{ margin:0; }
 
+  /* ===== La ficha de un ítem =====
+     Editar y cargar uno nuevo son la misma ficha. Tiene título propio y una X
+     porque es una cosa aparte que se abrió, no un pedazo más de la tarjeta: con
+     los campos sueltos entre la grilla y los botones no se entendía dónde
+     empezaba lo que estabas editando. */
+  .ficha-item{
+    margin-top:var(--sp-3);
+    padding:var(--sp-3) var(--sp-4) var(--sp-4);
+    background:var(--bg-header);
+    border:1px solid var(--border-sutil);
+    border-radius:var(--r-lg);
+    display:flex; flex-direction:column; gap:var(--sp-3);
+  }
+  .ficha-item.nueva{ margin-top:0; margin-bottom:var(--sp-3); }
+  .ficha-cab{ display:flex; align-items:center; gap:var(--sp-2); }
+  .ficha-cab h3{
+    margin:0; font-family:var(--font-display); font-size:var(--fs-lg);
+    color:var(--text-titulo);
+  }
+  .ficha-cab .cerrar{
+    margin-left:auto; border:none; background:none; cursor:pointer;
+    font-size:var(--fs-lg); line-height:1; color:var(--text-tenue); padding:4px 6px;
+  }
+  .ficha-cab .cerrar:hover{ color:var(--text-titulo); }
+
+  .ficha-campos{ display:grid; grid-template-columns:repeat(auto-fit, minmax(150px, 1fr)); gap:var(--sp-3); }
+  .ficha-campos .campo{ display:flex; flex-direction:column; gap:3px; min-width:0; }
+  .ficha-campos .campo.ancho{ grid-column:1 / -1; }
+  .ficha-campos input{ width:100%; }
+
+  /* Las marcas son interruptores, no casillas: son dos preguntas de sí o no que
+     cambian cómo se comporta el ítem al vender. Prendido se ve de lejos. */
+  .ficha-marcas{ display:flex; flex-wrap:wrap; gap:var(--sp-2); align-items:flex-end; }
+  .ficha-marcas .marca{
+    display:flex; flex-direction:column; align-items:flex-start; gap:1px;
+    padding:8px 14px 8px 32px; position:relative;
+    border:1px solid var(--border-sutil); border-radius:var(--r-lg);
+    background:var(--bg-card); color:var(--text); cursor:pointer;
+    text-align:left; font-size:var(--fs-base); font-weight:var(--fw-medium);
+  }
+  .ficha-marcas .marca .sub{ font-size:var(--fs-xs); color:var(--text-tenue); font-weight:var(--fw-normal); }
+  .ficha-marcas .marca .tilde{
+    position:absolute; left:11px; top:50%; transform:translateY(-50%);
+    width:14px; height:14px; border-radius:4px;
+    border:1px solid var(--border); background:var(--bg-card);
+    font-size:10px; line-height:12px; text-align:center; color:transparent;
+  }
+  .ficha-marcas .marca.on{ border-color:var(--acento); background:var(--acento-bg); }
+  .ficha-marcas .marca.on .tilde{
+    background:var(--acento); border-color:var(--acento); color:var(--text-sobre-oro);
+  }
+  .ficha-marcas .campo{ display:flex; flex-direction:column; gap:3px; }
+  /* Con display:flex en la clase, el hidden del navegador no alcanza para
+     esconderlo: una clase le gana siempre. Ya pasó con el bloque de "quién sos"
+     en Sueldos. */
+  .ficha-marcas .campo[hidden]{ display:none; }
+  .ficha-marcas .con-signo{ display:flex; align-items:center; gap:4px; }
+  .ficha-marcas .con-signo input{ width:70px; text-align:right; }
+  .ficha-marcas .con-signo span{ color:var(--text-tenue); }
+  /* Vacío no quiere decir "sin comisión", quiere decir "el general". Así que el
+     casillero lo dice con todas las letras mientras está vacío —y se ensancha
+     para que entre—; apenas se tipea un número vuelve a ser un casillero de
+     número, angosto y alineado a la derecha. El % de al lado se esconde en el
+     medio: "general (40%) %" no se entiende. */
+  .ficha-marcas .con-signo input:placeholder-shown{ width:130px; text-align:left; }
+  .ficha-marcas .con-signo input:placeholder-shown + span{ display:none; }
+
+  .ficha-pie{ margin:0; font-size:var(--fs-sm); color:var(--text-tenue); max-width:70ch; }
+  .ficha-acc{ display:flex; align-items:center; gap:var(--sp-2); }
+  .ficha-acc .separa{ flex:1; }
+
+  /* El porcentaje en el modo edición, pegado a la marca de comisión. */
+  .item-row .pct-fila{ display:inline-flex; align-items:center; gap:3px; }
+  .item-row .pct-fila[hidden]{ display:none; }
+  .item-row .pct{ width:52px; text-align:right; padding:4px 6px; }
+  .item-row .pct:placeholder-shown{ width:118px; text-align:left; }
+  .item-row .pct-fila .u{ color:var(--text-tenue); font-size:var(--fs-sm); }
+  .item-row .pct:placeholder-shown + .u{ display:none; }
+
   /* La tarjeta del catálogo abierta para editar: se marca cuál es, porque el
      panel se abre abajo de toda la grilla y si no no se sabe de cuál salió. */
   .btn-item.abierto{

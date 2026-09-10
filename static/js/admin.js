@@ -13,6 +13,13 @@ const fmt=n=>"$"+(n||0).toLocaleString("es-AR");
 const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 let catActual=null;
 let ITEMS_ALL=[];
+/* El porcentaje general de comisión, el que rige cuando el ítem no tiene el
+   suyo. Se muestra como sugerencia en la ficha para que se vea contra qué se
+   está eligiendo; el que manda es el del servidor. */
+let COMISION_GENERAL = 40;
+/* El mismo mínimo que pide el servidor. Se chequea acá para avisar antes de
+   mandar, no en lugar de allá: el que frena de verdad es el backend. */
+const LARGO_MINIMO_PASS = 8;
 /* Dos modos para la misma lista.
 
    Leyendo, que es como se entra casi siempre —a mirar un precio—, la fila no
@@ -25,6 +32,12 @@ let ITEMS_ALL=[];
 let modoEdicion=false;
 
 function toast(m){const t=$("#toast");t.textContent=m;t.classList.add("show");setTimeout(()=>t.classList.remove("show"),2200);}
+
+// El general vive en config y lo edita la dueña desde Sueldos; acá se lee para
+// mostrarlo como referencia en la ficha del ítem.
+authFetch("/api/config").then(r=>r.json()).then(c=>{
+  if(c && c.comision_pct != null) COMISION_GENERAL = c.comision_pct;
+}).catch(()=>{});
 
 async function cargarCats(){
   const cats=await (await authFetch("/api/categorias")).json();
@@ -114,7 +127,7 @@ function renderItems(items, mostrarCat){
       const mismo = abierto && abierto.dataset.item === String(it.id);
       cerrarPaneles();
       if(mismo) return;                        // el mismo ítem cierra lo que abrió
-      const pan = panelItem(it);
+      const pan = fichaItem(it);
       pan.dataset.item = it.id;
       cont.after(pan);
       b.classList.add("abierto");
@@ -160,27 +173,56 @@ function pintarRail(){
    Borrar un ítem entre veinte casilleros abiertos se aprieta sin mirar. */
 function renderItemsEditables(items, mostrarCat){
   const cont=$("#listaItems");
-  const filas=[];
   items.forEach(it=>{
     const row=document.createElement("div"); row.className="item-row";
     const cat = mostrarCat ? `<span class="tag neutro">${esc(it.categoria)}</span>` : "";
+    // Si este ítem ya venía tocado desde otra categoría, se muestra como quedó y
+    // no como está en la base: el cambio sigue pendiente hasta que se guarde.
+    const pend = CAMBIOS.get(it.id);
+    const v = pend || {nombre:it.nombre, precio:it.precio, es_comision:!!it.es_comision,
+                       comision_pct:it.comision_pct};
+    /* El porcentaje se edita acá adentro, al lado de la marca de comisión. Es la
+       razón principal para entrar a este modo: prendés el filtro de comisión,
+       entrás a editar y quedan todos los porcentajes del catálogo uno abajo del
+       otro. De a un ítem por vez, cambiar diez es abrir y cerrar diez fichas. */
     row.innerHTML=`
-      <input class="n" value="${esc(it.nombre)}" aria-label="Nombre">
-      <input class="p" type="number" min="0" value="${it.precio}" aria-label="Precio efectivo">
+      <input class="n" value="${esc(v.nombre)}" aria-label="Nombre">
+      <input class="p" type="number" min="0" value="${v.precio}" aria-label="Precio efectivo">
       <span class="meta">
         <span class="transf" style="white-space:nowrap;">→ transf ${fmt(it.precio_transfer||0)}</span>
         ${cat}${it.es_producto?'<span class="tag">prod</span>':''}
         <label class="chk-com" title="La empleada que lo haga cobra comisión por este trabajo">
-          <input type="checkbox" class="com" ${it.es_comision?"checked":""}> comisión
+          <input type="checkbox" class="com" ${v.es_comision?"checked":""}> comisión
         </label>
+        <span class="pct-fila"${v.es_comision?"":" hidden"}>
+          <input type="number" class="pct" min="0" max="100" inputmode="numeric"
+                 value="${v.comision_pct ?? ""}" placeholder="general (${COMISION_GENERAL}%)"
+                 aria-label="Porcentaje de comisión"><span class="u">%</span>
+        </span>
       </span>
       <span class="acc"></span>`;
+    const leerPct=()=>{
+      const t=row.querySelector(".pct").value.trim();
+      // "" = sin porcentaje propio. Se guarda como null y el ítem usa el general.
+      return t === "" ? null : Math.max(0, Math.min(100, parseInt(t,10) || 0));
+    };
     const leer=()=>({nombre:row.querySelector(".n").value.trim(),
                      precio:parseInt(row.querySelector(".p").value,10),
-                     es_comision:row.querySelector(".com").checked});
-    const original=JSON.stringify(leer());
+                     es_comision:row.querySelector(".com").checked,
+                     comision_pct:leerPct()});
+    const original=JSON.stringify({nombre:it.nombre, precio:it.precio,
+                                   es_comision:!!it.es_comision,
+                                   comision_pct:it.comision_pct ?? null});
     const marcar=()=>{
-      const sucia = JSON.stringify(leer())!==original;
+      const ahora=leer();
+      const sucia = JSON.stringify(ahora)!==original;
+      /* Lo tocado vive en CAMBIOS y no en la fila. La fila se destruye al
+         cambiar de categoría —se redibuja la lista entera— y con ella se perdía
+         lo tipeado: había que acordarse de guardar antes de moverse, o se perdía
+         sin aviso. Así se pueden recorrer todas las categorías y guardar una vez
+         al final. */
+      if(sucia) CAMBIOS.set(it.id, {...ahora, categoria:it.categoria, nombreViejo:it.nombre});
+      else CAMBIOS.delete(it.id);
       row.classList.toggle("sucia", sucia);
       // El de transferencia lo calcula el servidor al guardar. Mientras el
       // precio está tocado, el que se ve al lado es el viejo: mostrarlo pegado a
@@ -189,13 +231,16 @@ function renderItemsEditables(items, mostrarCat){
       row.querySelector(".transf").textContent = sucia
         ? "→ transf: se calcula al guardar"
         : `→ transf ${fmt(it.precio_transfer||0)}`;
+      // El casillero del porcentaje sigue a la marca: sin comisión no significa
+      // nada, y vacío quiere decir "usa el general".
+      row.querySelector(".pct-fila").hidden = !row.querySelector(".com").checked;
       pintarBarra();
     };
     row.querySelectorAll("input").forEach(el=>{
       el.addEventListener("input", marcar); el.addEventListener("change", marcar);
     });
+    if(pend) row.classList.add("sucia");
     cont.appendChild(row);
-    filas.push({it, row, leer, sucia:()=>row.classList.contains("sucia")});
   });
 
   /* El botón se crea UNA vez y después solo se le cambia el texto.
@@ -213,42 +258,64 @@ function renderItemsEditables(items, mostrarCat){
   btn.onclick=guardarTodos;
   barra.append(btn, nota);
   cont.appendChild(barra);
-
-  function pintarBarra(){
-    const cuantos=filas.filter(f=>f.sucia()).length;
-    btn.style.display = cuantos ? "" : "none";
-    btn.textContent = `Guardar ${cuantos} ${cuantos===1?"cambio":"cambios"}`;
-    nota.textContent = cuantos
-      ? "Sin guardar todavía."
-      : "Tocá los precios o los nombres que haya que cambiar y guardalos todos juntos.";
-  }
-
-  async function guardarTodos(){
-    const cambiadas=filas.filter(f=>f.sucia());
-    const malos=[];
-    for(const f of cambiadas){
-      const v=f.leer();
-      if(!v.nombre || !(v.precio>0)){ malos.push(f.it.nombre + " (nombre o precio vacío)"); continue; }
-      const r=await authFetch(`/api/items/${f.it.id}`,{method:"PUT",
-        headers:{"Content-Type":"application/json"}, body:JSON.stringify(v)});
-      if(!r.ok) malos.push(f.it.nombre);
-    }
-    if(malos.length) toast("No se pudieron guardar: " + malos.join(", "));
-    else toast(`${cambiadas.length} ${cambiadas.length===1?"ítem guardado":"ítems guardados"}`);
-    ITEMS_ALL=await (await authFetch("/api/items/all")).json();
-    await cargarCats();          // redibuja con los precios de transferencia nuevos
-  }
-
   pintarBarra();
 }
+
+/* Lo tocado en el modo edición, de TODAS las categorías, hasta que se guarda.
+   Clave: el id del ítem. */
+const CAMBIOS = new Map();
+
+function pintarBarra(){
+  const btn=$("#btnGuardarTodos"), nota=btn && btn.nextElementSibling;
+  if(!btn) return;
+  const n = CAMBIOS.size;
+  const cats = new Set([...CAMBIOS.values()].map(c=>c.categoria)).size;
+  btn.style.display = n ? "" : "none";
+  btn.textContent = `Guardar ${n} ${n===1?"cambio":"cambios"}`;
+  nota.textContent = n
+    ? (cats > 1 ? `Sin guardar todavía · ${cats} categorías tocadas` : "Sin guardar todavía.")
+    : "Tocá los precios o los nombres que haya que cambiar y guardalos todos juntos. Podés moverte entre categorías: los cambios se acumulan.";
+}
+
+/* Se guarda TODO lo tocado, esté o no en la categoría que se está viendo. La
+   razón de estar en este modo es cambiar varios, y ahí "varios" cruza
+   categorías: los precios suben para todo el catálogo, no para una sola. */
+async function guardarTodos(){
+  const pendientes = [...CAMBIOS.entries()];
+  const malos = [];
+  for(const [id, v] of pendientes){
+    if(!v.nombre || !(v.precio > 0)){ malos.push(`${v.nombreViejo} (nombre o precio vacío)`); continue; }
+    const r = await authFetch(`/api/items/${id}`, {method:"PUT",
+      headers:{"Content-Type":"application/json"},
+      // -1 es "sacale el propio y que use el general"; null sería "no lo toques".
+      body: JSON.stringify({nombre:v.nombre, precio:v.precio, es_comision:v.es_comision,
+                            comision_pct: v.comision_pct == null ? -1 : v.comision_pct})});
+    if(r.ok) CAMBIOS.delete(id); else malos.push(v.nombreViejo);
+  }
+  if(malos.length) toast("No se pudieron guardar: " + malos.join(", "));
+  else toast(`${pendientes.length} ${pendientes.length===1?"ítem guardado":"ítems guardados"}`);
+  ITEMS_ALL = await (await authFetch("/api/items/all")).json();
+  await cargarCats();          // redibuja con los precios de transferencia nuevos
+}
+
+/* El atajo a los porcentajes: prende el filtro de comisión y el modo edición
+   juntos, que es lo que hay que combinar para ver todos los porcentajes del
+   catálogo uno abajo del otro. Separados, había que saber que se usaban así. */
+$("#btnComisiones").onclick = () => {
+  $("#buscarItem").value = "";
+  $("#soloComision").classList.add("on");
+  if(!modoEdicion) $("#btnEditarTodos").click();
+  else filtrarItems();
+};
 
 /* El botón que cambia de modo. Al apagarlo se redibuja de cero: si quedó algo
    tipeado sin guardar, la lista vuelve a mostrar lo que está en la base y no lo
    que se había escrito, que es lo que corresponde ver cuando se está leyendo. */
 $("#btnEditarTodos").onclick=async()=>{
-  const pendientes=document.querySelectorAll("#listaItems .item-row.sucia").length;
+  const pendientes=CAMBIOS.size;
   if(modoEdicion && pendientes &&
      !confirm(`Hay ${pendientes} ${pendientes===1?"cambio":"cambios"} sin guardar.\n\n¿Salir igual y perderlos?`)) return;
+  CAMBIOS.clear();
   modoEdicion=!modoEdicion;
   const b=$("#btnEditarTodos");
   b.textContent = modoEdicion ? "✓ Listo" : "✏️ Editar todos";
@@ -260,118 +327,143 @@ $("#btnEditarTodos").onclick=async()=>{
 
 // Uno solo abierto en toda la tarjeta, el de crear incluido.
 function cerrarPaneles(){
-  document.querySelectorAll("#catalogo .panel-edicion").forEach(p=>p.remove());
+  document.querySelectorAll("#catalogo .panel-edicion, #listaItems ~ .ficha-item").forEach(p=>p.remove());
+  document.querySelectorAll(".btn-item.abierto").forEach(b=>b.classList.remove("abierto"));
 }
 
-/* El panel de edición de un ítem. Todo lo del ítem junto y un solo Guardar: el
-   precio y la marca de comisión son del mismo ítem, y con un botón por campo se
-   guarda uno y se pierde el otro sin que nada avise. */
-function panelItem(it){
-  const pan=document.createElement("div");
-  pan.className="panel-edicion";
-  pan.innerHTML=`
-    <div class="campo"><label>Nombre</label><input class="f-nombre" type="text"></div>
-    <div class="campo chico"><label>Precio efectivo</label><input class="f-precio" type="number" min="0"></div>
-    <div class="campo chico"><label>Categoría</label><input class="f-cat" list="cats"
-      title="Escribí una que no exista para crearla"></div>
-    <div class="marcas">
-      <label><input type="checkbox" class="f-prod"> Es producto (descuenta stock)</label>
-      <label><input type="checkbox" class="f-com"> Va a comisión</label>
-    </div>
-    <span class="acc">
-      <button class="b-ok guardar">Guardar</button>
-      <button class="b-out cancelar">Cancelar</button>
-      <button class="b-del borrar">Eliminar</button>
-    </span>`;
-  const $$=s=>pan.querySelector(s);
-  $$(".f-nombre").value=it.nombre;
-  $$(".f-precio").value=it.precio;
-  $$(".f-cat").value=it.categoria||catActual;
-  $$(".f-prod").checked=!!it.es_producto;
-  $$(".f-com").checked=!!it.es_comision;
+/* La ficha de un ítem: la misma para editar y para cargar uno nuevo.
 
-  $$(".cancelar").onclick=()=>pan.remove();
-  $$(".guardar").onclick=async()=>{
-    const nombre=$$(".f-nombre").value.trim();
-    const precio=parseInt($$(".f-precio").value,10);
-    const categoria=$$(".f-cat").value.trim();
+   Todo junto y un solo Guardar. El precio y la marca de comisión son del mismo
+   ítem, y con un botón por campo se guarda uno y se pierde el otro sin que nada
+   avise.
+
+   Las dos marcas son interruptores y no casillas sueltas: son dos preguntas de
+   sí o no que cambian cómo se comporta el ítem al vender, no dos ajustes de un
+   formulario. Y el porcentaje aparece recién cuando la comisión está prendida,
+   porque hasta entonces no significa nada. */
+function fichaItem(it){
+  const nuevo = !it;
+  const pan = document.createElement("div");
+  pan.className = "ficha-item";
+  pan.innerHTML = `
+    <div class="ficha-cab">
+      <h3>${nuevo ? "Ítem nuevo" : "Editar ítem"}</h3>
+      <button type="button" class="cerrar" aria-label="Cerrar">✕</button>
+    </div>
+    <div class="ficha-campos">
+      <div class="campo ancho"><label>Nombre</label>
+        <input class="f-nombre" type="text" placeholder="Ej: Corte de puntas"></div>
+      <div class="campo"><label>Precio en efectivo</label>
+        <input class="f-precio" type="number" min="0" inputmode="numeric" placeholder="0"></div>
+      <div class="campo"><label>Categoría</label>
+        <input class="f-cat" list="cats" placeholder="existente o nueva"></div>
+    </div>
+    <div class="ficha-marcas">
+      <button type="button" class="marca f-prod">
+        <span class="tilde">✓</span> Es producto
+        <span class="sub">descuenta stock al venderlo</span>
+      </button>
+      <button type="button" class="marca f-com">
+        <span class="tilde">✓</span> Va a comisión
+        <span class="sub">se le paga a quien lo haga</span>
+      </button>
+      <div class="campo pct" hidden><label>Su porcentaje</label>
+        <div class="con-signo"><input class="f-pct" type="number" min="0" max="100" inputmode="numeric"
+             placeholder="general (${COMISION_GENERAL}%)"><span>%</span></div></div>
+    </div>
+    <p class="ficha-pie">La categoría se escribe: nace con el primer ítem que la use y
+      desaparece sola cuando se queda sin ninguno. El precio de transferencia se
+      calcula al guardar.</p>
+    <div class="ficha-acc">
+      ${nuevo ? "" : `<button class="b-del borrar">Eliminar</button>`}
+      <span class="separa"></span>
+      <button class="b-out cancelar">Cancelar</button>
+      <button class="b-ok guardar">${nuevo ? "Agregar" : "Guardar"}</button>
+    </div>`;
+  const $$ = s => pan.querySelector(s);
+
+  $$(".f-nombre").value = it ? it.nombre : "";
+  $$(".f-precio").value = it ? it.precio : "";
+  $$(".f-cat").value    = it ? (it.categoria || catActual) : (catActual || "");
+  const marcar = (b, on) => b.classList.toggle("on", !!on);
+  marcar($$(".f-prod"), it && it.es_producto);
+  marcar($$(".f-com"),  it && it.es_comision);
+  if(it && it.comision_pct != null) $$(".f-pct").value = it.comision_pct;
+
+  const verPct = () => { $$(".pct").hidden = !$$(".f-com").classList.contains("on"); };
+  verPct();
+  $$(".f-prod").onclick = () => $$(".f-prod").classList.toggle("on");
+  $$(".f-com").onclick  = () => { $$(".f-com").classList.toggle("on"); verPct(); };
+
+  const cerrar = () => { pan.remove(); document.querySelectorAll(".btn-item.abierto").forEach(b=>b.classList.remove("abierto")); };
+  $$(".cerrar").onclick = cerrar;
+  $$(".cancelar").onclick = cerrar;
+
+  $$(".guardar").onclick = async () => {
+    const nombre = $$(".f-nombre").value.trim();
+    const precio = parseInt($$(".f-precio").value, 10);
+    const categoria = $$(".f-cat").value.trim();
     if(!nombre){ toast("El nombre no puede quedar vacío"); return; }
-    if(!(precio>0)){ toast("El precio tiene que ser mayor a 0"); return; }
+    if(!(precio > 0)){ toast("El precio tiene que ser mayor a 0"); return; }
     if(!categoria){ toast("Falta la categoría"); return; }
-    const r=await authFetch(`/api/items/${it.id}`,{method:"PUT",headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({nombre, precio, categoria,
-                           es_producto:$$(".f-prod").checked, es_comision:$$(".f-com").checked})});
+    const pctTexto = $$(".f-pct").value.trim();
+    const pct = parseInt(pctTexto, 10);
+    if(pctTexto && (isNaN(pct) || pct < 0 || pct > 100)){ toast("La comisión va de 0 a 100"); return; }
+    const cuerpo = {nombre, precio, categoria,
+                    es_producto: $$(".f-prod").classList.contains("on"),
+                    es_comision: $$(".f-com").classList.contains("on"),
+                    // -1 es "sacale el propio y que use el general": mandar null
+                    // sería "no toques este campo", que no es lo mismo.
+                    comision_pct: pctTexto ? pct : -1};
+    const r = nuevo
+      ? await authFetch("/api/items", {method:"POST", headers:{"Content-Type":"application/json"},
+          body: JSON.stringify({...cuerpo, comision_pct: pctTexto ? pct : null})})
+      : await authFetch(`/api/items/${it.id}`, {method:"PUT", headers:{"Content-Type":"application/json"},
+          body: JSON.stringify(cuerpo)});
     if(!r.ok){ toast((await r.json().catch(()=>({}))).detail || "No se pudo guardar"); return; }
-    toast("Guardado");
-    ITEMS_ALL=await (await authFetch("/api/items/all")).json();
+    toast(nuevo ? "Ítem agregado" : "Guardado");
+    if(nuevo){ $("#panelNuevoItem").innerHTML = ""; catActual = categoria; $("#buscarItem").value = ""; }
+    ITEMS_ALL = await (await authFetch("/api/items/all")).json();
     await cargarCats();
   };
-  $$(".borrar").onclick=async()=>{
+
+  const borrar = $$(".borrar");
+  if(borrar) borrar.onclick = async () => {
     if(!confirm(`¿Eliminar "${it.nombre}"?\n\nDeja de aparecer al facturar. Los tickets viejos que lo tienen no se tocan.`)) return;
-    const r=await authFetch(`/api/items/${it.id}`,{method:"DELETE"});
+    const r = await authFetch(`/api/items/${it.id}`, {method:"DELETE"});
     if(!r.ok){ toast("No se pudo eliminar"); return; }
     toast("Eliminado");
-    ITEMS_ALL=await (await authFetch("/api/items/all")).json();
+    ITEMS_ALL = await (await authFetch("/api/items/all")).json();
     await cargarCats();
   };
-  $$(".f-nombre").addEventListener("keydown", ev=>{
-    if(ev.key==="Enter") $$(".guardar").click();
-    if(ev.key==="Escape") pan.remove();
-  });
-  setTimeout(()=>$$(".f-nombre").focus(), 0);
+
+  pan.querySelectorAll("input").forEach(i => i.addEventListener("keydown", ev => {
+    if(ev.key === "Enter") $$(".guardar").click();
+    if(ev.key === "Escape") cerrar();
+  }));
+  setTimeout(() => $$(".f-nombre").focus(), 0);
   return pan;
 }
 
-/* Cargar uno nuevo. Mismo panel que el de editar, pero vacío y colgado del
-   botón de arriba en vez de una fila. */
-$("#btnNuevoItem").onclick=()=>{
-  const caja=$("#panelNuevoItem");
-  if(caja.firstChild){ caja.innerHTML=""; return; }   // el mismo botón lo cierra
+/* Cargar uno nuevo: la misma ficha, vacía, colgada del botón de arriba en vez
+   de una tarjeta. Un solo dibujante para las dos, así el día que se agregue un
+   campo no queda pidiéndose solo al editar. */
+$("#btnNuevoItem").onclick = () => {
+  const caja = $("#panelNuevoItem");
+  if(caja.firstChild){ caja.innerHTML = ""; return; }   // el mismo botón lo cierra
   cerrarPaneles();
-  const pan=document.createElement("div");
-  pan.className="panel-edicion crear";
-  pan.innerHTML=`
-    <div class="campo"><label>Nombre</label><input class="f-nombre" placeholder="Ej: Corte nuevo"></div>
-    <div class="campo chico"><label>Precio efectivo</label><input class="f-precio" type="number" min="0" placeholder="0"></div>
-    <div class="campo chico"><label>Categoría</label><input class="f-cat" list="cats" placeholder="existente o nueva"
-      title="Escribí una que no exista para crearla"></div>
-    <div class="marcas">
-      <label><input type="checkbox" class="f-prod"> Es producto (descuenta stock)</label>
-      <label><input type="checkbox" class="f-com"> Va a comisión</label>
-    </div>
-    <span class="acc">
-      <button class="b-ok guardar">Agregar</button>
-      <button class="b-out cancelar">Cancelar</button>
-    </span>
-    <p class="muted" style="flex:1 1 100%;margin:0;">La categoría se elige de la lista
-      o se escribe una nueva: no hay que crearla antes, nace con el primer ítem que
-      la use (y desaparece sola cuando se queda sin ninguno).</p>`;
-  const $$=s=>pan.querySelector(s);
-  $$(".f-cat").value=catActual||"";            // la que se está mirando, que es
-                                               // casi siempre donde va el nuevo
-  $$(".cancelar").onclick=()=>{ caja.innerHTML=""; };
-  $$(".guardar").onclick=async()=>{
-    const nombre=$$(".f-nombre").value.trim();
-    const precio=parseInt($$(".f-precio").value,10);
-    const categoria=$$(".f-cat").value.trim();
-    if(!categoria||!nombre||!(precio>0)){ toast("Completá categoría, nombre y precio"); return; }
-    const r=await authFetch("/api/items",{method:"POST",headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({categoria, nombre, precio,
-                           es_producto:$$(".f-prod").checked, es_comision:$$(".f-com").checked})});
-    if(!r.ok){ toast((await r.json().catch(()=>({}))).detail || "No se pudo agregar"); return; }
-    toast("Ítem agregado");
-    caja.innerHTML="";
-    catActual=categoria;                        // que quede mirando donde cayó
-    $("#buscarItem").value="";
-    await cargarCats();
-  };
-  $$(".f-nombre").addEventListener("keydown", ev=>{
-    if(ev.key==="Enter") $$(".guardar").click();
-    if(ev.key==="Escape") caja.innerHTML="";
-  });
-  caja.appendChild(pan);
-  setTimeout(()=>$$(".f-nombre").focus(), 0);
+  const ficha = fichaItem(null);
+  ficha.classList.add("nueva");
+  ficha.querySelector(".cancelar").onclick = () => { caja.innerHTML = ""; };
+  ficha.querySelector(".cerrar").onclick   = () => { caja.innerHTML = ""; };
+  caja.appendChild(ficha);
 };
+
+// Uno solo abierto en toda la tarjeta, el de crear incluido.
+function cerrarPaneles(){
+  document.querySelectorAll("#catalogo .panel-edicion, #listaItems ~ .ficha-item").forEach(p=>p.remove());
+  document.querySelectorAll(".btn-item.abierto").forEach(b=>b.classList.remove("abierto"));
+}
 
 $("#btnRenombrar").onclick=async()=>{
   const nuevo=prompt(`Renombrar la categoría "${catActual}" a:`,catActual);
@@ -393,8 +485,8 @@ function panelUsuario(u, tipo, alTerminar){
   const pan = document.createElement("div");
   pan.className = "usuario-panel";
   pan.innerHTML = `
-    <label>${esClave ? "Contraseña nueva" : "Nombre de usuario"}</label>
-    <input class="valor" type="text">
+    <label>${esClave ? `Contraseña nueva (al menos ${LARGO_MINIMO_PASS} caracteres)` : "Nombre de usuario"}</label>
+    <input class="valor" type="text"${esClave ? ` minlength="${LARGO_MINIMO_PASS}" placeholder="al menos ${LARGO_MINIMO_PASS} caracteres"` : ""}>
     <span class="acc">
       <button class="b-ok aceptar">Guardar</button>
       <button class="b-out cancelar">Cancelar</button>
@@ -406,6 +498,8 @@ function panelUsuario(u, tipo, alTerminar){
   pan.querySelector(".aceptar").onclick = async () => {
     const v = campo.value.trim();
     if (!v) { toast(esClave ? "Escribí la contraseña nueva" : "El nombre no puede quedar vacío"); return; }
+    if (esClave && v.length < LARGO_MINIMO_PASS) {
+      toast(`La contraseña tiene que tener al menos ${LARGO_MINIMO_PASS} caracteres`); return; }
     const r = await authFetch(`/api/usuarios/${u.id}`, {
       method: "PUT", headers: {"Content-Type": "application/json"},
       body: JSON.stringify(esClave ? {password: v} : {usuario: v})});
@@ -509,7 +603,7 @@ function dibujarCrearUsuario(us){
   caja.innerHTML = `
     <label>Crear el usuario ${libres.map(r => ROTULO_ROL[r]).join(" o ")}</label>
     <input class="cNom" type="text" placeholder="nombre de usuario">
-    <input class="cPass" type="text" placeholder="contraseña inicial">
+    <input class="cPass" type="text" minlength="8" placeholder="contraseña inicial (8+)">
     ${libres.length > 1
       ? `<select class="cRol">${libres.map(r => `<option value="${r}">${ROTULO_ROL[r]}</option>`).join("")}</select>`
       : ""}
@@ -519,6 +613,8 @@ function dibujarCrearUsuario(us){
     const nom = caja.querySelector(".cNom").value.trim();
     const pass = caja.querySelector(".cPass").value;
     if (!nom || !pass) { toast("Completá usuario y contraseña"); return; }
+    if (pass.length < LARGO_MINIMO_PASS) {
+      toast(`La contraseña tiene que tener al menos ${LARGO_MINIMO_PASS} caracteres`); return; }
     const rol = libres.length > 1 ? caja.querySelector(".cRol").value : libres[0];
     const r = await authFetch("/api/usuarios", {
       method: "POST", headers: {"Content-Type": "application/json"},
@@ -533,7 +629,10 @@ function dibujarCrearUsuario(us){
 // suya es lo mismo que hacerlo desde Usuarios, donde además cambia las de todos.
 // Con el empleado la tarjeta está y esto se cablea; con la dueña no está.
 if($("#btnMiPass")) $("#btnMiPass").onclick=async()=>{
-  const p=$("#miPass").value;if(!p){toast("Escribí la nueva contraseña");return;}
+  const p=$("#miPass").value;
+  if(!p){toast("Escribí la nueva contraseña");return;}
+  if(p.length < LARGO_MINIMO_PASS){
+    toast(`La contraseña tiene que tener al menos ${LARGO_MINIMO_PASS} caracteres`); return; }
   await authFetch("/api/usuarios/password",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify({nueva:p})});
   $("#miPass").value="";toast("Contraseña cambiada");
 };

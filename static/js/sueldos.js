@@ -302,7 +302,7 @@ function pintar(){
     <div class="kpi">
       <span class="lbl">Comisiones</span>
       <span class="val">${fmt(D.total_comisiones)}</span>
-      <span class="nota">al ${D.comision_pct}%</span>
+      <span class="nota">al ${D.comision_pct}% salvo los que tienen el suyo</span>
     </div>
     <div class="kpi">
       <span class="lbl">Horas</span>
@@ -314,10 +314,34 @@ function pintar(){
      <span class="val">${fmt(D.en_espera)}</span>
      <span class="nota">${D.sin_tiempo} ${D.sin_tiempo===1?"trabajo":"trabajos"} esperando que se cargue cuánto duró</span></div>`);
 
-  $("#cuerpo").innerHTML = D.ciclos.length
+  $("#cuerpo").innerHTML = (D.ciclos.length
     ? D.ciclos.map(dibujarCiclo).join("")
-    : `<div class="vacio"><b>${VOS.sinNada}</b>${VOS.comoAparece}</div>`;
+    : `<div class="vacio"><b>${VOS.sinNada}</b>${VOS.comoAparece}</div>`) + bloqueHoy();
   enganchar();
+}
+
+/* Siempre hay una puerta para cargar un trabajo de HOY.
+
+   Los días aparecen solos cuando hay un ticket, pero un trabajo que no quedó en
+   ningún comprobante no crea nada: sin esto, el día que no hubo ni un ticket
+   —o el día que todavía no se facturó nada— la pantalla no ofrecía ningún lugar
+   donde anotarlo. Y es justo el caso en el que hace falta: si hubiera
+   comprobante, no habría que cargarlo a mano.
+
+   Va al final y para las dos, la empleada y la dueña: la que lo hizo es la que
+   sabe que lo hizo. */
+function bloqueHoy(){
+  const hoy = hoyArg();
+  const yaEsta = D.ciclos.some(c => c.dias.some(d => d.fecha === hoy));
+  return `<div class="hoy-suelto">
+    <div>
+      <b>¿Hiciste un trabajo hoy que no quedó en ningún ticket?</b>
+      <span class="det">${yaEsta
+        ? "Se agrega al día de hoy, que ya está más arriba."
+        : "Se agrega solo, con el día de hoy, y arranca el ciclo si hace falta."}</span>
+    </div>
+    <button class="b-out agregar-trabajo" data-fecha="${hoy}">+ Trabajo sin comprobante</button>
+  </div>`;
 }
 
 /* Un ciclo es la semana del local: de martes a sábado. No es una ventana para
@@ -377,6 +401,9 @@ function dibujarTrabajo(t){
     <div class="que">
       <b>${esc(t.nombre)}${t.cantidad>1?` ×${t.cantidad}`:""} ${marca}</b>
       <span class="det">${esc(quien)}${fmt(t.base)}${
+        // El porcentaje solo cuando NO es el general: si estuviera en todos los
+        // renglones, el que es distinto dejaría de saltar a la vista.
+        t.pct != null && t.pct !== D.comision_pct ? ` · al ${t.pct}%` : ""}${
         t.suelto ? ` · <a href="#" class="borrar-suelto" data-trabajo="${t.id}">borrar</a>` : ""}</span>
     </div>
     <span class="dia-horas">
