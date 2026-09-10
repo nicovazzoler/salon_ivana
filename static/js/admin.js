@@ -17,6 +17,9 @@ let ITEMS_ALL=[];
    suyo. Se muestra como sugerencia en la ficha para que se vea contra qué se
    está eligiendo; el que manda es el del servidor. */
 let COMISION_GENERAL = 40;
+/* El mismo mínimo que pide el servidor. Se chequea acá para avisar antes de
+   mandar, no en lugar de allá: el que frena de verdad es el backend. */
+const LARGO_MINIMO_PASS = 8;
 /* Dos modos para la misma lista.
 
    Leyendo, que es como se entra casi siempre —a mirar un precio—, la fila no
@@ -176,7 +179,12 @@ function renderItemsEditables(items, mostrarCat){
     // Si este ítem ya venía tocado desde otra categoría, se muestra como quedó y
     // no como está en la base: el cambio sigue pendiente hasta que se guarde.
     const pend = CAMBIOS.get(it.id);
-    const v = pend || {nombre:it.nombre, precio:it.precio, es_comision:!!it.es_comision};
+    const v = pend || {nombre:it.nombre, precio:it.precio, es_comision:!!it.es_comision,
+                       comision_pct:it.comision_pct};
+    /* El porcentaje se edita acá adentro, al lado de la marca de comisión. Es la
+       razón principal para entrar a este modo: prendés el filtro de comisión,
+       entrás a editar y quedan todos los porcentajes del catálogo uno abajo del
+       otro. De a un ítem por vez, cambiar diez es abrir y cerrar diez fichas. */
     row.innerHTML=`
       <input class="n" value="${esc(v.nombre)}" aria-label="Nombre">
       <input class="p" type="number" min="0" value="${v.precio}" aria-label="Precio efectivo">
@@ -186,12 +194,25 @@ function renderItemsEditables(items, mostrarCat){
         <label class="chk-com" title="La empleada que lo haga cobra comisión por este trabajo">
           <input type="checkbox" class="com" ${v.es_comision?"checked":""}> comisión
         </label>
+        <span class="pct-fila"${v.es_comision?"":" hidden"}>
+          <input type="number" class="pct" min="0" max="100" inputmode="numeric"
+                 value="${v.comision_pct ?? ""}" placeholder="${COMISION_GENERAL}"
+                 aria-label="Porcentaje de comisión"><span class="u">%</span>
+        </span>
       </span>
       <span class="acc"></span>`;
+    const leerPct=()=>{
+      const t=row.querySelector(".pct").value.trim();
+      // "" = sin porcentaje propio. Se guarda como null y el ítem usa el general.
+      return t === "" ? null : Math.max(0, Math.min(100, parseInt(t,10) || 0));
+    };
     const leer=()=>({nombre:row.querySelector(".n").value.trim(),
                      precio:parseInt(row.querySelector(".p").value,10),
-                     es_comision:row.querySelector(".com").checked});
-    const original=JSON.stringify({nombre:it.nombre, precio:it.precio, es_comision:!!it.es_comision});
+                     es_comision:row.querySelector(".com").checked,
+                     comision_pct:leerPct()});
+    const original=JSON.stringify({nombre:it.nombre, precio:it.precio,
+                                   es_comision:!!it.es_comision,
+                                   comision_pct:it.comision_pct ?? null});
     const marcar=()=>{
       const ahora=leer();
       const sucia = JSON.stringify(ahora)!==original;
@@ -210,6 +231,9 @@ function renderItemsEditables(items, mostrarCat){
       row.querySelector(".transf").textContent = sucia
         ? "→ transf: se calcula al guardar"
         : `→ transf ${fmt(it.precio_transfer||0)}`;
+      // El casillero del porcentaje sigue a la marca: sin comisión no significa
+      // nada, y vacío quiere decir "usa el general".
+      row.querySelector(".pct-fila").hidden = !row.querySelector(".com").checked;
       pintarBarra();
     };
     row.querySelectorAll("input").forEach(el=>{
@@ -263,7 +287,9 @@ async function guardarTodos(){
     if(!v.nombre || !(v.precio > 0)){ malos.push(`${v.nombreViejo} (nombre o precio vacío)`); continue; }
     const r = await authFetch(`/api/items/${id}`, {method:"PUT",
       headers:{"Content-Type":"application/json"},
-      body: JSON.stringify({nombre:v.nombre, precio:v.precio, es_comision:v.es_comision})});
+      // -1 es "sacale el propio y que use el general"; null sería "no lo toques".
+      body: JSON.stringify({nombre:v.nombre, precio:v.precio, es_comision:v.es_comision,
+                            comision_pct: v.comision_pct == null ? -1 : v.comision_pct})});
     if(r.ok) CAMBIOS.delete(id); else malos.push(v.nombreViejo);
   }
   if(malos.length) toast("No se pudieron guardar: " + malos.join(", "));
@@ -271,6 +297,16 @@ async function guardarTodos(){
   ITEMS_ALL = await (await authFetch("/api/items/all")).json();
   await cargarCats();          // redibuja con los precios de transferencia nuevos
 }
+
+/* El atajo a los porcentajes: prende el filtro de comisión y el modo edición
+   juntos, que es lo que hay que combinar para ver todos los porcentajes del
+   catálogo uno abajo del otro. Separados, había que saber que se usaban así. */
+$("#btnComisiones").onclick = () => {
+  $("#buscarItem").value = "";
+  $("#soloComision").classList.add("on");
+  if(!modoEdicion) $("#btnEditarTodos").click();
+  else filtrarItems();
+};
 
 /* El botón que cambia de modo. Al apagarlo se redibuja de cero: si quedó algo
    tipeado sin guardar, la lista vuelve a mostrar lo que está en la base y no lo
@@ -449,8 +485,8 @@ function panelUsuario(u, tipo, alTerminar){
   const pan = document.createElement("div");
   pan.className = "usuario-panel";
   pan.innerHTML = `
-    <label>${esClave ? "Contraseña nueva" : "Nombre de usuario"}</label>
-    <input class="valor" type="text">
+    <label>${esClave ? `Contraseña nueva (al menos ${LARGO_MINIMO_PASS} caracteres)` : "Nombre de usuario"}</label>
+    <input class="valor" type="text"${esClave ? ` minlength="${LARGO_MINIMO_PASS}" placeholder="al menos ${LARGO_MINIMO_PASS} caracteres"` : ""}>
     <span class="acc">
       <button class="b-ok aceptar">Guardar</button>
       <button class="b-out cancelar">Cancelar</button>
@@ -462,6 +498,8 @@ function panelUsuario(u, tipo, alTerminar){
   pan.querySelector(".aceptar").onclick = async () => {
     const v = campo.value.trim();
     if (!v) { toast(esClave ? "Escribí la contraseña nueva" : "El nombre no puede quedar vacío"); return; }
+    if (esClave && v.length < LARGO_MINIMO_PASS) {
+      toast(`La contraseña tiene que tener al menos ${LARGO_MINIMO_PASS} caracteres`); return; }
     const r = await authFetch(`/api/usuarios/${u.id}`, {
       method: "PUT", headers: {"Content-Type": "application/json"},
       body: JSON.stringify(esClave ? {password: v} : {usuario: v})});
@@ -565,7 +603,7 @@ function dibujarCrearUsuario(us){
   caja.innerHTML = `
     <label>Crear el usuario ${libres.map(r => ROTULO_ROL[r]).join(" o ")}</label>
     <input class="cNom" type="text" placeholder="nombre de usuario">
-    <input class="cPass" type="text" placeholder="contraseña inicial">
+    <input class="cPass" type="text" minlength="8" placeholder="contraseña inicial (8+)">
     ${libres.length > 1
       ? `<select class="cRol">${libres.map(r => `<option value="${r}">${ROTULO_ROL[r]}</option>`).join("")}</select>`
       : ""}
@@ -575,6 +613,8 @@ function dibujarCrearUsuario(us){
     const nom = caja.querySelector(".cNom").value.trim();
     const pass = caja.querySelector(".cPass").value;
     if (!nom || !pass) { toast("Completá usuario y contraseña"); return; }
+    if (pass.length < LARGO_MINIMO_PASS) {
+      toast(`La contraseña tiene que tener al menos ${LARGO_MINIMO_PASS} caracteres`); return; }
     const rol = libres.length > 1 ? caja.querySelector(".cRol").value : libres[0];
     const r = await authFetch("/api/usuarios", {
       method: "POST", headers: {"Content-Type": "application/json"},
@@ -589,7 +629,10 @@ function dibujarCrearUsuario(us){
 // suya es lo mismo que hacerlo desde Usuarios, donde además cambia las de todos.
 // Con el empleado la tarjeta está y esto se cablea; con la dueña no está.
 if($("#btnMiPass")) $("#btnMiPass").onclick=async()=>{
-  const p=$("#miPass").value;if(!p){toast("Escribí la nueva contraseña");return;}
+  const p=$("#miPass").value;
+  if(!p){toast("Escribí la nueva contraseña");return;}
+  if(p.length < LARGO_MINIMO_PASS){
+    toast(`La contraseña tiene que tener al menos ${LARGO_MINIMO_PASS} caracteres`); return; }
   await authFetch("/api/usuarios/password",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify({nueva:p})});
   $("#miPass").value="";toast("Contraseña cambiada");
 };

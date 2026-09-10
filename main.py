@@ -855,11 +855,26 @@ def _chequear_rol_libre(db, rol: str, salvo_id: int | None = None):
         raise HTTPException(400, f"Ya hay un usuario {comose} ({ya.usuario}). "
                                  f"Cambiale la contraseña a ese, o borralo antes de crear otro.")
 
+# Largo mínimo de una contraseña nueva.
+#
+# Ocho no es un número mágico, es el piso donde probar todas las combinaciones
+# deja de ser gratis. Se pide al PONERLA, no al usarla: las que ya están siguen
+# andando aunque sean más cortas. Y no es que se dejen pasar por comodidad —es
+# que la app no puede saber cuánto miden. Guarda el hash, no la contraseña, y de
+# un hash no se saca el largo: la única forma de "revisarlas" sería obligar a
+# todas a cambiarla, que es peor que el problema.
+LARGO_MINIMO_PASS = 8
+
+def _validar_password(p: str):
+    if len(p or "") < LARGO_MINIMO_PASS:
+        raise HTTPException(400, f"La contraseña tiene que tener al menos {LARGO_MINIMO_PASS} caracteres")
+
 @app.post("/api/usuarios")
 def crear_usuario(u: UsuarioIn, _ = Depends(solo_dueno), db: Session = Depends(get_db)):
     if db.query(models.Usuario).filter(models.Usuario.usuario == u.usuario.strip()).first():
         raise HTTPException(400, "Ese usuario ya existe")
     _chequear_rol_libre(db, u.rol)
+    _validar_password(u.password)
     s = auth.nuevo_salt()
     db.add(models.Usuario(usuario=u.usuario.strip(), salt=s, hash=auth.hash_password(u.password, s), rol=u.rol))
     db.commit(); return {"ok": True}
@@ -867,6 +882,7 @@ def crear_usuario(u: UsuarioIn, _ = Depends(solo_dueno), db: Session = Depends(g
 @app.put("/api/usuarios/password")
 def cambiar_password(p: PasswordIn, user = Depends(usuario_actual), db: Session = Depends(get_db)):
     u = db.query(models.Usuario).filter(models.Usuario.usuario == user["usuario"]).first()
+    _validar_password(p.nueva)
     u.salt = auth.nuevo_salt(); u.hash = auth.hash_password(p.nueva, u.salt)
     db.commit(); return {"ok": True}
 
@@ -1084,6 +1100,7 @@ def editar_usuario(uid: int, cambios: UsuarioEdit, _ = Depends(solo_dueno), db: 
         _chequear_rol_libre(db, cambios.rol, salvo_id=uid)
         u.rol = cambios.rol
     if cambios.password:
+        _validar_password(cambios.password)
         u.salt = auth.nuevo_salt(); u.hash = auth.hash_password(cambios.password, u.salt)
     db.commit(); return {"ok": True}
 

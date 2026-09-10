@@ -58,6 +58,10 @@
            actualizar precios son veinte de una sentada: ahí se prende esto y la
            grilla se convierte en una lista con todos los casilleros abiertos. -->
       <button class="b-out" id="btnEditarTodos">✏️ Editar todos</button>
+      <!-- Atajo: prende el filtro de comisión y el modo edición de una. Es lo
+           que se viene a hacer cuando se toca este tema —revisar los
+           porcentajes— y son dos botones separados que hay que saber combinar. -->
+      <button class="b-out" id="btnComisiones">% Comisiones</button>
       <button class="b-ok" id="btnNuevoItem">+ Ítem nuevo</button>
       <!-- El select sigue existiendo escondido: es de donde el resto de la
            pantalla lee qué categoría se está mirando, y el rail lo mueve. -->
@@ -100,7 +104,8 @@
       <p>La de tu propio usuario. Nadie más la ve, ni siquiera desde acá.</p>
     </div>
     <div class="fila">
-      <div style="max-width:240px;"><label>Nueva contraseña</label><input id="miPass" type="text"></div>
+      <div style="max-width:280px;"><label>Nueva contraseña</label>
+        <input id="miPass" type="text" minlength="8" placeholder="al menos 8 caracteres"></div>
       <button class="b-tinta" id="btnMiPass">Cambiar</button>
     </div>
   </div>

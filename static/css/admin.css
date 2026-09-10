@@ -129,6 +129,12 @@
   .ficha-acc{ display:flex; align-items:center; gap:var(--sp-2); }
   .ficha-acc .separa{ flex:1; }
 
+  /* El porcentaje en el modo edición, pegado a la marca de comisión. */
+  .item-row .pct-fila{ display:inline-flex; align-items:center; gap:3px; }
+  .item-row .pct-fila[hidden]{ display:none; }
+  .item-row .pct{ width:52px; text-align:right; padding:4px 6px; }
+  .item-row .pct-fila .u{ color:var(--text-tenue); font-size:var(--fs-sm); }
+
   /* La tarjeta del catálogo abierta para editar: se marca cuál es, porque el
      panel se abre abajo de toda la grilla y si no no se sabe de cuál salió. */
   .btn-item.abierto{
