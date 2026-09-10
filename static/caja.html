@@ -28,6 +28,13 @@
     font-size:var(--fs-xs); color:var(--text-marca);
     text-transform:uppercase; letter-spacing:var(--tracking-eti);
   }
+  /* Donde el empleado tenía el selector de fecha ahora hay un cartel: la caja
+     que ve es siempre la de hoy. */
+  .fecha-hoy{
+    padding:8px 0;
+    font-weight:600;
+    text-transform:capitalize;
+  }
 </style>
 </head><body>
 <header>
@@ -47,7 +54,10 @@
   <div class="card">
     <h2>Cierre del día</h2>
     <div class="fila" style="margin-bottom:14px;">
-      <div style="max-width:200px;"><label>Fecha</label><input type="date" id="fecha"></div>
+      <!-- El empleado ve la caja de hoy y nada más, así que el selector no le
+           sirve: se lo saca ajustarPorRol() y el backend lo frena igual. -->
+      <div style="max-width:200px;" data-dueno><label>Fecha</label><input type="date" id="fecha"></div>
+      <div data-empleado><label>Fecha</label><div class="fecha-hoy" id="fechaHoy"></div></div>
     </div>
     <div class="nums">
       <div class="num ing"><div class="lbl">Ingresos</div><div class="val money" id="ing">$0</div></div>
@@ -84,18 +94,37 @@
 
 <script src="/static/auth.js"></script>
 <script>
-requireLogin(); pintarNav();
+requireLogin(); pintarNav(); ajustarPorRol();
 const $=s=>document.querySelector(s);
 if(getRol()!=="dueno"){ const fe=document.getElementById("fondoEdit"); if(fe) fe.style.display="none"; }
 const money=n=>"$"+(n||0).toLocaleString("es-AR");
 function toast(m){const t=$("#toast");t.textContent=m;t.classList.add("show");setTimeout(()=>t.classList.remove("show"),2200);}
 
 const hoyISO=new Date().toLocaleDateString("en-CA"); // YYYY-MM-DD local
-$("#fecha").value=hoyISO;
+/* Con el empleado, el input de fecha no existe (lo sacó ajustarPorRol), así que
+   todo lo que lee o escribe #fecha tiene que sobrevivir a que no esté: en su
+   lugar hay un cartel con el día de hoy. */
+const HOY_SOLO = !$("#fecha");
+/* Con el empleado NO se manda fecha: el que decide qué día es hoy es el
+   servidor. La tablet dice la hora del aparato, y el día argentino no siempre
+   coincide con el del navegador —después de las 21 el servidor ya está en el día
+   siguiente en UTC— así que mandar la fecha de acá terminaba pidiendo un día que
+   para el servidor no era hoy, y contestaba 403. */
+function fechaElegida(){ return HOY_SOLO ? "" : $("#fecha").value; }
+if(!HOY_SOLO) $("#fecha").value=hoyISO;
+
+function mostrarFecha(iso){
+  if(!HOY_SOLO || !iso) return;
+  $("#fechaHoy").textContent = new Date(iso+"T12:00:00")
+    .toLocaleDateString("es-AR", {weekday:"long", day:"numeric", month:"long"});
+}
 
 async function cargarDia(){
-  const f=$("#fecha").value;
-  const d=await (await authFetch("/api/caja/dia?fecha="+f)).json();
+  const f=fechaElegida();
+  const r=await authFetch("/api/caja/dia" + (f ? "?fecha="+f : ""));
+  if(!r.ok){ toast((await r.json().catch(()=>({}))).detail || "No se pudo cargar la caja"); return; }
+  const d=await r.json();
+  mostrarFecha(d.fecha);
   $("#ing").textContent=money(d.ingresos);
   $("#egr").textContent=money(d.egresos);
   $("#net").textContent=money(d.neto);
@@ -147,12 +176,12 @@ async function cargarDia(){
   $("#aqEgresos").textContent = money(d.efectivo_egresos);
   $("#aqEsperado").textContent = money(d.efectivo_esperado);
 }
-$("#fecha").onchange=cargarDia;
+if(!HOY_SOLO) $("#fecha").onchange=cargarDia;
 
 $("#btnFondo").onclick=async()=>{
   await authFetch("/api/config/fondo-caja",{method:"PUT",headers:{"Content-Type":"application/json"},
-    body:JSON.stringify({valor:parseInt($("#fondo").value)||0, fecha:$("#fecha").value})});
-  toast("Fondo guardado para "+$("#fecha").value); cargarDia();
+    body:JSON.stringify({valor:parseInt($("#fondo").value)||0, fecha:fechaElegida()})});
+  toast("Fondo guardado para "+fechaElegida()); cargarDia();
 };
 
 async function anularPagoCaja(id){

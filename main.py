@@ -257,6 +257,7 @@ class MinutosTrabajoIn(BaseModel):
     linea_id: int | None = None; trabajo_id: int | None = None
 class CerrarIn(BaseModel):
     empleado_id: int; notas: str | None = None
+    desde: str | None = None             # qué ciclo se cierra; None = el más viejo
     # Con qué plata se le pagó. Importa: el arqueo suma comparando
     # forma_pago == "Efectivo", así que un sueldo pagado en efectivo tiene que
     # decir exactamente eso o la caja del día cierra de más.
@@ -1141,12 +1142,40 @@ def lineas_a_comision_pendientes(db, empleado):
         q = q.filter(anotado >= datetime.fromisoformat(desde.valor))
     return q.order_by(models.Comprobante.fecha).all()
 
+def ciclo_de(f: date) -> tuple[date, date]:
+    """A qué ciclo de sueldo pertenece un día.
+
+    El ciclo es de MARTES a SÁBADO, que es la semana del local. No es una ventana
+    para filtrar: es la unidad con la que se paga. Un ciclo que no se cerró queda
+    pendiente y sigue apareciendo, así que atrasarse en pagar no mezcla dos
+    semanas en un solo número.
+
+    El lunes es su propio ciclo de un día. El local no abre los lunes; si un día
+    se trabaja uno, es un extra y se paga como tal, no metido adentro de la
+    semana que arranca al día siguiente.
+
+    El domingo tampoco se trabaja, pero si aparece algo cargado ahí se lo lleva
+    el ciclo que acaba de terminar: es la continuación de esa semana, no el
+    arranque de la próxima.
+    """
+    dow = f.weekday()                       # 0=lunes … 5=sábado, 6=domingo
+    if dow == 0: return f, f
+    if dow == 6: return f - timedelta(days=5), f - timedelta(days=1)
+    ini = f - timedelta(days=dow - 1)       # el martes de esa semana
+    return ini, ini + timedelta(days=4)     # y su sábado
+
 def resumen_pendiente(db, empleado) -> dict:
-    """Lo que se le debe hoy a una empleada, calculado en vivo.
+    """Lo que se le debe a una empleada, partido en ciclos.
 
     En vivo y no guardado porque mientras está pendiente todavía puede cambiar:
     si se corrige un comprobante, el número se corrige solo. Recién al cerrar se
     saca la foto.
+
+    Un trabajo SIN duración cargada no suma todavía. No es un descuido: la
+    duración es lo único que la empleada tiene que poner, y mientras falte, el
+    total sería mentira para los dos lados —se le pagaría la comisión y además
+    las horas que ese trabajo se comió—. Aparece igual, marcado, y el ciclo no se
+    puede cerrar hasta que estén todos completos.
     """
     pct = comision_pct(db)
     vh = valor_hora(db)
@@ -1164,11 +1193,8 @@ def resumen_pendiente(db, empleado) -> dict:
                   models.TrabajoComision.linea_id.isnot(None),
                   models.TrabajoComision.liquidacion_id.is_(None)).all())
 
-    trabajos, total_com, min_com = [], 0, 0
+    trabajos = []
     for linea, comp in lineas_a_comision_pendientes(db, empleado):
-        c = comision_de(linea, pct)
-        m = minutos_por_linea.get(linea.id, 0) or 0
-        total_com += c; min_com += m
         trabajos.append({
             "id": id_por_linea.get(linea.id), "linea_id": linea.id,
             "comprobante_id": comp.id, "numero": comp.numero,
@@ -1177,7 +1203,8 @@ def resumen_pendiente(db, empleado) -> dict:
             "cliente_id": comp.cliente_id,
             "fecha": hora_argentina(comp.fecha).date().isoformat(),
             "nombre": linea.nombre, "cantidad": linea.cantidad,
-            "base": base_comision(linea), "comision": c, "minutos": m,
+            "base": base_comision(linea), "comision": comision_de(linea, pct),
+            "minutos": minutos_por_linea.get(linea.id, 0) or 0,
             "cliente": comp.cliente_nombre, "suelto": False})
 
     # Y los sueltos, que no tienen comprobante detrás.
@@ -1189,53 +1216,77 @@ def resumen_pendiente(db, empleado) -> dict:
     for t in sueltos:
         item = db.get(models.Item, t.item_id) if t.item_id else None
         b = base_suelto(t, item) if item else 0
-        c = round(b * pct / 100)
-        m = t.minutos or 0
-        total_com += c; min_com += m
         trabajos.append({
             "id": t.id, "linea_id": None, "comprobante_id": None, "numero": None,
             "cliente_id": None, "fecha": t.fecha,
             "nombre": t.nombre or (item.nombre if item else "—"),
             "cantidad": t.cantidad or 1,
-            "base": b, "comision": c, "minutos": m,
+            "base": b, "comision": round(b * pct / 100), "minutos": t.minutos or 0,
             "cliente": None, "suelto": True})
-
-    trabajos.sort(key=lambda t: (t["fecha"] or "", t["numero"] or 0))
 
     horas = (db.query(models.HoraTrabajada)
                .filter(models.HoraTrabajada.empleado_id == empleado.id,
                        models.HoraTrabajada.liquidacion_id.is_(None))
                .order_by(models.HoraTrabajada.fecha).all())
-    min_total = sum(h.minutos or 0 for h in horas)
 
+    # --- se arma un día por fecha, con sus trabajos adentro ---
     # Un día en el que hizo un trabajo es un día que trabajó: aparece solo, con
     # las horas en cero esperando que las complete. Si hubiera que agregarlos a
     # mano, tendría que acordarse de qué días vino, y el día que se olvide de uno
     # se le paga de menos sin que nada avise.
     dias = {h.fecha: {"id": h.id, "fecha": h.fecha, "minutos": h.minutos or 0,
-                      "sugerido": False} for h in horas}
+                      "sugerido": False, "trabajos": []} for h in horas}
     for t in trabajos:
         f = t["fecha"]
-        if f and f not in dias:
-            dias[f] = {"id": None, "fecha": f, "minutos": 0, "sugerido": True}
-    dias = [dias[f] for f in sorted(dias)]
+        if not f: continue
+        if f not in dias:
+            dias[f] = {"id": None, "fecha": f, "minutos": 0, "sugerido": True, "trabajos": []}
+        dias[f]["trabajos"].append(t)
+    for d in dias.values():
+        d["trabajos"].sort(key=lambda t: (t["numero"] or 0, t["id"] or 0))
 
-    # Las horas de los trabajos a comisión ya se pagan con la comisión, así que
-    # se descuentan. Nunca baja de cero: si declaró menos horas que las que
-    # duraron sus trabajos, no se le puede descontar plata por eso.
-    min_pagados = max(min_total - min_com, 0)
-    total_horas = round(min_pagados * vh / 60)
+    # --- y los días se agrupan en ciclos ---
+    ciclos = {}
+    for f, d in dias.items():
+        desde, hasta = ciclo_de(date.fromisoformat(f))
+        clave = desde.isoformat()
+        c = ciclos.setdefault(clave, {"desde": clave, "hasta": hasta.isoformat(), "dias": []})
+        c["dias"].append(d)
+
+    salida = []
+    for clave in sorted(ciclos):
+        c = ciclos[clave]
+        c["dias"].sort(key=lambda d: d["fecha"])
+        min_total = sum(d["minutos"] for d in c["dias"])
+        listos = [t for d in c["dias"] for t in d["trabajos"] if t["minutos"] > 0]
+        faltan = [t for d in c["dias"] for t in d["trabajos"] if not t["minutos"]]
+        min_com = sum(t["minutos"] for t in listos)
+        total_com = sum(t["comision"] for t in listos)
+        # Las horas de los trabajos a comisión ya se pagan con la comisión, así
+        # que se descuentan. Nunca baja de cero: si declaró menos horas que las
+        # que duraron sus trabajos, no se le puede descontar plata por eso.
+        min_pagados = max(min_total - min_com, 0)
+        total_horas = round(min_pagados * vh / 60)
+        c.update({
+            "minutos_total": min_total, "minutos_comision": min_com,
+            "minutos_pagados": min_pagados,
+            "total_comisiones": total_com, "total_horas": total_horas,
+            "total": total_com + total_horas,
+            "sin_tiempo": len(faltan),
+            "en_espera": sum(t["comision"] for t in faltan),
+        })
+        salida.append(c)
 
     return {
         "empleado": {"id": empleado.id, "nombre": empleado.nombre},
         "valor_hora": vh, "comision_pct": pct,
-        "dias": dias,
-        "trabajos": trabajos,
-        "minutos_total": min_total, "minutos_comision": min_com,
-        "minutos_pagados": min_pagados,
-        "total_comisiones": total_com, "total_horas": total_horas,
-        "total": total_com + total_horas,
-        "desde": dias[0]["fecha"] if dias else None,
+        "ciclos": salida,
+        "total": sum(c["total"] for c in salida),
+        "total_comisiones": sum(c["total_comisiones"] for c in salida),
+        "total_horas": sum(c["total_horas"] for c in salida),
+        "minutos_total": sum(c["minutos_total"] for c in salida),
+        "sin_tiempo": sum(c["sin_tiempo"] for c in salida),
+        "en_espera": sum(c["en_espera"] for c in salida),
     }
 
 # ---------- empleados ----------
@@ -1335,6 +1386,30 @@ def cargar_horas(h: HorasIn, user = Depends(usuario_actual),
               .filter(models.HoraTrabajada.empleado_id == h.empleado_id,
                       models.HoraTrabajada.fecha == h.fecha,
                       models.HoraTrabajada.liquidacion_id.is_(None)).first())
+    # La empleada completa las horas de los días que YA están —los que aparecen
+    # solos porque ese día hizo algo—; agregar un día de la nada es de la dueña.
+    # Un día sin ningún trabajo detrás no se puede verificar contra nada, y son
+    # horas que se pagan: que las agregue la que paga.
+    if not fila and not es_dueno(user):
+        emp = db.get(models.Empleado, h.empleado_id)
+        try:
+            ini, fin = _rango_dia(date.fromisoformat(h.fecha))
+        except ValueError:
+            raise HTTPException(400, "Fecha inválida")
+        # Dos formas de que ese día exista: un trabajo cargado a mano, o un
+        # ticket a su nombre. El segundo caso es el común, y todavía no tiene
+        # fila propia si nadie le puso los minutos.
+        hubo = (db.query(models.TrabajoComision)
+                  .filter(models.TrabajoComision.empleado_id == h.empleado_id,
+                          models.TrabajoComision.fecha == h.fecha).first()
+                or db.query(models.Comprobante)
+                    .filter(models.Comprobante.activo == True,
+                            models.Comprobante.tipo == "ticket",
+                            models.Comprobante.peluquero == emp.nombre,
+                            models.Comprobante.fecha >= ini,
+                            models.Comprobante.fecha < fin).first())
+        if not hubo:
+            raise HTTPException(403, "Ese día no tiene ningún trabajo tuyo. Pediselo a la dueña.")
     if h.minutos == 0:
         if fila: db.delete(fila)
     elif fila:
@@ -1379,20 +1454,34 @@ def cerrar_liquidacion(datos: CerrarIn, _ = Depends(solo_dueno), db: Session = D
     """
     emp = _empleado_o_404(db, datos.empleado_id)
     r = resumen_pendiente(db, emp)
-    if not r["trabajos"] and not r["dias"]:
+    if not r["ciclos"]:
         raise HTTPException(400, "No hay nada pendiente para cerrar")
 
-    hoy = hoy_argentina().isoformat()
+    # Se cierra UN ciclo, no "todo lo pendiente". Si hay dos semanas sin pagar,
+    # cada una se paga por separado: juntarlas en un solo número esconde que una
+    # se atrasó, y deja una liquidación que no corresponde a ninguna semana.
+    ciclo = next((c for c in r["ciclos"] if c["desde"] == datos.desde), None) if datos.desde \
+            else r["ciclos"][0]
+    if not ciclo:
+        raise HTTPException(400, "Ese ciclo no está pendiente")
+    if ciclo["sin_tiempo"]:
+        raise HTTPException(400,
+            f"Faltan {ciclo['sin_tiempo']} trabajo(s) sin duración cargada. "
+            "Hasta que la tengan no se sabe cuántas horas hay que pagar aparte.")
+    if not ciclo["total"]:
+        raise HTTPException(400, "Ese ciclo no tiene nada para pagar")
+
+    trabajos = [t for d in ciclo["dias"] for t in d["trabajos"]]
     liq = models.Liquidacion(
-        empleado_id=emp.id, desde=r["desde"], hasta=hoy,
+        empleado_id=emp.id, desde=ciclo["desde"], hasta=ciclo["hasta"],
         valor_hora=r["valor_hora"], comision_pct=r["comision_pct"],
-        minutos_total=r["minutos_total"], minutos_comision=r["minutos_comision"],
-        minutos_pagados=r["minutos_pagados"],
-        total_comisiones=r["total_comisiones"], total_horas=r["total_horas"],
-        total=r["total"], notas=datos.notas)
+        minutos_total=ciclo["minutos_total"], minutos_comision=ciclo["minutos_comision"],
+        minutos_pagados=ciclo["minutos_pagados"],
+        total_comisiones=ciclo["total_comisiones"], total_horas=ciclo["total_horas"],
+        total=ciclo["total"], notas=datos.notas)
     db.add(liq); db.flush()
 
-    for t in r["trabajos"]:
+    for t in trabajos:
         # Los sueltos ya son una fila; los que vienen de una línea pueden no
         # tenerla todavía, si nadie les cargó los minutos.
         fila = db.get(models.TrabajoComision, t["id"]) if t["id"] else None
@@ -1411,9 +1500,13 @@ def cerrar_liquidacion(datos: CerrarIn, _ = Depends(solo_dueno), db: Session = D
         fila.liquidacion_id = liq.id
         fila.fecha = t["fecha"]; fila.nombre = t["nombre"]; fila.cantidad = t["cantidad"]
         fila.base = t["base"]; fila.comision = t["comision"]
+    # Solo las horas de ESTE ciclo. Las de una semana anterior sin pagar tienen
+    # que seguir pendientes, no irse adentro del cierre de otra semana.
     (db.query(models.HoraTrabajada)
        .filter(models.HoraTrabajada.empleado_id == emp.id,
-               models.HoraTrabajada.liquidacion_id.is_(None))
+               models.HoraTrabajada.liquidacion_id.is_(None),
+               models.HoraTrabajada.fecha >= ciclo["desde"],
+               models.HoraTrabajada.fecha <= ciclo["hasta"])
        .update({"liquidacion_id": liq.id}, synchronize_session=False))
 
     # El egreso del sueldo lo anota el cierre, no la dueña. Antes lo cargaba a
@@ -1424,7 +1517,7 @@ def cerrar_liquidacion(datos: CerrarIn, _ = Depends(solo_dueno), db: Session = D
     if liq.total > 0:
         egreso = models.Egreso(
             numero=siguiente_numero_egreso(db), tipo=tipo_de_sueldo(db).nombre,
-            concepto=f"Sueldo {emp.nombre}" + (f" ({r['desde']} a {hoy})" if r["desde"] else ""),
+            concepto=f"Sueldo {emp.nombre} ({ciclo['desde']} a {ciclo['hasta']})",
             monto=liq.total, forma_pago=datos.forma_pago,
             notas=datos.notas, fecha=fecha_hora_now_utc(),
             # Privado siempre, y no según cómo esté marcado el tipo: esto lo
@@ -1458,7 +1551,10 @@ def crear_trabajo_suelto(t: TrabajoSueltoIn, user = Depends(usuario_actual),
     if not item: raise HTTPException(404, "Ese ítem no existe")
     if not item.es_comision: raise HTTPException(400, "Ese ítem no se paga por comisión")
     if t.cantidad < 1: raise HTTPException(400, "La cantidad tiene que ser al menos 1")
-    if t.minutos < 0 or t.minutos > 24 * 60: raise HTTPException(400, "Duración fuera de rango")
+    # Con duración sí o sí. Un trabajo sin tiempo no se puede pagar bien: no se
+    # sabe cuánto descontarle a las horas del día, y termina cobrado dos veces.
+    if t.minutos <= 0: raise HTTPException(400, "Poné cuánto duró el trabajo")
+    if t.minutos > 24 * 60: raise HTTPException(400, "Duración fuera de rango")
     try:
         date.fromisoformat(t.fecha)
     except ValueError:
@@ -1671,8 +1767,22 @@ def borrar_empleado(emp_id: int, _ = Depends(solo_dueno), db: Session = Depends(
     reactiva en vez de chocar con el nombre repetido.
     """
     e = _empleado_o_404(db, emp_id)
-    e.activo = False
-    db.commit(); return {"ok": True}
+    # Si nunca hizo nada, se borra de verdad: un nombre mal tipeado, o alguien
+    # que se cargó dos veces, no tiene por qué quedar para siempre en una lista
+    # de baja que hay que leer todos los días. Si tiene historia no se puede: sus
+    # comprobantes dicen su nombre y sus liquidaciones apuntan a esta fila.
+    usos = (db.query(models.Comprobante).filter(models.Comprobante.peluquero == e.nombre).count()
+            + db.query(models.Turno).filter(models.Turno.peluquero == e.nombre).count()
+            + db.query(models.Venta).filter(models.Venta.peluquero == e.nombre).count()
+            + db.query(models.TrabajoComision).filter(models.TrabajoComision.empleado_id == e.id).count()
+            + db.query(models.HoraTrabajada).filter(models.HoraTrabajada.empleado_id == e.id).count()
+            + db.query(models.Liquidacion).filter(models.Liquidacion.empleado_id == e.id).count())
+    if usos:
+        e.activo = False
+        db.commit()
+        return {"ok": True, "borrado": False, "usos": usos}
+    db.delete(e); db.commit()
+    return {"ok": True, "borrado": True, "usos": 0}
 
 @app.put("/api/config/sueldos")
 def set_config_sueldos(datos: SueldosConfigIn, _ = Depends(solo_dueno), db: Session = Depends(get_db)):
@@ -2491,6 +2601,12 @@ def _pago_detalle(p):
 @app.get("/api/caja/dia")
 def caja_dia(fecha: str | None = None, user = Depends(usuario_actual), db: Session = Depends(get_db)):
     d = date.fromisoformat(fecha) if fecha else hoy_argentina()
+    # El empleado ve la caja de HOY y nada más. Lo de días anteriores es la
+    # historia del local: cuánto se facturó la semana pasada no es asunto de
+    # quien atiende, igual que los reportes. Y el arqueo que le sirve es el de
+    # hoy, que es el que tiene que cuadrar con la plata que hay en el cajón.
+    if not es_dueno(user) and d != hoy_argentina():
+        raise HTTPException(403, "Solo se puede ver la caja de hoy")
     ini, fin = _rango_dia(d)
     pagos = db.query(models.Pago).filter(models.Pago.fecha >= ini, models.Pago.fecha < fin).all()
     q_eg = db.query(models.Egreso).filter(models.Egreso.fecha >= ini, models.Egreso.fecha < fin)

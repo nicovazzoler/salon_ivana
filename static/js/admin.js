@@ -579,10 +579,17 @@ window.acotarLista = cont => { acotar(cont); cont.addEventListener("scroll", () 
    Todo esto es solo de la dueña: la tarjeta tiene data-dueno y ajustarPorRol()
    ya la sacó del documento cuando entra el empleado, así que acá no hay nada que
    dibujar ni nada que pedirle al servidor. */
+/* Los dados de baja quedan escondidos detrás de un botón. Siguen existiendo
+   —sus comprobantes dicen su nombre— pero no tienen por qué estar en la lista
+   que se lee todos los días. */
+let VER_BAJAS = false;
+
 async function cargarEmpleados(){
   const cont = $("#listaEmpleados");
   if(!cont) return;
-  const emps = await (await authFetch("/api/empleados?todos=true")).json();
+  const todos = await (await authFetch("/api/empleados?todos=true")).json();
+  const bajas = todos.filter(e => !e.activo).length;
+  const emps = VER_BAJAS ? todos : todos.filter(e => e.activo);
   cont.innerHTML = "";
 
   emps.forEach(e => {
@@ -606,7 +613,7 @@ async function cargarEmpleados(){
                                {className:"b-out", textContent: e.tiene_pin ? "Cambiar código" : "Poner código"});
     const bBaja = Object.assign(document.createElement("button"),
                                 {className: e.activo ? "b-del" : "b-ok",
-                                 textContent: e.activo ? "Dar de baja" : "Reactivar"});
+                                 textContent: e.activo ? "Sacar" : "Reactivar"});
     acc.append(bNom, bPin, bBaja);
     fila.append(quien, acc);
     cont.appendChild(fila);
@@ -618,14 +625,31 @@ async function cargarEmpleados(){
     bNom.onclick = () => abrir("nombre");
     bPin.onclick = () => abrir("pin");
     bBaja.onclick = async () => {
-      if(e.activo && !confirm(`Dar de baja a "${e.nombre}" no borra nada: sus comprobantes y lo que se le pagó siguen estando. Solo deja de aparecer para elegir y no puede entrar a su sueldo.\n\n¿Seguimos?`)) return;
-      const r = await authFetch(`/api/empleados/${e.id}`, {method:"PUT",
-        headers:{"Content-Type":"application/json"}, body:JSON.stringify({activo: !e.activo})});
+      if(!e.activo){
+        const r = await authFetch(`/api/empleados/${e.id}`, {method:"PUT",
+          headers:{"Content-Type":"application/json"}, body:JSON.stringify({activo: true})});
+        if(!r.ok){ toast((await r.json().catch(()=>({}))).detail || "No se pudo"); return; }
+        toast("Reactivada"); await refrescarEmpleados(); return;
+      }
+      // El DELETE decide solo: si nunca hizo nada lo borra de verdad, y si tiene
+      // historia lo da de baja. Por eso el aviso cuenta las dos cosas.
+      if(!confirm(`Sacar a "${e.nombre}" de la lista.\n\nSi nunca trabajó, se borra del todo. Si ya tiene comprobantes o sueldos, queda dado de baja: deja de aparecer para elegir y no puede entrar a su sueldo, pero lo suyo sigue estando.\n\n¿Seguimos?`)) return;
+      const r = await authFetch(`/api/empleados/${e.id}`, {method:"DELETE"});
       if(!r.ok){ toast((await r.json().catch(()=>({}))).detail || "No se pudo"); return; }
-      toast(e.activo ? "Dada de baja" : "Reactivada");
+      const d = await r.json();
+      toast(d.borrado ? "Borrado" : `Dada de baja · tiene ${d.usos} ${d.usos===1?"registro":"registros"} a su nombre`);
       await refrescarEmpleados();
     };
   });
+
+  if(bajas){
+    const pie = document.createElement("button");
+    pie.className = "b-out";
+    pie.style.cssText = "margin-top:var(--sp-2); align-self:flex-start;";
+    pie.textContent = VER_BAJAS ? "Ocultar los dados de baja" : `Ver ${bajas} ${bajas===1?"dado":"dados"} de baja`;
+    pie.onclick = () => { VER_BAJAS = !VER_BAJAS; cargarEmpleados(); };
+    cont.appendChild(pie);
+  }
 
   dibujarCrearEmpleado();
   await cargarFusion();

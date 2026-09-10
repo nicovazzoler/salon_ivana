@@ -48,12 +48,10 @@ const DUENO = esDueno();
    la pantalla de la dueña es directamente falso. */
 const VOS = {
   debe:   DUENO ? "Se le debe" : "Se te debe",
-  dias:   DUENO ? "Días trabajados" : "Días que trabajaste",
   quien:  DUENO ? "Empleada" : "Quién sos",
-  sinDias: DUENO ? "Todavía no tiene días cargados" : "Todavía no cargaste ningún día",
-  comoCargar: DUENO ? "Se agregan abajo, con el día y las horas." : "Agregá abajo el día y cuántas horas hiciste.",
-  sinTrabajos: DUENO ? "Aparecen solos cuando se cobra un ticket a su nombre con un ítem marcado a comisión."
-                     : "Aparecen solos cuando se cobra un ticket a tu nombre con un ítem marcado a comisión.",
+  sinNada: DUENO ? "No tiene nada pendiente" : "No tenés nada pendiente",
+  comoAparece: DUENO ? "Los días aparecen solos cuando se cobra un ticket a su nombre con un ítem a comisión."
+                     : "Los días aparecen solos cuando se cobra un ticket a tu nombre con un ítem a comisión.",
 };
 
 /* Las horas se muestran como las dice la gente ("8 h 30"), nunca en decimales:
@@ -79,6 +77,19 @@ function fechaCorta(iso){
   const [a,m,d] = iso.split("-");
   return `${d}/${m}`;
 }
+const MESES = ["ene","feb","mar","abr","may","jun","jul","ago","sep","oct","nov","dic"];
+/* "Mar 2 a sáb 6 de septiembre". El ciclo se nombra por sus días, no por un
+   número de semana: nadie sabe en qué semana del año está, pero todos saben qué
+   martes fue. */
+function rangoLargo(desde, hasta){
+  if(!desde) return "";
+  if(desde === hasta) return `${diaDe(desde)} ${fechaCorta(desde)}`;
+  const [, mA] = desde.split("-"), [, mB] = hasta.split("-");
+  const d1 = desde.split("-")[2], d2 = hasta.split("-")[2];
+  return mA === mB
+    ? `${Number(d1)} al ${Number(d2)} de ${MESES[Number(mA)-1]}`
+    : `${Number(d1)} de ${MESES[Number(mA)-1]} al ${Number(d2)} de ${MESES[Number(mB)-1]}`;
+}
 const DIAS = ["Domingo","Lunes","Martes","Miércoles","Jueves","Viernes","Sábado"];
 function diaDe(iso){
   if(!iso) return "";
@@ -99,8 +110,11 @@ async function arranque(){
     // que está mirando. El selector de arriba sigue existiendo porque es lo que
     // dice de quién es lo que se ve.
     $("#tituloDetalle").textContent = "Detalle";
-    $("#bajadaDetalle").textContent = "Lo que se le debe hoy. Se puede corregir acá mismo antes de cerrar.";
+    $("#bajadaDetalle").textContent = "Lo que se le debe, ciclo por ciclo. Cada semana se cierra por separado.";
     $("#rotuloQuien").textContent = VOS.quien;
+  } else {
+    $("#tituloDetalle").textContent = "👛 Tu sueldo";
+    $("#bajadaDetalle").textContent = "Poné cuánto duró cada trabajo y las horas de cada día. El total se actualiza solo.";
   }
   ITEMS = await (await pedir("/api/sueldos/items-comision")).json();
   if(DUENO){
@@ -111,7 +125,7 @@ async function arranque(){
   }
   llenarSelector();
   if(!EMPLEADOS.length) return;
-  if(DUENO) await cargarPanelDueno();
+  if(DUENO) await cargarPanelDueno(); else await pintarLiquidaciones();
   await cargar();
 }
 
@@ -133,7 +147,9 @@ function llenarSelector(){
       ${DUENO ? "Agregalos más abajo, en “Cómo se calcula”." : "La dueña los carga desde esta misma pantalla."}</div>`;
     return;
   }
-  sel.closest(".quien").style.display = "";
+  // Para la empleada el bloque ya se escondió al entrar con el código: su nombre
+  // está arriba y no hay nada que elegir.
+  if(DUENO) sel.closest(".quien").style.display = "";
   sel.innerHTML = EMPLEADOS.map(e=>`<option value="${e.id}">${esc(e.nombre)}${e.activo===false?" (de baja)":""}</option>`).join("");
   if(antes && EMPLEADOS.some(e=>String(e.id)===String(antes))) sel.value = antes;
   if(DUENO) localStorage.setItem(RECUERDO, sel.value);
@@ -147,7 +163,7 @@ async function refrescar(){
   EMPLEADOS = await listaEmpleados();
   llenarSelector();
   if(!EMPLEADOS.length) return;
-  if(DUENO) await cargarPanelDueno();
+  if(DUENO) await cargarPanelDueno(); else await pintarLiquidaciones();
   await cargar();
 }
 
@@ -159,17 +175,25 @@ async function cargarPanelDueno(){
   card.style.display = "";
   // Un pedido por empleada: son dos o tres. Hacer un endpoint que devuelva todo
   // junto sería otra versión de la misma cuenta para mantener al lado de esta.
-  const resumenes = await Promise.all(EMPLEADOS.map(async e =>
-    (await pedir("/api/sueldos/pendiente?empleado_id="+e.id)).json()));
+  const todos = await Promise.all(EMPLEADOS.map(async e =>
+    ({...await (await pedir("/api/sueldos/pendiente?empleado_id="+e.id)).json(),
+      activo: e.activo !== false})));
+  // A las dadas de baja se las sigue viendo SOLO si les quedó algo sin pagar:
+  // mientras haya algo pendiente hay que pagárselo, pero una que se fue hace
+  // meses y ya cobró todo no tiene por qué seguir en la lista de todos los días.
+  const resumenes = todos.filter(r => r.activo || r.total > 0 || r.ciclos.length);
   const total = resumenes.reduce((a,r)=>a+r.total, 0);
+  const ciclosViejos = resumenes.reduce((a,r)=>a + Math.max(r.ciclos.length - 1, 0), 0);
   $("#kpisDueno").innerHTML = `
     <div class="kpi"><span class="lbl">Total a pagar</span><span class="val">${fmt(total)}</span></div>
-    <div class="kpi"><span class="lbl">Valor hora</span><span class="val">${fmt(resumenes[0] ? resumenes[0].valor_hora : 0)}</span></div>`;
+    <div class="kpi"><span class="lbl">Valor hora</span><span class="val">${fmt(resumenes[0] ? resumenes[0].valor_hora : 0)}</span></div>
+    ${ciclosViejos ? `<div class="kpi"><span class="lbl">Semanas atrasadas</span><span class="val">${ciclosViejos}</span></div>` : ""}`;
   $("#listaEmpleadas").innerHTML = resumenes.map(r=>`
     <div class="fila-emp${r.empleado.id===EMP?" abierta":""}">
       <div>
-        <b>${esc(r.empleado.nombre)}</b>
-        <span class="det">${r.trabajos.length} ${r.trabajos.length===1?"trabajo":"trabajos"} · ${hhmm(r.minutos_total)} · ${r.dias.length} ${r.dias.length===1?"día":"días"}</span>
+        <b>${esc(r.empleado.nombre)}${r.activo ? "" : " · de baja"}</b>
+        <span class="det">${r.ciclos.length ? `${r.ciclos.length} ${r.ciclos.length===1?"ciclo":"ciclos"} · ${hhmm(r.minutos_total)}` : "sin nada pendiente"}${
+          r.sin_tiempo ? ` · <span style="color:var(--danger);">${r.sin_tiempo===1 ? "falta 1 duración" : `faltan ${r.sin_tiempo} duraciones`}</span>` : ""}</span>
       </div>
       <div class="plata">${fmt(r.total)}</div>
       <button class="b-out ver" data-emp="${r.empleado.id}">Ver</button>
@@ -190,20 +214,56 @@ async function cargarPanelDueno(){
   pintarLiquidaciones();
 }
 
+/* Lo ya pagado, agrupado por ciclo. Un ciclo cerrado es una semana del local:
+   adentro van las empleadas que cobraron esa semana, y adentro de cada una sus
+   trabajos. Ordenado así se lee "qué pagué la semana del 2", que es la pregunta
+   que uno se hace; una lista plana de liquidaciones mezcla semanas y personas. */
 async function pintarLiquidaciones(){
-  const liqs = await (await pedir("/api/sueldos/liquidaciones")).json();
+  const liqs = await (await pedir("/api/sueldos/liquidaciones?limite=60")).json();
   const card = $("#cardLiquidaciones");
+  if(!card) return;
   if(!liqs.length){ card.style.display = "none"; return; }
   card.style.display = "";
-  $("#listaLiq").innerHTML = liqs.map(l=>`
-    <div class="fila-emp">
-      <div><b>${esc(l.empleado||"—")} · ${fechaCorta(l.hasta)}</b>
-        <span class="det">${fechaCorta(l.desde)} a ${fechaCorta(l.hasta)} · ${hhmm(l.minutos_pagados)} a ${fmt(l.valor_hora)} + comisiones al ${l.comision_pct}%${
-          l.egreso_numero ? ` · egreso N-${String(l.egreso_numero).padStart(5,"0")}${l.forma_pago?" en "+esc(l.forma_pago):""}` : ""}${l.notas?" · "+esc(l.notas):""}</span></div>
-      <div class="plata">${fmt(l.total)}</div>
-      <button class="b-out verLiq" data-id="${l.id}">Ver</button>
-    </div>
-    <div class="detalle-liq" id="liq${l.id}" style="display:none;"></div>`).join("");
+  if(!DUENO){
+    $("#tituloPagado").textContent = "🧾 Lo que ya cobraste";
+    $("#bajadaPagado").textContent = "Tus ciclos cerrados, con los números tal como estaban ese día.";
+  }
+
+  // Se agrupa por el rango del ciclo. La clave es desde+hasta: dos empleadas de
+  // la misma semana caen en el mismo bloque aunque se hayan pagado en días
+  // distintos.
+  const ciclos = {};
+  liqs.forEach(l => {
+    const clave = `${l.desde}|${l.hasta}`;
+    (ciclos[clave] = ciclos[clave] || {desde:l.desde, hasta:l.hasta, liqs:[]}).liqs.push(l);
+  });
+  const orden = Object.values(ciclos).sort((a,b) => (b.desde||"").localeCompare(a.desde||""));
+
+  $("#listaLiq").innerHTML = orden.map(c => {
+    const total = c.liqs.reduce((a,l)=>a+l.total, 0);
+    const min = c.liqs.reduce((a,l)=>a+(l.minutos_total||0), 0);
+    return `<div class="ciclo">
+      <div class="ciclo-cab">
+        <div>
+          <h3>${rangoLargo(c.desde, c.hasta)}</h3>
+          <div class="det">${c.liqs.length} ${c.liqs.length===1?"empleada":"empleadas"} · ${hhmm(min)} trabajadas</div>
+        </div>
+        <div class="plata">${fmt(total)}</div>
+      </div>
+      <div class="ciclo-cuerpo">
+        ${c.liqs.map(l => `
+          <div class="fila-emp">
+            <div><b>${esc(l.empleado||"—")}</b>
+              <span class="det">${hhmm(l.minutos_total)} trabajadas · ${hhmm(l.minutos_pagados)} a ${fmt(l.valor_hora)} = ${fmt(l.total_horas)} · comisiones ${fmt(l.total_comisiones)}${
+                l.egreso_numero ? ` · egreso N-${String(l.egreso_numero).padStart(5,"0")}${l.forma_pago?" en "+esc(l.forma_pago):""}` : ""}${l.notas?" · "+esc(l.notas):""}</span></div>
+            <div class="plata">${fmt(l.total)}</div>
+            <button class="b-out verLiq" data-id="${l.id}">Ver</button>
+          </div>
+          <div class="detalle-liq" id="liq${l.id}" style="display:none;"></div>`).join("")}
+      </div>
+    </div>`;
+  }).join("");
+
   $("#listaLiq").querySelectorAll(".verLiq").forEach(b=>{
     b.onclick = async () => {
       const caja = $("#liq"+b.dataset.id);
@@ -224,34 +284,6 @@ async function pintarLiquidaciones(){
   });
 }
 
-/* Cerrar es de la dueña, que es la que paga, y no se puede deshacer: a partir de
-   ahí esos números no se mueven aunque después se corrija un comprobante. Por eso
-   el botón dice cuánto se está pagando y a quién. */
-function pintarCierre(){
-  const caja = $("#cierre");
-  if(!caja) return;
-  const hay = D.trabajos.length || D.dias.length;
-  if(!hay){ caja.innerHTML = ""; return; }
-  const faltan = D.trabajos.filter(t=>!t.minutos).length;
-  caja.className = "cierre";
-  caja.innerHTML = `
-    <div style="display:flex;align-items:center;gap:var(--sp-2);">
-      <label for="formaCierre" style="margin:0;">Se paga con</label>
-      <select id="formaCierre" style="width:auto;">${FORMAS.map(f=>`<option${f==="Efectivo"?" selected":""}>${esc(f)}</option>`).join("")}</select>
-    </div>
-    <input class="nota" id="notaCierre" placeholder="Nota (opcional): cómo se pagó, si quedó algo…">
-    <button class="b-ok" id="btnCerrar">Cerrar y pagar ${fmt(D.total)} a ${esc(D.empleado.nombre)}</button>
-    <div class="aviso">Al cerrar se anota solo el egreso en la caja de hoy, privado: la empleada no lo ve.</div>
-    ${faltan ? `<div class="aviso">⚠️ ${faltan} ${faltan===1?"trabajo":"trabajos"} sin duración cargada. Ese tiempo no se descuenta de las horas del día, así que si el día tiene horas puestas se paga dos veces: por hora y por comisión.</div>` : ""}`;
-  $("#btnCerrar").onclick = async () => {
-    const forma = $("#formaCierre").value || "Efectivo";
-    if(!confirm(`Se le pagan ${fmt(D.total)} a ${D.empleado.nombre} en ${forma} y arranca un ciclo nuevo.\n`
-              + `El egreso queda anotado en la caja de hoy.\n\nEsto no se puede deshacer. ¿Cerramos?`)) return;
-    if(await mandar("/api/sueldos/cerrar", "POST",
-        {empleado_id: EMP, forma_pago: forma, notas: $("#notaCierre").value.trim() || null})) toast("Pagado ✓");
-  };
-}
-
 async function cargar(){
   EMP = Number($("#quien").value);
   D = await (await pedir("/api/sueldos/pendiente?empleado_id="+EMP)).json();
@@ -259,133 +291,180 @@ async function cargar(){
 }
 
 function pintar(){
-  const conComp = D.trabajos.filter(t=>!t.suelto).length;
+  const espera = D.en_espera
+    ? `<span class="nota">faltan ${D.sin_tiempo} sin duración: ${fmt(D.en_espera)} sin contar</span>` : "";
   $("#totales").innerHTML = `
     <div class="kpi destacado">
       <span class="lbl">${VOS.debe}</span>
       <span class="val">${fmt(D.total)}</span>
-      <span class="nota">sin cerrar todavía</span>
+      <span class="nota">${D.ciclos.length} ${D.ciclos.length===1?"ciclo":"ciclos"} sin pagar</span>
     </div>
     <div class="kpi">
       <span class="lbl">Comisiones</span>
       <span class="val">${fmt(D.total_comisiones)}</span>
-      <span class="nota">${D.trabajos.length} ${D.trabajos.length===1?"trabajo":"trabajos"} al ${D.comision_pct}%</span>
+      <span class="nota">al ${D.comision_pct}%</span>
     </div>
     <div class="kpi">
       <span class="lbl">Horas</span>
       <span class="val">${fmt(D.total_horas)}</span>
-      <span class="nota">${hhmm(D.minutos_pagados)} a ${fmt(D.valor_hora)} la hora</span>
+      <span class="nota">${hhmm(D.minutos_total)} declaradas · ${fmt(D.valor_hora)} la hora</span>
     </div>`;
+  if(espera) $("#totales").insertAdjacentHTML("beforeend",
+    `<div class="kpi" style="flex:1 1 100%;"><span class="lbl">Sin contar todavía</span>
+     <span class="val">${fmt(D.en_espera)}</span>
+     <span class="nota">${D.sin_tiempo} ${D.sin_tiempo===1?"trabajo":"trabajos"} esperando que se cargue cuánto duró</span></div>`);
 
-  $("#cuerpo").innerHTML = seccionDias() + seccionTrabajos();
+  $("#cuerpo").innerHTML = D.ciclos.length
+    ? D.ciclos.map(dibujarCiclo).join("")
+    : `<div class="vacio"><b>${VOS.sinNada}</b>${VOS.comoAparece}</div>`;
   enganchar();
-  if(DUENO) pintarCierre();
 }
 
-/* Los días no se agregan de a uno: aparecen solos apenas hay un trabajo de esa
-   fecha, con las horas en cero. Si hubiera que acordarse de agregarlos, el día
-   que se olvide de uno se le paga de menos y nada avisa. El "+" de abajo es para
-   el día que vino y no hizo ningún trabajo a comisión. */
-function seccionDias(){
-  const filas = D.dias.map(d=>{
-    const h = Math.floor((d.minutos||0)/60), m = (d.minutos||0)%60;
-    return `<div class="fila-dato${d.sugerido?" sugerido":""}">
-      <div class="que">
-        <b>${diaDe(d.fecha)} ${fechaCorta(d.fecha)}</b>
-        <span class="det">${d.sugerido ? (DUENO ? "hizo trabajos ese día — faltan las horas" : "hiciste trabajos ese día — poné las horas") : ""}</span>
+/* Un ciclo es la semana del local: de martes a sábado. No es una ventana para
+   filtrar, es la unidad con la que se paga. Si una semana no se cerró, sigue
+   apareciendo entera al lado de la nueva en vez de mezclarse con ella. */
+function dibujarCiclo(c){
+  const hoy = hoyArg();
+  const enCurso = hoy >= c.desde && hoy <= c.hasta;
+  const listo = !c.sin_tiempo && c.total > 0;
+  return `<div class="ciclo${enCurso ? " en-curso" : ""}" data-desde="${c.desde}">
+    <div class="ciclo-cab">
+      <div>
+        <h3>${rangoLargo(c.desde, c.hasta)}</h3>
+        <div class="det">${hhmm(c.minutos_total)} declaradas · ${hhmm(c.minutos_comision)} de trabajos · comisiones ${fmt(c.total_comisiones)} + horas ${fmt(c.total_horas)}</div>
       </div>
-      <div class="mins">
-        <input type="number" min="0" max="24" inputmode="numeric" value="${h||""}"
-               data-fecha="${d.fecha}" data-parte="h" aria-label="Horas del ${d.fecha}">
-        <span class="u">h</span>
-        <input type="number" min="0" max="59" step="5" inputmode="numeric" value="${m||""}"
-               data-fecha="${d.fecha}" data-parte="m" aria-label="Minutos del ${d.fecha}">
-        <span class="u">min</span>
-      </div>
-      <div class="plata">${fmt(Math.round(Math.max((d.minutos||0),0) * D.valor_hora / 60))}</div>
-    </div>`;
-  }).join("");
-
-  return `<div class="sub-h">${VOS.dias} — ${hhmm(D.minutos_total)} en total</div>
-    ${filas || `<div class="vacio"><b>${VOS.sinDias}</b>${VOS.comoCargar}</div>`}
-    <div class="agregar">
-      <div><label for="nvFecha">Día</label><input type="date" id="nvFecha" value="${hoyArg()}" max="${hoyArg()}"></div>
-      <div><label for="nvHoras">Horas</label><input type="number" id="nvHoras" min="0" max="24" inputmode="numeric" placeholder="8"></div>
-      <div><label for="nvMin">Min</label><input type="number" id="nvMin" min="0" max="59" step="5" inputmode="numeric" placeholder="0"></div>
-      <button class="b-ok" id="btnDia">Agregar día</button>
-    </div>`;
+      <div class="plata">${fmt(c.total)}</div>
+    </div>
+    <div class="ciclo-cuerpo">
+      ${c.dias.map(d => dibujarDia(d, c)).join("")}
+      ${DUENO ? filaAgregarDia(c) : ""}
+      ${DUENO ? filaCerrar(c, listo) : ""}
+    </div>
+  </div>`;
 }
 
-function seccionTrabajos(){
-  const filas = D.trabajos.map(t=>{
-    const h = Math.floor((t.minutos||0)/60), m = (t.minutos||0)%60;
-    // El número de comprobante linkea a la cuenta del cliente y cae parado sobre
-    // ese comprobante: si algo no cuadra, se ve el ticket entero sin buscarlo.
-    const marca = t.suelto
-      ? `<span class="sin-comp">sin comprobante</span>`
-      : (t.cliente_id
-          ? `<a class="ver-comp" href="/cuenta?id=${t.cliente_id}&comp=${t.comprobante_id}">#${t.numero} ↗</a>`
-          : `<span class="det">#${t.numero}</span>`);
-    const quien = t.suelto ? "cargado a mano" : (t.cliente ? titulo(t.cliente) : "mostrador");
-    const clave = t.suelto ? `data-trabajo="${t.id}"` : `data-linea="${t.linea_id}"`;
-    return `<div class="fila-dato">
-      <div class="que">
-        <b>${esc(t.nombre)}${t.cantidad>1?` ×${t.cantidad}`:""} ${marca}</b>
-        <span class="det">${fechaCorta(t.fecha)} · ${esc(quien)} · ${fmt(t.base)}${
-          t.suelto ? ` · <a href="#" class="borrar-suelto" data-trabajo="${t.id}">borrar</a>` : ""}</span>
-      </div>
-      <div class="mins">
-        <input type="number" min="0" max="24" inputmode="numeric" value="${h||""}" ${clave} data-parte="h" aria-label="Horas del trabajo">
-        <span class="u">h</span>
-        <input type="number" min="0" max="59" step="5" inputmode="numeric" value="${m||""}" ${clave} data-parte="m" aria-label="Minutos del trabajo">
-        <span class="u">min</span>
-      </div>
-      <div class="plata">${fmt(t.comision)}</div>
-    </div>`;
-  }).join("");
-
-  const opciones = ITEMS.map(i=>`<option value="${i.id}">${esc(i.nombre)} — ${fmt(i.precio)}</option>`).join("");
-  /* El bloque para cargar un trabajo sin comprobante se muestra SIEMPRE. Antes
-     desaparecía si todavía no había ningún ítem marcado a comisión, que es
-     justo el estado en el que está el local el primer día: la pantalla no
-     ofrecía nada y parecía que cargar un trabajo a mano no se podía. Ahora, si
-     falta esa marca, lo dice y explica dónde se pone. */
-  const agregar = ITEMS.length ? `<div class="agregar">
-      <div class="ancho"><label for="nvItem">Trabajo sin comprobante</label>
-        <select id="nvItem">${opciones}</select></div>
-      <div style="flex:0 0 80px;"><label for="nvCant">Cant.</label>
-        <input type="number" id="nvCant" min="1" value="1" inputmode="numeric"></div>
-      <div><label for="nvTFecha">Día</label>
-        <input type="date" id="nvTFecha" value="${hoyArg()}" max="${hoyArg()}"></div>
-      <div><label for="nvTHoras">Horas</label>
-        <input type="number" id="nvTHoras" min="0" max="24" inputmode="numeric" placeholder="1"></div>
-      <div><label for="nvTMin">Min</label>
-        <input type="number" id="nvTMin" min="0" max="59" step="5" inputmode="numeric" placeholder="30"></div>
-      <button class="b-ok" id="btnSuelto">Agregar trabajo</button>
-    </div>` : `<div class="agregar" style="display:block;">
-      <b>Trabajo sin comprobante</b>
-      <p class="muted" style="margin:var(--sp-1) 0 0;">Para cargar uno a mano falta
-        marcar cuáles son los trabajos que van a comisión: se hace en el catálogo
-        de <a href="/admin#catalogo">Admin</a>, con la casilla “comisión” de cada
-        ítem. El precio del trabajo sale de ahí, así que la comisión se calcula
-        siempre sobre la misma base.</p>
-    </div>`;
-
-  return `<div class="sub-h">Trabajos a comisión — ${hhmm(D.minutos_comision)} que ya se pagan con la comisión</div>
-    ${filas || `<div class="vacio"><b>Ningún trabajo a comisión pendiente</b>${VOS.sinTrabajos}
-       ${ITEMS.length ? "Si hiciste uno que no quedó en ningún ticket, cargalo acá abajo." : ""}</div>`}
-    ${agregar}`;
+/* El día es el renglón que la empleada mira: cuántas horas hizo y qué trabajos
+   entraron. Las horas se muestran escritas y se editan con el lapicito: con el
+   casillero siempre abierto, un número tipeado sin querer es plata. */
+function dibujarDia(d, c){
+  const falta = !d.minutos;
+  return `<div class="dia" data-fecha="${d.fecha}">
+    <div class="dia-cab">
+      <b>${diaDe(d.fecha)} ${fechaCorta(d.fecha)}</b>
+      <span class="dia-horas${falta ? " falta" : ""}">
+        <span class="valor">${falta ? "sin horas" : hhmm(d.minutos)}</span>
+        <button class="b-out btn-mini editar-horas" data-fecha="${d.fecha}" data-min="${d.minutos}">${falta ? "Poner horas" : "✎"}</button>
+      </span>
+      <span class="plata">${fmt(Math.round(Math.max(d.minutos - d.trabajos.reduce((a,t)=>a+(t.minutos||0),0), 0) * D.valor_hora / 60))}</span>
+    </div>
+    ${d.trabajos.length ? `<div class="trabajos">${d.trabajos.map(dibujarTrabajo).join("")}</div>` : ""}
+    <div class="dia-acciones">
+      <button class="b-out btn-mini agregar-trabajo" data-fecha="${d.fecha}">+ Trabajo sin comprobante</button>
+    </div>
+  </div>`;
 }
 
-/* Todo se guarda al salir del casillero, sin botón de guardar: son dos números
-   por fila y un botón por cada uno sería una pantalla llena de botones. Después
-   de guardar se recarga entero, así el total de arriba nunca queda diciendo algo
-   distinto de lo que muestra el detalle. */
+function dibujarTrabajo(t){
+  const marca = t.suelto
+    ? `<span class="sin-comp">sin comprobante</span>`
+    : (t.cliente_id
+        ? `<a class="ver-comp" href="/cuenta?id=${t.cliente_id}&comp=${t.comprobante_id}">#${t.numero} ↗</a>`
+        : `<span class="det">#${t.numero}</span>`);
+  const quien = t.suelto ? "" : (t.cliente ? titulo(t.cliente) + " · " : "mostrador · ");
+  const clave = t.suelto ? `data-trabajo="${t.id}"` : `data-linea="${t.linea_id}"`;
+  const falta = !t.minutos;
+  return `<div class="trabajo${falta ? " sin-tiempo" : ""}">
+    <div class="que">
+      <b>${esc(t.nombre)}${t.cantidad>1?` ×${t.cantidad}`:""} ${marca}</b>
+      <span class="det">${esc(quien)}${fmt(t.base)}${
+        t.suelto ? ` · <a href="#" class="borrar-suelto" data-trabajo="${t.id}">borrar</a>` : ""}</span>
+    </div>
+    <span class="dia-horas">
+      ${falta ? `<span class="falta-tiempo">falta el tiempo</span>` : `<span class="valor">${hhmm(t.minutos)}</span>`}
+      <button class="b-out btn-mini editar-min" ${clave} data-min="${t.minutos}">${falta ? "Poner" : "✎"}</button>
+    </span>
+    <span class="plata">${falta ? "—" : fmt(t.comision)}</span>
+  </div>`;
+}
+
+/* Agregar un día a mano es de la dueña: un día sin ningún trabajo detrás no se
+   puede verificar contra nada, y son horas que se pagan. Los días con trabajo
+   aparecen solos. */
+function filaAgregarDia(c){
+  return `<div class="agregar">
+    <div><label>Agregar un día del ciclo</label>
+      <input type="date" class="nvFecha" min="${c.desde}" max="${c.hasta}" value="${c.desde}"></div>
+    <div style="flex:0 0 90px;"><label>Horas</label>
+      <input type="number" class="nvHoras" min="0" max="24" inputmode="numeric" placeholder="8"></div>
+    <div style="flex:0 0 90px;"><label>Min</label>
+      <input type="number" class="nvMin" min="0" max="59" step="5" inputmode="numeric" placeholder="0"></div>
+    <button class="b-out btn-dia">Agregar día</button>
+  </div>`;
+}
+
+function filaCerrar(c, listo){
+  const aviso = c.sin_tiempo
+    ? `<div class="aviso">⚠️ ${c.sin_tiempo} ${c.sin_tiempo===1?"trabajo":"trabajos"} sin duración. Hasta que la tengan no se sabe cuántas horas hay que pagar aparte, así que este ciclo no se puede cerrar.</div>`
+    : "";
+  return `<div class="cierre">
+    <div style="display:flex;align-items:center;gap:var(--sp-2);">
+      <label style="margin:0;">Se paga con</label>
+      <select class="formaCierre" style="width:auto;">${FORMAS.map(f=>`<option${f==="Efectivo"?" selected":""}>${esc(f)}</option>`).join("")}</select>
+    </div>
+    <input class="nota notaCierre" placeholder="Nota (opcional)">
+    <button class="b-ok btn-cerrar" ${listo ? "" : "disabled"}>Cerrar y pagar ${fmt(c.total)}</button>
+    ${aviso}
+  </div>`;
+}
+
+/* Todo lo que se toca abre un casillero chiquito en el lugar, guarda y vuelve a
+   cerrarse. Un solo abierto por vez: con veinte casilleros abiertos, la pantalla
+   deja de decir qué está guardado y qué está tipeado. */
+function abrirEditor(ancla, minutos, alGuardar){
+  document.querySelectorAll(".editor-min").forEach(x => x.remove());
+  const h = Math.floor(minutos/60), m = minutos%60;
+  const caja = document.createElement("span");
+  caja.className = "mins editor-min";
+  caja.innerHTML = `
+    <input type="number" min="0" max="24" inputmode="numeric" value="${h||""}" class="eh" aria-label="Horas">
+    <span class="u">h</span>
+    <input type="number" min="0" max="59" step="5" inputmode="numeric" value="${m||""}" class="em" aria-label="Minutos">
+    <span class="u">min</span>
+    <button class="b-ok btn-mini ok">Guardar</button>
+    <button class="b-out btn-mini no">✕</button>`;
+  ancla.replaceWith(caja);
+  const leer = () => Math.max(0, parseInt(caja.querySelector(".eh").value,10)||0) * 60
+                   + Math.max(0, parseInt(caja.querySelector(".em").value,10)||0);
+  caja.querySelector(".no").onclick = () => pintar();
+  caja.querySelector(".ok").onclick = () => alGuardar(leer());
+  caja.querySelectorAll("input").forEach(i => i.onkeydown = e => {
+    if(e.key === "Enter") alGuardar(leer());
+    if(e.key === "Escape") pintar();
+  });
+  caja.querySelector(".eh").focus();
+}
+
 function enganchar(){
-  document.querySelectorAll(".mins input").forEach(inp => {
-    inp.onchange = () => guardarMinutos(inp);
-    // Enter en la tablet es "terminé con este": dispara el mismo guardado.
-    inp.onkeydown = e => { if(e.key === "Enter") inp.blur(); };
+  // horas de un día
+  document.querySelectorAll(".editar-horas").forEach(b => {
+    b.onclick = () => abrirEditor(b, Number(b.dataset.min)||0, async minutos => {
+      if(!minutos){ toast("Poné cuántas horas hiciste"); return; }
+      await mandar("/api/sueldos/horas", "PUT", {empleado_id: EMP, fecha: b.dataset.fecha, minutos});
+    });
+  });
+  // duración de un trabajo
+  document.querySelectorAll(".editar-min").forEach(b => {
+    b.onclick = () => abrirEditor(b, Number(b.dataset.min)||0, async minutos => {
+      if(!minutos){ toast("Poné cuánto duró"); return; }
+      const d = b.dataset;
+      await mandar("/api/sueldos/trabajo-minutos", "PUT", d.linea
+        ? {empleado_id: EMP, linea_id: Number(d.linea), minutos}
+        : {empleado_id: EMP, trabajo_id: Number(d.trabajo), minutos});
+    });
+  });
+  // el trabajo sin comprobante, escondido hasta que se lo pide
+  document.querySelectorAll(".agregar-trabajo").forEach(b => {
+    b.onclick = () => abrirFormTrabajo(b);
   });
   document.querySelectorAll(".borrar-suelto").forEach(a => {
     a.onclick = async e => {
@@ -394,43 +473,72 @@ function enganchar(){
       await mandar("/api/sueldos/trabajo-suelto/"+a.dataset.trabajo, "DELETE");
     };
   });
-  const bd = $("#btnDia"); if(bd) bd.onclick = agregarDia;
-  const bs = $("#btnSuelto"); if(bs) bs.onclick = agregarSuelto;
+  // lo de la dueña
+  document.querySelectorAll(".btn-dia").forEach(b => {
+    b.onclick = async () => {
+      const caja = b.closest(".agregar");
+      const fecha = caja.querySelector(".nvFecha").value;
+      const minutos = (parseInt(caja.querySelector(".nvHoras").value,10)||0)*60
+                    + (parseInt(caja.querySelector(".nvMin").value,10)||0);
+      if(!fecha){ toast("Elegí el día"); return; }
+      if(minutos <= 0){ toast("Poné cuántas horas"); return; }
+      await mandar("/api/sueldos/horas", "PUT", {empleado_id: EMP, fecha, minutos});
+    };
+  });
+  document.querySelectorAll(".btn-cerrar").forEach(b => {
+    b.onclick = async () => {
+      const caja = b.closest(".cierre");
+      const ciclo = b.closest(".ciclo").dataset.desde;
+      const forma = caja.querySelector(".formaCierre").value || "Efectivo";
+      const c = D.ciclos.find(x => x.desde === ciclo);
+      if(!confirm(`Se le pagan ${fmt(c.total)} a ${D.empleado.nombre} por ${rangoLargo(c.desde, c.hasta)}, en ${forma}.\n`
+                + `El egreso queda anotado en la caja de hoy.\n\nEsto no se puede deshacer. ¿Cerramos?`)) return;
+      if(await mandar("/api/sueldos/cerrar", "POST", {empleado_id: EMP, desde: ciclo, forma_pago: forma,
+                                                      notas: caja.querySelector(".notaCierre").value.trim() || null}))
+        toast("Pagado ✓");
+    };
+  });
 }
 
-function minutosDe(inp){
-  const fila = inp.closest(".mins");
-  const val = p => {
-    const e = fila.querySelector(`input[data-parte="${p}"]`);
-    return Math.max(0, parseInt(e.value, 10) || 0);
+/* El formulario de un trabajo sin comprobante aparece recién cuando se lo pide,
+   pegado al día que lo va a recibir. Antes estaba siempre abierto abajo de todo:
+   cinco casilleros vacíos que casi nunca se usan, en la pantalla que se mira
+   todos los días para ver un total. */
+function abrirFormTrabajo(boton){
+  document.querySelectorAll(".form-trabajo").forEach(x => x.remove());
+  if(!ITEMS.length){
+    toast("Falta marcar en el catálogo cuáles van a comisión");
+    return;
+  }
+  const fecha = boton.dataset.fecha;
+  const caja = document.createElement("div");
+  caja.className = "agregar form-trabajo";
+  caja.innerHTML = `
+    <div class="ancho"><label>Trabajo del ${fechaCorta(fecha)}</label>
+      <select class="fItem">${ITEMS.map(i=>`<option value="${i.id}">${esc(i.nombre)} — ${fmt(i.precio)}</option>`).join("")}</select></div>
+    <div style="flex:0 0 80px;"><label>Cant.</label>
+      <input type="number" class="fCant" min="1" value="1" inputmode="numeric"></div>
+    <div style="flex:0 0 90px;"><label>Horas</label>
+      <input type="number" class="fHoras" min="0" max="24" inputmode="numeric" placeholder="1"></div>
+    <div style="flex:0 0 90px;"><label>Min</label>
+      <input type="number" class="fMin" min="0" max="59" step="5" inputmode="numeric" placeholder="30"></div>
+    <button class="b-ok fOk">Agregar</button>
+    <button class="b-out fNo">Cancelar</button>`;
+  boton.after(caja);
+  caja.querySelector(".fNo").onclick = () => caja.remove();
+  caja.querySelector(".fOk").onclick = async () => {
+    const minutos = (parseInt(caja.querySelector(".fHoras").value,10)||0)*60
+                  + (parseInt(caja.querySelector(".fMin").value,10)||0);
+    // Sin duración no se agrega: un trabajo sin tiempo no se puede pagar bien
+    // —no se sabe cuánto descontarle a las horas del día— y el servidor lo
+    // rebota igual.
+    if(minutos <= 0){ toast("Poné cuánto duró el trabajo"); return; }
+    await mandar("/api/sueldos/trabajo-suelto", "POST", {
+      empleado_id: EMP, item_id: Number(caja.querySelector(".fItem").value),
+      cantidad: Math.max(1, parseInt(caja.querySelector(".fCant").value,10)||1),
+      fecha, minutos});
   };
-  return val("h")*60 + val("m");
-}
-
-async function guardarMinutos(inp){
-  const minutos = minutosDe(inp);
-  if(minutos > 24*60){ toast("No entran más de 24 horas en un día"); return; }
-  const d = inp.dataset;
-  if(d.fecha)        await mandar("/api/sueldos/horas", "PUT", {empleado_id: EMP, fecha: d.fecha, minutos});
-  else if(d.linea)   await mandar("/api/sueldos/trabajo-minutos", "PUT", {empleado_id: EMP, linea_id: Number(d.linea), minutos});
-  else if(d.trabajo) await mandar("/api/sueldos/trabajo-minutos", "PUT", {empleado_id: EMP, trabajo_id: Number(d.trabajo), minutos});
-}
-
-async function agregarDia(){
-  const fecha = $("#nvFecha").value;
-  if(!fecha){ toast("Elegí el día"); return; }
-  const minutos = (parseInt($("#nvHoras").value,10)||0)*60 + (parseInt($("#nvMin").value,10)||0);
-  if(minutos <= 0){ toast("Poné cuántas horas hiciste"); return; }
-  await mandar("/api/sueldos/horas", "PUT", {empleado_id: EMP, fecha, minutos});
-}
-
-async function agregarSuelto(){
-  const fecha = $("#nvTFecha").value;
-  if(!fecha){ toast("Elegí el día"); return; }
-  const minutos = (parseInt($("#nvTHoras").value,10)||0)*60 + (parseInt($("#nvTMin").value,10)||0);
-  await mandar("/api/sueldos/trabajo-suelto", "POST", {
-    empleado_id: EMP, item_id: Number($("#nvItem").value),
-    cantidad: Math.max(1, parseInt($("#nvCant").value,10)||1), fecha, minutos});
+  caja.querySelector(".fHoras").focus();
 }
 
 /* Un solo lugar donde se habla con el servidor: si algo falla se muestra el
@@ -566,11 +674,15 @@ async function abrirPuerta(motivo){
     // código: queda el nombre y un botón para que entre la otra. El select sigue
     // existiendo escondido porque es de donde el resto de la pantalla lee de
     // quién es lo que muestra.
+    // display:none y no [hidden]: la clase .quien pone display:flex y le gana al
+    // hidden del navegador, así que el bloque quedaría a la vista igual.
     const caja = $("#quien").closest(".quien");
-    caja.innerHTML = `<label>Sos</label>
-      <span class="quien-nombre">${esc(d.empleado.nombre)}</span>
-      <button class="b-out" id="salirSueldos" title="Cerrar y que entre otra">Salir</button>
-      <select id="quien" hidden></select>`;
+    caja.style.display = "none";
+    caja.innerHTML = `<select id="quien" hidden></select>`;
+    const nom = $("#quienEmpleada");
+    nom.hidden = false;
+    nom.innerHTML = `${esc(d.empleado.nombre)}
+      <button class="b-out" id="salirSueldos" title="Cerrar y que entre otra">Salir</button>`;
     $("#salirSueldos").onclick = () => cerrarPuerta("Listo. El código lo pide de nuevo para entrar.");
     reiniciarRelojQuieta();
     arranque();

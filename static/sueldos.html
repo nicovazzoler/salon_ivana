@@ -47,6 +47,55 @@
   }
   a.ver-comp{ color:var(--acento); text-decoration:none; white-space:nowrap; }
 
+  /* El nombre de la empleada, en lugar del desplegable: es lo único que hace
+     falta decir y se lee de lejos. */
+  .quien-empleada{ font-family:var(--font-display); font-size:var(--fs-2xl);
+                   font-weight:var(--fw-black); color:var(--text-titulo);
+                   display:flex; align-items:center; gap:var(--sp-3); }
+  .quien-empleada button{ font-size:var(--fs-sm); padding:4px 10px; }
+
+  /* Un ciclo: la semana de trabajo (martes a sábado) con sus días adentro. */
+  .ciclo{ border:1px solid var(--border-sutil); border-radius:var(--r-lg);
+          margin-top:var(--sp-4); overflow:hidden; }
+  .ciclo-cab{ display:flex; flex-wrap:wrap; align-items:baseline; gap:var(--sp-2);
+              padding:var(--sp-3) var(--sp-4); background:var(--bg-sutil);
+              border-bottom:1px solid var(--border-sutil); }
+  .ciclo-cab h3{ margin:0; font-size:var(--fs-lg); }
+  .ciclo-cab .plata{ margin-left:auto; font-family:var(--font-display);
+                     font-size:var(--fs-xl); font-weight:var(--fw-black);
+                     font-variant-numeric:tabular-nums; }
+  .ciclo-cab .det{ font-size:var(--fs-sm); color:var(--text-tenue); }
+  .ciclo-cuerpo{ padding:0 var(--sp-4) var(--sp-3); }
+  /* El ciclo de esta semana, el que todavía se está llenando. */
+  .ciclo.en-curso .ciclo-cab{ background:var(--bg-header); }
+  .ciclo.en-curso .ciclo-cab h3::after{ content:" · en curso"; font-weight:var(--fw-normal);
+                                        font-size:var(--fs-sm); color:var(--text-tenue); }
+
+  /* Un día adentro del ciclo: rótulo, horas y sus trabajos debajo. */
+  .dia{ padding:var(--sp-3) 0; border-bottom:1px solid var(--border-sutil); }
+  .dia:last-child{ border-bottom:none; }
+  .dia-cab{ display:flex; flex-wrap:wrap; align-items:center; gap:var(--sp-2); }
+  .dia-cab b{ min-width:110px; }
+  .dia-cab .plata{ margin-left:auto; font-variant-numeric:tabular-nums; white-space:nowrap; }
+  .dia-horas{ display:flex; align-items:center; gap:6px; color:var(--text-tenue);
+              font-size:var(--fs-sm); }
+  .dia-horas .valor{ color:var(--text-titulo); font-weight:var(--fw-bold); }
+  .dia-horas.falta .valor{ color:var(--danger); }
+  .dia .trabajos{ margin-top:var(--sp-2); padding-left:var(--sp-3);
+                  border-left:2px solid var(--border-sutil); }
+  .trabajo{ display:grid; grid-template-columns:minmax(0,1fr) auto auto;
+            align-items:center; gap:var(--sp-2); padding:var(--sp-2) 0; }
+  .trabajo + .trabajo{ border-top:1px dashed var(--border-sutil); }
+  .trabajo .que{ min-width:0; }
+  .trabajo .que b{ display:block; }
+  .trabajo .det{ font-size:var(--fs-sm); color:var(--text-tenue); }
+  .trabajo.sin-tiempo{ background:var(--rojo-bg); border-radius:var(--r-md);
+                       padding-left:var(--sp-2); padding-right:var(--sp-2); }
+  .falta-tiempo{ font-size:var(--fs-xs); color:var(--danger); text-transform:uppercase;
+                 letter-spacing:.04em; }
+  .btn-mini{ font-size:var(--fs-sm); padding:3px 10px; }
+  .dia-acciones{ margin-top:var(--sp-2); }
+
   .sub-h{ margin:var(--sp-4) 0 var(--sp-2); font-size:var(--fs-base);
           font-weight:var(--fw-bold); text-transform:uppercase; letter-spacing:.04em;
           color:var(--text-tenue); }
@@ -156,15 +205,18 @@
         <label for="quien" id="rotuloQuien">Quién sos</label>
         <select id="quien"></select>
       </div>
+      <div class="quien-empleada" id="quienEmpleada" hidden></div>
     </div>
     <div class="totales" id="totales"></div>
     <div id="cuerpo"></div>
     <div id="cierre" data-dueno></div>
   </div>
 
-  <div class="card" data-dueno id="cardLiquidaciones" style="display:none;">
-    <div class="card-head"><div class="titulo"><h2>🧾 Ya pagado</h2>
-      <p>Los cierres anteriores, con los números tal como estaban ese día.</p></div></div>
+  <!-- Lo ya pagado lo miran las dos: la dueña todos los cierres, la empleada los
+       suyos (el servidor no le contesta otra cosa). -->
+  <div class="card" id="cardLiquidaciones" style="display:none;">
+    <div class="card-head"><div class="titulo"><h2 id="tituloPagado">🧾 Ya pagado</h2>
+      <p id="bajadaPagado">Los cierres anteriores, con los números tal como estaban ese día.</p></div></div>
     <div id="listaLiq"></div>
   </div>
 
