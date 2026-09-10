@@ -195,6 +195,20 @@
     <div id="listaEmpleadas"></div>
   </div>
 
+  <div class="card" data-dueno>
+    <div class="card-head"><div class="titulo"><h2>⚙️ Cómo se calcula</h2>
+      <p>El valor de la hora y el porcentaje de comisión. Cambiarlos no toca lo ya pagado.</p></div></div>
+    <div class="agregar" style="margin-top:0; padding-top:0; border-top:none;">
+      <div><label for="cfgHora">Valor hora</label>
+        <input type="number" id="cfgHora" min="0" inputmode="numeric"></div>
+      <div><label for="cfgPct">Comisión %</label>
+        <input type="number" id="cfgPct" min="0" max="100" inputmode="numeric"></div>
+      <button class="b-ok" id="btnCfg">Guardar</button>
+    </div>
+
+    <p class="muted" style="margin:var(--sp-3) 0 0;">Los empleados se cargan en
+       <a href="/admin#empleados">Admin</a>, con el resto de las listas.</p>
+  </div>
   <div class="card">
     <div class="card-head con-datos">
       <div class="titulo">
@@ -220,20 +234,6 @@
     <div id="listaLiq"></div>
   </div>
 
-  <div class="card" data-dueno>
-    <div class="card-head"><div class="titulo"><h2>⚙️ Cómo se calcula</h2>
-      <p>El valor de la hora y el porcentaje de comisión. Cambiarlos no toca lo ya pagado.</p></div></div>
-    <div class="agregar" style="margin-top:0; padding-top:0; border-top:none;">
-      <div><label for="cfgHora">Valor hora</label>
-        <input type="number" id="cfgHora" min="0" inputmode="numeric"></div>
-      <div><label for="cfgPct">Comisión %</label>
-        <input type="number" id="cfgPct" min="0" max="100" inputmode="numeric"></div>
-      <button class="b-ok" id="btnCfg">Guardar</button>
-    </div>
-
-    <p class="muted" style="margin:var(--sp-3) 0 0;">Los empleados se cargan en
-       <a href="/admin#empleados">Admin</a>, con el resto de las listas.</p>
-  </div>
 </div>
 
 <div id="toast" class="toast"></div>
