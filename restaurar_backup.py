@@ -47,7 +47,7 @@ def _a_utc_naive(iso, version):
 # carga en dos pasadas, más abajo.
 ORDEN = [
     ("items", models.Item, ["id", "categoria", "nombre", "precio", "precio_transfer",
-                            "es_producto", "es_comision", "stock_actual",
+                            "es_producto", "es_comision", "comision_pct", "stock_actual",
                             "stock_minimo", "activo"], []),
     ("clientes", models.Cliente, ["id", "nombre", "telefono", "alias", "notas",
                                   "direccion", "dni", "activo"], ["creado"]),

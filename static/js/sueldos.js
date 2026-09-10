@@ -302,7 +302,7 @@ function pintar(){
     <div class="kpi">
       <span class="lbl">Comisiones</span>
       <span class="val">${fmt(D.total_comisiones)}</span>
-      <span class="nota">al ${D.comision_pct}%</span>
+      <span class="nota">al ${D.comision_pct}% salvo los que tienen el suyo</span>
     </div>
     <div class="kpi">
       <span class="lbl">Horas</span>
@@ -377,6 +377,9 @@ function dibujarTrabajo(t){
     <div class="que">
       <b>${esc(t.nombre)}${t.cantidad>1?` ×${t.cantidad}`:""} ${marca}</b>
       <span class="det">${esc(quien)}${fmt(t.base)}${
+        // El porcentaje solo cuando NO es el general: si estuviera en todos los
+        // renglones, el que es distinto dejaría de saltar a la vista.
+        t.pct != null && t.pct !== D.comision_pct ? ` · al ${t.pct}%` : ""}${
         t.suelto ? ` · <a href="#" class="borrar-suelto" data-trabajo="${t.id}">borrar</a>` : ""}</span>
     </div>
     <span class="dia-horas">
