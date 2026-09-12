@@ -170,6 +170,51 @@ class Turno(Base):
     peluquero = Column(String)                            # opcional
     notas = Column(String)                                # opcional
     activo = Column(Boolean, default=True)
+    # Cuánto dura, en minutos. Sin esto un turno es un punto en el día y no se
+    # puede saber si una franja está libre: en la grilla por columnas el largo
+    # del bloque ES la información. Los que ya estaban cargados arrancan en 30,
+    # que es el turno más corto del local.
+    duracion_min = Column(Integer, default=30)
+
+class HorarioEmpleado(Base):
+    """El horario fijo de cada quien, por día de la semana.
+
+    Una fila por tramo: la que corta al mediodía lleva dos del mismo día. No hay
+    fila = ese día no trabaja, que es distinto de trabajar cero horas.
+
+    Es lo que la agenda pinta como "disponible". Ojo con confundirlo con las
+    horas que se PAGAN: acá dice a qué hora se la espera, y en Sueldos se declara
+    lo que realmente trabajó. Un horario teórico no puede decidir un sueldo —les
+    pagan por hora trabajada— así que este dato propone, nunca liquida.
+    """
+    __tablename__ = "horarios_empleado"
+    id = Column(Integer, primary_key=True)
+    empleado_id = Column(Integer, ForeignKey("empleados.id"), nullable=False, index=True)
+    dia_semana = Column(Integer, nullable=False)     # 0=lunes … 6=domingo, como Python
+    desde = Column(String, nullable=False)           # 'HH:MM'
+    hasta = Column(String, nullable=False)           # 'HH:MM'
+    empleado = relationship("Empleado")
+
+class ExcepcionHorario(Base):
+    """Lo que pasa un día puntual y le gana al horario fijo.
+
+    No están por convenio: se cambian entre ellas, alguna se enferma, otra entra
+    más tarde. Sin esto habría que editar el horario fijo y volverlo a dejar como
+    estaba, y el día que alguien se olvida de volverlo, el horario "fijo" miente
+    para siempre.
+
+    `desde`/`hasta` en NULL quiere decir que ese día NO viene. Es un dato en sí
+    mismo y no un agujero: la diferencia entre "hoy no vino" y "nadie cargó nada"
+    es justo lo que hay que poder ver en la grilla.
+    """
+    __tablename__ = "excepciones_horario"
+    id = Column(Integer, primary_key=True)
+    empleado_id = Column(Integer, ForeignKey("empleados.id"), nullable=False, index=True)
+    fecha = Column(String, nullable=False, index=True)   # 'YYYY-MM-DD'
+    desde = Column(String)                                # NULL = no viene
+    hasta = Column(String)
+    motivo = Column(String)
+    empleado = relationship("Empleado")
 
 class NotaDiaria(Base):
     """Notas internas del día en agenda."""

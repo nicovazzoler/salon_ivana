@@ -288,6 +288,38 @@
   }
   .marca-privado input{ width:auto; margin:0; }
 
+  /* --- el horario fijo de la semana --- */
+  .panel-horario{
+    margin:var(--sp-2) 0 var(--sp-3);
+    padding:var(--sp-3) var(--sp-4);
+    background:var(--bg-sutil);
+    border:1px solid var(--border-sutil); border-radius:var(--r-lg);
+  }
+  .panel-horario .dias{ display:flex; flex-direction:column; gap:2px; }
+  .dia-horario{
+    display:flex; align-items:center; gap:var(--sp-3); flex-wrap:wrap;
+    padding:6px 0; border-bottom:1px solid var(--border-sutil);
+  }
+  /* El día que no trabaja se apaga entero: la fila sigue estando —hay que poder
+     prenderla— pero deja de competir por la atención con las que sí. */
+  .dia-horario.off{ opacity:.5; }
+  .dia-horario .marca{
+    display:inline-flex; align-items:center; gap:6px; margin:0;
+    min-width:130px; cursor:pointer;
+    font-size:var(--fs-md); color:var(--text);
+  }
+  .dia-horario .marca.corta{ min-width:0; font-size:var(--fs-sm); color:var(--text-tenue); }
+  .dia-horario .marca input{ width:auto; margin:0; }
+  .dia-horario .tramo{ display:inline-flex; align-items:center; gap:6px; }
+  .dia-horario .tramo[hidden]{ display:none; }
+  .dia-horario .tramo input{ width:auto; padding:5px 7px; }
+  .dia-horario .tramo .a{ color:var(--text-tenue); font-size:var(--fs-sm); }
+  .panel-horario .acc{ display:flex; gap:var(--sp-2); flex-wrap:wrap; margin-top:var(--sp-3); }
+  @media (max-width:640px){
+    .dia-horario{ gap:var(--sp-2); }
+    .dia-horario .marca{ min-width:100%; }
+  }
+
   @media (max-width:640px){
     .item-row, .item-row.simple, .item-row.simple.con-marca{ grid-template-columns:1fr auto; row-gap:6px; }
     /* En pantalla chica el casillero de elegir se queda con su columna propia y

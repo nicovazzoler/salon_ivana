@@ -89,6 +89,15 @@ def migrar():
         if "valor_hora" not in emcols:
             with engine.begin() as con:
                 con.execute(text("ALTER TABLE empleados ADD COLUMN valor_hora INTEGER"))
+    if insp.has_table("turnos"):
+        tucols = [c["name"] for c in insp.get_columns("turnos")]
+        if "duracion_min" not in tucols:
+            with engine.begin() as con:
+                con.execute(text("ALTER TABLE turnos ADD COLUMN duracion_min INTEGER"))
+                # Los turnos viejos son un punto en el día. 30 minutos es el turno
+                # más corto del local: es la suposición que menos horario tapa de
+                # más en la grilla, y cada uno se corrige abriéndolo.
+                con.execute(text("UPDATE turnos SET duracion_min = 30 WHERE duracion_min IS NULL"))
     if insp.has_table("liquidaciones"):
         licols = [c["name"] for c in insp.get_columns("liquidaciones")]
         if "egreso_id" not in licols:
@@ -309,6 +318,17 @@ class NombreIn(BaseModel):
     nombre: str
 class TurnoIn(BaseModel):
     fecha: str | None = None; hora: str; cliente: str; cliente_id: int | None = None; servicio: str; peluquero: str | None = None; notas: str | None = None
+    duracion_min: int = 30
+class TramoIn(BaseModel):
+    dia_semana: int; desde: str; hasta: str
+class HorarioIn(BaseModel):
+    # La semana entera de una. Mandar tramos sueltos dejaría estados a medio
+    # guardar —el lunes nuevo con el martes viejo— y nadie sabría cuál es el bueno.
+    tramos: list[TramoIn]
+class ExcepcionIn(BaseModel):
+    empleado_id: int; fecha: str
+    desde: str | None = None; hasta: str | None = None   # los dos en None = no viene
+    motivo: str | None = None
 class NotaIn(BaseModel):
     texto: str; fecha: str | None = None
 
@@ -3130,13 +3150,189 @@ def registro_movimientos(desde: str | None = None, hasta: str | None = None,
              "detalle": m["detalle"], "forma_pago": m["forma_pago"], "monto": m["monto"]}
             for m in _movimientos(db, ini, fin)[:1000]]
 
+# ---------- horarios del personal ----------
+#
+# Son dos capas distintas y conviene no mezclarlas: la DISPONIBILIDAD dice cuándo
+# está cada una, y la OCUPACIÓN —los turnos— qué está haciendo. Sin esa
+# separación, un hueco a las 15:00 en la grilla puede querer decir "está libre" o
+# "hoy no vino", que son cosas opuestas y se ven igual.
+
+def _hhmm_ok(t: str) -> bool:
+    try:
+        h, m = t.split(":")
+        return len(t) == 5 and 0 <= int(h) <= 23 and 0 <= int(m) <= 59
+    except Exception:
+        return False
+
+def _valida_tramo(desde: str, hasta: str):
+    if not _hhmm_ok(desde) or not _hhmm_ok(hasta):
+        raise HTTPException(400, "La hora va como HH:MM")
+    if desde >= hasta:
+        raise HTTPException(400, f"El tramo {desde}–{hasta} termina antes de empezar")
+
+def disponibilidad(db, empleado_id: int, fecha: str) -> dict:
+    """Cuándo está esta persona ESE día.
+
+    Una sola regla, y en un solo lugar para que la grilla y cualquier chequeo
+    futuro no puedan contestar distinto: si hay excepciones cargadas para esa
+    fecha, mandan ellas; si no, el horario fijo de ese día de la semana.
+
+    Una excepción sin horas es "no viene": devuelve cero tramos pero con
+    `excepcion` puesto, así la pantalla puede decir POR QUÉ está vacío.
+    """
+    exc = (db.query(models.ExcepcionHorario)
+             .filter(models.ExcepcionHorario.empleado_id == empleado_id,
+                     models.ExcepcionHorario.fecha == fecha)
+             .order_by(models.ExcepcionHorario.desde).all())
+    if exc:
+        tramos = [{"desde": e.desde, "hasta": e.hasta} for e in exc if e.desde and e.hasta]
+        return {"tramos": tramos, "excepcion": True,
+                "motivo": next((e.motivo for e in exc if e.motivo), None),
+                "excepcion_ids": [e.id for e in exc]}
+    dow = date.fromisoformat(fecha).weekday()
+    fijos = (db.query(models.HorarioEmpleado)
+               .filter(models.HorarioEmpleado.empleado_id == empleado_id,
+                       models.HorarioEmpleado.dia_semana == dow)
+               .order_by(models.HorarioEmpleado.desde).all())
+    return {"tramos": [{"desde": h.desde, "hasta": h.hasta} for h in fijos],
+            "excepcion": False, "motivo": None, "excepcion_ids": []}
+
+@app.get("/api/horarios")
+def listar_horarios(_ = Depends(usuario_actual), db: Session = Depends(get_db)):
+    """El horario fijo de todos. Lo lee cualquiera: saber a qué hora entra cada
+    una no es un dato reservado, y la agenda lo necesita para dibujar."""
+    filas = db.query(models.HorarioEmpleado).order_by(models.HorarioEmpleado.dia_semana,
+                                                      models.HorarioEmpleado.desde).all()
+    out = {}
+    for f in filas:
+        out.setdefault(str(f.empleado_id), []).append(
+            {"id": f.id, "dia_semana": f.dia_semana, "desde": f.desde, "hasta": f.hasta})
+    return out
+
+@app.put("/api/horarios/{emp_id}")
+def guardar_horario(emp_id: int, datos: HorarioIn, _ = Depends(solo_dueno), db: Session = Depends(get_db)):
+    """Reemplaza la semana entera de esa persona.
+
+    Se manda completa y se pisa todo: guardar tramos de a uno dejaría la semana a
+    medio cambiar si algo falla en el medio, y con el horario partido nadie sabe
+    cuál de los dos es el bueno. El horario fijo lo maneja la dueña —es parte de
+    con quién se cuenta—; el cambio de un día puntual, en cambio, lo carga
+    cualquiera desde la agenda.
+    """
+    _empleado_o_404(db, emp_id)
+    for t in datos.tramos:
+        if not 0 <= t.dia_semana <= 6: raise HTTPException(400, "Día de la semana inválido")
+        _valida_tramo(t.desde, t.hasta)
+    # Dos tramos del mismo día que se pisan serían dos veces la misma hora
+    # disponible, y la grilla la dibujaría dos veces encima de sí misma.
+    por_dia = {}
+    for t in datos.tramos: por_dia.setdefault(t.dia_semana, []).append(t)
+    for dia, ts in por_dia.items():
+        ts.sort(key=lambda x: x.desde)
+        for a, b in zip(ts, ts[1:]):
+            if b.desde < a.hasta:
+                raise HTTPException(400, f"Dos tramos del mismo día se pisan: {a.desde}–{a.hasta} y {b.desde}–{b.hasta}")
+    db.query(models.HorarioEmpleado).filter(models.HorarioEmpleado.empleado_id == emp_id).delete()
+    for t in datos.tramos:
+        db.add(models.HorarioEmpleado(empleado_id=emp_id, dia_semana=t.dia_semana,
+                                      desde=t.desde, hasta=t.hasta))
+    db.commit(); return {"ok": True, "tramos": len(datos.tramos)}
+
+@app.post("/api/excepciones")
+def crear_excepcion(datos: ExcepcionIn, _ = Depends(usuario_actual), db: Session = Depends(get_db)):
+    """El cambio de un día puntual. Lo carga cualquiera, a propósito: la que se
+    cambió el turno con otra es la que sabe, y si tuviera que pedirlo no se
+    carga. La excepción pisa lo que haya para ese día y esa persona."""
+    _empleado_o_404(db, datos.empleado_id)
+    try:
+        date.fromisoformat(datos.fecha)
+    except ValueError:
+        raise HTTPException(400, "Fecha inválida")
+    if datos.desde or datos.hasta:
+        if not (datos.desde and datos.hasta):
+            raise HTTPException(400, "Poné las dos horas, o ninguna si ese día no viene")
+        _valida_tramo(datos.desde, datos.hasta)
+    db.query(models.ExcepcionHorario).filter(
+        models.ExcepcionHorario.empleado_id == datos.empleado_id,
+        models.ExcepcionHorario.fecha == datos.fecha).delete()
+    db.add(models.ExcepcionHorario(empleado_id=datos.empleado_id, fecha=datos.fecha,
+                                   desde=datos.desde, hasta=datos.hasta,
+                                   motivo=(datos.motivo or "").strip() or None))
+    db.commit(); return {"ok": True}
+
+@app.delete("/api/excepciones/{emp_id}/{fecha}")
+def borrar_excepcion(emp_id: int, fecha: str, _ = Depends(usuario_actual), db: Session = Depends(get_db)):
+    """Saca la excepción y ese día vuelve al horario fijo."""
+    n = db.query(models.ExcepcionHorario).filter(
+        models.ExcepcionHorario.empleado_id == emp_id,
+        models.ExcepcionHorario.fecha == fecha).delete()
+    db.commit(); return {"ok": True, "borradas": n}
+
+@app.get("/api/agenda/dia")
+def agenda_dia(fecha: str | None = None, _ = Depends(usuario_actual), db: Session = Depends(get_db)):
+    """El día armado para la grilla por columnas: quién está, cuándo, y con qué.
+
+    La ventana de horas la decide el día y no una constante: se toma desde lo más
+    temprano que alguien entra hasta lo más tarde que alguien sale, y se estira si
+    hay un turno afuera de eso —un turno a las 8 con todas entrando 9 tiene que
+    verse, no desaparecer—. Un día sin nadie devuelve una ventana igual, para que
+    la pantalla no quede en blanco sin explicar nada.
+    """
+    if not fecha: fecha = hoy_argentina().isoformat()
+    try:
+        date.fromisoformat(fecha)
+    except ValueError:
+        raise HTTPException(400, "Fecha inválida")
+
+    empleados = (db.query(models.Empleado).filter(models.Empleado.activo == True)
+                   .order_by(models.Empleado.nombre).all())
+    turnos = (db.query(models.Turno)
+                .filter(models.Turno.fecha == fecha, models.Turno.activo == True)
+                .order_by(models.Turno.hora).all())
+
+    filas, horas = [], []
+    for e in empleados:
+        d = disponibilidad(db, e.id, fecha)
+        filas.append({"id": e.id, "nombre": e.nombre, "tramos": d["tramos"],
+                      "excepcion": d["excepcion"], "motivo": d["motivo"]})
+        for t in d["tramos"]: horas += [t["desde"], t["hasta"]]
+
+    def fin_de(t):
+        h, m = (int(x) for x in t.hora.split(":"))
+        total = h * 60 + m + (t.duracion_min or 30)
+        return f"{min(total // 60, 23):02d}:{total % 60:02d}"
+
+    salida_turnos = []
+    for t in turnos:
+        salida_turnos.append({"id": t.id, "hora": t.hora, "fin": fin_de(t),
+                              "duracion_min": t.duracion_min or 30,
+                              "cliente": t.cliente, "cliente_id": t.cliente_id,
+                              "servicio": t.servicio, "peluquero": t.peluquero,
+                              "notas": t.notas})
+        horas += [t.hora, fin_de(t)]
+
+    horas = [h for h in horas if _hhmm_ok(h)]
+    # Redondeado a la hora para arriba y para abajo: una grilla que arranca 8:45
+    # se lee peor que una que arranca a las 8, y no gana nada.
+    apertura = (min(horas)[:2] + ":00") if horas else "09:00"
+    cierre_crudo = max(horas) if horas else "20:00"
+    cierre = cierre_crudo if cierre_crudo.endswith(":00") else f"{min(int(cierre_crudo[:2]) + 1, 23):02d}:00"
+    if cierre <= apertura: cierre = f"{min(int(apertura[:2]) + 1, 23):02d}:00"
+
+    return {"fecha": fecha, "apertura": apertura, "cierre": cierre,
+            "empleados": filas, "turnos": salida_turnos}
+
 # ---------- agenda de turnos ----------
 
 @app.post("/api/turnos")
 def crear_turno(turno: TurnoIn, _ = Depends(usuario_actual), db: Session = Depends(get_db)):
     fecha = turno.fecha or hora_argentina(fecha_hora_now_utc()).strftime("%Y-%m-%d")
+    if not _hhmm_ok(turno.hora): raise HTTPException(400, "La hora va como HH:MM")
+    if not 5 <= turno.duracion_min <= 12 * 60:
+        raise HTTPException(400, "La duración va de 5 minutos a 12 horas")
     nuevo = models.Turno(fecha=fecha, hora=turno.hora, cliente=turno.cliente, cliente_id=turno.cliente_id,
-                         servicio=turno.servicio, peluquero=turno.peluquero, notas=turno.notas)
+                         servicio=turno.servicio, peluquero=turno.peluquero, notas=turno.notas,
+                         duracion_min=turno.duracion_min)
     db.add(nuevo)
     db.commit()
     db.refresh(nuevo)
@@ -3153,6 +3349,9 @@ def editar_turno(turno_id: int, datos: TurnoIn, _ = Depends(usuario_actual), db:
     turno.servicio = datos.servicio
     turno.peluquero = datos.peluquero
     turno.notas = datos.notas
+    if not 5 <= datos.duracion_min <= 12 * 60:
+        raise HTTPException(400, "La duración va de 5 minutos a 12 horas")
+    turno.duracion_min = datos.duracion_min
     db.commit()
     return {"ok": True}
 
@@ -3178,7 +3377,7 @@ def listar_turnos(fecha: str | None = None, desde: str | None = None, hasta: str
     turnos.sort(key=lambda t: (t.fecha, t.hora))
     return [{"id": t.id, "fecha": t.fecha, "hora": t.hora, "cliente": t.cliente, "cliente_id": t.cliente_id,
              "servicio": t.servicio, "peluquero": t.peluquero, "notas": t.notas,
-             "activo": t.activo} for t in turnos]
+             "duracion_min": t.duracion_min or 30, "activo": t.activo} for t in turnos]
 
 # ---------- notas diarias ----------
 
@@ -3403,8 +3602,18 @@ def backup_completo(_ = Depends(solo_dueno), db: Session = Depends(get_db)):
             # nombre suelto. Sin el id, al restaurar los turnos quedaban huérfanos.
             {"id": t.id, "fecha": t.fecha, "hora": t.hora, "cliente_id": t.cliente_id,
              "cliente": t.cliente, "servicio": t.servicio, "peluquero": t.peluquero,
-             "notas": t.notas, "activo": t.activo}
+             "notas": t.notas, "activo": t.activo, "duracion_min": t.duracion_min}
             for t in db.query(models.Turno).order_by(models.Turno.fecha, models.Turno.hora).all()
+        ],
+        "horarios_empleado": [
+            {"id": h.id, "empleado_id": h.empleado_id, "dia_semana": h.dia_semana,
+             "desde": h.desde, "hasta": h.hasta}
+            for h in db.query(models.HorarioEmpleado).all()
+        ],
+        "excepciones_horario": [
+            {"id": x.id, "empleado_id": x.empleado_id, "fecha": x.fecha,
+             "desde": x.desde, "hasta": x.hasta, "motivo": x.motivo}
+            for x in db.query(models.ExcepcionHorario).all()
         ],
         "notas_diarias": [
             {"id": n.id, "fecha": n.fecha, "texto": n.texto,

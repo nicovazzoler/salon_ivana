@@ -960,10 +960,12 @@ async function cargarEmpleados(){
                                {className:"b-out", textContent: e.tiene_pin ? "Cambiar código" : "Poner código"});
     const bVh = Object.assign(document.createElement("button"),
                               {className:"b-out", textContent:"Valor hora"});
+    const bHor = Object.assign(document.createElement("button"),
+                               {className:"b-out", textContent:"Horario"});
     const bBaja = Object.assign(document.createElement("button"),
                                 {className: e.activo ? "b-del" : "b-ok",
                                  textContent: e.activo ? "Sacar" : "Reactivar"});
-    acc.append(bNom, bPin, bVh, bBaja);
+    acc.append(bNom, bPin, bVh, bHor, bBaja);
     fila.append(quien, acc);
     cont.appendChild(fila);
 
@@ -974,6 +976,10 @@ async function cargarEmpleados(){
     bNom.onclick = () => abrir("nombre");
     bPin.onclick = () => abrir("pin");
     bVh.onclick = () => abrir("vh");
+    bHor.onclick = () => {
+      cont.querySelectorAll(".panel-edicion, .panel-horario").forEach(x => x.remove());
+      fila.after(panelHorario(e));
+    };
     bBaja.onclick = async () => {
       if(!e.activo){
         const r = await authFetch(`/api/empleados/${e.id}`, {method:"PUT",
@@ -1067,6 +1073,105 @@ function panelEmpleado(e, tipo){
     if(ev.key === "Escape") pan.remove();
   });
   setTimeout(() => campo.focus(), 0);
+  return pan;
+}
+
+/* El horario fijo de la semana.
+
+   Se edita entero y se guarda de una sola vez, igual que lo pide el servidor: de
+   a un día, una semana a medio guardar deja el horario partido y nadie sabe cuál
+   de los dos es el bueno.
+
+   Dos tramos por día como máximo, que es lo que hay: entra a la mañana, corta al
+   mediodía, vuelve a la tarde. Un tercero no existe en una peluquería y tres
+   filas por día serían veintiún renglones para llenar dos.
+
+   El día DESTILDADO no es "trabaja cero horas", es "no trabaja": en la agenda la
+   columna se dibuja distinta y por eso la marca es una casilla y no un 00:00. */
+const DIAS_SEM = ["Lunes","Martes","Miércoles","Jueves","Viernes","Sábado","Domingo"];
+
+function panelHorario(e){
+  const pan = document.createElement("div");
+  pan.className = "panel-horario";
+  pan.innerHTML = `<p class="muted" style="margin:0 0 var(--sp-2);">
+      El horario de siempre de ${esc(e.nombre)}. En la agenda se dibuja como su columna del día.
+      Un día puntual distinto —se cambió con otra, turno médico— se carga desde la agenda, no acá.</p>
+    <div class="dias"></div>
+    <span class="acc">
+      <button class="b-ok guardar">Guardar el horario</button>
+      <button class="b-out cancelar">Cancelar</button>
+      <button class="b-out copiar">Copiar el lunes hasta el sábado</button>
+    </span>`;
+  const cajaDias = pan.querySelector(".dias");
+
+  const filaDia = (i) => {
+    const d = document.createElement("div");
+    d.className = "dia-horario";
+    d.innerHTML = `
+      <label class="marca"><input type="checkbox" class="trabaja"> ${DIAS_SEM[i]}</label>
+      <span class="tramo t1"><input type="time" class="d1"><span class="a">a</span><input type="time" class="h1"></span>
+      <label class="marca corta"><input type="checkbox" class="doble"> corta al mediodía</label>
+      <span class="tramo t2" hidden><input type="time" class="d2"><span class="a">a</span><input type="time" class="h2"></span>`;
+    const pintar = () => {
+      const on = d.querySelector(".trabaja").checked;
+      d.classList.toggle("off", !on);
+      d.querySelectorAll("input[type=time], .doble").forEach(x => x.disabled = !on);
+      d.querySelector(".t2").hidden = !(on && d.querySelector(".doble").checked);
+    };
+    d.querySelector(".trabaja").onchange = pintar;
+    d.querySelector(".doble").onchange = pintar;
+    d._pintar = pintar;
+    return d;
+  };
+  const filas = DIAS_SEM.map((_, i) => { const f = filaDia(i); cajaDias.appendChild(f); return f; });
+
+  const poner = (f, tramos) => {
+    f.querySelector(".trabaja").checked = tramos.length > 0;
+    f.querySelector(".d1").value = tramos[0] ? tramos[0].desde : "09:00";
+    f.querySelector(".h1").value = tramos[0] ? tramos[0].hasta : "18:00";
+    f.querySelector(".doble").checked = tramos.length > 1;
+    f.querySelector(".d2").value = tramos[1] ? tramos[1].desde : "15:00";
+    f.querySelector(".h2").value = tramos[1] ? tramos[1].hasta : "19:00";
+    f._pintar();
+  };
+
+  authFetch("/api/horarios").then(r => r.json()).then(todos => {
+    const mios = (todos[String(e.id)] || []);
+    filas.forEach((f, i) => poner(f, mios.filter(h => h.dia_semana === i)
+                                       .sort((a, b) => a.desde.localeCompare(b.desde))));
+  }).catch(() => filas.forEach(f => poner(f, [])));
+
+  pan.querySelector(".copiar").onclick = () => {
+    const l = filas[0];
+    const tramos = [{desde: l.querySelector(".d1").value, hasta: l.querySelector(".h1").value}];
+    if(l.querySelector(".doble").checked)
+      tramos.push({desde: l.querySelector(".d2").value, hasta: l.querySelector(".h2").value});
+    // Se copia a los días de semana nada más: el domingo no abre y copiarle el
+    // lunes es justo el error que después nadie mira.
+    filas.slice(1, 6).forEach(f => poner(f, l.querySelector(".trabaja").checked ? tramos : []));
+    toast("Copiado de lunes a sábado");
+  };
+  pan.querySelector(".cancelar").onclick = () => pan.remove();
+  pan.querySelector(".guardar").onclick = async () => {
+    const tramos = [];
+    for(let i = 0; i < filas.length; i++){
+      const f = filas[i];
+      if(!f.querySelector(".trabaja").checked) continue;
+      const d1 = f.querySelector(".d1").value, h1 = f.querySelector(".h1").value;
+      if(!d1 || !h1){ toast(`Completá las horas del ${DIAS_SEM[i].toLowerCase()}`); return; }
+      tramos.push({dia_semana: i, desde: d1, hasta: h1});
+      if(f.querySelector(".doble").checked){
+        const d2 = f.querySelector(".d2").value, h2 = f.querySelector(".h2").value;
+        if(!d2 || !h2){ toast(`Completá el segundo tramo del ${DIAS_SEM[i].toLowerCase()}`); return; }
+        tramos.push({dia_semana: i, desde: d2, hasta: h2});
+      }
+    }
+    const r = await authFetch(`/api/horarios/${e.id}`, {method:"PUT",
+      headers:{"Content-Type":"application/json"}, body: JSON.stringify({tramos})});
+    if(!r.ok){ toast((await r.json().catch(()=>({}))).detail || "No se pudo guardar"); return; }
+    pan.remove();
+    toast(tramos.length ? "Horario guardado" : "Quedó sin horario cargado");
+  };
   return pan;
 }
 
