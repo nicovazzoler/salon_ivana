@@ -642,6 +642,19 @@ body.con-panel{ overflow:hidden; }
   font-size:var(--fs-xs); font-weight:var(--fw-normal);
   color:var(--text-tenue);
 }
+/* "A comisión" es un atajo y no una categoría: se despega del resto con el
+   filete y una línea abajo, para que no se lea como una categoría más que
+   alguien cargó y después no encuentra en Admin. */
+.cat-pill.especial{
+  border-color:var(--acento-border);
+  background:var(--acento-bg);
+  color:var(--text-marca);
+  margin-bottom:var(--sp-2);
+}
+.cat-pill.especial:hover{ background:var(--bronce-a15); color:var(--text-marca); }
+@media (max-width:900px){
+  .cat-pill.especial{ margin-bottom:0; margin-right:var(--sp-2); }
+}
 
 /* --- grilla del catálogo --- */
 .grid-items{

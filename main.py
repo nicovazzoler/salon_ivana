@@ -293,6 +293,8 @@ class AjusteItemEdit(BaseModel):
     nombre: str | None = None; porcentaje: int | None = None; monto: int | None = None
 class StockIn(BaseModel):
     stock_actual: int; stock_minimo: int = 0
+class ConsumoIn(BaseModel):
+    item_id: int; cantidad: int = 1; motivo: str | None = None
 class LoginIn(BaseModel):
     usuario: str; password: str
 class UsuarioIn(BaseModel):
@@ -921,8 +923,12 @@ def catalogo(_ = Depends(usuario_actual), db: Session = Depends(get_db)):
     """Todo el catálogo activo de una sola vez (para buscador y agrupado en Facturación)."""
     q = (db.query(models.Item).filter(models.Item.activo == True)
            .order_by(models.Item.categoria, models.Item.nombre))
-    return [{"id": i.id, "nombre": i.nombre, "precio": i.precio, "precio_transfer": i.precio_transfer,"categoria": i.categoria,  
-             "es_producto": i.es_producto} for i in q]
+    # es_comision viaja para que facturar pueda armar la pastilla "A comisión",
+    # que junta los trabajos que se le pagan a quien los hace sin importar en qué
+    # categoría estén. No cambia ningún precio: es otra forma de encontrarlos.
+    return [{"id": i.id, "nombre": i.nombre, "precio": i.precio, "precio_transfer": i.precio_transfer,
+             "categoria": i.categoria, "es_producto": i.es_producto,
+             "es_comision": bool(i.es_comision)} for i in q]
 
 @app.get("/api/config")
 def config(user = Depends(usuario_actual), db: Session = Depends(get_db)):
@@ -2810,6 +2816,37 @@ def set_stock(item_id: int, s: StockIn, user = Depends(solo_dueno), db: Session 
         log_stock(db, item, "manual", nuevo - viejo, f"Ajuste: {viejo} → {nuevo}", user.get("usuario","?"))
     item.stock_actual = nuevo; item.stock_minimo = s.stock_minimo
     db.commit(); return {"ok": True}
+
+@app.post("/api/inventario/consumo")
+def descontar_insumo(c: ConsumoIn, user = Depends(usuario_actual), db: Session = Depends(get_db)):
+    """Lo que se gastó en el local y no salió por una venta.
+
+    Una tintura que se usó en una clienta, el shampoo de la bacha, el frasco que
+    se cayó. Hasta ahora el stock solo bajaba vendiendo, así que todo eso quedaba
+    contado de más hasta que alguien hacía el conteo a mano y descubría el
+    faltante sin saber de dónde salía.
+
+    Lo puede hacer el empleado, y es a propósito: corregir el conteo sigue siendo
+    de la dueña, pero ANOTAR lo que se usó es lo que hace todos los días la que
+    lo usa. Si solo pudiera la dueña, no se anotaría nunca y el inventario
+    volvería a atrasarse. Por eso son dos movimientos distintos —"consumo" y
+    "manual"— y no el mismo: "usé 2 tinturas" no es lo mismo que "conté mal,
+    eran 8", y en el historial tienen que poder distinguirse.
+
+    Puede dejar el stock en negativo, igual que una venta. Es feo y es la idea:
+    un número abajo de cero dice que el conteo está atrasado, mientras que
+    frenarlo en cero lo escondería y además obligaría a mentir sobre lo que
+    realmente se usó.
+    """
+    item = db.get(models.Item, c.item_id)
+    if not item or not item.es_producto: raise HTTPException(404, "Producto no existe")
+    if c.cantidad < 1: raise HTTPException(400, "La cantidad tiene que ser al menos 1")
+    if c.cantidad > 10_000: raise HTTPException(400, "Esa cantidad no parece real")
+    motivo = (c.motivo or "").strip() or "Consumo del local"
+    log_stock(db, item, "consumo", -c.cantidad, motivo, user.get("usuario", "?"))
+    item.stock_actual = (item.stock_actual or 0) - c.cantidad
+    db.commit()
+    return {"ok": True, "nombre": item.nombre, "stock_actual": item.stock_actual}
 
 @app.get("/api/inventario/historial")
 def historial_stock(item_id: int | None = None, _ = Depends(solo_dueno), db: Session = Depends(get_db)):

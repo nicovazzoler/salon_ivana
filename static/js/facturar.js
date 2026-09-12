@@ -212,19 +212,39 @@ function categorias(){
   return set.sort((a,b)=>a.localeCompare(b,'es'));
 }
 
+/* "A comisión" no es una categoría: es un atajo.
+
+   Los trabajos que se le pagan a quien los hace están repartidos en cortes, en
+   color, en reflejos. Para cargarlos hay que acordarse de en cuál cayó cada uno,
+   y son los que más se buscan. Esta pastilla los junta a todos sin sacarlos de
+   su categoría —cada ítem sigue donde estaba, esto es otra puerta para llegar—.
+   El nombre empieza con caracteres que ninguna categoría real puede tener, para
+   que nunca choque con una que alguien escriba a mano. */
+const CAT_COMISION = "\u0000comision";
+function itemsDe(cat){
+  return cat === CAT_COMISION ? CATALOGO.filter(i => i.es_comision)
+                              : CATALOGO.filter(i => i.categoria === cat);
+}
+function rotuloCat(cat){ return cat === CAT_COMISION ? "A comisión" : cat; }
+
 /* El rail se dibuja UNA vez y queda siempre a la vista: desde cualquier lugar
    (dentro de un grupo, o buscando) se puede saltar a otra categoría sin volver. */
 function pintarRail(){
   const rail=$("#catPills"); rail.innerHTML="";
   const cuentas=new Map();
   CATALOGO.forEach(it=>cuentas.set(it.categoria,(cuentas.get(it.categoria)||0)+1));
-  categorias().forEach(c=>{
+  const agregar=(cat, etiqueta, cuenta, extra)=>{
     const b=document.createElement("button");
-    b.className="cat-pill"; b.dataset.cat=c;
-    b.innerHTML=`<span class="nom">${esc(c)}</span><span class="cuenta">${cuentas.get(c)||0}</span>`;
-    b.onclick=()=>{ $("#buscar").value=""; abrirCategoria(c); };
+    b.className="cat-pill" + (extra || ""); b.dataset.cat=cat;
+    b.innerHTML=`<span class="nom">${esc(etiqueta)}</span><span class="cuenta">${cuenta}</span>`;
+    b.onclick=()=>{ $("#buscar").value=""; abrirCategoria(cat); };
     rail.appendChild(b);
-  });
+  };
+  // Primera de todas y marcada aparte: es un atajo, no una categoría más. Si no
+  // hay ningún ítem a comisión no aparece, para no ofrecer una puerta vacía.
+  const aComision = CATALOGO.filter(i=>i.es_comision).length;
+  if(aComision) agregar(CAT_COMISION, "A comisión", aComision, " especial");
+  categorias().forEach(c => agregar(c, c, cuentas.get(c) || 0));
 }
 function marcarRail(cat){
   $("#catPills").querySelectorAll(".cat-pill").forEach(p=>p.classList.toggle("on", p.dataset.cat===cat));
@@ -243,7 +263,7 @@ function abrirCategoria(cat){
   vista="items"; catActual=cat; grupoActual=null;
   marcarRail(cat);
   $("#barraNav").style.display="none";
-  const items=CATALOGO.filter(i=>i.categoria===cat);
+  const items=itemsDe(cat);
   const grupos=new Map();
   items.forEach(it=>{ const{base,variante}=parseNombre(it.nombre);
     if(!grupos.has(base))grupos.set(base,[]); grupos.get(base).push({variante,it}); });
@@ -251,7 +271,10 @@ function abrirCategoria(cat){
   [...grupos.entries()].forEach(([base,arr])=>{
     if(arr.length===1){
       const it=arr[0].it; const b=document.createElement("button"); b.className="btn-item";
-      b.innerHTML=`<span class="n">${it.nombre}</span>${precioBtn(it)}`;
+      // En "A comisión" los ítems vienen de categorías distintas, así que cada uno
+      // dice de cuál es. Adentro de una categoría el dato sobra: son todos de ahí.
+      const mini = cat === CAT_COMISION ? `<span class="cat-mini">${esc(it.categoria)}</span>` : "";
+      b.innerHTML=`<span class="n">${it.nombre}</span>${mini}${precioBtn(it)}`;
       b.onclick=()=>agregar(it); g.appendChild(b);
     } else {
       const labels=arr.map(a=>a.variante).filter(Boolean).sort((a,b)=>ordenVar(a)-ordenVar(b));
@@ -264,7 +287,7 @@ function abrirCategoria(cat){
 function abrirGrupo(base,arr){
   vista="grupo"; grupoActual=base;
   $("#barraNav").style.display="flex";
-  $("#volver").textContent="← "+catActual; $("#tituloCat").textContent=base;
+  $("#volver").textContent="← "+rotuloCat(catActual); $("#tituloCat").textContent=base;
   const ordenado=[...arr].sort((a,b)=>ordenVar(a.variante)-ordenVar(b.variante));
   const g=$("#items"); g.innerHTML="";
   ordenado.forEach(({variante,it})=>{

@@ -21,6 +21,38 @@
   .herramientas .buscar{ flex:1 1 220px; min-width:0; }
   .filtros{ display:flex; gap:6px; flex-wrap:wrap; margin-bottom:var(--sp-4); }
 
+  /* ----- Gasté un insumo -----
+     Cerrado es un renglón que no molesta; abierto es un formulario chico. Va
+     arriba de todo porque es lo único que se viene a HACER acá: el resto de la
+     pantalla se viene a mirar. */
+  .gasto{
+    margin-bottom:var(--sp-3); padding:var(--sp-3) var(--sp-4);
+    border:1px dashed var(--border); border-radius:var(--r-lg);
+  }
+  .gasto .cab{ display:flex; align-items:center; gap:var(--sp-3); flex-wrap:wrap; }
+  .gasto .cab b{ font-family:var(--font-display); font-size:var(--fs-lg); color:var(--text-titulo); }
+  .gasto .cab .det{ font-size:var(--fs-sm); color:var(--text-tenue); }
+  .gasto .cab button{ margin-left:auto; }
+  .gasto .form{ display:flex; flex-wrap:wrap; gap:var(--sp-3); align-items:flex-end; margin-top:var(--sp-3); }
+  .gasto .form[hidden]{ display:none; }
+  .gasto .campo{ display:flex; flex-direction:column; gap:3px; }
+  .gasto .campo label{ margin:0; }
+  .gasto .cual{ flex:1 1 220px; min-width:0; }
+  .gasto .cual select{ width:100%; }
+  .gasto .cuanto input{ width:80px; text-align:right; }
+  /* El "para qué" se lleva el sobrante: es texto libre y con 78px no entraba ni
+     el ejemplo del placeholder. El width y el text-align tienen que decirse acá
+     porque más abajo está `.campo input{ width:78px; text-align:right }`, que es
+     para los casilleros numéricos de cada producto y le pegaba también a este.
+     Los botones se van al fondo con el margin-left. */
+  .gasto .porque{ flex:2 1 260px; min-width:0; }
+  .gasto .porque input{ width:100%; text-align:left; }
+  .gasto #gGuardar{ margin-left:auto; }
+  .gasto .aviso{
+    flex:1 1 100%; margin:0; font-size:var(--fs-sm); color:var(--warn);
+  }
+  .gasto .aviso[hidden]{ display:none; }
+
   /* ----- Renglón de producto -----
      Se va la tabla de 6 columnas con 27 botones dorados gritando. Cada producto
      es una fila con una franja de estado a la izquierda: lo que hay que reponer
@@ -128,6 +160,30 @@
       <div class="kpis" id="kpis"></div>
     </div>
 
+    <!-- Para los dos roles: la que usa el producto es la que sabe que lo usó, y
+         si tuviera que avisarle a la dueña para que lo anote, no se anota. -->
+    <div class="gasto">
+      <div class="cab">
+        <div>
+          <b>¿Gastaste algo del local?</b>
+          <div class="det">Una tintura que usaste, el shampoo de la bacha, algo que se cayó.
+             Se descuenta del stock y queda anotado con tu nombre.</div>
+        </div>
+        <button class="b-out" id="btnGasto">Descontar un insumo</button>
+      </div>
+      <div class="form" id="formGasto" hidden>
+        <div class="campo cual"><label>Qué</label>
+          <select id="gProd"></select></div>
+        <div class="campo cuanto"><label>Cuánto</label>
+          <input type="number" id="gCant" min="1" value="1" inputmode="numeric"></div>
+        <div class="campo porque"><label>Para qué (opcional)</label>
+          <input type="text" id="gMotivo" placeholder="Ej: color de la clienta de las 15"></div>
+        <button class="b-tinta" id="gGuardar">Descontar</button>
+        <button class="b-out" id="gCancelar">Cancelar</button>
+        <p class="aviso" id="gAviso" hidden></p>
+      </div>
+    </div>
+
     <div class="herramientas">
       <input class="buscar" id="buscar" placeholder="🔎 Buscar producto por nombre...">
       <button id="btnHist" class="b-out" data-dueno>📋 Movimientos</button>
@@ -165,6 +221,7 @@ let PRODS=[], filtro="todos";
 async function cargar(){
   PRODS=await (await authFetch("/api/inventario")).json();
   render();
+  if($("#gProd")) opcionesGasto();
 }
 
 /* Estado de un producto. "Sin stock" es peor que "a reponer" y merece su propio
@@ -255,6 +312,62 @@ function render(){
 
     cont.appendChild(fila);
   });
+}
+
+/* ----- Descontar un insumo -----
+
+   El desplegable se llena de PRODS, así que no hay que escribir el nombre a
+   mano: un nombre tipeado distinto sería un producto que no existe y el
+   descuento se perdería.
+
+   El aviso de abajo aparece antes de apretar, no después: si el conteo dice 3 y
+   se ponen 5, el stock queda en -2. Se deja pasar igual —lo que se usó, se usó—
+   pero se avisa, porque un número abajo de cero quiere decir que el conteo está
+   atrasado y alguien tiene que mirarlo. */
+function opcionesGasto(){
+  const sel=$("#gProd"); if(!sel) return;
+  const elegido=sel.value;
+  sel.innerHTML = PRODS.map(p=>
+    `<option value="${p.id}">${esc(p.nombre)} · ${p.stock_actual}</option>`).join("");
+  if(elegido) sel.value=elegido;
+  avisoGasto();
+}
+function avisoGasto(){
+  const av=$("#gAviso"); if(!av) return;
+  const p=PRODS.find(x=>String(x.id)===$("#gProd").value);
+  const n=parseInt($("#gCant").value,10)||0;
+  const queda=(p ? (p.stock_actual||0) : 0) - n;
+  av.hidden = !(p && n > 0 && queda < 0);
+  if(!av.hidden) av.textContent =
+    `⚠️ Figuran ${p.stock_actual} y vas a descontar ${n}: va a quedar en ${queda}. ` +
+    `Se puede, pero quiere decir que el conteo está atrasado.`;
+}
+if($("#btnGasto")){
+  const form=$("#formGasto");
+  $("#btnGasto").onclick=()=>{
+    form.hidden=!form.hidden;
+    $("#btnGasto").textContent = form.hidden ? "Descontar un insumo" : "Cerrar";
+    if(!form.hidden){ opcionesGasto(); $("#gProd").focus(); }
+  };
+  $("#gCancelar").onclick=()=>{ form.hidden=true; $("#btnGasto").textContent="Descontar un insumo"; };
+  $("#gProd").onchange=avisoGasto;
+  $("#gCant").oninput=avisoGasto;
+  $("#gCant").addEventListener("keydown",e=>{ if(e.key==="Enter"){ e.preventDefault(); $("#gGuardar").click(); }});
+  $("#gGuardar").onclick=async()=>{
+    const id=parseInt($("#gProd").value,10);
+    const cant=parseInt($("#gCant").value,10)||0;
+    if(!id){ toast("Elegí qué gastaste"); return; }
+    if(cant<1){ toast("Poné cuánto gastaste"); $("#gCant").focus(); return; }
+    const r=await authFetch("/api/inventario/consumo",{method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({item_id:id, cantidad:cant, motivo:$("#gMotivo").value})});
+    if(!r.ok){ toast((await r.json().catch(()=>({}))).detail || "No se pudo descontar"); return; }
+    const d=await r.json();
+    toast(`−${cant} ${esc(d.nombre)} · quedan ${d.stock_actual}`);
+    $("#gCant").value=1; $("#gMotivo").value="";
+    await cargar();
+    opcionesGasto();
+  };
 }
 
 $("#buscar").oninput=render;
