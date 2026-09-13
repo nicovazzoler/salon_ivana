@@ -101,6 +101,14 @@ anotó le deja el arqueo sin explicación. Y ojo con el `privado != True` a seca
 en SQL el NULL no entra, y `restaurar_backup.py` levantando un backup viejo
 escribe NULL — por eso está `_no_privado()`.
 
+**El lunes de depilación se paga distinto, y todavía no está resuelto.** El local
+abre un lunes al mes para depilación y ese día el sueldo NO sale por comisión
+como el resto. `ciclo_de()` ya lo deja como un ciclo propio de un día, así que el
+número queda separado y a la vista antes de pagar, pero lo que la pantalla
+propone hoy son comisiones + horas, que es la cuenta equivocada para ese día.
+**Falta definir la regla con la dueña.** Hasta entonces: no dar por hecho que un
+lunes se paga como los demás, y no automatizar nada de ese ciclo.
+
 **Los extras no los toca ningún descuento.** Entran al final, después de todo.
 
 **Ajuste por línea: porcentaje O monto fijo**, nunca los dos. Va por unidad y
