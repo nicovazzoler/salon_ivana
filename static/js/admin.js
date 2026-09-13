@@ -1091,7 +1091,7 @@ function panelHorario(e){
       El horario de siempre de ${esc(e.nombre)}. En la agenda se dibuja como su columna del día.
       Un día puntual distinto —se cambió con otra, turno médico— se carga desde la agenda, no acá.</p>
     <div class="de-una">
-      <span class="rot">El mismo horario a varios días</span>
+      <span class="rot">El horario de la semana</span>
       <span class="tramo"><input type="time" class="ud1" value="09:00"><span class="a">a</span><input type="time" class="uh1" value="18:00"></span>
       <label class="marca corta"><input type="checkbox" class="udoble"> corta al mediodía</label>
       <span class="tramo ut2" hidden><input type="time" class="ud2" value="15:00"><span class="a">a</span><input type="time" class="uh2" value="19:00"></span>
@@ -1099,10 +1099,12 @@ function panelHorario(e){
         `<button type="button" class="chip-dia${i>=1 && i<=5 ? " on":""}" data-d="${i}">${d.slice(0,3)}</button>`).join("")}</span>
       <button class="b-tinta aplicar">Aplicar</button>
     </div>
-    <div class="dias"></div>
+    <p class="resumen"></p>
+    <div class="dias" hidden></div>
     <span class="acc">
       <button class="b-ok guardar">Guardar el horario</button>
       <button class="b-out cancelar">Cancelar</button>
+      <button class="b-out porDia">Ajustar día por día</button>
     </span>`;
   const cajaDias = pan.querySelector(".dias");
 
@@ -1140,11 +1142,67 @@ function panelHorario(e){
     f._pintar();
   };
 
+  /* Lo que se ve primero es la semana entera, que es como se carga de verdad:
+     todas hacen el mismo horario casi todos los días. Los renglones de cada día
+     aparecen al pedirlos —debajo hay un resumen de lo que está guardado, así
+     esconderlos no esconde el dato—. */
+  const resumen = pan.querySelector(".resumen");
+  const hhmm = t => t;
+  const pintarResumen = () => {
+    const partes = [];
+    filas.forEach((f, i) => {
+      if(!f.querySelector(".trabaja").checked) return;
+      let t = `${hhmm(f.querySelector(".d1").value)}–${hhmm(f.querySelector(".h1").value)}`;
+      if(f.querySelector(".doble").checked)
+        t += ` y ${hhmm(f.querySelector(".d2").value)}–${hhmm(f.querySelector(".h2").value)}`;
+      const sem = f.querySelector(".semana").value;
+      if(sem) t += ` (${SEMANAS_MES.find(([v]) => v === sem)[1].toLowerCase()})`;
+      partes.push([DIAS_SEM[i], t]);
+    });
+    if(!partes.length){ resumen.textContent = "Todavía no tiene horario cargado."; return; }
+    // Los días seguidos con el mismo horario se juntan: "Mar a Sáb 10–19" en vez
+    // de cinco renglones que dicen lo mismo.
+    const juntos = [];
+    partes.forEach(([dia, t]) => {
+      const ult = juntos[juntos.length - 1];
+      if(ult && ult.t === t) ult.hasta = dia; else juntos.push({desde: dia, hasta: null, t});
+    });
+    resumen.innerHTML = juntos.map(g =>
+      `<b>${g.hasta ? `${g.desde} a ${g.hasta}` : g.desde}</b> ${esc(g.t)}`).join(" · ");
+  };
+  filas.forEach(f => f.addEventListener("change", pintarResumen));
+
   authFetch("/api/horarios").then(r => r.json()).then(todos => {
     const mios = (todos[String(e.id)] || []);
     filas.forEach((f, i) => poner(f, mios.filter(h => h.dia_semana === i)
                                        .sort((a, b) => a.desde.localeCompare(b.desde))));
-  }).catch(() => filas.forEach(f => poner(f, [])));
+    // La fila de arriba arranca con el horario que más se repite, para que
+    // "Aplicar" sea un retoque y no volver a escribir todo desde cero.
+    const conteo = new Map();
+    filas.forEach((f, i) => {
+      if(!f.querySelector(".trabaja").checked) return;
+      const k = [f.querySelector(".d1").value, f.querySelector(".h1").value,
+                 f.querySelector(".doble").checked, f.querySelector(".d2").value,
+                 f.querySelector(".h2").value].join("|");
+      conteo.set(k, (conteo.get(k) || 0) + 1);
+    });
+    const comun = [...conteo.entries()].sort((a, b) => b[1] - a[1])[0];
+    if(comun){
+      const [d1, h1, doble, d2, h2] = comun[0].split("|");
+      pan.querySelector(".ud1").value = d1; pan.querySelector(".uh1").value = h1;
+      pan.querySelector(".udoble").checked = doble === "true";
+      pan.querySelector(".ud2").value = d2; pan.querySelector(".uh2").value = h2;
+      pan.querySelector(".ut2").hidden = doble !== "true";
+    }
+    pintarResumen();
+  }).catch(() => { filas.forEach(f => poner(f, [])); pintarResumen(); });
+
+  pan.querySelector(".porDia").onclick = () => {
+    const caja = pan.querySelector(".dias");
+    caja.hidden = !caja.hidden;
+    pan.querySelector(".porDia").textContent = caja.hidden ? "Ajustar día por día" : "Ocultar los días";
+    resumen.hidden = !caja.hidden;
+  };
 
   /* Cargar la semana entera en un solo gesto: se escribe el horario una vez, se
      marcan los días y se aplica. Vienen marcados de martes a sábado, que es la
@@ -1164,6 +1222,7 @@ function panelHorario(e){
     // Se pisa solo lo marcado: los días que no se eligieron quedan como estaban,
     // así se puede aplicar la tanda y después corregir el sábado a mano.
     elegidos.forEach(i => poner(filas[i], tramos));
+    pintarResumen();
     toast(`${elegidos.length} ${elegidos.length===1?"día":"días"} con ese horario · falta guardar`);
   };
   pan.querySelector(".cancelar").onclick = () => pan.remove();

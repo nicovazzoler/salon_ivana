@@ -320,7 +320,16 @@
     color:var(--text-sobre-oro); font-weight:var(--fw-bold);
   }
 
+  /* El resumen de lo guardado, para que esconder los días no esconda el dato. */
+  .panel-horario .resumen{
+    margin:0; padding:var(--sp-2) 0;
+    font-size:var(--fs-md); color:var(--text-suave);
+  }
+  .panel-horario .resumen b{ color:var(--text-titulo); }
+  .panel-horario .resumen[hidden]{ display:none; }
+
   .panel-horario .dias{ display:flex; flex-direction:column; gap:2px; }
+  .panel-horario .dias[hidden]{ display:none; }
   .dia-horario{
     display:flex; align-items:center; gap:var(--sp-3); flex-wrap:wrap;
     padding:6px 0; border-bottom:1px solid var(--border-sutil);
