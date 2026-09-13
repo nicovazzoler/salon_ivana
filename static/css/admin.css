@@ -295,6 +295,31 @@
     background:var(--bg-sutil);
     border:1px solid var(--border-sutil); border-radius:var(--r-lg);
   }
+  /* La fila de arriba: se escribe el horario una vez y se reparte a los días
+     marcados. Va separada por un filete porque no es un día más de la lista. */
+  .panel-horario .de-una{
+    display:flex; align-items:center; gap:var(--sp-3); flex-wrap:wrap;
+    padding-bottom:var(--sp-3); margin-bottom:var(--sp-2);
+    border-bottom:1px solid var(--border);
+  }
+  .panel-horario .de-una .rot{
+    font-size:var(--fs-xs); letter-spacing:var(--tracking-eti); text-transform:uppercase;
+    color:var(--acento); font-weight:var(--fw-bold);
+  }
+  .panel-horario .de-una .tramo{ display:inline-flex; align-items:center; gap:6px; }
+  .panel-horario .de-una .tramo[hidden]{ display:none; }
+  .panel-horario .de-una input[type=time]{ width:auto; padding:5px 7px; }
+  .panel-horario .chips{ display:flex; gap:4px; flex-wrap:wrap; }
+  .chip-dia{
+    padding:5px 10px; border-radius:var(--r-full);
+    background:var(--bg-card); border:1px solid var(--border-sutil);
+    font-size:var(--fs-sm); color:var(--text-tenue); cursor:pointer;
+  }
+  .chip-dia.on{
+    background:var(--bronce-400); border-color:var(--bronce-500);
+    color:var(--text-sobre-oro); font-weight:var(--fw-bold);
+  }
+
   .panel-horario .dias{ display:flex; flex-direction:column; gap:2px; }
   .dia-horario{
     display:flex; align-items:center; gap:var(--sp-3); flex-wrap:wrap;
@@ -314,6 +339,11 @@
   .dia-horario .tramo[hidden]{ display:none; }
   .dia-horario .tramo input{ width:auto; padding:5px 7px; }
   .dia-horario .tramo .a{ color:var(--text-tenue); font-size:var(--fs-sm); }
+  /* "cada" solo importa en el lunes de depilación, así que se va a la derecha y
+     queda callado: en los otros días dice "Todos" y no hay que mirarlo. */
+  .dia-horario .cada{ display:inline-flex; align-items:center; gap:6px; margin-left:auto; }
+  .dia-horario .cada .a{ color:var(--text-tenue); font-size:var(--fs-sm); }
+  .dia-horario .cada select{ width:auto; padding:5px 7px; font-size:var(--fs-sm); }
   .panel-horario .acc{ display:flex; gap:var(--sp-2); flex-wrap:wrap; margin-top:var(--sp-3); }
   @media (max-width:640px){
     .dia-horario{ gap:var(--sp-2); }

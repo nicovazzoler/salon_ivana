@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session, selectinload
 from sqlalchemy import text, inspect, func, or_, String
 from pydantic import BaseModel
 from datetime import datetime, date, timedelta, timezone
+from calendar import monthrange
 from openpyxl import Workbook
 import os
 import re, bisect, io, time, hmac
@@ -89,6 +90,11 @@ def migrar():
         if "valor_hora" not in emcols:
             with engine.begin() as con:
                 con.execute(text("ALTER TABLE empleados ADD COLUMN valor_hora INTEGER"))
+    if insp.has_table("horarios_empleado"):
+        hcols = [c["name"] for c in insp.get_columns("horarios_empleado")]
+        if "semana_del_mes" not in hcols:
+            with engine.begin() as con:
+                con.execute(text("ALTER TABLE horarios_empleado ADD COLUMN semana_del_mes INTEGER"))
     if insp.has_table("turnos"):
         tucols = [c["name"] for c in insp.get_columns("turnos")]
         if "duracion_min" not in tucols:
@@ -321,6 +327,7 @@ class TurnoIn(BaseModel):
     duracion_min: int = 30
 class TramoIn(BaseModel):
     dia_semana: int; desde: str; hasta: str
+    semana_del_mes: int | None = None     # None = todas; 1..4 = esa; 5 = la última
 class HorarioIn(BaseModel):
     # La semana entera de una. Mandar tramos sueltos dejaría estados a medio
     # guardar —el lunes nuevo con el martes viejo— y nadie sabría cuál es el bueno.
@@ -1237,25 +1244,15 @@ def lineas_a_comision_pendientes(db, empleado):
     return q.order_by(models.Comprobante.fecha).all()
 
 def ciclo_de(f: date) -> tuple[date, date]:
-    """A qué ciclo de sueldo pertenece un día.
+    """A qué semana de pago pertenece un día: de sábado a viernes.
 
-    El ciclo va de SÁBADO a VIERNES, que es la semana del local: se paga el
-    viernes lo que se hizo desde el sábado anterior. No es una ventana para
-    filtrar, es la unidad con la que se paga. Un ciclo que no se cerró queda
-    pendiente y sigue apareciendo, así que atrasarse en pagar no mezcla dos
-    semanas en un solo número.
+    Es la unidad con la que se paga, no una ventana para filtrar: un ciclo sin
+    cerrar sigue apareciendo entero al lado del nuevo.
 
-    Ojo con el calendario: el ciclo ARRANCA el sábado, no termina ahí. El sábado
-    12 no pertenece a la semana que se paga el viernes 11 sino a la siguiente.
-    Con el orden de Python (lunes=0), sábado y domingo caen después del viernes
-    en el número pero antes en el ciclo, y de ahí sale el `dow + 2`.
-
-    El lunes es su propio ciclo de un día. El local no abre los lunes; si un día
-    se trabaja uno —la depilación, una vez por mes— es un extra y se paga como
-    tal, no metido adentro de una semana con la que no tiene nada que ver.
-
-    El domingo tampoco se trabaja, pero si aparece algo cargado ahí se lo lleva
-    el ciclo que arrancó el sábado: es la continuación de esa semana.
+    El lunes es su propio ciclo de un día —la depilación, una vez por mes—, y el
+    domingo se lo lleva el sábado que acaba de arrancar. Ojo con el `dow + 2`: el
+    ciclo ARRANCA el sábado, que con weekday() cae después del viernes en el
+    número pero antes en el ciclo.
     """
     dow = f.weekday()                                  # 0=lunes … 5=sábado, 6=domingo
     if dow == 0: return f, f                           # el lunes, suelto
@@ -2839,24 +2836,15 @@ def set_stock(item_id: int, s: StockIn, user = Depends(solo_dueno), db: Session 
 
 @app.post("/api/inventario/consumo")
 def descontar_insumo(c: ConsumoIn, user = Depends(usuario_actual), db: Session = Depends(get_db)):
-    """Lo que se gastó en el local y no salió por una venta.
+    """Descuenta lo que se gastó en el local y no salió por una venta.
 
-    Una tintura que se usó en una clienta, el shampoo de la bacha, el frasco que
-    se cayó. Hasta ahora el stock solo bajaba vendiendo, así que todo eso quedaba
-    contado de más hasta que alguien hacía el conteo a mano y descubría el
-    faltante sin saber de dónde salía.
+    Lo puede cargar el empleado: corregir el conteo sigue siendo de la dueña,
+    pero anotar lo que se usó lo hace la que lo usa. Por eso el movimiento es
+    "consumo" y no "manual": en el historial hay que distinguir "usé 2 tinturas"
+    de "conté mal, eran 8".
 
-    Lo puede hacer el empleado, y es a propósito: corregir el conteo sigue siendo
-    de la dueña, pero ANOTAR lo que se usó es lo que hace todos los días la que
-    lo usa. Si solo pudiera la dueña, no se anotaría nunca y el inventario
-    volvería a atrasarse. Por eso son dos movimientos distintos —"consumo" y
-    "manual"— y no el mismo: "usé 2 tinturas" no es lo mismo que "conté mal,
-    eran 8", y en el historial tienen que poder distinguirse.
-
-    Puede dejar el stock en negativo, igual que una venta. Es feo y es la idea:
-    un número abajo de cero dice que el conteo está atrasado, mientras que
-    frenarlo en cero lo escondería y además obligaría a mentir sobre lo que
-    realmente se usó.
+    Deja el stock en negativo a propósito, igual que una venta: abajo de cero
+    dice que el conteo está atrasado, y frenarlo en cero lo escondería.
     """
     item = db.get(models.Item, c.item_id)
     if not item or not item.es_producto: raise HTTPException(404, "Producto no existe")
@@ -3171,14 +3159,12 @@ def _valida_tramo(desde: str, hasta: str):
         raise HTTPException(400, f"El tramo {desde}–{hasta} termina antes de empezar")
 
 def disponibilidad(db, empleado_id: int, fecha: str) -> dict:
-    """Cuándo está esta persona ESE día.
+    """Cuándo está esta persona ese día.
 
-    Una sola regla, y en un solo lugar para que la grilla y cualquier chequeo
-    futuro no puedan contestar distinto: si hay excepciones cargadas para esa
-    fecha, mandan ellas; si no, el horario fijo de ese día de la semana.
-
-    Una excepción sin horas es "no viene": devuelve cero tramos pero con
-    `excepcion` puesto, así la pantalla puede decir POR QUÉ está vacío.
+    Una regla y en un solo lugar: si hay excepciones para esa fecha mandan ellas,
+    si no el horario fijo de ese día de la semana. Una excepción sin horas es "no
+    viene" —cero tramos con `excepcion` puesto—, para que la pantalla pueda decir
+    por qué está vacío en vez de mostrar un hueco mudo.
     """
     exc = (db.query(models.ExcepcionHorario)
              .filter(models.ExcepcionHorario.empleado_id == empleado_id,
@@ -3189,13 +3175,27 @@ def disponibilidad(db, empleado_id: int, fecha: str) -> dict:
         return {"tramos": tramos, "excepcion": True,
                 "motivo": next((e.motivo for e in exc if e.motivo), None),
                 "excepcion_ids": [e.id for e in exc]}
-    dow = date.fromisoformat(fecha).weekday()
+    f = date.fromisoformat(fecha)
     fijos = (db.query(models.HorarioEmpleado)
                .filter(models.HorarioEmpleado.empleado_id == empleado_id,
-                       models.HorarioEmpleado.dia_semana == dow)
+                       models.HorarioEmpleado.dia_semana == f.weekday())
                .order_by(models.HorarioEmpleado.desde).all())
+    fijos = [h for h in fijos if _toca_esta_semana(h.semana_del_mes, f)]
     return {"tramos": [{"desde": h.desde, "hasta": h.hasta} for h in fijos],
             "excepcion": False, "motivo": None, "excepcion_ids": []}
+
+def _toca_esta_semana(semana: int | None, f: date) -> bool:
+    """Si un tramo mensual cae en esta fecha. NULL = todas las semanas.
+
+    5 es "el último": el 29 de un mes de 30 días es el último lunes aunque sea el
+    quinto, y en un mes de 28 el cuarto también es el último. Contar ordinales sin
+    esto dejaba meses sin ningún lunes de depilación.
+    """
+    if semana is None: return True
+    ordinal = (f.day - 1) // 7 + 1
+    if semana == 5:
+        return f.day + 7 > monthrange(f.year, f.month)[1]
+    return ordinal == semana
 
 @app.get("/api/horarios")
 def listar_horarios(_ = Depends(usuario_actual), db: Session = Depends(get_db)):
@@ -3206,28 +3206,28 @@ def listar_horarios(_ = Depends(usuario_actual), db: Session = Depends(get_db)):
     out = {}
     for f in filas:
         out.setdefault(str(f.empleado_id), []).append(
-            {"id": f.id, "dia_semana": f.dia_semana, "desde": f.desde, "hasta": f.hasta})
+            {"id": f.id, "dia_semana": f.dia_semana, "desde": f.desde, "hasta": f.hasta,
+             "semana_del_mes": f.semana_del_mes})
     return out
 
 @app.put("/api/horarios/{emp_id}")
 def guardar_horario(emp_id: int, datos: HorarioIn, _ = Depends(solo_dueno), db: Session = Depends(get_db)):
     """Reemplaza la semana entera de esa persona.
 
-    Se manda completa y se pisa todo: guardar tramos de a uno dejaría la semana a
-    medio cambiar si algo falla en el medio, y con el horario partido nadie sabe
-    cuál de los dos es el bueno. El horario fijo lo maneja la dueña —es parte de
-    con quién se cuenta—; el cambio de un día puntual, en cambio, lo carga
-    cualquiera desde la agenda.
+    Se manda completa y se pisa todo: de a un tramo, un error en el medio deja la
+    semana partida y nadie sabe cuál mitad vale.
     """
     _empleado_o_404(db, emp_id)
     for t in datos.tramos:
         if not 0 <= t.dia_semana <= 6: raise HTTPException(400, "Día de la semana inválido")
+        if t.semana_del_mes is not None and not 1 <= t.semana_del_mes <= 5:
+            raise HTTPException(400, "La semana del mes va de 1 a 5")
         _valida_tramo(t.desde, t.hasta)
     # Dos tramos del mismo día que se pisan serían dos veces la misma hora
     # disponible, y la grilla la dibujaría dos veces encima de sí misma.
     por_dia = {}
-    for t in datos.tramos: por_dia.setdefault(t.dia_semana, []).append(t)
-    for dia, ts in por_dia.items():
+    for t in datos.tramos: por_dia.setdefault((t.dia_semana, t.semana_del_mes), []).append(t)
+    for _, ts in por_dia.items():
         ts.sort(key=lambda x: x.desde)
         for a, b in zip(ts, ts[1:]):
             if b.desde < a.hasta:
@@ -3235,14 +3235,16 @@ def guardar_horario(emp_id: int, datos: HorarioIn, _ = Depends(solo_dueno), db: 
     db.query(models.HorarioEmpleado).filter(models.HorarioEmpleado.empleado_id == emp_id).delete()
     for t in datos.tramos:
         db.add(models.HorarioEmpleado(empleado_id=emp_id, dia_semana=t.dia_semana,
-                                      desde=t.desde, hasta=t.hasta))
+                                      desde=t.desde, hasta=t.hasta,
+                                      semana_del_mes=t.semana_del_mes))
     db.commit(); return {"ok": True, "tramos": len(datos.tramos)}
 
 @app.post("/api/excepciones")
 def crear_excepcion(datos: ExcepcionIn, _ = Depends(usuario_actual), db: Session = Depends(get_db)):
-    """El cambio de un día puntual. Lo carga cualquiera, a propósito: la que se
-    cambió el turno con otra es la que sabe, y si tuviera que pedirlo no se
-    carga. La excepción pisa lo que haya para ese día y esa persona."""
+    """El horario de un día puntual, que le gana al fijo.
+
+    Lo carga cualquiera: la que se cambió el turno con otra es la que sabe.
+    """
     _empleado_o_404(db, datos.empleado_id)
     try:
         date.fromisoformat(datos.fecha)
@@ -3270,13 +3272,11 @@ def borrar_excepcion(emp_id: int, fecha: str, _ = Depends(usuario_actual), db: S
 
 @app.get("/api/agenda/dia")
 def agenda_dia(fecha: str | None = None, _ = Depends(usuario_actual), db: Session = Depends(get_db)):
-    """El día armado para la grilla por columnas: quién está, cuándo, y con qué.
+    """El día armado para la grilla por columnas: quién está, cuándo y con qué.
 
-    La ventana de horas la decide el día y no una constante: se toma desde lo más
-    temprano que alguien entra hasta lo más tarde que alguien sale, y se estira si
-    hay un turno afuera de eso —un turno a las 8 con todas entrando 9 tiene que
-    verse, no desaparecer—. Un día sin nadie devuelve una ventana igual, para que
-    la pantalla no quede en blanco sin explicar nada.
+    La ventana de horas sale del día y no de una constante: de lo más temprano
+    que alguien entra a lo más tarde que alguien sale, estirada si hay un turno
+    afuera de eso —uno a las 8 con todas entrando 9 tiene que verse—.
     """
     if not fecha: fecha = hoy_argentina().isoformat()
     try:
@@ -3607,7 +3607,7 @@ def backup_completo(_ = Depends(solo_dueno), db: Session = Depends(get_db)):
         ],
         "horarios_empleado": [
             {"id": h.id, "empleado_id": h.empleado_id, "dia_semana": h.dia_semana,
-             "desde": h.desde, "hasta": h.hasta}
+             "desde": h.desde, "hasta": h.hasta, "semana_del_mes": h.semana_del_mes}
             for h in db.query(models.HorarioEmpleado).all()
         ],
         "excepciones_horario": [

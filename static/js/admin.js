@@ -1076,19 +1076,13 @@ function panelEmpleado(e, tipo){
   return pan;
 }
 
-/* El horario fijo de la semana.
+/* El horario fijo de la semana: se edita entera y se guarda de una vez.
 
-   Se edita entero y se guarda de una sola vez, igual que lo pide el servidor: de
-   a un día, una semana a medio guardar deja el horario partido y nadie sabe cuál
-   de los dos es el bueno.
-
-   Dos tramos por día como máximo, que es lo que hay: entra a la mañana, corta al
-   mediodía, vuelve a la tarde. Un tercero no existe en una peluquería y tres
-   filas por día serían veintiún renglones para llenar dos.
-
-   El día DESTILDADO no es "trabaja cero horas", es "no trabaja": en la agenda la
-   columna se dibuja distinta y por eso la marca es una casilla y no un 00:00. */
+   Dos tramos por día como máximo —entra, corta al mediodía, vuelve— y el día
+   destildado es "no trabaja", que en la agenda se dibuja distinto de trabajar
+   cero horas. */
 const DIAS_SEM = ["Lunes","Martes","Miércoles","Jueves","Viernes","Sábado","Domingo"];
+const SEMANAS_MES = [["","Todos"],["1","1º del mes"],["2","2º"],["3","3º"],["4","4º"],["5","El último"]];
 
 function panelHorario(e){
   const pan = document.createElement("div");
@@ -1096,11 +1090,19 @@ function panelHorario(e){
   pan.innerHTML = `<p class="muted" style="margin:0 0 var(--sp-2);">
       El horario de siempre de ${esc(e.nombre)}. En la agenda se dibuja como su columna del día.
       Un día puntual distinto —se cambió con otra, turno médico— se carga desde la agenda, no acá.</p>
+    <div class="de-una">
+      <span class="rot">El mismo horario a varios días</span>
+      <span class="tramo"><input type="time" class="ud1" value="09:00"><span class="a">a</span><input type="time" class="uh1" value="18:00"></span>
+      <label class="marca corta"><input type="checkbox" class="udoble"> corta al mediodía</label>
+      <span class="tramo ut2" hidden><input type="time" class="ud2" value="15:00"><span class="a">a</span><input type="time" class="uh2" value="19:00"></span>
+      <span class="chips">${DIAS_SEM.map((d,i)=>
+        `<button type="button" class="chip-dia${i>=1 && i<=5 ? " on":""}" data-d="${i}">${d.slice(0,3)}</button>`).join("")}</span>
+      <button class="b-tinta aplicar">Aplicar</button>
+    </div>
     <div class="dias"></div>
     <span class="acc">
       <button class="b-ok guardar">Guardar el horario</button>
       <button class="b-out cancelar">Cancelar</button>
-      <button class="b-out copiar">Copiar el lunes hasta el sábado</button>
     </span>`;
   const cajaDias = pan.querySelector(".dias");
 
@@ -1111,11 +1113,13 @@ function panelHorario(e){
       <label class="marca"><input type="checkbox" class="trabaja"> ${DIAS_SEM[i]}</label>
       <span class="tramo t1"><input type="time" class="d1"><span class="a">a</span><input type="time" class="h1"></span>
       <label class="marca corta"><input type="checkbox" class="doble"> corta al mediodía</label>
-      <span class="tramo t2" hidden><input type="time" class="d2"><span class="a">a</span><input type="time" class="h2"></span>`;
+      <span class="tramo t2" hidden><input type="time" class="d2"><span class="a">a</span><input type="time" class="h2"></span>
+      <span class="cada"><span class="a">cada</span><select class="semana">${
+        SEMANAS_MES.map(([v,r])=>`<option value="${v}">${r}</option>`).join("")}</select></span>`;
     const pintar = () => {
       const on = d.querySelector(".trabaja").checked;
       d.classList.toggle("off", !on);
-      d.querySelectorAll("input[type=time], .doble").forEach(x => x.disabled = !on);
+      d.querySelectorAll("input[type=time], .doble, .semana").forEach(x => x.disabled = !on);
       d.querySelector(".t2").hidden = !(on && d.querySelector(".doble").checked);
     };
     d.querySelector(".trabaja").onchange = pintar;
@@ -1132,6 +1136,7 @@ function panelHorario(e){
     f.querySelector(".doble").checked = tramos.length > 1;
     f.querySelector(".d2").value = tramos[1] ? tramos[1].desde : "15:00";
     f.querySelector(".h2").value = tramos[1] ? tramos[1].hasta : "19:00";
+    f.querySelector(".semana").value = tramos[0] && tramos[0].semana_del_mes ? String(tramos[0].semana_del_mes) : "";
     f._pintar();
   };
 
@@ -1141,15 +1146,25 @@ function panelHorario(e){
                                        .sort((a, b) => a.desde.localeCompare(b.desde))));
   }).catch(() => filas.forEach(f => poner(f, [])));
 
-  pan.querySelector(".copiar").onclick = () => {
-    const l = filas[0];
-    const tramos = [{desde: l.querySelector(".d1").value, hasta: l.querySelector(".h1").value}];
-    if(l.querySelector(".doble").checked)
-      tramos.push({desde: l.querySelector(".d2").value, hasta: l.querySelector(".h2").value});
-    // Se copia a los días de semana nada más: el domingo no abre y copiarle el
-    // lunes es justo el error que después nadie mira.
-    filas.slice(1, 6).forEach(f => poner(f, l.querySelector(".trabaja").checked ? tramos : []));
-    toast("Copiado de lunes a sábado");
+  /* Cargar la semana entera en un solo gesto: se escribe el horario una vez, se
+     marcan los días y se aplica. Vienen marcados de martes a sábado, que es la
+     semana del local; el lunes queda afuera porque es el de depilación y va con
+     su "cada" propio. */
+  pan.querySelectorAll(".chip-dia").forEach(c =>
+    c.onclick = () => c.classList.toggle("on"));
+  pan.querySelector(".udoble").onchange = () =>
+    pan.querySelector(".ut2").hidden = !pan.querySelector(".udoble").checked;
+  pan.querySelector(".aplicar").onclick = () => {
+    const elegidos = [...pan.querySelectorAll(".chip-dia.on")].map(c => +c.dataset.d);
+    if(!elegidos.length){ toast("Marcá a qué días"); return; }
+    const tramos = [{desde: pan.querySelector(".ud1").value, hasta: pan.querySelector(".uh1").value}];
+    if(pan.querySelector(".udoble").checked)
+      tramos.push({desde: pan.querySelector(".ud2").value, hasta: pan.querySelector(".uh2").value});
+    if(tramos.some(t => !t.desde || !t.hasta)){ toast("Completá las horas"); return; }
+    // Se pisa solo lo marcado: los días que no se eligieron quedan como estaban,
+    // así se puede aplicar la tanda y después corregir el sábado a mano.
+    elegidos.forEach(i => poner(filas[i], tramos));
+    toast(`${elegidos.length} ${elegidos.length===1?"día":"días"} con ese horario · falta guardar`);
   };
   pan.querySelector(".cancelar").onclick = () => pan.remove();
   pan.querySelector(".guardar").onclick = async () => {
@@ -1159,11 +1174,12 @@ function panelHorario(e){
       if(!f.querySelector(".trabaja").checked) continue;
       const d1 = f.querySelector(".d1").value, h1 = f.querySelector(".h1").value;
       if(!d1 || !h1){ toast(`Completá las horas del ${DIAS_SEM[i].toLowerCase()}`); return; }
-      tramos.push({dia_semana: i, desde: d1, hasta: h1});
+      const semana = f.querySelector(".semana").value ? +f.querySelector(".semana").value : null;
+      tramos.push({dia_semana: i, desde: d1, hasta: h1, semana_del_mes: semana});
       if(f.querySelector(".doble").checked){
         const d2 = f.querySelector(".d2").value, h2 = f.querySelector(".h2").value;
         if(!d2 || !h2){ toast(`Completá el segundo tramo del ${DIAS_SEM[i].toLowerCase()}`); return; }
-        tramos.push({dia_semana: i, desde: d2, hasta: h2});
+        tramos.push({dia_semana: i, desde: d2, hasta: h2, semana_del_mes: semana});
       }
     }
     const r = await authFetch(`/api/horarios/${e.id}`, {method:"PUT",

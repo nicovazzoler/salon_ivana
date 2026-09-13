@@ -202,10 +202,39 @@ cuando el que se equivocó fue el test.
 ## Idioma
 
 Todo en castellano rioplatense: los nombres de las variables y funciones, los
-comentarios, los mensajes de commit y lo que se le muestra al usuario. Los
-comentarios explican **por qué**, no qué — y en particular explican las
-decisiones raras, para que el que venga después no las "arregle" sin saber qué
-rompía. Son largos a propósito.
+comentarios, los mensajes de commit y lo que se le muestra al usuario.
+
+### Cómo se comenta
+
+**Una línea que diga qué hace esto, y después solo lo que no se deduce leyendo.**
+Un comentario largo se saltea, así que el largo hay que gastarlo donde rinde: en
+la decisión rara, la que alguien va a querer "arreglar" sin saber qué rompía.
+
+Lo que NO va en un comentario:
+- **La historia.** "Antes pasaba X y ahora pasa Y" es para el mensaje de commit,
+  que es donde se lee cuando se busca por qué cambió algo. En el código, el
+  "antes" es ruido: el que lee tiene adelante el "ahora".
+- **Repetir el código en castellano.** Si el nombre de la función ya lo dice, el
+  comentario sobra.
+- **El caso de prueba.** Los números del ejemplo con el que se encontró un bug
+  van en el commit, no arriba de la función.
+
+Un docstring de cinco párrafos casi siempre son dos frases y un commit. Si la
+explicación no entra en tres o cuatro renglones, es señal de que la función hace
+dos cosas: partirla explica más que el comentario.
+
+    # Bien
+    def ciclo_de(f):
+        """A qué semana de pago pertenece un día: de sábado a viernes.
+
+        El lunes es su propio ciclo de un día —la depilación, una vez por mes—.
+        Ojo: el ciclo ARRANCA el sábado, y con weekday() el sábado cae después
+        del viernes en el número pero antes en el ciclo; de ahí el `dow + 2`.
+        """
+
+    # Mal
+    # Antes el ciclo era de martes a sábado, pero resulta que en el local pagan
+    # el viernes lo que se hizo desde el sábado, así que ahora... (12 renglones)
 
 ## Seguridad
 
@@ -223,3 +252,8 @@ detecta quién sigue usando una y lo avisa con un cartel que no se puede cerrar.
 
 Commit en castellano explicando **por qué**, no qué (el diff ya dice qué), y
 push a `main`. El deploy en Railway es automático.
+
+Acá sí va la historia: qué pasaba antes, con qué caso se encontró el bug y qué
+números daba. Es lo que se busca cuando se pregunta "¿por qué cambió esto?", y es
+justo lo que no tiene que estar en el comentario. Un título de una línea y dos o
+tres párrafos alcanzan; si hace falta más, probablemente sean dos commits.

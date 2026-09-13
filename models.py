@@ -105,11 +105,8 @@ class Empleado(Base):
     id = Column(Integer, primary_key=True)
     nombre = Column(String, unique=True, nullable=False)
     activo = Column(Boolean, default=True)
-    # Lo que cobra la hora, si cobra distinto del resto. NULL = el general de
-    # Sueldos, que sigue siendo el que manda para las que no tienen el suyo.
-    # Es nullable y no 0 a propósito: 0 es un valor hora válido —alguien que
-    # cobra solo comisión— y con 0 por defecto no habría forma de distinguir
-    # "no cobra por hora" de "todavía no se lo cargaron".
+    # Lo que cobra la hora. NULL = el general de Sueldos, y es nullable y no 0
+    # porque 0 es válido: alguien que cobra solo comisión.
     valor_hora = Column(Integer)
     # El código con el que abre su sueldo. Guardado como hash y con sal, igual
     # que las contraseñas: la base entera se descarga en cada backup, y un código
@@ -170,22 +167,18 @@ class Turno(Base):
     peluquero = Column(String)                            # opcional
     notas = Column(String)                                # opcional
     activo = Column(Boolean, default=True)
-    # Cuánto dura, en minutos. Sin esto un turno es un punto en el día y no se
-    # puede saber si una franja está libre: en la grilla por columnas el largo
-    # del bloque ES la información. Los que ya estaban cargados arrancan en 30,
-    # que es el turno más corto del local.
+    # Cuánto dura, en minutos: en la grilla por columnas el largo del bloque es
+    # lo que dice si una franja está libre.
     duracion_min = Column(Integer, default=30)
 
 class HorarioEmpleado(Base):
     """El horario fijo de cada quien, por día de la semana.
 
-    Una fila por tramo: la que corta al mediodía lleva dos del mismo día. No hay
-    fila = ese día no trabaja, que es distinto de trabajar cero horas.
+    Una fila por tramo: la que corta al mediodía lleva dos del mismo día, y sin
+    fila ese día no trabaja.
 
-    Es lo que la agenda pinta como "disponible". Ojo con confundirlo con las
-    horas que se PAGAN: acá dice a qué hora se la espera, y en Sueldos se declara
-    lo que realmente trabajó. Un horario teórico no puede decidir un sueldo —les
-    pagan por hora trabajada— así que este dato propone, nunca liquida.
+    No es lo que se PAGA: acá dice a qué hora se la espera, y en Sueldos se
+    declara lo que realmente trabajó. Un horario teórico propone, nunca liquida.
     """
     __tablename__ = "horarios_empleado"
     id = Column(Integer, primary_key=True)
@@ -193,19 +186,16 @@ class HorarioEmpleado(Base):
     dia_semana = Column(Integer, nullable=False)     # 0=lunes … 6=domingo, como Python
     desde = Column(String, nullable=False)           # 'HH:MM'
     hasta = Column(String, nullable=False)           # 'HH:MM'
+    # Qué semana del mes: NULL = todas, 1..4 = esa, 5 = la última. Es para el
+    # lunes de depilación, que es uno solo al mes y como fijo semanal mentiría.
+    semana_del_mes = Column(Integer)
     empleado = relationship("Empleado")
 
 class ExcepcionHorario(Base):
-    """Lo que pasa un día puntual y le gana al horario fijo.
+    """El horario de un día puntual, que le gana al fijo.
 
-    No están por convenio: se cambian entre ellas, alguna se enferma, otra entra
-    más tarde. Sin esto habría que editar el horario fijo y volverlo a dejar como
-    estaba, y el día que alguien se olvida de volverlo, el horario "fijo" miente
-    para siempre.
-
-    `desde`/`hasta` en NULL quiere decir que ese día NO viene. Es un dato en sí
-    mismo y no un agujero: la diferencia entre "hoy no vino" y "nadie cargó nada"
-    es justo lo que hay que poder ver en la grilla.
+    `desde`/`hasta` en NULL es "ese día no viene": un dato, no un agujero. En la
+    grilla hay que poder distinguirlo de "nadie cargó nada".
     """
     __tablename__ = "excepciones_horario"
     id = Column(Integer, primary_key=True)
