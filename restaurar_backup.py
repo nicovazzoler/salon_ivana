@@ -69,7 +69,7 @@ ORDEN = [
                               "servicio", "peluquero", "notas", "activo",
                               "duracion_min"], []),
     ("horarios_empleado", models.HorarioEmpleado,
-     ["id", "empleado_id", "dia_semana", "desde", "hasta", "semana_del_mes"], []),
+     ["id", "empleado_id", "dia_semana", "desde", "hasta"], []),
     ("excepciones_horario", models.ExcepcionHorario,
      ["id", "empleado_id", "fecha", "desde", "hasta", "motivo"], []),
     ("movimientos_stock", models.MovimientoStock, ["id", "item_id", "tipo", "antes",

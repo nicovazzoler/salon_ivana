@@ -348,11 +348,6 @@
   .dia-horario .tramo[hidden]{ display:none; }
   .dia-horario .tramo input{ width:auto; padding:5px 7px; }
   .dia-horario .tramo .a{ color:var(--text-tenue); font-size:var(--fs-sm); }
-  /* "cada" solo importa en el lunes de depilación, así que se va a la derecha y
-     queda callado: en los otros días dice "Todos" y no hay que mirarlo. */
-  .dia-horario .cada{ display:inline-flex; align-items:center; gap:6px; margin-left:auto; }
-  .dia-horario .cada .a{ color:var(--text-tenue); font-size:var(--fs-sm); }
-  .dia-horario .cada select{ width:auto; padding:5px 7px; font-size:var(--fs-sm); }
   .panel-horario .acc{ display:flex; gap:var(--sp-2); flex-wrap:wrap; margin-top:var(--sp-3); }
   @media (max-width:640px){
     .dia-horario{ gap:var(--sp-2); }

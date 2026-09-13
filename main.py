@@ -5,7 +5,6 @@ from sqlalchemy.orm import Session, selectinload
 from sqlalchemy import text, inspect, func, or_, String
 from pydantic import BaseModel
 from datetime import datetime, date, timedelta, timezone
-from calendar import monthrange
 from openpyxl import Workbook
 import os
 import re, bisect, io, time, hmac
@@ -92,9 +91,19 @@ def migrar():
                 con.execute(text("ALTER TABLE empleados ADD COLUMN valor_hora INTEGER"))
     if insp.has_table("horarios_empleado"):
         hcols = [c["name"] for c in insp.get_columns("horarios_empleado")]
-        if "semana_del_mes" not in hcols:
+        # El horario mensual ("el 2º lunes") se sacó: ahora el día suelto se marca
+        # por fecha desde la agenda. Las filas que tenían semana quedarían valiendo
+        # TODOS los lunes, que es lo contrario de lo que se cargó, así que se
+        # borran. Con marca en config para que corra una sola vez: si no, cada
+        # reinicio le borraría un lunes recién cargado a mano.
+        if "semana_del_mes" in hcols:
             with engine.begin() as con:
-                con.execute(text("ALTER TABLE horarios_empleado ADD COLUMN semana_del_mes INTEGER"))
+                ya = con.execute(text("SELECT 1 FROM config WHERE clave = :k"),
+                                 {"k": "limpie_horarios_mensuales"}).first()
+                if not ya:
+                    con.execute(text("DELETE FROM horarios_empleado WHERE semana_del_mes IS NOT NULL"))
+                    con.execute(text("INSERT INTO config (clave, valor) VALUES (:k, :v)"),
+                                {"k": "limpie_horarios_mensuales", "v": "1"})
     if insp.has_table("turnos"):
         tucols = [c["name"] for c in insp.get_columns("turnos")]
         if "duracion_min" not in tucols:
@@ -327,7 +336,9 @@ class TurnoIn(BaseModel):
     duracion_min: int = 30
 class TramoIn(BaseModel):
     dia_semana: int; desde: str; hasta: str
-    semana_del_mes: int | None = None     # None = todas; 1..4 = esa; 5 = la última
+class AbrirDiaIn(BaseModel):
+    fecha: str; empleados: list[int]
+    desde: str; hasta: str; motivo: str | None = None
 class HorarioIn(BaseModel):
     # La semana entera de una. Mandar tramos sueltos dejaría estados a medio
     # guardar —el lunes nuevo con el martes viejo— y nadie sabría cuál es el bueno.
@@ -3175,27 +3186,13 @@ def disponibilidad(db, empleado_id: int, fecha: str) -> dict:
         return {"tramos": tramos, "excepcion": True,
                 "motivo": next((e.motivo for e in exc if e.motivo), None),
                 "excepcion_ids": [e.id for e in exc]}
-    f = date.fromisoformat(fecha)
+    dow = date.fromisoformat(fecha).weekday()
     fijos = (db.query(models.HorarioEmpleado)
                .filter(models.HorarioEmpleado.empleado_id == empleado_id,
-                       models.HorarioEmpleado.dia_semana == f.weekday())
+                       models.HorarioEmpleado.dia_semana == dow)
                .order_by(models.HorarioEmpleado.desde).all())
-    fijos = [h for h in fijos if _toca_esta_semana(h.semana_del_mes, f)]
     return {"tramos": [{"desde": h.desde, "hasta": h.hasta} for h in fijos],
             "excepcion": False, "motivo": None, "excepcion_ids": []}
-
-def _toca_esta_semana(semana: int | None, f: date) -> bool:
-    """Si un tramo mensual cae en esta fecha. NULL = todas las semanas.
-
-    5 es "el último": el 29 de un mes de 30 días es el último lunes aunque sea el
-    quinto, y en un mes de 28 el cuarto también es el último. Contar ordinales sin
-    esto dejaba meses sin ningún lunes de depilación.
-    """
-    if semana is None: return True
-    ordinal = (f.day - 1) // 7 + 1
-    if semana == 5:
-        return f.day + 7 > monthrange(f.year, f.month)[1]
-    return ordinal == semana
 
 @app.get("/api/horarios")
 def listar_horarios(_ = Depends(usuario_actual), db: Session = Depends(get_db)):
@@ -3206,8 +3203,7 @@ def listar_horarios(_ = Depends(usuario_actual), db: Session = Depends(get_db)):
     out = {}
     for f in filas:
         out.setdefault(str(f.empleado_id), []).append(
-            {"id": f.id, "dia_semana": f.dia_semana, "desde": f.desde, "hasta": f.hasta,
-             "semana_del_mes": f.semana_del_mes})
+            {"id": f.id, "dia_semana": f.dia_semana, "desde": f.desde, "hasta": f.hasta})
     return out
 
 @app.put("/api/horarios/{emp_id}")
@@ -3220,13 +3216,11 @@ def guardar_horario(emp_id: int, datos: HorarioIn, _ = Depends(solo_dueno), db: 
     _empleado_o_404(db, emp_id)
     for t in datos.tramos:
         if not 0 <= t.dia_semana <= 6: raise HTTPException(400, "Día de la semana inválido")
-        if t.semana_del_mes is not None and not 1 <= t.semana_del_mes <= 5:
-            raise HTTPException(400, "La semana del mes va de 1 a 5")
         _valida_tramo(t.desde, t.hasta)
     # Dos tramos del mismo día que se pisan serían dos veces la misma hora
     # disponible, y la grilla la dibujaría dos veces encima de sí misma.
     por_dia = {}
-    for t in datos.tramos: por_dia.setdefault((t.dia_semana, t.semana_del_mes), []).append(t)
+    for t in datos.tramos: por_dia.setdefault(t.dia_semana, []).append(t)
     for _, ts in por_dia.items():
         ts.sort(key=lambda x: x.desde)
         for a, b in zip(ts, ts[1:]):
@@ -3235,8 +3229,7 @@ def guardar_horario(emp_id: int, datos: HorarioIn, _ = Depends(solo_dueno), db: 
     db.query(models.HorarioEmpleado).filter(models.HorarioEmpleado.empleado_id == emp_id).delete()
     for t in datos.tramos:
         db.add(models.HorarioEmpleado(empleado_id=emp_id, dia_semana=t.dia_semana,
-                                      desde=t.desde, hasta=t.hasta,
-                                      semana_del_mes=t.semana_del_mes))
+                                      desde=t.desde, hasta=t.hasta))
     db.commit(); return {"ok": True, "tramos": len(datos.tramos)}
 
 @app.post("/api/excepciones")
@@ -3269,6 +3262,41 @@ def borrar_excepcion(emp_id: int, fecha: str, _ = Depends(usuario_actual), db: S
         models.ExcepcionHorario.empleado_id == emp_id,
         models.ExcepcionHorario.fecha == fecha).delete()
     db.commit(); return {"ok": True, "borradas": n}
+
+@app.post("/api/agenda/abrir-dia")
+def abrir_dia(datos: AbrirDiaIn, _ = Depends(usuario_actual), db: Session = Depends(get_db)):
+    """Abre una fecha suelta con el mismo horario para varias: el lunes de depilación.
+
+    Deja la fecha EXACTA como se manda, en vez de ir sumando: las que se mandan
+    quedan con esas horas y a las que no se les saca la excepción, así que
+    destildar a alguien y volver a guardar la deja afuera. Sin eso, corregir a
+    quién se le puso significaría borrar a mano una por una.
+
+    No es una regla del calendario a propósito: el lunes que abren lo deciden
+    ellas, y un "cada 2º lunes" diría que trabajan un día que nadie eligió.
+    """
+    try:
+        date.fromisoformat(datos.fecha)
+    except ValueError:
+        raise HTTPException(400, "Fecha inválida")
+    _valida_tramo(datos.desde, datos.hasta)
+    ids = set(datos.empleados)
+    for eid in ids: _empleado_o_404(db, eid)
+
+    activos = [e.id for e in db.query(models.Empleado).filter(models.Empleado.activo == True)]
+    db.query(models.ExcepcionHorario).filter(
+        models.ExcepcionHorario.fecha == datos.fecha,
+        models.ExcepcionHorario.empleado_id.in_([e for e in activos if e not in ids])).delete(
+            synchronize_session=False)
+    for eid in ids:
+        db.query(models.ExcepcionHorario).filter(
+            models.ExcepcionHorario.empleado_id == eid,
+            models.ExcepcionHorario.fecha == datos.fecha).delete()
+        db.add(models.ExcepcionHorario(empleado_id=eid, fecha=datos.fecha,
+                                       desde=datos.desde, hasta=datos.hasta,
+                                       motivo=(datos.motivo or "").strip() or None))
+    db.commit()
+    return {"ok": True, "empleados": len(ids)}
 
 @app.get("/api/agenda/dia")
 def agenda_dia(fecha: str | None = None, _ = Depends(usuario_actual), db: Session = Depends(get_db)):
@@ -3607,7 +3635,7 @@ def backup_completo(_ = Depends(solo_dueno), db: Session = Depends(get_db)):
         ],
         "horarios_empleado": [
             {"id": h.id, "empleado_id": h.empleado_id, "dia_semana": h.dia_semana,
-             "desde": h.desde, "hasta": h.hasta, "semana_del_mes": h.semana_del_mes}
+             "desde": h.desde, "hasta": h.hasta}
             for h in db.query(models.HorarioEmpleado).all()
         ],
         "excepciones_horario": [

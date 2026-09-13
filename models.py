@@ -186,9 +186,6 @@ class HorarioEmpleado(Base):
     dia_semana = Column(Integer, nullable=False)     # 0=lunes … 6=domingo, como Python
     desde = Column(String, nullable=False)           # 'HH:MM'
     hasta = Column(String, nullable=False)           # 'HH:MM'
-    # Qué semana del mes: NULL = todas, 1..4 = esa, 5 = la última. Es para el
-    # lunes de depilación, que es uno solo al mes y como fijo semanal mentiría.
-    semana_del_mes = Column(Integer)
     empleado = relationship("Empleado")
 
 class ExcepcionHorario(Base):

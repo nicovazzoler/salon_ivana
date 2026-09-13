@@ -64,6 +64,18 @@
     background:var(--bg-sutil); border:1px solid var(--border-sutil);
     font-size:var(--fs-sm); color:var(--text); cursor:pointer;
   }
+  /* Los chips de quiénes vienen el día que se abre suelto. */
+  .chips-emp{ display:flex; gap:6px; flex-wrap:wrap; }
+  .chip-emp{
+    padding:9px 15px; border-radius:var(--r-full);
+    background:var(--bg-card); border:1px solid var(--border-sutil);
+    font-size:var(--fs-md); color:var(--text-tenue); cursor:pointer;
+  }
+  .chip-emp.on{
+    background:var(--bronce-400); border-color:var(--bronce-500);
+    color:var(--text-sobre-oro); font-weight:var(--fw-bold);
+  }
+
   .vista-dia .chip.on{
     background:var(--bronce-400); border-color:var(--bronce-500);
     color:var(--text-sobre-oro); font-weight:var(--fw-bold);
@@ -319,6 +331,8 @@
   <div class="vista-dia" id="vistaDiaSwitch">
     <button class="chip" data-v="columnas">Columnas</button>
     <button class="chip" data-v="lista">Lista</button>
+    <span style="flex:1;"></span>
+    <button class="b-out" id="btnAbrirDia">Abrir este día</button>
   </div>
 
   <div id="vista"></div>
@@ -480,6 +494,10 @@ async function renderColumnas(){
   if(sinDuenio.length) columnas.push({id:null, nombre:"Sin asignar", tramos:[], excepcion:false,
                                       motivo:null, suyos:sinDuenio});
 
+  // El día que no trabaja nadie es justo donde hace falta el botón de abrir, así
+  // que ahí se dice con todas las letras en vez de mostrar cuatro columnas mudas.
+  const nadie = d.empleados.every(e => !e.tramos.length) && !d.turnos.length;
+
   const wrap = document.createElement("div"); wrap.className="grilla-wrap";
   const grilla = document.createElement("div"); grilla.className="grilla";
   grilla.style.gridTemplateColumns = `46px repeat(${columnas.length}, minmax(130px, 1fr))`;
@@ -504,7 +522,18 @@ async function renderColumnas(){
   grilla.appendChild(reglas);
   columnas.forEach(c => grilla.appendChild(dibujarColumna(c, ini, fin, alto)));
 
-  cont.innerHTML=""; cont.appendChild(wrap);
+  cont.innerHTML="";
+  if(nadie){
+    const av = document.createElement("div"); av.className="sin-turnos";
+    av.innerHTML = `<b>Este día no trabaja nadie.</b><br>
+      Si igual se abre —el lunes de depilación, por ejemplo— marcá quiénes vienen.`;
+    const b = document.createElement("button");
+    b.className="b-ok"; b.textContent="Abrir este día"; b.style.marginTop="var(--sp-3)";
+    b.onclick = panelAbrirDia;
+    av.appendChild(document.createElement("br")); av.appendChild(b);
+    cont.appendChild(av);
+  }
+  cont.appendChild(wrap);
 }
 
 function cabColumna(c){
@@ -597,6 +626,7 @@ function dibujarColumna(c, ini, fin, alto){
     col.appendChild(v);
   }
 
+
   if(fechaActual === hoyStr()){
     const ahora = new Date(); const m = ahora.getHours()*60 + ahora.getMinutes();
     if(m > ini && m < fin){
@@ -607,6 +637,67 @@ function dibujarColumna(c, ini, fin, alto){
   }
   return col;
 }
+
+/* Abrir un día suelto: el lunes de depilación, o el feriado que igual se trabaja.
+
+   Se marca la fecha y quiénes vienen, y queda cargado para todas de una. No es
+   una regla del calendario —"cada 2º lunes"— a propósito: el lunes que abren lo
+   deciden ellas, y una regla diría que trabajan un día que nadie eligió.
+
+   Lo que se guarda es el estado exacto del día: destildar a alguien y volver a
+   guardar la saca. */
+function panelAbrirDia(){
+  document.querySelectorAll(".panel-exc").forEach(p=>p.remove());
+  const pan = document.createElement("div");
+  pan.className = "card panel-exc";
+  pan.style.cssText = "margin-bottom:var(--sp-3);";
+  pan.innerHTML = `
+    <div class="form-turno">
+      <div class="campo" style="flex:1 1 100%;"><label>Abrir este día</label>
+        <p class="muted" style="margin:0;">Para el lunes de depilación o el día suelto que se trabaja
+          fuera del horario de siempre. Lo que marques reemplaza lo que haya cargado para esta fecha.</p></div>
+      <div class="campo chico"><label>Desde</label><input type="time" class="aDesde" value="11:00"></div>
+      <div class="campo chico"><label>Hasta</label><input type="time" class="aHasta" value="17:00"></div>
+      <div class="campo"><label>Motivo (opcional)</label><input class="aMotivo" placeholder="Depilación"></div>
+      <div class="campo" style="flex:1 1 100%;"><label>Quiénes vienen</label>
+        <span class="chips-emp"></span></div>
+      <button class="b-ok aGuardar">Guardar el día</button>
+      <button class="b-out aCerrar">Cerrar</button>
+    </div>`;
+  const chips = pan.querySelector(".chips-emp");
+  authFetch("/api/agenda/dia?fecha="+fechaActual).then(r=>r.json()).then(d=>{
+    d.empleados.forEach(e=>{
+      const b = document.createElement("button");
+      b.type="button"; b.className="chip-emp" + (e.excepcion && e.tramos.length ? " on" : "");
+      b.dataset.id = e.id; b.textContent = titulo(e.nombre);
+      b.onclick = () => b.classList.toggle("on");
+      chips.appendChild(b);
+    });
+    // Si ya está abierto, el formulario arranca con las horas que tiene puestas.
+    const abierta = d.empleados.find(e=>e.excepcion && e.tramos.length);
+    if(abierta){
+      pan.querySelector(".aDesde").value = abierta.tramos[0].desde;
+      pan.querySelector(".aHasta").value = abierta.tramos[0].hasta;
+      if(abierta.motivo) pan.querySelector(".aMotivo").value = abierta.motivo;
+    }
+  });
+  $("#vista").before(pan);
+  pan.querySelector(".aCerrar").onclick = () => pan.remove();
+  pan.querySelector(".aGuardar").onclick = async () => {
+    const ids = [...chips.querySelectorAll(".chip-emp.on")].map(c => +c.dataset.id);
+    const desde = pan.querySelector(".aDesde").value, hasta = pan.querySelector(".aHasta").value;
+    if(!ids.length && !confirm("No marcaste a nadie. ¿Dejamos el día cerrado para todas?")) return;
+    const r = await authFetch("/api/agenda/abrir-dia", {method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({fecha:fechaActual, empleados:ids, desde, hasta,
+                            motivo: pan.querySelector(".aMotivo").value})});
+    if(!r.ok){ toast((await r.json().catch(()=>({}))).detail || "No se pudo"); return; }
+    pan.remove();
+    toast(ids.length ? `${ids.length} ${ids.length===1?"empleada":"empleadas"} este día` : "Día cerrado");
+    renderDia();
+  };
+}
+$("#btnAbrirDia").onclick = panelAbrirDia;
 
 /* El horario de HOY de una persona. Lo puede tocar cualquiera a propósito: la
    que se cambió el turno con otra es la que sabe, y si tuviera que pedirlo no se

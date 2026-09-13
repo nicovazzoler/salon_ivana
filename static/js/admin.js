@@ -1082,14 +1082,13 @@ function panelEmpleado(e, tipo){
    destildado es "no trabaja", que en la agenda se dibuja distinto de trabajar
    cero horas. */
 const DIAS_SEM = ["Lunes","Martes","Miércoles","Jueves","Viernes","Sábado","Domingo"];
-const SEMANAS_MES = [["","Todos"],["1","1º del mes"],["2","2º"],["3","3º"],["4","4º"],["5","El último"]];
 
 function panelHorario(e){
   const pan = document.createElement("div");
   pan.className = "panel-horario";
   pan.innerHTML = `<p class="muted" style="margin:0 0 var(--sp-2);">
       El horario de siempre de ${esc(e.nombre)}. En la agenda se dibuja como su columna del día.
-      Un día puntual distinto —se cambió con otra, turno médico— se carga desde la agenda, no acá.</p>
+      Un día suelto —se cambió con otra, o el lunes de depilación— se carga desde la agenda, no acá.</p>
     <div class="de-una">
       <span class="rot">El horario de la semana</span>
       <span class="tramo"><input type="time" class="ud1" value="09:00"><span class="a">a</span><input type="time" class="uh1" value="18:00"></span>
@@ -1115,13 +1114,11 @@ function panelHorario(e){
       <label class="marca"><input type="checkbox" class="trabaja"> ${DIAS_SEM[i]}</label>
       <span class="tramo t1"><input type="time" class="d1"><span class="a">a</span><input type="time" class="h1"></span>
       <label class="marca corta"><input type="checkbox" class="doble"> corta al mediodía</label>
-      <span class="tramo t2" hidden><input type="time" class="d2"><span class="a">a</span><input type="time" class="h2"></span>
-      <span class="cada"><span class="a">cada</span><select class="semana">${
-        SEMANAS_MES.map(([v,r])=>`<option value="${v}">${r}</option>`).join("")}</select></span>`;
+      <span class="tramo t2" hidden><input type="time" class="d2"><span class="a">a</span><input type="time" class="h2"></span>`;
     const pintar = () => {
       const on = d.querySelector(".trabaja").checked;
       d.classList.toggle("off", !on);
-      d.querySelectorAll("input[type=time], .doble, .semana").forEach(x => x.disabled = !on);
+      d.querySelectorAll("input[type=time], .doble").forEach(x => x.disabled = !on);
       d.querySelector(".t2").hidden = !(on && d.querySelector(".doble").checked);
     };
     d.querySelector(".trabaja").onchange = pintar;
@@ -1138,7 +1135,6 @@ function panelHorario(e){
     f.querySelector(".doble").checked = tramos.length > 1;
     f.querySelector(".d2").value = tramos[1] ? tramos[1].desde : "15:00";
     f.querySelector(".h2").value = tramos[1] ? tramos[1].hasta : "19:00";
-    f.querySelector(".semana").value = tramos[0] && tramos[0].semana_del_mes ? String(tramos[0].semana_del_mes) : "";
     f._pintar();
   };
 
@@ -1155,8 +1151,6 @@ function panelHorario(e){
       let t = `${hhmm(f.querySelector(".d1").value)}–${hhmm(f.querySelector(".h1").value)}`;
       if(f.querySelector(".doble").checked)
         t += ` y ${hhmm(f.querySelector(".d2").value)}–${hhmm(f.querySelector(".h2").value)}`;
-      const sem = f.querySelector(".semana").value;
-      if(sem) t += ` (${SEMANAS_MES.find(([v]) => v === sem)[1].toLowerCase()})`;
       partes.push([DIAS_SEM[i], t]);
     });
     if(!partes.length){ resumen.textContent = "Todavía no tiene horario cargado."; return; }
@@ -1206,8 +1200,8 @@ function panelHorario(e){
 
   /* Cargar la semana entera en un solo gesto: se escribe el horario una vez, se
      marcan los días y se aplica. Vienen marcados de martes a sábado, que es la
-     semana del local; el lunes queda afuera porque es el de depilación y va con
-     su "cada" propio. */
+     semana del local; el lunes queda afuera porque no se abre todas las semanas y
+     se marca desde la agenda, fecha por fecha. */
   pan.querySelectorAll(".chip-dia").forEach(c =>
     c.onclick = () => c.classList.toggle("on"));
   pan.querySelector(".udoble").onchange = () =>
@@ -1233,12 +1227,11 @@ function panelHorario(e){
       if(!f.querySelector(".trabaja").checked) continue;
       const d1 = f.querySelector(".d1").value, h1 = f.querySelector(".h1").value;
       if(!d1 || !h1){ toast(`Completá las horas del ${DIAS_SEM[i].toLowerCase()}`); return; }
-      const semana = f.querySelector(".semana").value ? +f.querySelector(".semana").value : null;
-      tramos.push({dia_semana: i, desde: d1, hasta: h1, semana_del_mes: semana});
+      tramos.push({dia_semana: i, desde: d1, hasta: h1});
       if(f.querySelector(".doble").checked){
         const d2 = f.querySelector(".d2").value, h2 = f.querySelector(".h2").value;
         if(!d2 || !h2){ toast(`Completá el segundo tramo del ${DIAS_SEM[i].toLowerCase()}`); return; }
-        tramos.push({dia_semana: i, desde: d2, hasta: h2, semana_del_mes: semana});
+        tramos.push({dia_semana: i, desde: d2, hasta: h2});
       }
     }
     const r = await authFetch(`/api/horarios/${e.id}`, {method:"PUT",
