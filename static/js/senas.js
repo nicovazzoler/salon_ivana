@@ -68,6 +68,10 @@ function panelSena(clienteId, nombre, alGuardar){
     pan.remove();
     toast(`Seña de ${_plataSena(s.monto)} tomada`);
     if(alGuardar) alGuardar(s);
+    // El papel es opcional: la seña ya quedó registrada. Se ofrece acá y no se
+    // imprime solo porque casi siempre alcanza con que esté anotada.
+    if(confirm(`Seña de ${_plataSena(s.monto)} anotada.\n\n¿Le imprimimos el recibo?`))
+      location.href = `/ticket?tipo=sena&id=${s.id}`;
   };
   pan.querySelector(".sMonto").addEventListener("keydown", e => {
     if(e.key === "Enter"){ e.preventDefault(); pan.querySelector(".sGuardar").click(); }
@@ -90,12 +94,16 @@ function pintarSenas(cont, senas, alAnular){
     fila.innerHTML = `
       <div>
         <b>${_plataSena(s.monto)}</b>
-        <span class="det">${s.fecha} · ${_escSena(s.forma_pago || "")}${
+        <span class="det">N-${String(s.numero || 0).padStart(5,"0")} · ${s.fecha} · ${_escSena(s.forma_pago || "")}${
           s.notas ? " · " + _escSena(s.notas) : ""}</span>
       </div>
       <span class="estado">${s.anulada ? "devuelta"
-        : s.usada ? `usada en N-${String(s.comprobante_id).padStart(5,"0")}`
+        : s.usada ? `usada en N-${String(s.comprobante_numero || 0).padStart(5,"0")}`
         : "a favor"}</span>`;
+    const imp = document.createElement("a");
+    imp.className = "b-out"; imp.textContent = "🖨️ Recibo";
+    imp.href = `/ticket?tipo=sena&id=${s.id}`;
+    fila.appendChild(imp);
     if(!s.usada && !s.anulada && alAnular && getRol() === "dueno"){
       const b = document.createElement("button");
       b.className = "b-out"; b.textContent = "Devolver";

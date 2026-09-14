@@ -316,6 +316,9 @@ class Sena(Base):
     """
     __tablename__ = "senas"
     id = Column(Integer, primary_key=True)
+    # Correlativo propio, como el de los egresos: sirve para nombrarla en voz
+    # alta ("la seña 12") y para el papel que se lleva la clienta.
+    numero = Column(Integer, index=True)
     cliente_id = Column(Integer, ForeignKey("clientes.id"), nullable=False, index=True)
     fecha = Column(DateTime, default=fecha_hora_now_utc)
     monto = Column(Integer, nullable=False)
@@ -326,6 +329,7 @@ class Sena(Base):
     anulada = Column(Boolean, default=False)
     usuario = Column(String)
     cliente = relationship("Cliente")
+    comprobante = relationship("Comprobante")
 
 class Descuento(Base):
     """Catálogo de descuentos configurables. Se aplican al comprobante entero."""

@@ -104,6 +104,14 @@ def migrar():
                     con.execute(text("DELETE FROM horarios_empleado WHERE semana_del_mes IS NOT NULL"))
                     con.execute(text("INSERT INTO config (clave, valor) VALUES (:k, :v)"),
                                 {"k": "limpie_horarios_mensuales", "v": "1"})
+    if insp.has_table("senas"):
+        scols = [c["name"] for c in insp.get_columns("senas")]
+        if "numero" not in scols:
+            with engine.begin() as con:
+                con.execute(text("ALTER TABLE senas ADD COLUMN numero INTEGER"))
+                # Las que ya estaban se numeran por orden de id, una sola vez.
+                for i, (sid,) in enumerate(con.execute(text("SELECT id FROM senas ORDER BY id")), 1):
+                    con.execute(text("UPDATE senas SET numero = :n WHERE id = :i"), {"n": i, "i": sid})
     if insp.has_table("pagos"):
         pcols = [c["name"] for c in insp.get_columns("pagos")]
         if "sena_id" not in pcols:
@@ -780,6 +788,10 @@ def siguiente_numero_egreso(db) -> int:
     igual en SQLite y en PostgreSQL."""
     ultimo = db.query(models.Egreso).order_by(models.Egreso.numero.desc()).first()
     return ((ultimo.numero or 0) + 1) if ultimo else 1
+
+def siguiente_numero_sena(db) -> int:
+    ultima = db.query(models.Sena).order_by(models.Sena.numero.desc()).first()
+    return ((ultima.numero or 0) + 1) if ultima else 1
 
 def siguiente_numero(db, tipo: str) -> int:
     """Devuelve el próximo número de la secuencia para ese tipo de comprobante."""
@@ -2796,12 +2808,15 @@ def _pago_detalle(p):
 # ---------- señas ----------
 
 def _sena_json(s, nombre=None):
-    return {"id": s.id, "cliente_id": s.cliente_id, "cliente": nombre,
+    return {"id": s.id, "numero": s.numero, "cliente_id": s.cliente_id, "cliente": nombre,
             "fecha": hora_argentina(s.fecha).strftime("%d/%m/%Y"),
             "hora": hora_argentina(s.fecha).strftime("%H:%M"),
             "monto": s.monto, "forma_pago": s.forma_pago, "alias": s.alias,
             "notas": s.notas, "usada": s.comprobante_id is not None,
-            "comprobante_id": s.comprobante_id, "anulada": bool(s.anulada),
+            "comprobante_id": s.comprobante_id,
+            # El número del ticket, no su id: el id no está escrito en ningún papel.
+            "comprobante_numero": (s.comprobante.numero if s.comprobante_id and s.comprobante else None),
+            "anulada": bool(s.anulada),
             "usuario": s.usuario}
 
 def senas_libres(db, cliente_id: int):
@@ -2819,7 +2834,7 @@ def crear_sena(datos: SenaIn, user = Depends(usuario_actual), db: Session = Depe
     cli = db.get(models.Cliente, datos.cliente_id)
     if not cli: raise HTTPException(404, "Ese cliente no existe")
     if datos.monto <= 0: raise HTTPException(400, "El monto tiene que ser positivo")
-    s = models.Sena(cliente_id=cli.id, monto=datos.monto,
+    s = models.Sena(numero=siguiente_numero_sena(db), cliente_id=cli.id, monto=datos.monto,
                     forma_pago=datos.forma_pago or "Efectivo",
                     alias=(datos.alias or "").strip() or None,
                     notas=(datos.notas or "").strip() or None,
@@ -2836,6 +2851,12 @@ def listar_senas(cliente_id: int | None = None, solo_libres: bool = False,
     if solo_libres:
         q = q.filter(models.Sena.comprobante_id.is_(None), _no_privado(models.Sena.anulada))
     return [_sena_json(s, n) for s, n in q.order_by(models.Sena.fecha.desc()).limit(300)]
+
+@app.get("/api/senas/{sena_id}")
+def ver_sena(sena_id: int, _ = Depends(usuario_actual), db: Session = Depends(get_db)):
+    s = db.get(models.Sena, sena_id)
+    if not s: raise HTTPException(404, "Esa seña no existe")
+    return _sena_json(s, s.cliente.nombre if s.cliente else None)
 
 @app.delete("/api/senas/{sena_id}")
 def anular_sena(sena_id: int, _ = Depends(solo_dueno), db: Session = Depends(get_db)):
@@ -2871,7 +2892,8 @@ def aplicar_senas(comp_id: int, _ = Depends(usuario_actual), db: Session = Depen
         # vuelto que después nadie sabe de dónde salió.
         usa = min(s.monto, saldo)
         if usa < s.monto:
-            sobra = models.Sena(cliente_id=s.cliente_id, fecha=s.fecha, monto=s.monto - usa,
+            sobra = models.Sena(numero=siguiente_numero_sena(db),
+                                cliente_id=s.cliente_id, fecha=s.fecha, monto=s.monto - usa,
                                 forma_pago=s.forma_pago, alias=s.alias,
                                 notas=" · ".join(filter(None, [s.notas, "resto sin usar"])),
                                 usuario=s.usuario)
@@ -3763,7 +3785,7 @@ def backup_completo(_ = Depends(solo_dueno), db: Session = Depends(get_db)):
             for a in db.query(models.Alias).all()
         ],
         "senas": [
-            {"id": x.id, "cliente_id": x.cliente_id, "fecha": _iso_utc(x.fecha),
+            {"id": x.id, "numero": x.numero, "cliente_id": x.cliente_id, "fecha": _iso_utc(x.fecha),
              "monto": x.monto, "forma_pago": x.forma_pago, "alias": x.alias,
              "notas": x.notas, "comprobante_id": x.comprobante_id,
              "anulada": x.anulada, "usuario": x.usuario}

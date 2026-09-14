@@ -79,7 +79,7 @@ ORDEN = [
                               "peluquero", "total"], ["fecha"]),
     ("pagos", models.Pago, ["id", "comprobante_id", "monto", "saldado", "forma_pago",
                             "alias", "desc_aplicado", "sena_id"], ["fecha"]),
-    ("senas", models.Sena, ["id", "cliente_id", "monto", "forma_pago", "alias",
+    ("senas", models.Sena, ["id", "numero", "cliente_id", "monto", "forma_pago", "alias",
                             "notas", "comprobante_id", "anulada", "usuario"], ["fecha"]),
     ("liquidaciones", models.Liquidacion,
      ["id", "empleado_id", "desde", "hasta", "valor_hora", "comision_pct",
@@ -225,7 +225,7 @@ def restaurar(archivo, destino, vaciar=False, sin_preguntar=False):
         # apunta con una clave foránea.
         total["senas"] = _insertar(db, models.Sena, _filas(
             datos, "senas",
-            ["id", "cliente_id", "monto", "forma_pago", "alias", "notas",
+            ["id", "numero", "cliente_id", "monto", "forma_pago", "alias", "notas",
              "comprobante_id", "anulada", "usuario"],
             ["fecha"], version))
 

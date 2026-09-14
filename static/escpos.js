@@ -330,6 +330,28 @@ function deComprobante(d, negocio){
 }
 
 /* ---------- el papel de una cuenta corriente ---------- */
+/* El papel de una seña: plata que la clienta deja adelantada. No es un servicio,
+   así que no lleva ítems ni precios de lista: dice cuánto dejó y para qué. */
+function deSena(s, negocio){
+  const h = hoja();
+  encabezado(h, negocio||{});
+
+  h.centro(true); h.negrita(true); h.lin("SEÑA"); h.negrita(false); h.centro(false);
+  h.lin(fila2("Recibo N-" + String(s.numero || 0).padStart(5,"0"), s.fecha + " " + (s.hora||"")));
+  h.sep();
+  h.lin(fila2("Cliente", s.cliente || "—"));
+  if(s.notas) envolver("Concepto: " + s.notas).forEach(l => h.lin(l));
+  h.lin(fila2("Forma de pago", s.forma_pago || "—"));
+  h.sep();
+  h.negrita(true); h.grande(true);
+  h.lin(fila2("RECIBIMOS", fmtP(s.monto), 24));
+  h.grande(false); h.negrita(false);
+  h.sep();
+  envolver("Se descuenta del total cuando se cobre el servicio.").forEach(l => h.lin(l));
+
+  return pie(h, false);
+}
+
 function deCuenta(cuenta, negocio){
   const c = cuenta.cliente, comps = cuenta.comprobantes;
   const conDeuda = comps.filter(x=>x.saldo>0).slice(0,20);
@@ -368,7 +390,7 @@ function urlRawbt(bytes){
 
 global.EscPos = {
   ANCHO, LEGAL_TXT,
-  deComprobante, deCuenta, urlRawbt,
+  deComprobante, deCuenta, deSena, urlRawbt,
   numComp, fechaLocal, fechaSolo, pu, pe, hayAjuste, textoAjuste,
 };
 
