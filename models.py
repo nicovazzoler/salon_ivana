@@ -298,7 +298,34 @@ class Pago(Base):
     forma_pago = Column(String)
     alias = Column(String)                       # si fue transferencia (opcional)
     desc_aplicado = Column(Integer, default=0)   # descuento en pesos de este abono (saldado - monto)
+    # Si viene de aplicar una seña, la plata ya entró el día que se cobró: este
+    # abono salda la cuenta pero no es plata del día. La caja lo saltea por el id
+    # y no por el texto de la forma, que se puede tipear distinto.
+    sena_id = Column(Integer, ForeignKey("senas.id"))
     comprobante = relationship("Comprobante")
+
+class Sena(Base):
+    """Plata que la clienta deja adelantada, sin atarla a ningún ticket.
+
+    No es un pago de un comprobante: es un saldo a su favor. Por eso no se pierde
+    si no viene ni obliga a saber qué servicio se va a hacer —los dos problemas
+    que aparecían si la seña nacía como ticket—.
+
+    Entra a la caja del día en que se cobra. Cuando se usa, queda apuntando al
+    comprobante y ese abono NO vuelve a contar como plata del día: ya entró.
+    """
+    __tablename__ = "senas"
+    id = Column(Integer, primary_key=True)
+    cliente_id = Column(Integer, ForeignKey("clientes.id"), nullable=False, index=True)
+    fecha = Column(DateTime, default=fecha_hora_now_utc)
+    monto = Column(Integer, nullable=False)
+    forma_pago = Column(String)
+    alias = Column(String)
+    notas = Column(String)
+    comprobante_id = Column(Integer, ForeignKey("comprobantes.id"))   # NULL = sin usar
+    anulada = Column(Boolean, default=False)
+    usuario = Column(String)
+    cliente = relationship("Cliente")
 
 class Descuento(Base):
     """Catálogo de descuentos configurables. Se aplican al comprobante entero."""

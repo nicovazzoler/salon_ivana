@@ -121,6 +121,16 @@ Tres cosas que la hacen distinta de cualquier otro día:
   para un lunes está mal; el cierre lo hace la dueña a mano, así que nada se paga
   solo, pero no automatizar nada de ese ciclo.
 
+**La seña es plata de la clienta, no un pago de un ticket.** Se toma sin
+comprobante —desde la ficha o desde facturar— y entra a la caja del día en que se
+cobra. Al facturarle, se aplican todas las que tenga libres y cada una deja un
+abono con `sena_id`. **Ese abono no es plata del día**: ya entró. Por eso
+`plata_que_entro()` saltea los abonos con `sena_id` y suma las señas cobradas, y
+todo lo que cuenta plata por fecha —caja, reportes, el Excel, los gráficos— pasa
+por ahí. Contándolos dos veces, el arqueo pide más efectivo del que hay en el
+cajón y no avisa por qué. El filtro va por el id y no por el texto "Seña", que se
+puede tipear distinto.
+
 **Los extras no los toca ningún descuento.** Entran al final, después de todo.
 
 **Ajuste por línea: porcentaje O monto fijo**, nunca los dos. Va por unidad y

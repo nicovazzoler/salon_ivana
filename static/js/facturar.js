@@ -1007,7 +1007,20 @@ cliDrop.addEventListener("click", e=>{          // elegir una opción → guarda
   cliInput.value = opt.dataset.nom;
   cliDrop.style.display = "none";
   mostrarNotaCliente(opt.dataset.nota || "");
+  mirarSenas();
 });
+
+/* Si la clienta dejó plata adelantada hay que verlo ANTES de cobrar, no después:
+   cobrarle todo y recién ahí acordarse es devolverle plata en el mostrador. */
+let SENAS_CLIENTA = [];
+async function mirarSenas(){
+  const caja = $("#avisoSena");
+  SENAS_CLIENTA = clienteIdSel ? await senasLibres(clienteIdSel) : [];
+  const total = SENAS_CLIENTA.reduce((a, s) => a + s.monto, 0);
+  caja.style.display = total ? "flex" : "none";
+  if(total) caja.innerHTML = `<b>Tiene ${fmt(total)} de seña</b>
+    <span>${SENAS_CLIENTA.length === 1 ? "se descuenta" : "se descuentan"} al cobrar</span>`;
+}
 
 /* La nota del cliente elegido queda a la vista mientras se arma el ticket, en
    un renglón chico debajo del campo. No es un cartel ni bloquea nada: si
@@ -1028,10 +1041,18 @@ $("#cobrarTodo").onclick=async()=>{
   const otroDia = esDeOtroDia();
   const d=await crearComprobante();
   if(!d){ renderTicket(); return; }
+  // Las señas se aplican ANTES de calcular lo que falta cobrar: si no, se le
+  // cobraría el total y la plata que ya dejó quedaría a favor para siempre.
+  await aplicarSenasSiHay(d.id);
   const c=await (await authFetch("/api/comprobantes/"+d.id)).json();
 
   const forma = formaPago==="efectivo" ? "Efectivo" : "Transferencia";
   const monto = c.saldo;            // el total ya trae el descuento: se salda 1:1
+  if(monto <= 0){
+    toast("Cubierto con la seña ✓"); limpiar();
+    if(!otroDia) imprimirComprobante(d.id);
+    return;
+  }
 
   const r=await authFetch("/api/comprobantes/"+d.id+"/pagos",{method:"POST",headers:{"Content-Type":"application/json"},
     body:JSON.stringify({monto, saldado:monto, forma_pago:forma, alias:null, del_servicio:true})});
@@ -1046,8 +1067,21 @@ $("#cobrarParte").onclick=async()=>{
   compEsDeOtroDia = esDeOtroDia();    // se recuerda: al finalizar decide si imprime
   const d=await crearComprobante();
   if(!d){ renderTicket(); return; }
+  await aplicarSenasSiHay(d.id);
   compActual=d.id; abrirCobro();     // ← esta línea es la que setea compActual
 };
+
+/* Aplica lo que la clienta tenga a favor. Silenciosa si no hay nada: es parte
+   del cobro, no un paso que el que factura tenga que acordarse de hacer. */
+async function aplicarSenasSiHay(compId){
+  if(!SENAS_CLIENTA.length) return;
+  const r = await authFetch(`/api/comprobantes/${compId}/aplicar-senas`, {method:"POST"});
+  if(r.ok){
+    const d = await r.json();
+    toast(`Se descontaron ${fmt(d.total)} de seña`);
+  }
+  SENAS_CLIENTA = [];
+}
 
 // Dejar a cuenta: crea el comprobante sin ningún pago. Queda pendiente en la cuenta.
 $("#dejarCuenta").onclick=async()=>{
@@ -1078,6 +1112,7 @@ function limpiar(){
   // La fecha vuelve a hoy sí o sí. Si quedara pegada, el servicio siguiente se
   // cargaría sin querer en el día viejo y a nadie se le ocurriría mirar ahí.
   ticket=[]; $("#cliente").value=""; clienteIdSel=null; $("#peluquero").value="";
+  SENAS_CLIENTA=[]; if($("#avisoSena")) $("#avisoSena").style.display="none";
   compEsDeOtroDia=false;
   if(hayOtroDia()){ $("#fechaServicio").value=""; $("#otroDiaBox").open=false; }
   pintarOtroDia();

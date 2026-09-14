@@ -104,6 +104,11 @@ def migrar():
                     con.execute(text("DELETE FROM horarios_empleado WHERE semana_del_mes IS NOT NULL"))
                     con.execute(text("INSERT INTO config (clave, valor) VALUES (:k, :v)"),
                                 {"k": "limpie_horarios_mensuales", "v": "1"})
+    if insp.has_table("pagos"):
+        pcols = [c["name"] for c in insp.get_columns("pagos")]
+        if "sena_id" not in pcols:
+            with engine.begin() as con:
+                con.execute(text("ALTER TABLE pagos ADD COLUMN sena_id INTEGER"))
     if insp.has_table("turnos"):
         tucols = [c["name"] for c in insp.get_columns("turnos")]
         if "duracion_min" not in tucols:
@@ -331,6 +336,9 @@ class FondoIn(BaseModel):
     valor: int; fecha: str | None = None
 class NombreIn(BaseModel):
     nombre: str
+class SenaIn(BaseModel):
+    cliente_id: int; monto: int
+    forma_pago: str = "Efectivo"; alias: str | None = None; notas: str | None = None
 class TurnoIn(BaseModel):
     fecha: str | None = None; hora: str; cliente: str; cliente_id: int | None = None; servicio: str; peluquero: str | None = None; notas: str | None = None
     duracion_min: int = 30
@@ -2477,7 +2485,8 @@ def ver_comprobante(comp_id: int, _ = Depends(usuario_actual), db: Session = Dep
                    for l in comp.lineas],
         "extras": [{"concepto": e.concepto, "monto": e.monto} for e in comp.extras],
         "pagos": [{"id": p.id, "fecha": p.fecha.isoformat(), "monto": p.monto, "saldado": p.saldado,
-                   "desc_aplicado": p.desc_aplicado, "forma_pago": p.forma_pago, "alias": p.alias}
+                   "desc_aplicado": p.desc_aplicado, "forma_pago": p.forma_pago, "alias": p.alias,
+                   "es_sena": p.sena_id is not None}
                   for p in db.query(models.Pago).filter(models.Pago.comprobante_id == comp.id).order_by(models.Pago.fecha)],
         **estado_comprobante(db, comp)}
 
@@ -2748,7 +2757,26 @@ def _rango_dia(d):
     en el día siguiente."""
     ini = datetime(d.year, d.month, d.day) + timedelta(hours=HORAS_ARG)
     return ini, ini + timedelta(days=1)
-def _sv(db, i, f): return sum(p.monto for p in db.query(models.Pago).filter(models.Pago.fecha >= i, models.Pago.fecha < f))
+def plata_que_entro(db, ini, fin):
+    """Todo lo que entró en el período: los abonos más las señas cobradas.
+
+    Los abonos que vienen de una seña NO cuentan: esa plata entró el día que se
+    cobró la seña y contarla otra vez infla la caja y el arqueo sin avisar. Está
+    en una sola función para que la caja, los reportes, el Excel y los gráficos
+    no puedan contestar distinto.
+    """
+    pagos = (db.query(models.Pago)
+               .filter(models.Pago.fecha >= ini, models.Pago.fecha < fin,
+                       models.Pago.sena_id.is_(None)).all()) if ini and fin else \
+            db.query(models.Pago).filter(models.Pago.sena_id.is_(None)).all()
+    q = db.query(models.Sena).filter(_no_privado(models.Sena.anulada))
+    if ini: q = q.filter(models.Sena.fecha >= ini)
+    if fin: q = q.filter(models.Sena.fecha < fin)
+    return pagos, q.all()
+
+def _sv(db, i, f):
+    pagos, senas = plata_que_entro(db, i, f)
+    return sum(p.monto for p in pagos) + sum(s.monto for s in senas)
 def _se(db, i, f): return sum((e.monto or 0) for e in db.query(models.Egreso).filter(models.Egreso.fecha >= i, models.Egreso.fecha < f))
 
 def _pago_detalle(p):
@@ -2765,6 +2793,99 @@ def _pago_detalle(p):
             "comprobante_id": comp.id if comp else None}
 
 
+# ---------- señas ----------
+
+def _sena_json(s, nombre=None):
+    return {"id": s.id, "cliente_id": s.cliente_id, "cliente": nombre,
+            "fecha": hora_argentina(s.fecha).strftime("%d/%m/%Y"),
+            "hora": hora_argentina(s.fecha).strftime("%H:%M"),
+            "monto": s.monto, "forma_pago": s.forma_pago, "alias": s.alias,
+            "notas": s.notas, "usada": s.comprobante_id is not None,
+            "comprobante_id": s.comprobante_id, "anulada": bool(s.anulada),
+            "usuario": s.usuario}
+
+def senas_libres(db, cliente_id: int):
+    """Las que todavía no se usaron. Se aplican todas juntas: si señó dos turnos,
+    las dos son plata suya y elegir cuál sería una decisión sin sentido."""
+    return (db.query(models.Sena)
+              .filter(models.Sena.cliente_id == cliente_id,
+                      models.Sena.comprobante_id.is_(None),
+                      _no_privado(models.Sena.anulada))
+              .order_by(models.Sena.fecha).all())
+
+@app.post("/api/senas")
+def crear_sena(datos: SenaIn, user = Depends(usuario_actual), db: Session = Depends(get_db)):
+    """Plata adelantada de una clienta. Entra a la caja de HOY."""
+    cli = db.get(models.Cliente, datos.cliente_id)
+    if not cli: raise HTTPException(404, "Ese cliente no existe")
+    if datos.monto <= 0: raise HTTPException(400, "El monto tiene que ser positivo")
+    s = models.Sena(cliente_id=cli.id, monto=datos.monto,
+                    forma_pago=datos.forma_pago or "Efectivo",
+                    alias=(datos.alias or "").strip() or None,
+                    notas=(datos.notas or "").strip() or None,
+                    usuario=user.get("usuario", "?"))
+    db.add(s); db.commit(); db.refresh(s)
+    return _sena_json(s, cli.nombre)
+
+@app.get("/api/senas")
+def listar_senas(cliente_id: int | None = None, solo_libres: bool = False,
+                 _ = Depends(usuario_actual), db: Session = Depends(get_db)):
+    q = db.query(models.Sena, models.Cliente.nombre).join(
+        models.Cliente, models.Cliente.id == models.Sena.cliente_id)
+    if cliente_id: q = q.filter(models.Sena.cliente_id == cliente_id)
+    if solo_libres:
+        q = q.filter(models.Sena.comprobante_id.is_(None), _no_privado(models.Sena.anulada))
+    return [_sena_json(s, n) for s, n in q.order_by(models.Sena.fecha.desc()).limit(300)]
+
+@app.delete("/api/senas/{sena_id}")
+def anular_sena(sena_id: int, _ = Depends(solo_dueno), db: Session = Depends(get_db)):
+    """Se devolvió la plata. Una seña ya usada no se anula: hay que anular el
+    comprobante, que es donde quedó aplicada."""
+    s = db.get(models.Sena, sena_id)
+    if not s: raise HTTPException(404, "Esa seña no existe")
+    if s.comprobante_id:
+        raise HTTPException(400, "Esa seña ya se usó en un comprobante. Anulá el comprobante.")
+    s.anulada = True; db.commit(); return {"ok": True}
+
+@app.post("/api/comprobantes/{comp_id}/aplicar-senas")
+def aplicar_senas(comp_id: int, _ = Depends(usuario_actual), db: Session = Depends(get_db)):
+    """Usa las señas libres de la clienta como abono de este ticket.
+
+    Cada seña deja su propio abono con `sena_id`, así se puede seguir cuál plata
+    vino de dónde. El abono salda la cuenta pero no es plata del día: entró
+    cuando se cobró la seña.
+    """
+    comp = db.get(models.Comprobante, comp_id)
+    if not comp or not comp.activo: raise HTTPException(404, "Comprobante no existe")
+    if comp.tipo != "ticket": raise HTTPException(400, "Solo se cobran tickets, no presupuestos")
+    if not comp.cliente_id: raise HTTPException(400, "El comprobante no tiene cliente registrado")
+    libres = senas_libres(db, comp.cliente_id)
+    if not libres: raise HTTPException(400, "Esa clienta no tiene señas sin usar")
+
+    aplicadas, total = [], 0
+    for s in libres:
+        saldo = estado_comprobante(db, comp)["saldo"]
+        if saldo <= 0: break
+        # Una seña más grande que lo que falta se usa hasta ahí y el resto le
+        # queda a favor: partirla en dos filas es más simple que inventar un
+        # vuelto que después nadie sabe de dónde salió.
+        usa = min(s.monto, saldo)
+        if usa < s.monto:
+            sobra = models.Sena(cliente_id=s.cliente_id, fecha=s.fecha, monto=s.monto - usa,
+                                forma_pago=s.forma_pago, alias=s.alias,
+                                notas=" · ".join(filter(None, [s.notas, "resto sin usar"])),
+                                usuario=s.usuario)
+            db.add(sobra)
+            s.monto = usa
+        db.add(models.Pago(comprobante_id=comp.id, monto=usa, saldado=usa,
+                           forma_pago="Seña", desc_aplicado=0, sena_id=s.id))
+        db.flush()
+        s.comprobante_id = comp.id
+        aplicadas.append(s.id); total += usa
+    db.commit()
+    return {"ok": True, "aplicadas": len(aplicadas), "total": total,
+            "saldo": estado_comprobante(db, comp)["saldo"]}
+
 @app.get("/api/caja/dia")
 def caja_dia(fecha: str | None = None, user = Depends(usuario_actual), db: Session = Depends(get_db)):
     d = date.fromisoformat(fecha) if fecha else hoy_argentina()
@@ -2775,7 +2896,7 @@ def caja_dia(fecha: str | None = None, user = Depends(usuario_actual), db: Sessi
     if not es_dueno(user) and d != hoy_argentina():
         raise HTTPException(403, "Solo se puede ver la caja de hoy")
     ini, fin = _rango_dia(d)
-    pagos = db.query(models.Pago).filter(models.Pago.fecha >= ini, models.Pago.fecha < fin).all()
+    pagos, senas = plata_que_entro(db, ini, fin)
     q_eg = db.query(models.Egreso).filter(models.Egreso.fecha >= ini, models.Egreso.fecha < fin)
     # Los egresos privados se van de la caja del empleado ENTERA, no solo del
     # detalle: si siguieran contando en el total, el número le diría que salió
@@ -2783,18 +2904,26 @@ def caja_dia(fecha: str | None = None, user = Depends(usuario_actual), db: Sessi
     if not es_dueno(user):
         q_eg = q_eg.filter(_no_privado(models.Egreso.privado))
     egresos = q_eg.all()
-    ing = sum(p.monto for p in pagos); egr = sum((e.monto or 0) for e in egresos)
+    ing = sum(p.monto for p in pagos) + sum(s.monto for s in senas)
+    egr = sum((e.monto or 0) for e in egresos)
     por_pago = {}; por_tipo = {}
     for p in pagos: por_pago[p.forma_pago] = por_pago.get(p.forma_pago, 0) + p.monto
+    for s in senas: por_pago[s.forma_pago] = por_pago.get(s.forma_pago, 0) + s.monto
     for e in egresos: por_tipo[e.tipo] = por_tipo.get(e.tipo, 0) + (e.monto or 0)
-    efectivo_ventas = sum(p.monto for p in pagos if p.forma_pago == "Efectivo")
+    efectivo_ventas = (sum(p.monto for p in pagos if p.forma_pago == "Efectivo")
+                       + sum(s.monto for s in senas if s.forma_pago == "Efectivo"))
     efectivo_egresos = sum((e.monto or 0) for e in egresos if e.forma_pago == "Efectivo")
     fondo = get_fondo_dia(db, d)
     return {"fecha": d.isoformat(), "ingresos": ing, "egresos": egr, "neto": ing - egr,
-            "ventas": len(pagos) + len(egresos), "ingresos_por_pago": por_pago, "egresos_por_tipo": por_tipo, # Ventas = "Movimientos"
+            "ventas": len(pagos) + len(senas) + len(egresos), "ingresos_por_pago": por_pago, "egresos_por_tipo": por_tipo,
             "fondo": fondo, "efectivo_ventas": efectivo_ventas, "efectivo_egresos": efectivo_egresos,
             "efectivo_esperado": fondo + efectivo_ventas - efectivo_egresos,
-            "ventas_detalle": [_pago_detalle(p) for p in pagos],
+            "ventas_detalle": [_pago_detalle(p) for p in pagos] + [
+                {"id": f"s{s.id}", "hora": hora_argentina(s.fecha).strftime("%H:%M"),
+                 "comprobante": "seña", "cliente": (s.cliente.nombre if s.cliente else ""),
+                 "detalle": "Seña" + (f" · {s.notas}" if s.notas else ""),
+                 "monto": s.monto, "forma_pago": s.forma_pago, "es_sena": True}
+                for s in senas],
             "egresos_detalle": [{"id": e.id, "numero": e.numero,
                                  "hora": hora_argentina(e.fecha).strftime("%H:%M"), "tipo": e.tipo,
                                  "concepto": e.concepto, "monto": e.monto, "forma_pago": e.forma_pago,
@@ -2899,15 +3028,17 @@ def _filtrar(query, col, ini, fin):
 def rep_resumen(dias: int = 30, desde: str | None = None, hasta: str | None = None,
                 _ = Depends(solo_dueno), db: Session = Depends(get_db)):
     ini, fin = _ventana(dias, desde, hasta)
-    # Ingresos = plata que entró (igual que caja) → tabla pagos
-    pagos = _filtrar(db.query(models.Pago), models.Pago.fecha, ini, fin).all()
+    # Ingresos = plata que entró (igual que caja)
+    pagos, senas = plata_que_entro(db, ini, fin)
     egresos = _filtrar(db.query(models.Egreso), models.Egreso.fecha, ini, fin).all()
-    ing = sum(p.monto for p in pagos)
+    ing = sum(p.monto for p in pagos) + sum(s.monto for s in senas)
     egr = sum((e.monto or 0) for e in egresos)
     # desglose por forma de pago (mismo formato que /api/caja/dia)
     por_pago = {}
     for p in pagos:
         por_pago[p.forma_pago] = por_pago.get(p.forma_pago, 0) + p.monto
+    for x in senas:
+        por_pago[x.forma_pago] = por_pago.get(x.forma_pago, 0) + x.monto
     # Ventas = tickets emitidos (no presupuestos, no anulados)
     q = db.query(models.Comprobante).filter(
         models.Comprobante.tipo == "ticket",
@@ -2934,10 +3065,15 @@ def rep_deuda(_ = Depends(solo_dueno), db: Session = Depends(get_db)):
     return {"deuda": total, "tickets": cuantos}
 
 def _movimientos(db, ini, fin):
-    """Ingresos (pagos) + egresos del período. Fuente ÚNICA para el registro y el Excel."""
-    pagos = _filtrar(db.query(models.Pago), models.Pago.fecha, ini, fin).all()
+    """Ingresos (pagos y señas) + egresos del período. Fuente ÚNICA para el registro y el Excel."""
+    pagos, senas = plata_que_entro(db, ini, fin)
     egresos = _filtrar(db.query(models.Egreso), models.Egreso.fecha, ini, fin).all()
     movs = []
+    for x in senas:
+        movs.append({"fecha": x.fecha, "clase": "ingreso", "comprobante": "seña",
+                     "cliente": (x.cliente.nombre if x.cliente else ""),
+                     "detalle": "Seña" + (f" — {x.notas}" if x.notas else ""),
+                     "forma_pago": x.forma_pago or "", "monto": x.monto})
     for p in pagos:
         comp = p.comprobante
         ref = "—"; cliente = ""; items = ""
@@ -3097,7 +3233,8 @@ def serie_caja(dias: int = 30, desde: str | None = None, hasta: str | None = Non
     ini, fin = _resolver_ventana(dias, desde, hasta, db)
     buckets, gran = _buckets(ini, fin)
 
-    pagos   = _filtrar(db.query(models.Pago),   models.Pago.fecha,   ini, fin).all()
+    pagos, senas = plata_que_entro(db, ini, fin)
+    pagos = pagos + senas          # para el gráfico, una seña es plata como cualquier otra
     egresos = _filtrar(db.query(models.Egreso), models.Egreso.fecha, ini, fin).all()
 
     def acumular(registros, monto_de):
@@ -3625,6 +3762,13 @@ def backup_completo(_ = Depends(solo_dueno), db: Session = Depends(get_db)):
             {"id": a.id, "nombre": a.nombre, "activo": a.activo}
             for a in db.query(models.Alias).all()
         ],
+        "senas": [
+            {"id": x.id, "cliente_id": x.cliente_id, "fecha": _iso_utc(x.fecha),
+             "monto": x.monto, "forma_pago": x.forma_pago, "alias": x.alias,
+             "notas": x.notas, "comprobante_id": x.comprobante_id,
+             "anulada": x.anulada, "usuario": x.usuario}
+            for x in db.query(models.Sena).all()
+        ],
         "turnos": [
             # cliente_id es el vínculo al cliente registrado; `cliente` es solo el
             # nombre suelto. Sin el id, al restaurar los turnos quedaban huérfanos.
@@ -3693,7 +3837,7 @@ def backup_completo(_ = Depends(solo_dueno), db: Session = Depends(get_db)):
         "pagos": [
             {"id": p.id, "comprobante_id": p.comprobante_id, "fecha": _iso_utc(p.fecha),
              "monto": p.monto, "saldado": p.saldado, "forma_pago": p.forma_pago,
-             "alias": p.alias, "desc_aplicado": p.desc_aplicado}
+             "alias": p.alias, "desc_aplicado": p.desc_aplicado, "sena_id": p.sena_id}
             for p in db.query(models.Pago).order_by(models.Pago.fecha).all()
         ],
     }

@@ -71,6 +71,17 @@
   }
   .linea .controles .separa{ margin-left:auto; }
 
+  /* Lo que la clienta ya dejó. Va pegado a su nombre y en verde: es plata a
+     favor, no una deuda, y tiene que verse antes de tocar "Cobrar todo". */
+  .aviso-sena{
+    display:flex; align-items:baseline; gap:var(--sp-2); flex-wrap:wrap;
+    margin-top:6px; padding:6px 10px;
+    background:var(--verde-bg); border:1px solid var(--success); border-radius:var(--r-md);
+    font-size:var(--fs-sm); color:var(--success);
+  }
+  .aviso-sena b{ font-weight:var(--fw-bold); }
+  .aviso-sena span{ color:var(--text-suave); }
+
   .linea input{ min-width:0; }
 
   /* --- línea de ítem extra (cargado a mano) --- */

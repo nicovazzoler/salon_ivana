@@ -78,7 +78,9 @@ ORDEN = [
     ("ventas", models.Venta, ["id", "forma_pago", "alias", "cliente",
                               "peluquero", "total"], ["fecha"]),
     ("pagos", models.Pago, ["id", "comprobante_id", "monto", "saldado", "forma_pago",
-                            "alias", "desc_aplicado"], ["fecha"]),
+                            "alias", "desc_aplicado", "sena_id"], ["fecha"]),
+    ("senas", models.Sena, ["id", "cliente_id", "monto", "forma_pago", "alias",
+                            "notas", "comprobante_id", "anulada", "usuario"], ["fecha"]),
     ("liquidaciones", models.Liquidacion,
      ["id", "empleado_id", "desde", "hasta", "valor_hora", "comision_pct",
       "minutos_total", "minutos_comision", "minutos_pagados",
@@ -186,8 +188,8 @@ def restaurar(archivo, destino, vaciar=False, sin_preguntar=False):
 
         total = {}
         for clave, modelo, campos, campos_fecha in ORDEN:
-            if clave == "pagos":
-                continue   # después de comprobantes: apunta a ellos
+            if clave in ("pagos", "senas"):
+                continue   # después de comprobantes: apuntan a ellos
             total[clave] = _insertar(db, modelo, _filas(datos, clave, campos, campos_fecha, version))
 
         # Comprobantes en dos pasadas: primero todos sin convertido_de, después el
@@ -219,9 +221,18 @@ def restaurar(archivo, destino, vaciar=False, sin_preguntar=False):
              "fecha", "minutos", "liquidacion_id", "base", "comision"],
             [], version))
 
+        # Las señas van ANTES que los pagos: un abono que salió de una seña la
+        # apunta con una clave foránea.
+        total["senas"] = _insertar(db, models.Sena, _filas(
+            datos, "senas",
+            ["id", "cliente_id", "monto", "forma_pago", "alias", "notas",
+             "comprobante_id", "anulada", "usuario"],
+            ["fecha"], version))
+
         total["pagos"] = _insertar(db, models.Pago, _filas(
             datos, "pagos",
-            ["id", "comprobante_id", "monto", "saldado", "forma_pago", "alias", "desc_aplicado"],
+            ["id", "comprobante_id", "monto", "saldado", "forma_pago", "alias",
+             "desc_aplicado", "sena_id"],
             ["fecha"], version))
 
         vinculos = [{"_id": c["id"], "conv": c.get("convertido_de")}
