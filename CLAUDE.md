@@ -101,13 +101,25 @@ anotó le deja el arqueo sin explicación. Y ojo con el `privado != True` a seca
 en SQL el NULL no entra, y `restaurar_backup.py` levantando un backup viejo
 escribe NULL — por eso está `_no_privado()`.
 
-**El lunes de depilación se paga distinto, y todavía no está resuelto.** El local
-abre un lunes al mes para depilación y ese día el sueldo NO sale por comisión
-como el resto. `ciclo_de()` ya lo deja como un ciclo propio de un día, así que el
-número queda separado y a la vista antes de pagar, pero lo que la pantalla
-propone hoy son comisiones + horas, que es la cuenta equivocada para ese día.
-**Falta definir la regla con la dueña.** Hasta entonces: no dar por hecho que un
-lunes se paga como los demás, y no automatizar nada de ese ciclo.
+**El lunes de depilación no se paga por comisión: se reparte el día.** El local
+abre un lunes al mes solo para depilación. Lo lleva Carolina, que consigue la
+máquina, más una ayudante que a veces no es del salón. La cuenta es del DÍA, no
+de cada trabajo:
+
+    recaudado del día − egresos del día (insumos + el pago a la ayudante)
+    = resto  →  50% Carolina · 50% el salón, que pone el local
+
+Tres cosas que la hacen distinta de cualquier otro día:
+- El pago a la ayudante se anota como un egreso más, así que entra solo en la
+  resta: no hay que tratarlo aparte.
+- "Recaudado" incluye las señas cobradas días antes, porque son plata de ese
+  lunes aunque hayan entrado otro día. Sale de los PAGOS de los comprobantes con
+  fecha de ese lunes, no de la caja del lunes.
+- `ciclo_de()` ya deja el lunes como un ciclo propio de un día, pero
+  `resumen_pendiente()` todavía le calcula comisiones + horas como a cualquier
+  otro. **Esa parte falta.** Hasta que esté, el número que propone la pantalla
+  para un lunes está mal; el cierre lo hace la dueña a mano, así que nada se paga
+  solo, pero no automatizar nada de ese ciclo.
 
 **Los extras no los toca ningún descuento.** Entran al final, después de todo.
 
