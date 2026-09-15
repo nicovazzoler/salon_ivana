@@ -130,12 +130,26 @@ def _esta_vacia(db):
     return True
 
 
+def _todas_las_tablas():
+    """Todo lo que toca una restauración, en orden de carga.
+
+    Una sola lista para vaciar y para reiniciar las secuencias: con dos, una
+    tabla que se agregue entra en una y no en la otra, y lo que falla no es la
+    restauración sino la de después.
+
+    Las que no salen de ORDEN van al final porque se insertan aparte: las líneas
+    van anidadas adentro del comprobante, y los trabajos a comisión después de
+    ellas, que es a lo que apuntan.
+    """
+    return ([m for _, m, _, _ in ORDEN]
+            + [models.VentaLinea, models.ComprobanteLinea,
+               models.ComprobanteExtra, models.Comprobante,
+               models.TrabajoComision])
+
+
 def _vaciar(db):
     # Al revés del orden de carga, para no chocar con las claves foráneas.
-    modelos = [m for _, m, _, _ in ORDEN]
-    modelos += [models.VentaLinea, models.ComprobanteLinea,
-                models.ComprobanteExtra, models.Comprobante]
-    for modelo in reversed(modelos):
+    for modelo in reversed(_todas_las_tablas()):
         db.execute(modelo.__table__.delete())
 
 
@@ -147,8 +161,7 @@ def _reiniciar_secuencias(db, engine):
     """
     if not engine.url.get_backend_name().startswith("postgres"):
         return
-    for modelo in [m for _, m, _, _ in ORDEN] + [models.VentaLinea, models.ComprobanteLinea,
-                                                 models.ComprobanteExtra, models.Comprobante]:
+    for modelo in _todas_las_tablas():
         tabla = modelo.__tablename__
         if "id" not in modelo.__table__.c:
             continue

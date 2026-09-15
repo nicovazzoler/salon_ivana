@@ -1,15 +1,19 @@
 """Levanta la app en tu PC con una copia del último backup de producción.
 
-Restaura el .dump más nuevo en una base LOCAL, te deja un usuario con una
-contraseña que sí sabés, y arranca el servidor.
+Restaura el backup en una base LOCAL, te deja un usuario con una contraseña que
+sí sabés, y arranca el servidor.
 
-    python3 levantar_local.py                    # busca el backup más nuevo
-    python3 levantar_local.py --dump ruta.dump   # uno en particular
+    python3 levantar_local.py                     # el .dump más nuevo, en PostgreSQL
+    python3 levantar_local.py --dump ruta.dump    # uno en particular
+    python3 levantar_local.py --json backup.json  # en SQLite, SIN PostgreSQL
     python3 levantar_local.py --puerto 8001
-    python3 levantar_local.py --solo-restaurar   # sin levantar el servidor
+    python3 levantar_local.py --solo-restaurar    # sin levantar el servidor
 
-La base local se toma de la variable de entorno POSTGRES_LOCAL, o de
-postgresql://postgres:postgres@127.0.0.1:5432 si no está.
+Dos caminos para lo mismo. Con --dump hace falta PostgreSQL instalado, y la base
+local sale de la variable POSTGRES_LOCAL o de
+postgresql://postgres:postgres@127.0.0.1:5432. Con --json alcanza con Python:
+SQLite viene adentro, que es lo que salva a una PC donde no se puede instalar
+nada. El .json se baja de la app, en Admin, con el usuario de la dueña.
 
 OJO: esto BORRA y recrea la base local en cada corrida. Por eso se niega a
 apuntar a cualquier cosa que no sea 127.0.0.1: el día que alguien corra esto con
@@ -93,43 +97,28 @@ def buscar_dump(carpeta: Path | None) -> Path:
     return max(dumps, key=lambda p: p.stat().st_mtime)
 
 
-def main():
-    ap = argparse.ArgumentParser(description="Levanta la app local con el último backup.")
-    ap.add_argument("--dump", type=Path, help="el .dump a restaurar")
-    ap.add_argument("--carpeta", type=Path, help="dónde buscar el .dump más nuevo")
-    ap.add_argument("--base", default="salon_local", help="nombre de la base local")
-    ap.add_argument("--puerto", type=int, default=8000)
-    ap.add_argument("--solo-restaurar", action="store_true")
-    a = ap.parse_args()
-
+def desde_dump(a) -> str:
+    """El camino con PostgreSQL: recrea la base local y le mete el .dump."""
     servidor = os.getenv("POSTGRES_LOCAL", "postgresql://postgres:postgres@127.0.0.1:5432")
     if not es_local(servidor):
         sys.exit(f"POSTGRES_LOCAL apunta a {urlparse(servidor).hostname}, que no es local.\n"
                  f"Este script BORRA la base de destino: solo trabaja contra 127.0.0.1.")
 
-    dump = a.dump or buscar_dump(a.carpeta)
+    dump = a.dump if a.dump else buscar_dump(a.carpeta)
     if not dump.exists():
         sys.exit(f"No existe {dump}")
-    url_base = f"{servidor.rstrip('/')}/{a.base}"
+    url_base = f"{servidor.rstrip('/')}/{a.base or 'salon_local'}"
 
     print(f"Backup:  {dump.name}  ({dump.stat().st_size // 1024} KB)")
     print(f"Destino: {url_base}\n")
 
     psql, pg_restore = buscar_binario("psql"), buscar_binario("pg_restore")
-
-    # Todo lo que puede faltar se comprueba ANTES de borrar la base. Si no, un
-    # requirements sin instalar te deja sin la copia local y sin la app: el paso
-    # destructivo ya corrió y el que avisa del problema viene después.
-    if not a.solo_restaurar:
-        faltan = [m for m in ("uvicorn", "fastapi") if importlib.util.find_spec(m) is None]
-        if faltan:
-            sys.exit(f"Falta instalar: {', '.join(faltan)}.\n"
-                     f"  pip install -r requirements.txt\n"
-                     f"(o corré con --solo-restaurar si solo querés la base)")
+    revisar_dependencias(a)
 
     print("Recreando la base local...")
     admin = f"{servidor.rstrip('/')}/postgres"
-    for sql in (f'DROP DATABASE IF EXISTS "{a.base}"', f'CREATE DATABASE "{a.base}"'):
+    nombre = a.base or "salon_local"
+    for sql in (f'DROP DATABASE IF EXISTS "{nombre}"', f'CREATE DATABASE "{nombre}"'):
         correr([psql, admin, "-q", "-c", sql])
 
     print("Restaurando...")
@@ -137,7 +126,62 @@ def main():
     # bien, así que acá no se corta: lo que decide es el conteo de abajo.
     subprocess.run([pg_restore, "--dbname", url_base, "--no-owner",
                     "--no-privileges", str(dump)], capture_output=True, text=True)
+    return url_base
 
+
+def desde_json(a) -> str:
+    """El camino sin PostgreSQL: el backup de /api/backup entra en un SQLite.
+
+    SQLite viene adentro de Python, así que en una PC donde no se puede instalar
+    nada esto es lo único que hay. La app ya corre contra SQLite cuando no hay
+    DATABASE_URL: es lo mismo que se usa para desarrollar.
+    """
+    if not a.json.exists():
+        sys.exit(f"No existe {a.json}")
+    archivo = Path(a.base or "pelu.db")
+    print(f"Backup:  {a.json.name}  ({a.json.stat().st_size // 1024} KB)")
+    print(f"Destino: {archivo}  (SQLite, sin PostgreSQL)\n")
+    revisar_dependencias(a)
+
+    import restaurar_backup
+    # vaciar=True porque este script es "dame una copia limpia del backup", no
+    # "agregá esto a lo que tengas". Pregunta antes si el archivo ya tiene datos.
+    restaurar_backup.restaurar(str(a.json), f"sqlite:///{archivo.as_posix()}",
+                               vaciar=True, sin_preguntar=False)
+    return f"sqlite:///{archivo.as_posix()}"
+
+
+def revisar_dependencias(a):
+    """Todo lo que puede faltar se comprueba ANTES de tocar la base.
+
+    Con un requirements sin instalar, el paso destructivo ya corrió y el que
+    avisa del problema viene después: te quedás sin la copia local y sin la app.
+    """
+    if a.solo_restaurar:
+        return
+    faltan = [m for m in ("uvicorn", "fastapi") if importlib.util.find_spec(m) is None]
+    if faltan:
+        sys.exit(f"Falta instalar: {', '.join(faltan)}.\n"
+                 f"  pip install -r requirements.txt\n"
+                 f"(o corré con --solo-restaurar si solo querés la base)")
+
+
+def main():
+    ap = argparse.ArgumentParser(description="Levanta la app local con el último backup.")
+    ap.add_argument("--dump", type=Path, help="el .dump a restaurar (necesita PostgreSQL)")
+    ap.add_argument("--json", type=Path,
+                    help="el .json de /api/backup, para restaurar en SQLite SIN PostgreSQL")
+    ap.add_argument("--carpeta", type=Path, help="dónde buscar el .dump más nuevo")
+    ap.add_argument("--base", help="dónde va la copia: nombre de la base con --dump "
+                                   "(salon_local), archivo con --json (pelu.db)")
+    ap.add_argument("--puerto", type=int, default=8000)
+    ap.add_argument("--solo-restaurar", action="store_true")
+    a = ap.parse_args()
+
+    if a.json and a.dump:
+        sys.exit("--dump y --json son dos caminos distintos para lo mismo: pasá uno solo.")
+
+    url_base = desde_json(a) if a.json else desde_dump(a)
     os.environ["DATABASE_URL"] = url_base
     sys.path.insert(0, str(Path(__file__).parent))
     from sqlalchemy import create_engine, func, select
@@ -153,7 +197,7 @@ def main():
             sys.exit("La base quedó vacía: la restauración falló.")
         print(f"  {comps} comprobantes, {clientes} clientes, ${plata:,} en pagos\n")
 
-        # El dump trae los usuarios de producción y sus contraseñas no las sabe
+        # El backup trae los usuarios de producción y sus contraseñas no las sabe
         # nadie acá, así que sin esto la app queda restaurada y sin forma de entrar.
         u = db.query(models.Usuario).filter_by(usuario=USUARIO_LOCAL).first() or models.Usuario(
             usuario=USUARIO_LOCAL)
@@ -168,8 +212,16 @@ def main():
         db.close()
 
     if a.solo_restaurar:
-        print(f"Listo. Para levantarla:\n  DATABASE_URL={url_base} "
-              f"python3 -m uvicorn main:app --port {a.puerto}")
+        # Con el SQLite por defecto no hace falta DATABASE_URL: es el que la app
+        # usa sola cuando no hay ninguna puesta.
+        if url_base == "sqlite:///pelu.db":
+            print(f"Listo. Para levantarla:\n  python -m uvicorn main:app --port {a.puerto}")
+        else:
+            print(f"Listo. Para levantarla, con la base puesta en el entorno:\n"
+                  f"  PowerShell:  $env:DATABASE_URL='{url_base}'; "
+                  f"python -m uvicorn main:app --port {a.puerto}\n"
+                  f"  Linux/Mac:   DATABASE_URL={url_base} "
+                  f"python3 -m uvicorn main:app --port {a.puerto}")
         return
 
     print(f"Servidor en http://127.0.0.1:{a.puerto}   (Ctrl+C para cortar)\n")

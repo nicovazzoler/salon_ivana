@@ -1,12 +1,13 @@
 venv/
 __pycache__/
 *.pyc
-pelu.db
 .env
 pendientes_salon_ivana_v2.md
 css_referencia.md
-# Backups de la base: tienen DNI, telefonos y direcciones de clientes, y los
-# hash de las contrasenas. El repositorio es publico.
+# Backups de la base y cualquier SQLite: tienen DNI, telefonos y direcciones de
+# clientes, y los hash de las contrasenas. El repositorio es publico, y
+# levantar_local.py --json deja una copia de produccion entera en un .db.
+*.db
 *.dump
 *.sql
 backup_pelu_*.json
