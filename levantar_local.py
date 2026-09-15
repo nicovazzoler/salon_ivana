@@ -112,6 +112,7 @@ def desde_dump(a) -> str:
     print(f"Backup:  {dump.name}  ({dump.stat().st_size // 1024} KB)")
     print(f"Destino: {url_base}\n")
 
+    apuntar_la_app_a(url_base)
     psql, pg_restore = buscar_binario("psql"), buscar_binario("pg_restore")
     revisar_dependencias(a)
 
@@ -139,16 +140,48 @@ def desde_json(a) -> str:
     if not a.json.exists():
         sys.exit(f"No existe {a.json}")
     archivo = Path(a.base or "pelu.db")
+    url = f"sqlite:///{archivo.as_posix()}"
     print(f"Backup:  {a.json.name}  ({a.json.stat().st_size // 1024} KB)")
     print(f"Destino: {archivo}  (SQLite, sin PostgreSQL)\n")
     revisar_dependencias(a)
 
+    apuntar_la_app_a(url)
     import restaurar_backup
     # vaciar=True porque este script es "dame una copia limpia del backup", no
     # "agregá esto a lo que tengas". Pregunta antes si el archivo ya tiene datos.
-    restaurar_backup.restaurar(str(a.json), f"sqlite:///{archivo.as_posix()}",
-                               vaciar=True, sin_preguntar=False)
-    return f"sqlite:///{archivo.as_posix()}"
+    restaurar_backup.restaurar(str(a.json), url, vaciar=True, sin_preguntar=False)
+    return url
+
+
+def escribir_json(salida: Path):
+    """Pasa la base local a un backup JSON, que es lo que se puede llevar.
+
+    Un .dump solo lo abre pg_restore, así que en una PC donde no se puede
+    instalar PostgreSQL no vale nada. El JSON lo lee cualquier Python.
+    """
+    import json
+    import main                      # importarlo corre migrar() sobre la copia
+    from database import SessionLocal
+    db = SessionLocal()
+    try:
+        datos = main.armar_backup(db)
+    finally:
+        db.close()
+    salida.write_text(json.dumps(datos, ensure_ascii=False, indent=2), encoding="utf-8")
+    print(f"Backup JSON:  {salida}  ({salida.stat().st_size // 1024} KB)")
+    print(f"Copialo a la otra PC y levantala con:\n"
+          f"  python levantar_local.py --json {salida.name}\n")
+
+
+def apuntar_la_app_a(url: str):
+    """Deja la copia como base de la app, y tiene que correr ANTES de importarla.
+
+    `database.py` lee DATABASE_URL una sola vez, cuando se lo importa, y a partir
+    de ahí el motor ya está armado. Cualquier `import models` anterior a esto
+    —el de restaurar_backup, sin ir más lejos— deja la app apuntando al SQLite
+    de desarrollo, y lo que se exporte después sale de ahí y no de la copia.
+    """
+    os.environ["DATABASE_URL"] = url
 
 
 def revisar_dependencias(a):
@@ -174,6 +207,9 @@ def main():
     ap.add_argument("--carpeta", type=Path, help="dónde buscar el .dump más nuevo")
     ap.add_argument("--base", help="dónde va la copia: nombre de la base con --dump "
                                    "(salon_local), archivo con --json (pelu.db)")
+    ap.add_argument("--a-json", type=Path, metavar="RUTA",
+                    help="escribe el backup en JSON y no levanta el servidor: es el "
+                         "formato que se puede llevar a una PC sin PostgreSQL")
     ap.add_argument("--puerto", type=int, default=8000)
     ap.add_argument("--solo-restaurar", action="store_true")
     a = ap.parse_args()
@@ -210,6 +246,10 @@ def main():
         print("(los de producción siguen ahí, pero sus contraseñas no están acá)\n")
     finally:
         db.close()
+
+    if a.a_json:
+        escribir_json(a.a_json)
+        return
 
     if a.solo_restaurar:
         # Con el SQLite por defecto no hace falta DATABASE_URL: es el que la app

@@ -3824,11 +3824,13 @@ def _iso_utc(dt):
         dt = dt.replace(tzinfo=timezone.utc)
     return dt.astimezone(timezone.utc).isoformat()
 
-@app.get("/api/backup")
-def backup_completo(_ = Depends(solo_dueno), db: Session = Depends(get_db)):
-    """Descarga un JSON con TODAS las tablas para backup offline."""
-    import json as _json
+def armar_backup(db) -> dict:
+    """Todas las tablas en un dict: es el formato en el que el backup viaja.
 
+    Aparte del endpoint porque también lo arma `levantar_local.py`. Un .dump de
+    PostgreSQL solo lo abre pg_restore; este JSON lo lee cualquier PC que tenga
+    Python, que es lo único que hay en una máquina donde no se puede instalar.
+    """
     data = {
         "version": BACKUP_VERSION,
         # Informativa: la mira una persona, no el importador, así que va en hora
@@ -4002,7 +4004,14 @@ def backup_completo(_ = Depends(solo_dueno), db: Session = Depends(get_db)):
         ],
     }
 
-    contenido = _json.dumps(data, ensure_ascii=False, indent=2)
+    return data
+
+
+@app.get("/api/backup")
+def backup_completo(_ = Depends(solo_dueno), db: Session = Depends(get_db)):
+    """Descarga un JSON con TODAS las tablas para backup offline."""
+    import json as _json
+    contenido = _json.dumps(armar_backup(db), ensure_ascii=False, indent=2)
     buffer = io.BytesIO(contenido.encode("utf-8"))
     nombre = f"backup_pelu_{hora_argentina(fecha_hora_now_utc()).strftime('%Y%m%d_%H%M')}.json"
 

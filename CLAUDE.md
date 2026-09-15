@@ -39,7 +39,15 @@ python3 -m uvicorn main:app --host 127.0.0.1 --port 8000
 ```
 
 Usuarios de la base local de prueba: `dueno` / `test1234`. **Los de producción
-son otros** y no están acá.
+son otros** y no están acá. Si la base está vacía, el arranque la siembra solo.
+
+Para trabajar con una copia de producción, `levantar_local.py` tiene dos
+caminos: `--dump` restaura el `.dump` de `pg_dump` en un PostgreSQL local, y
+`--json` mete el JSON de `/api/backup` en un SQLite, que es lo único que se
+puede en una PC donde no se instala nada. Los dos dejan un usuario
+`local`/`local1234`, porque el backup trae los de producción y sus contraseñas
+no las sabe nadie. `--a-json` va del `.dump` al JSON, que es el formato que
+viaja: el `.dump` sin `pg_restore` no se abre.
 
 Notas del entorno de trabajo (no del proyecto):
 
