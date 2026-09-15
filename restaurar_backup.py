@@ -122,6 +122,29 @@ def _insertar(db, modelo, filas):
     return len(filas)
 
 
+def _revisar_esquema(engine):
+    """Corta si al destino le faltan columnas, antes de escribir nada.
+
+    `create_all` crea las tablas que no están, pero a una que ya está no le
+    agrega una columna nueva: eso lo hace `migrar()` al arrancar la app. Un
+    destino de una versión anterior revienta recién a mitad de la carga, con un
+    error de SQLite que no dice qué hacer y la base por la mitad.
+    """
+    from sqlalchemy import inspect
+    insp = inspect(engine)
+    faltan = []
+    for tabla in models.Base.metadata.sorted_tables:
+        if not insp.has_table(tabla.name):
+            continue
+        hay = {c["name"] for c in insp.get_columns(tabla.name)}
+        faltan += [f"{tabla.name}.{c.name}" for c in tabla.columns if c.name not in hay]
+    if faltan:
+        sys.exit(f"Al destino le faltan columnas: {', '.join(faltan[:6])}"
+                 f"{'...' if len(faltan) > 6 else ''}\n"
+                 f"Es de una versión anterior de la app. Restaurá en un archivo nuevo, o "
+                 f"levantá la app una vez apuntando ahí para que corran las migraciones.")
+
+
 def _esta_vacia(db):
     """Mira las tablas donde vive lo que no se puede reponer a mano."""
     for modelo in (models.Comprobante, models.Cliente, models.Item, models.Pago):
@@ -184,6 +207,7 @@ def restaurar(archivo, destino, vaciar=False, sin_preguntar=False):
 
     engine = create_engine(destino)
     models.Base.metadata.create_all(engine)
+    _revisar_esquema(engine)
     db = sessionmaker(bind=engine)()
 
     try:

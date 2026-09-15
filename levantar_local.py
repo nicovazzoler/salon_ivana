@@ -145,11 +145,22 @@ def desde_json(a) -> str:
     print(f"Destino: {archivo}  (SQLite, sin PostgreSQL)\n")
     revisar_dependencias(a)
 
+    # El archivo se borra y se hace de nuevo, no se vacía: uno de una versión
+    # anterior tiene las tablas con menos columnas, y `create_all` crea las que
+    # falten enteras pero no le agrega una columna a una tabla que ya está. Con
+    # vaciarlo, la restauración muere a mitad de camino con un "table empleados
+    # has no column named valor_hora". Y no se pierde nada: acá lo que vale es
+    # el backup, no lo que hubiera en la copia.
+    if archivo.exists():
+        print(f"Esto BORRA {archivo} y lo hace de nuevo con el backup.")
+        if input("Escribí BORRAR para seguir: ").strip() != "BORRAR":
+            sys.exit("Cancelado, no se tocó nada.")
+        archivo.unlink()
+        print()
+
     apuntar_la_app_a(url)
     import restaurar_backup
-    # vaciar=True porque este script es "dame una copia limpia del backup", no
-    # "agregá esto a lo que tengas". Pregunta antes si el archivo ya tiene datos.
-    restaurar_backup.restaurar(str(a.json), url, vaciar=True, sin_preguntar=False)
+    restaurar_backup.restaurar(str(a.json), url)
     return url
 
 
