@@ -153,6 +153,28 @@ def desde_json(a) -> str:
     return url
 
 
+# Los backups salen así de la app y así los tapa el .gitignore. El script no
+# escribe uno con otro nombre adentro del repo: adentro hay DNI, teléfonos y
+# direcciones de las clientas, y el repositorio es público.
+PREFIJO_BACKUP = "backup_pelu_"
+
+
+def donde_escribir(salida: Path) -> Path:
+    """Resuelve el archivo de salida y se niega a dejar uno suelto en el repo."""
+    from datetime import datetime
+    if not salida.name:
+        salida = Path(f"{PREFIJO_BACKUP}{datetime.now().strftime('%Y%m%d_%H%M')}.json")
+    repo = Path(__file__).resolve().parent
+    adentro = salida.resolve().parent == repo
+    if adentro and not salida.name.startswith(PREFIJO_BACKUP):
+        sys.exit(f"'{salida.name}' en la carpeta del repo no lo tapa el .gitignore, y este "
+                 f"archivo tiene los datos de las clientas.\n"
+                 f"Ponele un nombre que empiece con {PREFIJO_BACKUP}, o guardalo afuera:\n"
+                 f"  --a-json                     -> {PREFIJO_BACKUP}<fecha>.json\n"
+                 f"  --a-json ..\\{salida.name}")
+    return salida
+
+
 def escribir_json(salida: Path):
     """Pasa la base local a un backup JSON, que es lo que se puede llevar.
 
@@ -207,15 +229,19 @@ def main():
     ap.add_argument("--carpeta", type=Path, help="dónde buscar el .dump más nuevo")
     ap.add_argument("--base", help="dónde va la copia: nombre de la base con --dump "
                                    "(salon_local), archivo con --json (pelu.db)")
-    ap.add_argument("--a-json", type=Path, metavar="RUTA",
+    ap.add_argument("--a-json", type=Path, metavar="RUTA", nargs="?", const=Path(""),
                     help="escribe el backup en JSON y no levanta el servidor: es el "
-                         "formato que se puede llevar a una PC sin PostgreSQL")
+                         "formato que se puede llevar a una PC sin PostgreSQL. Sin ruta, "
+                         "usa el mismo nombre que la app: backup_pelu_<fecha>.json")
     ap.add_argument("--puerto", type=int, default=8000)
     ap.add_argument("--solo-restaurar", action="store_true")
     a = ap.parse_args()
 
     if a.json and a.dump:
         sys.exit("--dump y --json son dos caminos distintos para lo mismo: pasá uno solo.")
+    # Antes de restaurar: si el nombre no sirve, que se entere ahora y no después
+    # de veinte minutos de restauración.
+    salida_json = donde_escribir(a.a_json) if a.a_json is not None else None
 
     url_base = desde_json(a) if a.json else desde_dump(a)
     os.environ["DATABASE_URL"] = url_base
@@ -247,8 +273,8 @@ def main():
     finally:
         db.close()
 
-    if a.a_json:
-        escribir_json(a.a_json)
+    if a.a_json is not None:
+        escribir_json(salida_json)
         return
 
     if a.solo_restaurar:
