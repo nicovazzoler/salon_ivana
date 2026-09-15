@@ -1319,6 +1319,9 @@ def empleada_del_dia(db, f: date) -> str | None:
     Tiene que dar UNA sola: el reparto es entero, así que si se lo mostrara a
     todas las que atendieron algo, el mismo número aparecería dos veces. La
     ayudante no entra acá —cobra un monto fijo, que es un egreso del día—.
+
+    Va por lo facturado y no por lo cobrado para que no se mueva: quién llevó el
+    día no cambia porque una clienta pague la semana que viene.
     """
     ini, fin = _rango_dia(f)
     comps = db.query(models.Comprobante).filter(
@@ -1326,12 +1329,11 @@ def empleada_del_dia(db, f: date) -> str | None:
         models.Comprobante.activo == True, models.Comprobante.tipo == "ticket",
         models.Comprobante.peluquero.isnot(None)).all()
     if not comps: return None
-    cobrado = dict(db.query(models.Pago.comprobante_id, func.sum(models.Pago.monto))
-                     .filter(models.Pago.comprobante_id.in_([c.id for c in comps]))
-                     .group_by(models.Pago.comprobante_id).all())
+    por_comp = pagos_por_comprobante(db, comps)
     por_nombre = {}
     for c in comps:
-        por_nombre[c.peluquero] = por_nombre.get(c.peluquero, 0) + (cobrado.get(c.id) or 0)
+        por_nombre[c.peluquero] = (por_nombre.get(c.peluquero, 0)
+                                   + estado_comprobante(db, c, por_comp)["total_final"])
     # El nombre y no el id: es con lo que el comprobante guarda al peluquero, y
     # un nombre que ya no esté en la lista de empleadas tiene que quedar afuera
     # igual, no volverse "de cualquiera".
@@ -1376,6 +1378,13 @@ def cuenta_depilacion(db, f: date) -> dict:
     pagos = (db.query(models.Pago).filter(models.Pago.comprobante_id.in_(ids)).all()
              if ids else [])
     recaudado = sum(p.monto for p in pagos)
+    # Lo que se atendió ese lunes pero todavía no se cobró. No es parte del
+    # reparto —el reparto es de la plata que entró— pero hay que decirlo: si no,
+    # una parte en cero parece que el día no dio nada cuando lo que falta es
+    # cobrar. Cuando la clienta pague, el abono cae en el comprobante de ese
+    # lunes y el reparto sube solo.
+    por_comp = pagos_por_comprobante(db, comps)
+    deuda = sum(max(estado_comprobante(db, c, por_comp)["saldo"], 0) for c in comps)
 
     # Los privados —alquiler, sueldos— no son costo del día: bajarle la parte a
     # la empleada con el alquiler del local no es el trato, y además el detalle
@@ -1391,7 +1400,7 @@ def cuenta_depilacion(db, f: date) -> dict:
     parte = resto // 2 if resto > 0 else 0
     return {
         "fecha": f.isoformat(),
-        "recaudado": recaudado, "gastos": gastos, "resto": resto,
+        "recaudado": recaudado, "gastos": gastos, "resto": resto, "deuda": deuda,
         "parte_empleada": parte, "parte_salon": resto - parte,
         "comprobantes": len(comps), "pagos": len(pagos),
         "egresos_detalle": [{"numero": e.numero, "tipo": e.tipo, "concepto": e.concepto,

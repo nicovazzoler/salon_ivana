@@ -385,12 +385,16 @@ function dibujarDepilacion(c){
         <div class="ren"><span>Lo que entró</span><b>${fmt(q.recaudado)}</b></div>
         ${q.egresos_detalle.map(e => `<div class="ren chico">
             <span>${esc(e.concepto || e.tipo || "Gasto")}</span><span>−${fmt(e.monto)}</span></div>`).join("")}
-        <div class="ren"><span>Gastos del día</span><b class="resta">−${fmt(q.gastos)}</b></div>
+        <div class="ren"><span>Gastos del día</span><b class="${q.gastos ? "resta" : ""}">${q.gastos ? "−" : ""}${fmt(q.gastos)}</b></div>
         <div class="ren total"><span>Queda</span><b>${fmt(q.resto)}</b></div>
         <div class="ren mitad"><span>${DUENO ? "Para " + esc(D.empleado.nombre) : "Te toca"}</span><b>${fmt(q.parte_empleada)}</b></div>
         <div class="ren mitad"><span>Para el salón</span><b>${fmt(q.parte_salon)}</b></div>
       </div>
+      ${q.deuda > 0 ? `<div class="aviso">⚠️ Falta cobrar ${fmt(q.deuda)} de este día${
+          q.parte_empleada <= 0 ? ", que es por lo que no hay nada para repartir todavía" : ""}. Cuando se cobre, el reparto sube solo.</div>` : ""}
       ${q.resto < 0 ? `<div class="aviso">⚠️ Los gastos del día superan lo que entró. No hay nada para repartir.</div>` : ""}
+      ${!q.deuda && q.resto >= 0 && q.parte_empleada <= 0 && q.comprobantes === 0
+        ? `<div class="aviso">Todavía no se facturó nada de este día.</div>` : ""}
       ${trabajosDelDia(c).length ? `
         <div class="nota-depi">Lo que se anotó este día no se paga por comisión —ya está adentro del reparto—, pero se ve igual: escondido parecería que se perdió.</div>
         <div class="lista-depi">${trabajosDelDia(c).map(t => `<div>
