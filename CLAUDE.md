@@ -109,17 +109,27 @@ de cada trabajo:
     recaudado del día − egresos del día (insumos + el pago a la ayudante)
     = resto  →  50% Carolina · 50% el salón, que pone el local
 
-Tres cosas que la hacen distinta de cualquier otro día:
+Lo que la hace distinta de cualquier otro día:
 - El pago a la ayudante se anota como un egreso más, así que entra solo en la
   resta: no hay que tratarlo aparte.
 - "Recaudado" incluye las señas cobradas días antes, porque son plata de ese
   lunes aunque hayan entrado otro día. Sale de los PAGOS de los comprobantes con
   fecha de ese lunes, no de la caja del lunes.
-- `ciclo_de()` ya deja el lunes como un ciclo propio de un día, pero
-  `resumen_pendiente()` todavía le calcula comisiones + horas como a cualquier
-  otro. **Esa parte falta.** Hasta que esté, el número que propone la pantalla
-  para un lunes está mal; el cierre lo hace la dueña a mano, así que nada se paga
-  solo, pero no automatizar nada de ese ciclo.
+- Los egresos **privados** no entran: el alquiler no es costo de la depilación, y
+  el detalle se lo muestra a ella. Sin ese filtro, cerrar la liquidación —que
+  crea un egreso privado con el sueldo, con fecha de hoy— le cambiaba la cuenta
+  al lunes que se estaba cerrando.
+- El ciclo es de un solo día y le toca a UNA sola persona: `empleada_del_dia()`
+  elige la que más facturó ese lunes. Si fuera "la que tenga alguna línea", la
+  ayudante que atendió algo vería el reparto entero y el número aparecería dos
+  veces.
+- El lunes le aparece aunque no tenga un ítem a comisión ni una hora cargada
+  (`lunes_depi_pendientes()`), que es lo normal en depilación. Como puede no
+  tener ningún trabajo detrás, lo que dice que ya se pagó es la liquidación
+  misma: sin ese filtro, un lunes sin trabajos volvía a aparecer pendiente
+  después de cobrarlo, siempre.
+- La empleada lo ve con su código en Sueldos —es su plata— y **cierra la dueña**,
+  como todos los ciclos.
 
 **La seña es plata de la clienta, no un pago de un ticket.** Se toma sin
 comprobante —desde la ficha o desde facturar— y entra a la caja del día en que se

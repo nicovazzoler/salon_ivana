@@ -382,6 +382,12 @@ class Liquidacion(Base):
     # día que se olvide la caja de ese día dice que hay más plata de la que hay.
     # Se guarda el id para no anotarlo dos veces y para poder mostrarlo después.
     egreso_id = Column(Integer, ForeignKey("egresos.id"))
+    # El lunes de depilación se reparte el día en vez de pagar comisiones, así
+    # que la foto necesita los dos números de esa cuenta: sin ellos, el historial
+    # muestra un total que no se puede explicar.
+    depilacion = Column(Boolean, default=False)
+    recaudado = Column(Integer)
+    gastos = Column(Integer)
     empleado = relationship("Empleado")
     egreso = relationship("Egreso")
 

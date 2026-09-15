@@ -253,8 +253,9 @@ async function pintarLiquidaciones(){
     return `<div class="ciclo">
       <div class="ciclo-cab">
         <div>
-          <h3>${rangoLargo(c.desde, c.hasta)}</h3>
-          <div class="det">${c.liqs.length} ${c.liqs.length===1?"empleada":"empleadas"} · ${hhmm(min)} trabajadas</div>
+          <h3>${c.liqs.every(l=>l.depilacion) ? "Depilación " : ""}${rangoLargo(c.desde, c.hasta)}</h3>
+          <div class="det">${c.liqs.length} ${c.liqs.length===1?"empleada":"empleadas"}${
+            c.liqs.every(l=>l.depilacion) ? " · se repartió el día" : ` · ${hhmm(min)} trabajadas`}</div>
         </div>
         <div class="plata">${fmt(total)}</div>
       </div>
@@ -262,7 +263,9 @@ async function pintarLiquidaciones(){
         ${c.liqs.map(l => `
           <div class="fila-emp">
             <div><b>${esc(l.empleado||"—")}${l.parcial ? ` <span class="saldo-de">pago parcial</span>` : ""}</b>
-              <span class="det">${hhmm(l.minutos_total)} trabajadas · ${hhmm(l.minutos_pagados)} a ${fmt(l.valor_hora)} = ${fmt(l.total_horas)} · comisiones ${fmt(l.total_comisiones)}${
+              <span class="det">${l.depilacion
+                ? `depilación · entró ${fmt(l.recaudado)} − gastos ${fmt(l.gastos)}, la mitad`
+                : `${hhmm(l.minutos_total)} trabajadas · ${hhmm(l.minutos_pagados)} a ${fmt(l.valor_hora)} = ${fmt(l.total_horas)} · comisiones ${fmt(l.total_comisiones)}`}${
                 l.egreso_numero ? ` · egreso #${l.egreso_numero}${l.forma_pago?" en "+esc(l.forma_pago):""}` : ""}${l.notas?" · "+esc(l.notas):""}</span></div>
             <div class="plata">${fmt(l.total)}</div>
             <button class="b-out verLiq" data-id="${l.id}">Ver</button>
@@ -301,6 +304,9 @@ async function cargar(){
 function pintar(){
   const espera = D.en_espera
     ? `<span class="nota">faltan ${D.sin_tiempo} sin duración: ${fmt(D.en_espera)} sin contar</span>` : "";
+  // El reparto del lunes no es comisión ni horas: sin su propio casillero, el
+  // total de arriba tiene plata que ninguno de los otros dos explica.
+  const depis = D.ciclos.filter(c => c.depilacion);
   $("#totales").innerHTML = `
     <div class="kpi destacado">
       <span class="lbl">${VOS.debe}</span>
@@ -316,7 +322,12 @@ function pintar(){
       <span class="lbl">Horas</span>
       <span class="val">${fmt(D.total_horas)}</span>
       <span class="nota">${hhmm(D.minutos_total)} declaradas · ${fmt(D.valor_hora)} la hora</span>
-    </div>`;
+    </div>` + (depis.length ? `
+    <div class="kpi">
+      <span class="lbl">Depilación</span>
+      <span class="val">${fmt(depis.reduce((a, c) => a + c.total, 0))}</span>
+      <span class="nota">${depis.length === 1 ? "el reparto del lunes" : depis.length + " lunes repartidos"}</span>
+    </div>` : "");
   if(espera) $("#totales").insertAdjacentHTML("beforeend",
     `<div class="kpi" style="flex:1 1 100%;"><span class="lbl">Sin contar todavía</span>
      <span class="val">${fmt(D.en_espera)}</span>
@@ -352,11 +363,50 @@ function bloqueHoy(){
   </div>`;
 }
 
+const trabajosDelDia = c => c.dias.flatMap(d => d.trabajos);
+
+/* El lunes de depilación no se paga por comisión: se reparte el día.
+
+   Se ve la cuenta entera —lo que entró, lo que salió y las dos mitades— porque
+   es un negocio a medias: la mitad que le toca no se entiende sin los dos
+   números de arriba. Cerrar sigue siendo de la dueña; la empleada lo mira. */
+function dibujarDepilacion(c){
+  const q = c.cuenta;
+  return `<div class="ciclo depi" data-desde="${c.desde}">
+    <div class="ciclo-cab">
+      <div>
+        <h3>Depilación ${rangoLargo(c.desde, c.hasta)}</h3>
+        <div class="det">${q.comprobantes} ${q.comprobantes===1?"servicio":"servicios"} · se reparte el día, no se paga por comisión</div>
+      </div>
+      <div class="plata">${fmt(c.total)}</div>
+    </div>
+    <div class="ciclo-cuerpo">
+      <div class="cuenta-depi">
+        <div class="ren"><span>Lo que entró</span><b>${fmt(q.recaudado)}</b></div>
+        ${q.egresos_detalle.map(e => `<div class="ren chico">
+            <span>${esc(e.concepto || e.tipo || "Gasto")}</span><span>−${fmt(e.monto)}</span></div>`).join("")}
+        <div class="ren"><span>Gastos del día</span><b class="resta">−${fmt(q.gastos)}</b></div>
+        <div class="ren total"><span>Queda</span><b>${fmt(q.resto)}</b></div>
+        <div class="ren mitad"><span>${DUENO ? "Para " + esc(D.empleado.nombre) : "Te toca"}</span><b>${fmt(q.parte_empleada)}</b></div>
+        <div class="ren mitad"><span>Para el salón</span><b>${fmt(q.parte_salon)}</b></div>
+      </div>
+      ${q.resto < 0 ? `<div class="aviso">⚠️ Los gastos del día superan lo que entró. No hay nada para repartir.</div>` : ""}
+      ${trabajosDelDia(c).length ? `
+        <div class="nota-depi">Lo que se anotó este día no se paga por comisión —ya está adentro del reparto—, pero se ve igual: escondido parecería que se perdió.</div>
+        <div class="lista-depi">${trabajosDelDia(c).map(t => `<div>
+          <span>${esc(t.nombre)}${t.cantidad > 1 ? ` ×${t.cantidad}` : ""}</span>
+          <span class="det">${t.numero ? "#" + t.numero : "sin comprobante"}${t.cliente ? " · " + esc(t.cliente) : ""}</span>
+        </div>`).join("")}</div>` : ""}
+      ${DUENO ? filaCerrar(c, q.parte_empleada > 0) : ""}
+    </div>
+  </div>`;
+}
+
 /* Un ciclo es la semana del local: de sábado a viernes, que es cuando se paga.
-   No es una ventana para
-   filtrar, es la unidad con la que se paga. Si una semana no se cerró, sigue
-   apareciendo entera al lado de la nueva en vez de mezclarse con ella. */
+   No es una ventana para filtrar, es la unidad con la que se paga: una semana
+   sin cerrar sigue apareciendo entera al lado de la nueva. */
 function dibujarCiclo(c){
+  if(c.depilacion) return dibujarDepilacion(c);
   const hoy = hoyArg();
   const enCurso = hoy >= c.desde && hoy <= c.hasta;
   const listo = !c.sin_tiempo && c.total > 0;

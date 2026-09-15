@@ -71,6 +71,29 @@
   .ciclo.en-curso .ciclo-cab h3::after{ content:" · en curso"; font-weight:var(--fw-normal);
                                         font-size:var(--fs-sm); color:var(--text-tenue); }
 
+  /* El lunes de depilación: en vez de días con horas, la cuenta del reparto. */
+  .ciclo.depi .ciclo-cab{ background:var(--bg-header); }
+  .cuenta-depi{ margin:var(--sp-3) 0; }
+  .cuenta-depi .ren{ display:flex; align-items:baseline; gap:var(--sp-2);
+                     padding:var(--sp-2) 0; border-bottom:1px solid var(--border-sutil); }
+  .cuenta-depi .ren > :last-child{ margin-left:auto; font-variant-numeric:tabular-nums;
+                                   white-space:nowrap; }
+  .cuenta-depi .ren.chico{ padding:2px 0 2px var(--sp-3); border-bottom:none;
+                           font-size:var(--fs-sm); color:var(--text-tenue); }
+  .cuenta-depi .resta{ color:var(--danger); }
+  .cuenta-depi .ren.total{ border-bottom:2px solid var(--border); }
+  .cuenta-depi .ren.total b{ font-family:var(--font-display); font-size:var(--fs-lg);
+                             font-weight:var(--fw-black); }
+  .cuenta-depi .ren.mitad{ border-bottom:none; }
+  .cuenta-depi .ren.mitad b{ font-weight:var(--fw-bold); }
+  .nota-depi{ font-size:var(--fs-sm); color:var(--text-tenue);
+              padding:var(--sp-2) 0; border-top:1px solid var(--border-sutil); }
+  /* Lo que se hizo ese día, a secas: sin horas ni "falta el tiempo", que no
+     significan nada en un día que no se paga ni por horas ni por comisión. */
+  .lista-depi > div{ display:flex; flex-wrap:wrap; align-items:baseline; gap:var(--sp-2);
+                     padding:3px 0 3px var(--sp-3); font-size:var(--fs-sm); }
+  .lista-depi .det{ margin-left:auto; color:var(--text-tenue); }
+
   /* Un día adentro del ciclo: rótulo, horas y sus trabajos debajo. */
   .dia{ padding:var(--sp-3) 0; border-bottom:1px solid var(--border-sutil); }
   .dia:last-child{ border-bottom:none; }

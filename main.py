@@ -131,6 +131,10 @@ def migrar():
         if "egreso_id" not in licols:
             with engine.begin() as con:
                 con.execute(text("ALTER TABLE liquidaciones ADD COLUMN egreso_id INTEGER"))
+        for col, tipo in (("depilacion", "BOOLEAN"), ("recaudado", "INTEGER"), ("gastos", "INTEGER")):
+            if col not in licols:
+                with engine.begin() as con:
+                    con.execute(text(f"ALTER TABLE liquidaciones ADD COLUMN {col} {tipo}"))
         if "parcial" not in licols:
             with engine.begin() as con:
                 con.execute(text("ALTER TABLE liquidaciones ADD COLUMN parcial BOOLEAN DEFAULT FALSE"))
@@ -1292,6 +1296,108 @@ def ciclo_de(f: date) -> tuple[date, date]:
     ini = f - timedelta(days=dow + 2)                  # martes..viernes → el sábado anterior
     return ini, ini + timedelta(days=6)                # y su viernes
 
+def es_dia_depilacion(db, f: date) -> bool:
+    """Si ese lunes el local abrió para depilación.
+
+    Dos señales, las dos válidas: que alguien lo haya marcado con "Abrir este
+    día", o que simplemente haya movimiento. La segunda existe para el lunes que
+    se trabajó y nadie se acordó de marcarlo: el número tiene que estar igual.
+    """
+    if f.weekday() != 0: return False
+    ini, fin = _rango_dia(f)
+    hay_horario = db.query(models.ExcepcionHorario).filter(
+        models.ExcepcionHorario.fecha == f.isoformat(),
+        models.ExcepcionHorario.desde.isnot(None)).first()
+    if hay_horario: return True
+    return db.query(models.Comprobante).filter(
+        models.Comprobante.fecha >= ini, models.Comprobante.fecha < fin,
+        models.Comprobante.activo == True).first() is not None
+
+def empleada_del_dia(db, f: date) -> str | None:
+    """De quién es el lunes de depilación: la que más facturó ese día.
+
+    Tiene que dar UNA sola: el reparto es entero, así que si se lo mostrara a
+    todas las que atendieron algo, el mismo número aparecería dos veces. La
+    ayudante no entra acá —cobra un monto fijo, que es un egreso del día—.
+    """
+    ini, fin = _rango_dia(f)
+    comps = db.query(models.Comprobante).filter(
+        models.Comprobante.fecha >= ini, models.Comprobante.fecha < fin,
+        models.Comprobante.activo == True, models.Comprobante.tipo == "ticket",
+        models.Comprobante.peluquero.isnot(None)).all()
+    if not comps: return None
+    cobrado = dict(db.query(models.Pago.comprobante_id, func.sum(models.Pago.monto))
+                     .filter(models.Pago.comprobante_id.in_([c.id for c in comps]))
+                     .group_by(models.Pago.comprobante_id).all())
+    por_nombre = {}
+    for c in comps:
+        por_nombre[c.peluquero] = por_nombre.get(c.peluquero, 0) + (cobrado.get(c.id) or 0)
+    # El nombre y no el id: es con lo que el comprobante guarda al peluquero, y
+    # un nombre que ya no esté en la lista de empleadas tiene que quedar afuera
+    # igual, no volverse "de cualquiera".
+    return max(por_nombre, key=lambda n: (por_nombre[n], n))
+
+def lunes_depi_pendientes(db, empleado) -> list[str]:
+    """Los lunes de depilación suyos que todavía no se cerraron.
+
+    El día le corresponde aunque no tenga ni un ítem a comisión ni una hora
+    cargada, que es lo normal en depilación: el reparto sale del día entero.
+
+    Y como puede no haber ni un trabajo detrás, lo que dice que ya se pagó es la
+    liquidación, no los trabajos marcados.
+    """
+    desde = db.query(models.Config).filter_by(clave="sueldos_desde").first()
+    q = db.query(models.Comprobante.fecha).filter(
+        models.Comprobante.activo == True, models.Comprobante.tipo == "ticket",
+        models.Comprobante.peluquero == empleado.nombre)
+    if desde and desde.valor:
+        anotado = func.coalesce(models.Comprobante.cargado, models.Comprobante.fecha)
+        q = q.filter(anotado >= datetime.fromisoformat(desde.valor))
+    cerrados = {l.desde for l in db.query(models.Liquidacion).filter(
+        models.Liquidacion.empleado_id == empleado.id,
+        models.Liquidacion.depilacion == True).all()}
+    lunes = {hora_argentina(f).date() for (f,) in q.all()}
+    return sorted(d.isoformat() for d in lunes
+                  if d.weekday() == 0 and d.isoformat() not in cerrados
+                  and es_dia_depilacion(db, d)
+                  and empleada_del_dia(db, d) == empleado.nombre)
+
+def cuenta_depilacion(db, f: date) -> dict:
+    """El reparto del día de depilación: recaudado − gastos, mitad y mitad.
+
+    Recaudado son los PAGOS de los comprobantes de ese día, no la caja del día:
+    una seña cobrada el jueves es plata de este lunes aunque haya entrado antes.
+    """
+    ini, fin = _rango_dia(f)
+    comps = db.query(models.Comprobante).filter(
+        models.Comprobante.fecha >= ini, models.Comprobante.fecha < fin,
+        models.Comprobante.activo == True, models.Comprobante.tipo == "ticket").all()
+    ids = [c.id for c in comps]
+    pagos = (db.query(models.Pago).filter(models.Pago.comprobante_id.in_(ids)).all()
+             if ids else [])
+    recaudado = sum(p.monto for p in pagos)
+
+    # Los privados —alquiler, sueldos— no son costo del día: bajarle la parte a
+    # la empleada con el alquiler del local no es el trato, y además el detalle
+    # se lo muestra a ella, que no tiene que ver esos números.
+    egresos = db.query(models.Egreso).filter(
+        models.Egreso.fecha >= ini, models.Egreso.fecha < fin,
+        _no_privado(models.Egreso.privado)).all()
+    gastos = sum(e.monto or 0 for e in egresos)
+
+    resto = recaudado - gastos
+    # La mitad impar le queda al salón: repartir un peso de más a cada lado no
+    # cierra, y el salón es el que puede absorberlo sin que a nadie le falte.
+    parte = resto // 2 if resto > 0 else 0
+    return {
+        "fecha": f.isoformat(),
+        "recaudado": recaudado, "gastos": gastos, "resto": resto,
+        "parte_empleada": parte, "parte_salon": resto - parte,
+        "comprobantes": len(comps), "pagos": len(pagos),
+        "egresos_detalle": [{"numero": e.numero, "tipo": e.tipo, "concepto": e.concepto,
+                             "monto": e.monto or 0} for e in egresos],
+    }
+
 def resumen_pendiente(db, empleado) -> dict:
     """Lo que se le debe a una empleada, partido en ciclos.
 
@@ -1376,6 +1482,11 @@ def resumen_pendiente(db, empleado) -> dict:
         if f not in dias:
             dias[f] = {"id": None, "fecha": f, "minutos": 0, "sugerido": True, "trabajos": []}
         dias[f]["trabajos"].append(t)
+    # El lunes de depilación entra aunque esté vacío: el reparto es del día, no
+    # de los trabajos, y la depilación casi nunca se factura con ítems a comisión.
+    depis = set(lunes_depi_pendientes(db, empleado))
+    for f in depis:
+        dias.setdefault(f, {"id": None, "fecha": f, "minutos": 0, "sugerido": True, "trabajos": []})
     for d in dias.values():
         d["trabajos"].sort(key=lambda t: (t["numero"] or 0, t["id"] or 0))
 
@@ -1406,14 +1517,22 @@ def resumen_pendiente(db, empleado) -> dict:
         pagado_antes = (db.query(func.coalesce(func.sum(models.Liquidacion.total), 0))
                           .filter(models.Liquidacion.empleado_id == empleado.id,
                                   models.Liquidacion.desde == c["desde"]).scalar() or 0)
+        # El lunes de depilación no se paga por comisión: se reparte el día. El
+        # ciclo se marca y el total sale del reparto, no de las comisiones.
+        depi = c["desde"] in depis
+        cuenta = cuenta_depilacion(db, date.fromisoformat(c["desde"])) if depi else None
+
         c.update({
+            "depilacion": depi, "cuenta": cuenta,
             "pagado_antes": pagado_antes,
             "minutos_total": min_total, "minutos_comision": min_com,
             "minutos_pagados": min_pagados,
             "total_comisiones": total_com, "total_horas": total_horas,
-            "total": total_com + total_horas,
-            "sin_tiempo": len(faltan),
-            "en_espera": sum(t["comision"] for t in faltan),
+            "total": cuenta["parte_empleada"] if depi else total_com + total_horas,
+            # Un trabajo sin duración frena el cierre de una semana normal, pero
+            # en depilación no entra en la cuenta: el reparto sale del día.
+            "sin_tiempo": 0 if depi else len(faltan),
+            "en_espera": 0 if depi else sum(t["comision"] for t in faltan),
         })
         salida.append(c)
 
@@ -1642,13 +1761,19 @@ def cerrar_liquidacion(datos: CerrarIn, _ = Depends(solo_dueno), db: Session = D
     # trabajando ese mismo viernes, eso vuelve a aparecer como pendiente igual;
     # el rótulo dice con qué intención se cerró, no adivina el futuro.
     parcial = hoy_argentina() < date.fromisoformat(ciclo["hasta"]) and not datos.anticipado
+    # Un día de depilación se cierra entero o no se cierra: no hay "media
+    # jornada" que siga acumulando, porque la cuenta sale del día completo.
+    if ciclo.get("depilacion"): parcial = False
     liq = models.Liquidacion(
         empleado_id=emp.id, desde=ciclo["desde"], hasta=ciclo["hasta"],
         valor_hora=r["valor_hora"], comision_pct=r["comision_pct"],
         minutos_total=ciclo["minutos_total"], minutos_comision=ciclo["minutos_comision"],
         minutos_pagados=ciclo["minutos_pagados"],
         total_comisiones=ciclo["total_comisiones"], total_horas=ciclo["total_horas"],
-        total=ciclo["total"], notas=datos.notas, parcial=parcial)
+        total=ciclo["total"], notas=datos.notas, parcial=parcial,
+        depilacion=bool(ciclo.get("depilacion")),
+        recaudado=(ciclo["cuenta"]["recaudado"] if ciclo.get("cuenta") else None),
+        gastos=(ciclo["cuenta"]["gastos"] if ciclo.get("cuenta") else None))
     db.add(liq); db.flush()
 
     for t in trabajos:
@@ -1687,8 +1812,9 @@ def cerrar_liquidacion(datos: CerrarIn, _ = Depends(solo_dueno), db: Session = D
     if liq.total > 0:
         egreso = models.Egreso(
             numero=siguiente_numero_egreso(db), tipo=tipo_de_sueldo(db).nombre,
-            concepto=(f"Sueldo {emp.nombre} ({ciclo['desde']} a {ciclo['hasta']})"
-                      + (" · pago parcial" if parcial else "")),
+            concepto=(f"Depilación {emp.nombre} ({ciclo['desde']})" if ciclo.get("depilacion")
+                      else f"Sueldo {emp.nombre} ({ciclo['desde']} a {ciclo['hasta']})"
+                           + (" · pago parcial" if parcial else "")),
             monto=liq.total, forma_pago=datos.forma_pago,
             notas=datos.notas, fecha=fecha_hora_now_utc(),
             # Privado siempre, y no según cómo esté marcado el tipo: esto lo
@@ -1791,6 +1917,7 @@ def listar_liquidaciones(empleado_id: int | None = None, limite: int = 20,
              "valor_hora": l.valor_hora, "comision_pct": l.comision_pct,
              "minutos_total": l.minutos_total, "minutos_comision": l.minutos_comision,
              "minutos_pagados": l.minutos_pagados,
+             "depilacion": bool(l.depilacion), "recaudado": l.recaudado, "gastos": l.gastos,
              "total_comisiones": l.total_comisiones, "total_horas": l.total_horas,
              "total": l.total, "notas": l.notas, "parcial": bool(l.parcial),
              "egreso_numero": l.egreso.numero if l.egreso else None,
@@ -1819,6 +1946,7 @@ def detalle_liquidacion(liq_id: int, user = Depends(usuario_actual),
         "valor_hora": liq.valor_hora, "comision_pct": liq.comision_pct,
         "minutos_total": liq.minutos_total, "minutos_comision": liq.minutos_comision,
         "minutos_pagados": liq.minutos_pagados,
+        "depilacion": bool(liq.depilacion), "recaudado": liq.recaudado, "gastos": liq.gastos,
         "total_comisiones": liq.total_comisiones, "total_horas": liq.total_horas,
         "total": liq.total, "notas": liq.notas, "parcial": bool(liq.parcial),
         "egreso_numero": liq.egreso.numero if liq.egreso else None,
@@ -3741,6 +3869,7 @@ def backup_completo(_ = Depends(solo_dueno), db: Session = Depends(get_db)):
              "desde": l.desde, "hasta": l.hasta, "valor_hora": l.valor_hora,
              "comision_pct": l.comision_pct, "minutos_total": l.minutos_total,
              "minutos_comision": l.minutos_comision, "minutos_pagados": l.minutos_pagados,
+             "depilacion": bool(l.depilacion), "recaudado": l.recaudado, "gastos": l.gastos,
              "total_comisiones": l.total_comisiones, "total_horas": l.total_horas,
              "total": l.total, "notas": l.notas, "egreso_id": l.egreso_id,
              "parcial": bool(l.parcial)}
