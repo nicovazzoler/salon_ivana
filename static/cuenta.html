@@ -193,7 +193,7 @@ async function cargar(){
         <div class="muted">${[c.dni && "DNI "+c.dni, c.direccion].filter(Boolean).join(" · ") || "—"}</div>
       </div>
       <div class="saldo-box">
-        <div class="lbl">Saldo adeudado</div>
+        <div class="lbl">Saldo</div>
         <div class="val" style="color:${data.saldo_total>0?'var(--danger)':'var(--acento)'};">${fmt(data.saldo_total)}</div>
         <button style="margin-top:8px;background:var(--acento);" onclick="location.href='/facturar?cliente=${encodeURIComponent(c.nombre)}'">+ Facturar</button>
       </div>

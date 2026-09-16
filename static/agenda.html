@@ -711,8 +711,8 @@ function panelExcepcion(c){
   pan.innerHTML = `
     <div class="form-turno">
       <div class="campo" style="flex:1 1 100%;"><label>El horario de ${esc(titulo(c.nombre))} para este día</label></div>
-      <div class="campo chico"><label>Entra</label><input type="time" class="eDesde" value="${t.desde||"09:00"}"></div>
-      <div class="campo chico"><label>Sale</label><input type="time" class="eHasta" value="${t.hasta||"18:00"}"></div>
+      <div class="campo chico"><label>Entra</label><input type="time" class="eDesde" value="${t.desde||"08:00"}"></div>
+      <div class="campo chico"><label>Sale</label><input type="time" class="eHasta" value="${t.hasta||"20:00"}"></div>
       <div class="campo"><label>Motivo (opcional)</label><input class="eMotivo" placeholder="Cambió con Luli, turno médico…"></div>
       <button class="b-ok eGuardar">Guardar</button>
       <button class="b-out eNoViene">Hoy no viene</button>

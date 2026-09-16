@@ -3077,11 +3077,15 @@ def caja_dia(fecha: str | None = None, user = Depends(usuario_actual), db: Sessi
             "ventas": len(pagos) + len(senas) + len(egresos), "ingresos_por_pago": por_pago, "egresos_por_tipo": por_tipo,
             "fondo": fondo, "efectivo_ventas": efectivo_ventas, "efectivo_egresos": efectivo_egresos,
             "efectivo_esperado": fondo + efectivo_ventas - efectivo_egresos,
+            # Las señas van con la MISMA forma que un pago —`total` y `ref`—, que es
+            # lo que la pantalla lee. Con nombres propios salían en $0 y sin
+            # referencia, como si alguien hubiera cobrado nada.
             "ventas_detalle": [_pago_detalle(p) for p in pagos] + [
                 {"id": f"s{s.id}", "hora": hora_argentina(s.fecha).strftime("%H:%M"),
-                 "comprobante": "seña", "cliente": (s.cliente.nombre if s.cliente else ""),
-                 "detalle": "Seña" + (f" · {s.notas}" if s.notas else ""),
-                 "monto": s.monto, "forma_pago": s.forma_pago, "es_sena": True}
+                 "ref": f"Seña N-{(s.numero or 0):05d}"
+                        + (f" · {s.cliente.nombre}" if s.cliente else ""),
+                 "total": s.monto, "forma_pago": s.forma_pago, "alias": s.alias,
+                 "es_sena": True}
                 for s in senas],
             "egresos_detalle": [{"id": e.id, "numero": e.numero,
                                  "hora": hora_argentina(e.fecha).strftime("%H:%M"), "tipo": e.tipo,
@@ -3638,7 +3642,7 @@ def agenda_dia(fecha: str | None = None, _ = Depends(usuario_actual), db: Sessio
     horas = [h for h in horas if _hhmm_ok(h)]
     # Redondeado a la hora para arriba y para abajo: una grilla que arranca 8:45
     # se lee peor que una que arranca a las 8, y no gana nada.
-    apertura = (min(horas)[:2] + ":00") if horas else "09:00"
+    apertura = (min(horas)[:2] + ":00") if horas else "08:00"
     cierre_crudo = max(horas) if horas else "20:00"
     cierre = cierre_crudo if cierre_crudo.endswith(":00") else f"{min(int(cierre_crudo[:2]) + 1, 23):02d}:00"
     if cierre <= apertura: cierre = f"{min(int(apertura[:2]) + 1, 23):02d}:00"

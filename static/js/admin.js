@@ -1091,7 +1091,7 @@ function panelHorario(e){
       Un día suelto —se cambió con otra, o el lunes de depilación— se carga desde la agenda, no acá.</p>
     <div class="de-una">
       <span class="rot">El horario de la semana</span>
-      <span class="tramo"><input type="time" class="ud1" value="09:00"><span class="a">a</span><input type="time" class="uh1" value="18:00"></span>
+      <span class="tramo"><input type="time" class="ud1" value="08:00"><span class="a">a</span><input type="time" class="uh1" value="20:00"></span>
       <label class="marca corta"><input type="checkbox" class="udoble"> corta al mediodía</label>
       <span class="tramo ut2" hidden><input type="time" class="ud2" value="15:00"><span class="a">a</span><input type="time" class="uh2" value="19:00"></span>
       <span class="chips">${DIAS_SEM.map((d,i)=>
@@ -1130,8 +1130,8 @@ function panelHorario(e){
 
   const poner = (f, tramos) => {
     f.querySelector(".trabaja").checked = tramos.length > 0;
-    f.querySelector(".d1").value = tramos[0] ? tramos[0].desde : "09:00";
-    f.querySelector(".h1").value = tramos[0] ? tramos[0].hasta : "18:00";
+    f.querySelector(".d1").value = tramos[0] ? tramos[0].desde : "08:00";
+    f.querySelector(".h1").value = tramos[0] ? tramos[0].hasta : "20:00";
     f.querySelector(".doble").checked = tramos.length > 1;
     f.querySelector(".d2").value = tramos[1] ? tramos[1].desde : "15:00";
     f.querySelector(".h2").value = tramos[1] ? tramos[1].hasta : "19:00";
