@@ -473,7 +473,8 @@ function dibujarTrabajo(t){
       ${falta ? `<span class="falta-tiempo">falta el tiempo</span>` : `<span class="valor">${hhmm(t.minutos)}</span>`}
       <button class="b-out btn-mini editar-min" ${clave} data-min="${t.minutos}">${falta ? "Poner" : "✎"}</button>
     </span>
-    <span class="plata">${falta ? "—" : fmt(t.comision)}</span>
+    <span class="plata${falta ? " no-cuenta" : ""}"${
+      falta ? ` title="Todavía no se cuenta: falta cargarle la duración"` : ""}>${fmt(t.comision)}</span>
   </div>`;
 }
 

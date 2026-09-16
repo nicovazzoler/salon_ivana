@@ -537,10 +537,51 @@ def migrar_notas_entre_parentesis():
         if movidos:
             print(f"Migración: {movidos} cliente(s) con el paréntesis pasado a notas.")
 
+def migrar_nombres_a_capitalizados():
+    """Capitaliza los nombres de clientes ya cargados, una sola vez.
+
+    `nombre_propio()` corre al guardar desde hace rato, pero lo anterior quedó
+    como se tipeó apurado: "abigail cuello" en la ficha y también en el papel.
+
+    Se toca el nombre copiado en el comprobante además del de la ficha, porque
+    es el que sale impreso y el del ticket viejo no se regenera. Va por nombres
+    distintos y no por fila: con mil tickets de la misma clienta son mil filas y
+    un solo nombre que arreglar.
+    """
+    MARCA = "capitalice_nombres"
+    from sqlalchemy.orm import Session as _S
+    with _S(engine) as db:
+        if db.query(models.Config).filter_by(clave=MARCA).first():
+            return
+        tocados = 0
+        for cli in db.query(models.Cliente).all():
+            bien = nombre_propio(cli.nombre or "")
+            if bien and bien != cli.nombre:
+                cli.nombre = bien; tocados += 1
+        nombres = [n for (n,) in db.query(models.Comprobante.cliente_nombre)
+                                   .filter(models.Comprobante.cliente_nombre.isnot(None))
+                                   .distinct() if n]
+        for viejo in nombres:
+            bien = nombre_propio(viejo)
+            if bien and bien != viejo:
+                db.query(models.Comprobante).filter(
+                    models.Comprobante.cliente_nombre == viejo).update(
+                    {"cliente_nombre": bien}, synchronize_session=False)
+        db.add(models.Config(clave=MARCA, valor=str(tocados)))
+        db.commit()
+        if tocados:
+            print(f"Migración: {tocados} nombre(s) de cliente capitalizados.")
+
+
 try:
     migrar_notas_entre_parentesis()
 except Exception as _e:
     print("Aviso: no se pudo migrar los nombres entre paréntesis:", _e)
+
+try:
+    migrar_nombres_a_capitalizados()
+except Exception as _e:
+    print("Aviso: no se pudieron capitalizar los nombres:", _e)
 
 try:
     migrar_peluqueros_a_empleados()

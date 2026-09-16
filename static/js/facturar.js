@@ -1019,7 +1019,7 @@ async function mirarSenas(){
   const total = SENAS_CLIENTA.reduce((a, s) => a + s.monto, 0);
   caja.style.display = total ? "flex" : "none";
   if(total) caja.innerHTML = `<b>Tiene ${fmt(total)} de seña</b>
-    <span>${SENAS_CLIENTA.length === 1 ? "se descuenta" : "se descuentan"} al cobrar</span>`;
+    <span>al cobrar se pregunta si ${SENAS_CLIENTA.length === 1 ? "se usa" : "se usan"}</span>`;
 }
 
 /* La nota del cliente elegido queda a la vista mientras se arma el ticket, en
@@ -1071,10 +1071,21 @@ $("#cobrarParte").onclick=async()=>{
   compActual=d.id; abrirCobro();     // ← esta línea es la que setea compActual
 };
 
-/* Aplica lo que la clienta tenga a favor. Silenciosa si no hay nada: es parte
-   del cobro, no un paso que el que factura tenga que acordarse de hacer. */
+/* Aplica lo que la clienta tenga a favor, preguntando primero.
+
+   Pregunta porque la seña era para un trabajo puntual: si vino por otra cosa y
+   se descuenta sola, el día que venga por lo que señó ya no la tiene. Diciendo
+   que no, la seña queda libre para la próxima. */
 async function aplicarSenasSiHay(compId){
   if(!SENAS_CLIENTA.length) return;
+  const total = SENAS_CLIENTA.reduce((a, s) => a + s.monto, 0);
+  const cuantas = SENAS_CLIENTA.length === 1
+    ? `${fmt(total)} de seña`
+    : `${fmt(total)} en ${SENAS_CLIENTA.length} señas`;
+  const ok = confirm(`${cliInput.value.trim() || "La clienta"} tiene ${cuantas}.\n\n` +
+    `¿Se ${SENAS_CLIENTA.length === 1 ? "la" : "las"} descontamos de este ticket?\n` +
+    `Si decís que no, queda a favor para la próxima.`);
+  if(!ok){ SENAS_CLIENTA = []; return; }
   const r = await authFetch(`/api/comprobantes/${compId}/aplicar-senas`, {method:"POST"});
   if(r.ok){
     const d = await r.json();
