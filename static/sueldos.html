@@ -248,13 +248,7 @@
       Cambiarlos no toca lo ya pagado. Quien cobre distinto lleva el suyo en
       <a href="/admin">Admin → Empleados</a>, y el porcentaje de un servicio en particular,
       en el catálogo.</p></div></div>
-    <div class="agregar" style="margin-top:0; padding-top:0; border-top:none;">
-      <div><label for="cfgHora">Valor hora</label>
-        <input type="number" id="cfgHora" min="0" inputmode="numeric"></div>
-      <div><label for="cfgPct">Comisión %</label>
-        <input type="number" id="cfgPct" min="0" max="100" inputmode="numeric"></div>
-      <button class="b-ok" id="btnCfg">Guardar</button>
-    </div>
+    <div id="cfgGenerales"></div>
 
     <p class="muted" style="margin:var(--sp-3) 0 0;">Los empleados se cargan en
        <a href="/admin#empleados">Admin</a>, con el resto de las listas.</p>
@@ -288,5 +282,6 @@
 
 <div id="toast" class="toast"></div>
 <script src="/static/auth.js"></script>
+<script src="/static/js/generales.js"></script>
 <script src="/static/js/sueldos.js"></script>
 </body></html>

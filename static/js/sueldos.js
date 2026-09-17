@@ -211,13 +211,9 @@ async function cargarPanelDueno(){
     b.onclick = () => { $("#quien").value = b.dataset.emp; localStorage.setItem(RECUERDO, b.dataset.emp); cargar(); };
   });
 
-  $("#cfgHora").value = gral.valor_hora ?? 0;
-  $("#cfgPct").value  = gral.comision_pct ?? 40;
-  $("#btnCfg").onclick = async () => {
-    await mandar("/api/config/sueldos", "PUT", {
-      valor_hora: Math.max(0, parseInt($("#cfgHora").value,10)||0),
-      comision_pct: Math.max(0, parseInt($("#cfgPct").value,10)||0)});
-  };
+  // El mismo editor que usa Admin arriba de la lista de empleados: los dos
+  // números son uno solo y no pueden dibujarse en dos lados distintos.
+  panelGenerales($("#cfgGenerales"), () => cargarPanelDueno());
 
   pintarLiquidaciones();
 }

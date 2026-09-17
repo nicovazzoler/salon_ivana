@@ -29,6 +29,8 @@ static/
   js/listas.js   Las cinco listas configurables (formas de pago, tipos de egreso,
                  descuentos, ajustes por ítem, alias): un solo dibujante que usan
                  Admin y el panel del lapicito de facturar
+  js/generales.js El valor hora y la comisión general: un solo dibujante que usan
+                 Admin (arriba de la lista de empleados) y Sueldos
   escpos.js      Generador del papel de la comandera (ticket.html y facturar.js)
 ```
 

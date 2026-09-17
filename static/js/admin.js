@@ -653,11 +653,6 @@ $("#btnNuevoItem").onclick = () => {
 };
 
 // Uno solo abierto en toda la tarjeta, el de crear incluido.
-function cerrarPaneles(){
-  document.querySelectorAll("#catalogo .panel-edicion, #listaItems ~ .ficha-item").forEach(p=>p.remove());
-  document.querySelectorAll(".btn-item.abierto").forEach(b=>b.classList.remove("abierto"));
-}
-
 $("#btnRenombrar").onclick=async()=>{
   // Renombrar necesita UNA categoría. Con "Todas" o con un filtro puesto no hay
   // ninguna elegida, y antes esto abría un prompt que decía "undefined".
@@ -925,76 +920,65 @@ window.acotarLista = cont => { acotar(cont); cont.addEventListener("scroll", () 
    que se lee todos los días. */
 let VER_BAJAS = false;
 
+/* De lo general a lo particular: arriba los dos números que valen para todas, y
+   después una línea por persona con un solo botón.
+
+   Antes cada empleada traía cinco botones —renombrar, código, valor hora,
+   horario, sacar—. Con cuatro personas eran veinte, que en la tablet no entran
+   en una línea y dejan el nombre como lo más chico del renglón. */
+let HORARIOS = {};
+
 async function cargarEmpleados(){
   const cont = $("#listaEmpleados");
   if(!cont) return;
-  const todos = await (await authFetch("/api/empleados?todos=true")).json();
+  const [todos, horarios] = await Promise.all([
+    (await authFetch("/api/empleados?todos=true")).json(),
+    (await authFetch("/api/horarios")).json().catch(() => ({})),
+  ]);
+  HORARIOS = horarios || {};
   const bajas = todos.filter(e => !e.activo).length;
   const emps = VER_BAJAS ? todos : todos.filter(e => e.activo);
   cont.innerHTML = "";
 
+  const gral = document.createElement("div");
+  panelGenerales(gral, c => {
+    VALOR_HORA_GENERAL = c.valor_hora;
+    cargarEmpleados();
+  });
+  cont.appendChild(gral);
+
   emps.forEach(e => {
     const fila = document.createElement("div");
-    fila.className = "usuario-fila";
-
-    const nom = document.createElement("span");
-    nom.className = "n"; nom.textContent = e.nombre;   // lo escribe una persona
-    const meta = document.createElement("span");
-    meta.className = "meta";
-    /* El valor hora va en la línea de datos y no en una columna: casi nadie
-       cobra distinto, y una columna que dice lo mismo en todas las filas ocupa
-       lugar sin decir nada. Cuando alguien tiene el suyo, ahí sí salta. */
-    const propio = e.valor_hora != null;
-    meta.textContent = (e.activo ? "" : "de baja · ") + (e.tiene_pin ? "con código" : "sin código")
-      + " · " + (propio ? `$${e.valor_hora.toLocaleString("es-AR")} la hora`
-                        : `$${VALOR_HORA_GENERAL.toLocaleString("es-AR")} la hora (el general)`);
-    if(!e.tiene_pin) meta.style.color = "var(--danger)";
+    fila.className = "emp-fila";
 
     const quien = document.createElement("span");
-    quien.className = "quien"; quien.append(nom, meta);
+    quien.className = "quien";
+    const nom = document.createElement("b");
+    nom.textContent = e.nombre;                      // lo escribe una persona
+    const meta = document.createElement("span");
+    meta.className = "meta";
+    meta.textContent = resumenHorario(e.id);
+    quien.append(nom, meta);
 
-    const acc = document.createElement("span"); acc.className = "acc";
-    const bNom = Object.assign(document.createElement("button"),
-                               {className:"b-out", textContent:"Renombrar"});
-    const bPin = Object.assign(document.createElement("button"),
-                               {className:"b-out", textContent: e.tiene_pin ? "Cambiar código" : "Poner código"});
-    const bVh = Object.assign(document.createElement("button"),
-                              {className:"b-out", textContent:"Valor hora"});
-    const bHor = Object.assign(document.createElement("button"),
-                               {className:"b-out", textContent:"Horario"});
-    const bBaja = Object.assign(document.createElement("button"),
-                                {className: e.activo ? "b-del" : "b-ok",
-                                 textContent: e.activo ? "Sacar" : "Reactivar"});
-    acc.append(bNom, bPin, bVh, bHor, bBaja);
-    fila.append(quien, acc);
+    const marcas = document.createElement("span");
+    marcas.className = "marcas";
+    // Solo lo que se sale de lo normal. Una columna que dice lo mismo en todas
+    // las filas ocupa lugar sin decir nada.
+    if(!e.activo) marcas.appendChild(chip("de baja", "gris"));
+    if(!e.tiene_pin) marcas.appendChild(chip("sin código"));
+    if(e.valor_hora != null) marcas.appendChild(chip(`$${e.valor_hora.toLocaleString("es-AR")} la hora`, "gris"));
+
+    const abrir = Object.assign(document.createElement("button"),
+                                {className:"b-out abrir", textContent:"Abrir"});
+    fila.append(quien, marcas, abrir);
     cont.appendChild(fila);
 
-    const abrir = tipo => {
-      cont.querySelectorAll(".panel-edicion").forEach(x => x.remove());
-      fila.after(panelEmpleado(e, tipo));
-    };
-    bNom.onclick = () => abrir("nombre");
-    bPin.onclick = () => abrir("pin");
-    bVh.onclick = () => abrir("vh");
-    bHor.onclick = () => {
-      cont.querySelectorAll(".panel-edicion, .panel-horario").forEach(x => x.remove());
-      fila.after(panelHorario(e));
-    };
-    bBaja.onclick = async () => {
-      if(!e.activo){
-        const r = await authFetch(`/api/empleados/${e.id}`, {method:"PUT",
-          headers:{"Content-Type":"application/json"}, body:JSON.stringify({activo: true})});
-        if(!r.ok){ toast((await r.json().catch(()=>({}))).detail || "No se pudo"); return; }
-        toast("Reactivada"); await refrescarEmpleados(); return;
-      }
-      // El DELETE decide solo: si nunca hizo nada lo borra de verdad, y si tiene
-      // historia lo da de baja. Por eso el aviso cuenta las dos cosas.
-      if(!confirm(`Sacar a "${e.nombre}" de la lista.\n\nSi nunca trabajó, se borra del todo. Si ya tiene comprobantes o sueldos, queda dado de baja: deja de aparecer para elegir y no puede entrar a su sueldo, pero lo suyo sigue estando.\n\n¿Seguimos?`)) return;
-      const r = await authFetch(`/api/empleados/${e.id}`, {method:"DELETE"});
-      if(!r.ok){ toast((await r.json().catch(()=>({}))).detail || "No se pudo"); return; }
-      const d = await r.json();
-      toast(d.borrado ? "Borrado" : `Dada de baja · tiene ${d.usos} ${d.usos===1?"registro":"registros"} a su nombre`);
-      await refrescarEmpleados();
+    abrir.onclick = () => {
+      const abierto = cont.querySelector(".panel-persona");
+      const eraEsta = abierto && abierto.dataset.emp === String(e.id);
+      cerrarPersona();
+      if(eraEsta) return;                            // el mismo botón lo cierra
+      fila.after(panelPersona(e));
     };
   });
 
@@ -1009,7 +993,108 @@ async function cargarEmpleados(){
 
   dibujarCrearEmpleado();
   await cargarFusion();
+  pintarBarraHorario(todos);
+  pintarGrillaHorarios(todos);
 }
+
+/* Uno abierto por vez. Con dos personas desplegadas la lista deja de ser una
+   lista y pasa a ser dos formularios a medio llenar. */
+function cerrarPersona(){
+  document.querySelectorAll(".panel-persona").forEach(p => p.remove());
+}
+
+function chip(texto, clase){
+  const c = document.createElement("span");
+  c.className = "chip-emp" + (clase ? " " + clase : "");
+  c.textContent = texto;
+  return c;
+}
+
+/* "Mar a sáb · 10 a 13 · 16 a 20", o el día suelto si no es un bloque seguido.
+   Es lo que reemplaza al valor hora en el renglón: el horario se mira mucho más
+   seguido que lo que cobra la hora, que casi siempre es el general. */
+function resumenHorario(empId){
+  const tramos = HORARIOS[String(empId)] || [];
+  if(!tramos.length) return "sin horario cargado";
+  const dias = [...new Set(tramos.map(t => t.dia_semana))].sort((a,b) => a-b);
+  const corto = d => DIAS_SEM[d].slice(0,3).toLowerCase();
+  const seguidos = dias.every((d,i) => i === 0 || d === dias[i-1] + 1);
+  const cuando = dias.length === 1 ? corto(dias[0])
+               : seguidos ? `${corto(dias[0])} a ${corto(dias[dias.length-1])}`
+               : dias.map(corto).join(", ");
+  // Los tramos del primer día alcanzan: si alguno fuera distinto, se ve en la
+  // grilla de abajo, que es justo para lo que está.
+  const delDia = tramos.filter(t => t.dia_semana === dias[0])
+                       .sort((a,b) => a.desde.localeCompare(b.desde))
+                       .map(t => `${hm(t.desde)} a ${hm(t.hasta)}`).join(" · ");
+  return `${cuando} · ${delDia}`;
+}
+const hm = s => (s || "").replace(/^0/, "").replace(/:00$/, "");
+
+/* Todo lo de una persona junto. Cada renglón abre abajo el editor que ya
+   existía cuando cada cosa era un botón suelto: lo que cambió es dónde se
+   entra, no lo que hace cada uno. */
+function panelPersona(e){
+  const pan = document.createElement("div");
+  pan.className = "panel-persona";
+  pan.dataset.emp = e.id;
+  const vh = e.valor_hora != null
+    ? `$${e.valor_hora.toLocaleString("es-AR")}`
+    : `$${VALOR_HORA_GENERAL.toLocaleString("es-AR")} (el general)`;
+  pan.innerHTML = `
+    <div class="linea" data-tipo="nombre">
+      <span class="et">Nombre<small>Arrastra a sus comprobantes y turnos</small></span>
+      <span class="dato">${escHtml(e.nombre)}</span>
+      <button class="b-out">Cambiar</button></div>
+    <div class="linea" data-tipo="pin">
+      <span class="et">Código<small>Con esto abre su sueldo</small></span>
+      <span class="dato">${e.tiene_pin ? "puesto" : `<span class="chip-emp">no tiene</span>`}</span>
+      <button class="b-out">${e.tiene_pin ? "Cambiar" : "Poner código"}</button></div>
+    <div class="linea" data-tipo="vh">
+      <span class="et">Lo que cobra la hora<small>Vacío quiere decir el general</small></span>
+      <span class="dato">${vh}</span>
+      <button class="b-out">Cambiar</button></div>
+    <div class="linea" data-tipo="horario">
+      <span class="et">Horario<small>El de siempre. Un día suelto se cambia en la agenda</small></span>
+      <span class="dato">${escHtml(resumenHorario(e.id))}</span>
+      <button class="b-out">Cambiar</button></div>
+    <div class="linea" data-tipo="baja">
+      <span class="et">${e.activo ? "Sacar de la lista" : "Reactivar"}<small>${e.activo
+        ? "Si ya trabajó queda de baja y lo suyo sigue estando"
+        : "Vuelve a aparecer para elegir"}</small></span>
+      <span class="dato"></span>
+      <button class="${e.activo ? "b-del" : "b-ok"}">${e.activo ? "Sacar" : "Reactivar"}</button></div>`;
+
+  pan.querySelectorAll(".linea").forEach(linea => {
+    linea.querySelector("button").onclick = async () => {
+      const tipo = linea.dataset.tipo;
+      if(tipo === "baja") return void bajaOReactivar(e);
+      pan.querySelectorAll(".panel-edicion, .panel-horario").forEach(x => x.remove());
+      linea.after(tipo === "horario" ? panelHorario(e) : panelEmpleado(e, tipo));
+    };
+  });
+  return pan;
+}
+
+async function bajaOReactivar(e){
+  if(!e.activo){
+    const r = await authFetch(`/api/empleados/${e.id}`, {method:"PUT",
+      headers:{"Content-Type":"application/json"}, body:JSON.stringify({activo: true})});
+    if(!r.ok){ toast((await r.json().catch(()=>({}))).detail || "No se pudo"); return; }
+    toast("Reactivada"); await refrescarEmpleados(); return;
+  }
+  // El DELETE decide solo: si nunca hizo nada lo borra de verdad, y si tiene
+  // historia lo da de baja. Por eso el aviso cuenta las dos cosas.
+  if(!confirm(`Sacar a "${e.nombre}" de la lista.\n\nSi nunca trabajó, se borra del todo. Si ya tiene comprobantes o sueldos, queda dado de baja: deja de aparecer para elegir y no puede entrar a su sueldo, pero lo suyo sigue estando.\n\n¿Seguimos?`)) return;
+  const r = await authFetch(`/api/empleados/${e.id}`, {method:"DELETE"});
+  if(!r.ok){ toast((await r.json().catch(()=>({}))).detail || "No se pudo"); return; }
+  const d = await r.json();
+  toast(d.borrado ? "Borrado" : `Dada de baja · tiene ${d.usos} ${d.usos===1?"registro":"registros"} a su nombre`);
+  await refrescarEmpleados();
+}
+
+const escHtml = s => String(s ?? "").replace(/[&<>"']/g,
+  c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 
 /* Un panel por vez, como en usuarios: el nombre y el código no se cambian juntos
    casi nunca, y tenerlos siempre a la vista convierte una lista que se mira en
@@ -1274,6 +1359,134 @@ function dibujarCrearEmpleado(){
     await refrescarEmpleados();
   };
   campo.addEventListener("keydown", ev => { if(ev.key === "Enter") caja.querySelector(".agregar").click(); });
+}
+
+/* La semana del local en una grilla: filas las empleadas, columnas los días.
+
+   Se mira, no se edita: para cambiar están la barra de arriba —ponerle el mismo
+   horario a varias de una— y el panel de cada persona. Una celda que fuera un
+   formulario se toca sin querer con el dedo, que es con lo que se usa esto.
+
+   Sirve para lo que antes había que reconstruir abriendo panel por panel: quién
+   abre el sábado, qué días no viene nadie, a qué hora hay una sola persona. */
+function pintarGrillaHorarios(emps){
+  const caja = $("#grillaHorario");
+  if(!caja) return;
+  const activas = emps.filter(e => e.activo);
+  if(!activas.length){ caja.innerHTML = `<p class="muted">Todavía no hay nadie en la lista.</p>`; return; }
+
+  const tramosDe = (e, d) => (HORARIOS[String(e.id)] || [])
+    .filter(t => t.dia_semana === d)
+    .sort((a,b) => a.desde.localeCompare(b.desde));
+  // Un día en el que no trabaja nadie es el local cerrado, y se marca entero:
+  // es la lectura que más se busca cuando se mira la semana.
+  const cerrado = d => activas.every(e => !tramosDe(e, d).length);
+
+  caja.innerHTML = `<div class="tabla-horario"><table>
+    <thead><tr><th class="quien">Quién</th>${DIAS_SEM.map((d,i) =>
+      `<th${cerrado(i) ? ' class="cerrado"' : ""}>${d.slice(0,3)}</th>`).join("")}</tr></thead>
+    <tbody>${activas.map(e => `<tr data-emp="${e.id}">
+      <td class="quien">${escHtml(e.nombre)}</td>${DIAS_SEM.map((_, i) => {
+        const ts = tramosDe(e, i);
+        return `<td class="${ts.length ? "" : "libre"}${cerrado(i) ? " cerrado" : ""}">${
+          ts.length ? ts.map(t => `<span>${hm(t.desde)}–${hm(t.hasta)}</span>`).join("") : "—"}</td>`;
+      }).join("")}</tr>`).join("")}</tbody></table></div>`;
+
+  // Tocar una fila lleva a esa persona, que es donde se cambia su horario.
+  caja.querySelectorAll("tbody tr").forEach(tr => {
+    tr.onclick = () => {
+      const e = activas.find(x => String(x.id) === tr.dataset.emp);
+      const fila = [...document.querySelectorAll("#listaEmpleados .emp-fila")]
+        .find(f => f.querySelector("b").textContent === e.nombre);
+      if(!fila) return;
+      cerrarPersona();
+      fila.after(panelPersona(e));
+      const pan = fila.nextElementSibling;
+      pan.querySelector('.linea[data-tipo="horario"] button').click();
+      pan.scrollIntoView({behavior:"smooth", block:"center"});
+    };
+  });
+}
+
+/* Ponerle el mismo horario a varias de una. Es el "para todas" del horario, y
+   está arriba por lo mismo que el valor hora general: lo que alcanza a más
+   gente va primero.
+
+   Solo pisa los días elegidos: el resto de la semana de cada una queda como
+   estaba. Mandar la semana entera con un solo tramo le borraría a Agustina el
+   corte del mediodía sin avisar. */
+function pintarBarraHorario(emps){
+  const caja = $("#barraHorario");
+  if(!caja) return;
+  const activas = emps.filter(e => e.activo);
+  caja.innerHTML = `
+    <div class="de-una">
+      <span class="rot">Ponerle el mismo horario a</span>
+      <span class="chips quienes">${activas.map(e =>
+        `<button type="button" class="chip-dia" data-emp="${e.id}">${escHtml(e.nombre)}</button>`).join("")}
+        <button type="button" class="chip-dia todas">Todas</button></span>
+      <span class="rot">los días</span>
+      <span class="chips dias">${DIAS_SEM.map((d,i) =>
+        `<button type="button" class="chip-dia" data-d="${i}">${d.slice(0,3)}</button>`).join("")}</span>
+      <span class="tramo"><input type="time" class="bd1" value="08:00"><span class="a">a</span><input type="time" class="bh1" value="20:00"></span>
+      <label class="marca corta"><input type="checkbox" class="bdoble"> corta al mediodía</label>
+      <span class="tramo bt2" hidden><input type="time" class="bd2" value="16:00"><span class="a">a</span><input type="time" class="bh2" value="20:00"></span>
+      <button class="b-tinta aplicar" disabled>Aplicar</button>
+    </div>
+    <p class="muted resumen-barra" style="margin:var(--sp-2) 0 0;">Elegí a quién y qué días. Solo se
+      cambian esos días; el resto de la semana de cada una queda como está.</p>`;
+
+  const sel = s => caja.querySelector(s), todos = s => [...caja.querySelectorAll(s)];
+  const elegidas = () => todos(".quienes .chip-dia.on[data-emp]").map(b => Number(b.dataset.emp));
+  const diasSel  = () => todos(".dias .chip-dia.on").map(b => Number(b.dataset.d));
+  const aplicar = sel(".aplicar");
+
+  const repintar = () => {
+    const q = elegidas().length, d = diasSel().length;
+    aplicar.disabled = !q || !d;
+    sel(".resumen-barra").textContent = (!q || !d)
+      ? "Elegí a quién y qué días. Solo se cambian esos días; el resto de la semana de cada una queda como está."
+      : `Le cambia ${d === 1 ? "1 día" : d + " días"} a ${q === 1 ? "1 persona" : q + " personas"}. El resto de su semana queda como está.`;
+    sel(".todas").classList.toggle("on", q === activas.length && q > 0);
+  };
+
+  todos(".quienes .chip-dia[data-emp], .dias .chip-dia").forEach(b =>
+    b.onclick = () => { b.classList.toggle("on"); repintar(); });
+  sel(".todas").onclick = () => {
+    const prender = elegidas().length !== activas.length;
+    todos(".quienes .chip-dia[data-emp]").forEach(b => b.classList.toggle("on", prender));
+    repintar();
+  };
+  sel(".bdoble").onchange = () => { sel(".bt2").hidden = !sel(".bdoble").checked; };
+
+  aplicar.onclick = async () => {
+    const dias = diasSel(), ids = elegidas();
+    const tramo1 = {desde: sel(".bd1").value, hasta: sel(".bh1").value};
+    const tramos = [tramo1];
+    if(sel(".bdoble").checked) tramos.push({desde: sel(".bd2").value, hasta: sel(".bh2").value});
+    for(const t of tramos){
+      if(!t.desde || !t.hasta || t.hasta <= t.desde){ toast("Revisá las horas: la de salida va después"); return; }
+    }
+    const nombres = ids.map(id => (emps.find(e => e.id === id) || {}).nombre).filter(Boolean);
+    if(!confirm(`Se les pone ${tramos.map(t => `${hm(t.desde)} a ${hm(t.hasta)}`).join(" y ")} `
+      + `los ${dias.map(d => DIAS_SEM[d].toLowerCase()).join(", ")} a: ${nombres.join(", ")}.\n\n`
+      + `Lo que tuvieran esos días se reemplaza. El resto de la semana no se toca.`)) return;
+
+    aplicar.disabled = true;
+    let listas = 0;
+    for(const id of ids){
+      const quedan = (HORARIOS[String(id)] || []).filter(t => !dias.includes(t.dia_semana));
+      const nuevos = dias.flatMap(d => tramos.map(t => ({dia_semana: d, desde: t.desde, hasta: t.hasta})));
+      const r = await authFetch(`/api/horarios/${id}`, {method:"PUT",
+        headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({tramos: [...quedan.map(t => ({dia_semana: t.dia_semana, desde: t.desde, hasta: t.hasta})), ...nuevos]})});
+      if(r.ok) listas++;
+      else toast((await r.json().catch(()=>({}))).detail || "No se pudo con alguna");
+    }
+    toast(`Horario puesto a ${listas} ${listas === 1 ? "persona" : "personas"}`);
+    await cargarEmpleados();
+  };
+  repintar();
 }
 
 async function refrescarEmpleados(){ await cargarEmpleados(); }
