@@ -51,6 +51,12 @@ puede en una PC donde no se instala nada. Los dos dejan un usuario
 no las sabe nadie. `--a-json` va del `.dump` al JSON, que es el formato que
 viaja: el `.dump` sin `pg_restore` no se abre.
 
+`simular_sueldos.py` carga un ciclo entero de trabajo para tres empleadas y
+después se juega con el valor hora y la comisión desde la app. Factura por la
+API, así los precios y las comisiones son los de un cobro de verdad; la duración
+de cada trabajo sale del precio del ítem (el más caro del ciclo, 80 minutos).
+Solo trabaja contra `127.0.0.1` y se deshace con `--borrar`.
+
 Notas del entorno de trabajo (no del proyecto):
 
 - `curl` necesita `--noproxy '*'` para pegarle a `127.0.0.1`.
