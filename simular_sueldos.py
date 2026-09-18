@@ -129,6 +129,15 @@ def cargar(api, cuantas, cual_ciclo, semilla):
         sys.exit("No hay ningún ítem marcado a comisión. Marcá alguno en Admin → catálogo.")
 
     dias = [desde + timedelta(days=i) for i in range(7) if desde + timedelta(days=i) <= hoy]
+    # Cada una trabaja los días que tiene cargados en su horario. Facturarle un
+    # día que el local no abre ensucia la prueba de dos formas: le suma trabajo
+    # que no existe, y si cae en lunes la app lo toma como día de depilación y
+    # le arma un reparto arriba de las comisiones.
+    horarios = api.pedir("/api/horarios") or {}
+    def trabaja(emp, dia):
+        suyos = {t["dia_semana"] for t in horarios.get(str(emp["id"]), [])}
+        return dia.weekday() in (suyos or {1, 2, 3, 4, 5})   # sin horario: martes a sábado
+
     print(f"Ciclo {desde} a {hasta}  ·  {len(empleadas)} empleadas  ·  "
           f"{len(items)} ítems a comisión\n")
 
@@ -136,8 +145,11 @@ def cargar(api, cuantas, cual_ciclo, semilla):
     por_dia = {}          # (empleada, día) -> cuántos trabajos, para las horas
     for emp in empleadas:
         for dia in dias:
-            # Un franco cada tanto: la semana no puede ser un bloque parejo, que
-            # la pantalla tiene que mostrar días con y sin trabajo.
+            if not trabaja(emp, dia):
+                continue
+            # Y un franco cada tanto entre los que sí trabaja: la semana no puede
+            # ser un bloque parejo, que la pantalla tiene que mostrar días con y
+            # sin trabajo.
             if rnd.random() < 0.2:
                 continue
             for _ in range(rnd.randint(1, 3)):
