@@ -280,6 +280,7 @@ class EgresoIn(BaseModel):
     # casilla y eran dos formas de decir lo mismo, que tarde o temprano se
     # contradicen entre sí.
     tipo: str; concepto: str | None = None; monto: int; forma_pago: str | None = None; notas: str | None = None
+    fecha: str | None = None              # 'YYYY-MM-DD' argentino: para anotar un gasto de otro día
 class EgresoEdit(BaseModel):
     tipo: str | None = None; concepto: str | None = None; monto: int | None = None
     forma_pago: str | None = None; notas: str | None = None
@@ -791,7 +792,7 @@ def forma_comprobante(db, comp, pagos_precargados=None) -> str:
 # venta a una caja de 2024 y nadie la vería nunca más).
 DIAS_ATRAS_MAX = 60
 
-def fecha_del_servicio(iso: str | None, ahora):
+def fecha_del_servicio(iso: str | None, ahora, que: str = "un servicio"):
     """Instante UTC que hay que guardar para un servicio hecho el día `iso`.
 
     Sin `iso` (el caso normal) es simplemente ahora. Con `iso`, se guarda el
@@ -807,7 +808,7 @@ def fecha_del_servicio(iso: str | None, ahora):
         raise HTTPException(400, "Fecha inválida (se espera AAAA-MM-DD)")
     hoy = hoy_argentina()
     if d > hoy:
-        raise HTTPException(400, "No se puede anotar un servicio con fecha futura")
+        raise HTTPException(400, f"No se puede anotar {que} con fecha futura")
     if (hoy - d).days > DIAS_ATRAS_MAX:
         raise HTTPException(400, f"No se puede retroceder más de {DIAS_ATRAS_MAX} días")
     if d == hoy:
@@ -2887,10 +2888,18 @@ def crear_egreso(e: EgresoIn, user = Depends(usuario_actual), db: Session = Depe
     # Después no se recalcula: un egreso que anotó el empleado le tiene que seguir
     # apareciendo aunque la dueña marque ese tipo como privado el mes que viene.
     privado = es_dueno(user) and _tipo_privado(db, e.tipo)
+    # Con fecha de otro día, igual que un comprobante: el gasto de un día se
+    # anota cuando se acuerdan, y el del lunes de depilación entra en el reparto
+    # de ESE lunes. Cargado hoy, la cuenta del lunes le queda alta a la empleada.
+    ahora = fecha_hora_now_utc().replace(tzinfo=None)
+    fecha = fecha_del_servicio(e.fecha, ahora, "un gasto")
+    # Mover plata de una caja a otra es de la dueña, como en el comprobante.
+    if not es_dueno(user) and hora_argentina(fecha).date() != hoy_argentina():
+        raise HTTPException(403, "Solo la dueña puede anotar un gasto de otro día")
     eg = models.Egreso(numero=siguiente_numero_egreso(db),
                        tipo=e.tipo, concepto=e.concepto, monto=e.monto,
                        forma_pago=e.forma_pago, notas=e.notas, privado=privado,
-                       fecha=fecha_hora_now_utc())
+                       fecha=fecha)
     db.add(eg); db.commit(); db.refresh(eg)
     return {"id": eg.id, "numero": eg.numero, "privado": privado}
 

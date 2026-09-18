@@ -23,11 +23,25 @@ $("#btnGuardarEgreso").onclick=async()=>{
   const monto=parseInt($("#egMonto").value);
   if(!tipo || !monto){ toast("Completá tipo y monto"); return; }
   await authFetch("/api/tipos-egreso",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({nombre:tipo})});
-  await authFetch("/api/egresos",{method:"POST",headers:{"Content-Type":"application/json"},
-    body:JSON.stringify({tipo, concepto:$("#egConcepto").value, monto, forma_pago:$("#egPago").value})});
+  const fecha = ($("#egFecha") && $("#egFecha").value) || null;
+  const r = await authFetch("/api/egresos",{method:"POST",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({tipo, concepto:$("#egConcepto").value, monto,
+                         forma_pago:$("#egPago").value, fecha})});
+  if(!r.ok){ toast((await r.json().catch(()=>({}))).detail || "No se pudo"); return; }
   $("#egTipo").value=""; $("#egConcepto").value=""; $("#egMonto").value="";
-  toast("Egreso registrado"); avisoEgresoPrivado(); cargarEgresosHoy();
+  toast(fecha ? `Egreso registrado con fecha ${fecha.split("-").reverse().slice(0,2).join("/")}`
+              : "Egreso registrado");
+  avisoEgresoPrivado(); cargarEgresosHoy();
 };
+
+/* El casillero de la fecha se marca cuando tiene algo puesto, para que no quede
+   una fecha vieja sin que se vea. */
+if($("#egOtroDiaBox")){
+  const caja = $("#egOtroDiaBox"), campo = $("#egFecha");
+  const pintar = () => caja.classList.toggle("activo", !!campo.value);
+  campo.addEventListener("change", pintar);
+  $("#egBtnHoy").onclick = () => { campo.value = ""; caja.open = false; pintar(); };
+}
 
 /* Aviso del arqueo.
 
@@ -1311,17 +1325,10 @@ function hayTicketSinCobrar(){
   return ticket.length > 0 || EXTRAS.length > 0;
 }
 
-/* La marca de borrador, arriba del ticket. Se actualiza sola porque
-   actualizarTotales() corre en cada cambio. */
+/* La marca de borrador vive en el MENÚ, no acá: en facturar el ticket está a la
+   vista y el cartel repetía lo que ya se ve. En las otras pantallas sí hace
+   falta, que es donde uno se olvida de que dejó algo sin cobrar. */
 function pintarAvisoBorrador(){
-  const caja = $("#avisoBorrador");
-  if(!caja) return;
-  const n = ticket.length;
-  caja.style.display = hayTicketSinCobrar() ? "" : "none";
-  caja.textContent = n
-    ? `Borrador guardado · ${n} ${n===1?"ítem":"ítems"} sin cobrar`
-    : "Borrador guardado";
-  // y que el menú lo muestre en todas las pantallas
   if(window.marcarBorradorEnMenu) window.marcarBorradorEnMenu();
 }
 

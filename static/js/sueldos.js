@@ -116,7 +116,10 @@ async function arranque(){
     $("#tituloDetalle").textContent = "👛 Tu sueldo";
     $("#bajadaDetalle").textContent = "Poné cuánto duró cada trabajo y las horas de cada día. El total se actualiza solo.";
   }
-  ITEMS = await (await pedir("/api/sueldos/items-comision")).json();
+  // Ordenados por nombre: el desplegable se usa buscando uno puntual, y el orden
+  // en que los devuelve la base no le dice nada al que busca.
+  ITEMS = (await (await pedir("/api/sueldos/items-comision")).json())
+    .sort((a, b) => a.nombre.localeCompare(b.nombre, "es"));
   if(DUENO){
     // Las mismas formas de pago con las que se cobra: el egreso del sueldo entra
     // a la caja como cualquier otro, y el arqueo lo suma si dice "Efectivo".
@@ -207,8 +210,15 @@ async function cargarPanelDueno(){
       <button class="b-out ver" data-emp="${r.empleado.id}">Ver</button>
     </div>`).join("") || `<div class="vacio"><b>No hay empleados cargados</b>
       Agregalos más abajo y ahí empiezan a aparecer acá.</div>`;
+  // "Ver" cambia la empleada del detalle, que está más abajo en la página: sin
+  // el scroll, tocarlo parecía no hacer nada.
   $("#listaEmpleadas").querySelectorAll(".ver").forEach(b=>{
-    b.onclick = () => { $("#quien").value = b.dataset.emp; localStorage.setItem(RECUERDO, b.dataset.emp); cargar(); };
+    b.onclick = async () => {
+      $("#quien").value = b.dataset.emp;
+      localStorage.setItem(RECUERDO, b.dataset.emp);
+      await cargar();
+      $("#tituloDetalle").closest(".card").scrollIntoView({behavior:"smooth", block:"start"});
+    };
   });
 
   // El mismo editor que usa Admin arriba de la lista de empleados: los dos
@@ -435,6 +445,7 @@ function dibujarDia(d, c){
     <div class="dia-cab">
       <b>${diaDe(d.fecha)} ${fechaCorta(d.fecha)}</b>
       <span class="dia-horas${falta ? " falta" : ""}">
+        <span class="rot-horas">Horas trabajadas:</span>
         <span class="valor">${falta ? "sin horas" : hhmm(d.minutos)}</span>
         <button class="b-out btn-mini editar-horas" data-fecha="${d.fecha}" data-min="${d.minutos}">${falta ? "Poner horas" : "✎"}</button>
       </span>

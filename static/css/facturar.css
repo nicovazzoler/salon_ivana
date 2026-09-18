@@ -204,26 +204,41 @@
   }
 
   /* --- Extras: cargos que no toca ningún descuento --- */
-  .extras-box, .otro-dia{
+  .extras-box{
     margin:var(--sp-3) 0;
     padding:10px 12px;
     background:var(--bg-sutil);
     border:1px solid var(--border-sutil);
     border-radius:var(--r-md);
   }
+  /* "Es de otro día" es la excepción, no un campo más: va como un renglón chico
+     debajo de los datos, sin caja, para que no pese lo mismo que el cliente o el
+     peluquero, que se llenan en todos los cobros. */
+  .otro-dia{
+    margin:2px 0 var(--sp-3);
+    padding:0;
+    border-top:1px solid var(--border-sutil);
+    padding-top:var(--sp-2);
+  }
   .otro-dia summary{
     cursor:pointer; list-style:none;
-    font-size:var(--fs-base); font-weight:var(--fw-bold);
-    color:var(--text-suave);
+    font-size:var(--fs-sm); font-weight:var(--fw-normal);
+    color:var(--text-tenue);
   }
+  .otro-dia summary:hover{ color:var(--text-suave); }
   .otro-dia summary::-webkit-details-marker{ display:none; }
   .otro-dia summary .aclara{ font-weight:var(--fw-normal); color:var(--text-tenue); }
   .otro-dia .alta-fecha{ margin:8px 0 0; gap:6px; }
   /* Cuando la fecha no es la de hoy hay que verlo sin buscarlo: el bloque se
      marca en bronce aunque esté plegado, porque una venta cargada sin querer en
      otro día desordena la caja y nadie lo va a ir a revisar. */
-  .otro-dia.activo{ border-color:var(--bronce-500); background:var(--oro-a08); }
-  .otro-dia.activo summary{ color:var(--text-marca); }
+  /* Con una fecha puesta hay que verlo sin buscarlo: una venta cargada sin
+     querer en otro día desordena la caja y nadie lo va a ir a revisar. */
+  .otro-dia.activo{
+    border:1px solid var(--bronce-500); background:var(--oro-a08);
+    border-radius:var(--r-md); padding:8px 10px;
+  }
+  .otro-dia.activo summary{ color:var(--text-marca); font-weight:var(--fw-bold); }
   .nota-otro-dia{
     margin-top:8px;
     font-size:var(--fs-sm);
@@ -551,4 +566,22 @@
     font-size:var(--fs-base);
     color:var(--text-tenue);
     margin:-2px 0 10px 2px;
+  }
+
+  /* Lo que se cobra, en su propio bloque: sin esto las líneas, el descuento y
+     los extras venían en una sola tirada y el descuento se leía como un campo
+     más de la ficha, no como algo que se le aplica a lo de arriba. */
+  .bloque-cobro{
+    margin:var(--sp-3) 0;
+    padding:var(--sp-2) var(--sp-3) var(--sp-3);
+    border:1px solid var(--border-sutil);
+    border-radius:var(--r-md);
+    background:var(--bg-sutil);
+  }
+  .bloque-cobro #item-extra{ margin-top:var(--sp-2); }
+  /* El vacío del ticket es lo primero que mira el que arranca un cobro: tiene
+     que verse, no ser un renglón gris más. */
+  .bloque-cobro .muted{
+    margin:var(--sp-3) 0; text-align:center;
+    font-size:var(--fs-md); color:var(--text-suave);
   }
