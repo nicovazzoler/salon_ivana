@@ -1268,19 +1268,24 @@ def base_suelto(t, item) -> int:
     no hubo comprobante donde ajustar nada."""
     return (item.precio or 0) * (t.cantidad or 1)
 
-def base_comision(linea) -> int:
+def base_comision(linea, comp=None) -> int:
     """Sobre cuánta plata se calcula la comisión de una línea.
 
-    Es el precio EFECTIVO con el ajuste de esa línea aplicado, por la cantidad.
-    No entra el descuento del comprobante: se acordó que la comisión se cuenta
-    sobre el trabajo, no sobre lo que después se le perdonó al cliente.
+    Lo que la clienta terminó pagando por ESE trabajo: el precio efectivo, con
+    el ajuste de la línea y con el descuento del comprobante.
+
+    La diferencia entre la lista de transferencia y la de efectivo NO baja la
+    base, y por eso se arranca del precio efectivo: no es un descuento que se le
+    hizo a nadie, son las dos listas de precios del local.
     """
     unidad = precio_con_ajuste(linea.precio_efectivo or 0,
                                linea.ajuste_pct, linea.ajuste_monto)
-    return unidad * (linea.cantidad or 1)
+    base = unidad * (linea.cantidad or 1)
+    pct = (comp.descuento_pct or 0) if comp is not None else 0
+    return base - round(base * pct / 100) if pct else base
 
-def comision_de(linea, pct: int) -> int:
-    return round(base_comision(linea) * pct / 100)
+def comision_de(linea, pct: int, comp=None) -> int:
+    return round(base_comision(linea, comp) * pct / 100)
 
 def lineas_a_comision_pendientes(db, empleado):
     """Las líneas a comisión de esa empleada que todavía no se pagaron.
@@ -1493,7 +1498,7 @@ def resumen_pendiente(db, empleado) -> dict:
             "cliente_id": comp.cliente_id,
             "fecha": hora_argentina(comp.fecha).date().isoformat(),
             "nombre": linea.nombre, "cantidad": linea.cantidad,
-            "base": base_comision(linea), "comision": comision_de(linea, pct_linea),
+            "base": base_comision(linea, comp), "comision": comision_de(linea, pct_linea, comp),
             "minutos": minutos_por_linea.get(linea.id, 0) or 0,
             "cliente": comp.cliente_nombre, "suelto": False})
 
@@ -2655,6 +2660,19 @@ def _pagina_comprobantes(db, comps, total, total_sin_filtros, deuda, precalculad
                     **est})
     return {"comprobantes": out, "total": total, "total_sin_filtros": total_sin_filtros,
             "deuda_total": deuda}
+
+@app.get("/api/comprobantes/proximo-numero")
+def proximo_numero(tipo: str = "ticket", _ = Depends(usuario_actual), db: Session = Depends(get_db)):
+    """Qué número va a llevar el próximo. Para mostrarlo ANTES de crearlo.
+
+    Va antes de /{comp_id}: FastAPI prueba las rutas en orden, y con esa primero
+    "proximo-numero" se lee como un id y revienta al convertirlo a número.
+
+    Es informativo: el número definitivo se asigna al guardar. En el local hay
+    una sola tablet, así que en los hechos coincide, pero no se guarda nada acá
+    ni se reserva el número.
+    """
+    return {"numero": siguiente_numero(db, tipo)}
 
 @app.get("/api/comprobantes/{comp_id}")
 def ver_comprobante(comp_id: int, _ = Depends(usuario_actual), db: Session = Depends(get_db)):

@@ -157,6 +157,14 @@ por ahí. Contándolos dos veces, el arqueo pide más efectivo del que hay en el
 cajón y no avisa por qué. El filtro va por el id y no por el texto "Seña", que se
 puede tipear distinto.
 
+**La comisión sale de lo que la clienta terminó pagando por ESE trabajo.**
+`base_comision()` arranca del precio efectivo, le aplica el ajuste de la línea y
+después el descuento del comprobante. Lo que NO baja la base es la diferencia
+entre la lista de transferencia y la de efectivo: no es un descuento que se le
+hizo a nadie, son las dos listas de precios. Por eso se parte del efectivo y no
+del de transferencia. Lo ya cerrado no se recalcula nunca: cada liquidación
+guarda `base` y `comision` como estaban ese día.
+
 **Los extras no los toca ningún descuento.** Entran al final, después de todo.
 
 **Ajuste por línea: porcentaje O monto fijo**, nunca los dos. Va por unidad y

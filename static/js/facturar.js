@@ -473,6 +473,7 @@ function renderTicket(){
   const cont=$("#lineas"); cont.innerHTML="";
 
   if(ticket.length===0){ cont.innerHTML='<p class="muted">Tocá un servicio para empezar.</p>'; }
+  marcarAtendio();
   ticket.forEach((l,i)=>{
 
     const editando = !!l.editando;          // línea de ítem extra abierta para editar
@@ -921,16 +922,48 @@ async function imprimirComprobante(id){
   }
 }
 
+/* El número es el que la app va a usar, pedido justo antes: no se reserva nada.
+   Si no se puede saber, se pregunta igual sin el número —lo que importa es el
+   total y con qué se cobra—. */
+async function confirmarAntesDeGenerar(tipo, cliente){
+  const esTicket = tipo === "ticket";
+  let num = "";
+  try{
+    const r = await authFetch(`/api/comprobantes/proximo-numero?tipo=${tipo}`);
+    if(r.ok) num = " " + (esTicket ? "A" : "P") + "-" + String((await r.json()).numero).padStart(5, "0");
+  }catch(e){}
+  const forma = esTicket ? (formaPago === "efectivo" ? "Efectivo" : "Transferencia") : null;
+  const total = $("#total") ? $("#total").textContent.trim() : "";
+  return confirm(
+    `¿Generamos el ${esTicket ? "ticket" : "presupuesto"}${num}?\n\n` +
+    `Cliente: ${cliente}\n` +
+    (total ? `Total: ${total}${forma ? " en " + forma : ""}\n` : "") +
+    (esTicket ? "\nEl papel sale apenas se guarda." : ""));
+}
+
+/* Si en el ticket hay algún ítem a comisión. De eso depende que haga falta
+   decir quién atendió. */
+const hayComision = () =>
+  ticket.some(l => l.item_id && (CATALOGO.find(i => i.id === l.item_id) || {}).es_comision);
+
+/* El asterisco de "Atendió" se prende solo cuando de verdad es obligatorio. Fijo,
+   mentía en la mitad de los cobros. */
+function marcarAtendio(){
+  const m = $("#reqPeluquero");
+  if(m) m.style.display = hayComision() ? "" : "none";
+}
+
 // Valida el cliente (obligatorio) y crea el comprobante. Devuelve el objeto creado o null.
 async function crearComprobante(){
   const nom=$("#cliente").value.trim();
   if(!nom){ toast("Falta el nombre del cliente"); $("#cliente").focus(); return null; }
-  // Obligatorio en el ticket y no en el presupuesto: el presupuesto es un precio
-  // que se pasa, no trabajo hecho, así que no hay comisión que atribuirle. Si
-  // después se convierte en ticket, se completa desde el detalle del
-  // comprobante, que es donde está el "Atendió" editable.
-  if(tipo === "ticket" && EMPLEADOS.length && !$("#peluquero").value){
-    toast("Elegí quién atendió"); $("#peluquero").focus(); return null;
+  // Solo cuando hay algo a comisión, que es de lo único que sale un sueldo: un
+  // shampoo que se lleva no se le atribuye a nadie. Y nunca en el presupuesto,
+  // que es un precio que se pasa y no trabajo hecho; si después se convierte en
+  // ticket, el "Atendió" se completa desde el detalle del comprobante.
+  if(tipo === "ticket" && EMPLEADOS.length && hayComision() && !$("#peluquero").value){
+    toast("Elegí quién atendió: hay un trabajo a comisión");
+    $("#peluquero").focus(); return null;
   }
  let cliId = clienteIdSel;                     // lo que elegiste del dropdown (o null)
 
@@ -951,6 +984,12 @@ async function crearComprobante(){
       CLIENTES.push({id:nuevo.id, nombre:nom});
     }
   }
+  /* Última parada antes de que exista: se dice qué número va a llevar, a nombre
+     de quién, cuánto y con qué se cobra. Es lo que sale impreso y lo que entra a
+     la caja, y el papel se manda apenas se guarda: revisarlo después ya es
+     anular y volver a hacerlo. */
+  if(!await confirmarAntesDeGenerar(tipo, nom)) return null;
+
   const body={
     tipo,
     cliente_id: cliId,
