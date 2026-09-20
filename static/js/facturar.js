@@ -938,7 +938,7 @@ async function confirmarAntesDeGenerar(tipo, cliente){
     `¿Generamos el ${esTicket ? "ticket" : "presupuesto"}${num}?\n\n` +
     `Cliente: ${cliente}\n` +
     (total ? `Total: ${total}${forma ? " en " + forma : ""}\n` : "") +
-    (esTicket ? "\nEl papel sale apenas se guarda." : ""));
+    "\nDespués solo se corrige anulándolo.");
 }
 
 /* Si en el ticket hay algún ítem a comisión. De eso depende que haga falta
