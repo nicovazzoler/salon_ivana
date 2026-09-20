@@ -75,6 +75,13 @@ class Egreso(Base):
     # la misma pantalla que todo lo demás, pero eso no es asunto de quien atiende:
     # ni aparece en su lista ni entra en los totales de su caja.
     privado = Column(Boolean, default=False)
+    # El egreso que es el pago a la ayudante del lunes de depilación. `ayudante`
+    # lo marca como tal —es el renglón fijo de la tarjeta del lunes, el gasto que
+    # más se olvida y el único que le baja la parte a la que lleva el día— y
+    # `empleado_id` lo ata a la persona cuando es del salón, para que el aviso le
+    # aparezca en su sueldo sin ir a buscarla por el nombre escrito.
+    ayudante = Column(Boolean, default=False)
+    empleado_id = Column(Integer, ForeignKey("empleados.id"), index=True)
 
 class FormaPago(Base):
     __tablename__ = "formas_pago"

@@ -86,6 +86,23 @@
                              font-weight:var(--fw-black); }
   .cuenta-depi .ren.mitad{ border-bottom:none; }
   .cuenta-depi .ren.mitad b{ font-weight:var(--fw-bold); }
+  /* El pago a la ayudante no es un gasto más: es el único que sale de un trato
+     con una persona, y el que más se olvida. Por eso el renglón está siempre,
+     aunque todavía no se cargó. */
+  .cuenta-depi .ren.chico.ayudante{ color:var(--text); }
+  .cuenta-depi .ren.chico.falta-ayudante{ color:var(--danger); }
+  .cuenta-depi .ren.chico em{ font-style:normal; }
+  .cuenta-depi .ren .btn-mini{ margin-left:6px; padding:1px 7px; }
+
+  /* Para la ayudante no hay ciclo: solo el aviso de lo que cobró ese lunes. */
+  .avisos-depi{ margin-bottom:var(--sp-3); }
+  .aviso-depi{ display:flex; align-items:center; gap:var(--sp-3);
+               padding:var(--sp-3); border:1px solid var(--border-sutil);
+               border-radius:var(--r-md); background:var(--bg-sutil); }
+  .aviso-depi + .aviso-depi{ margin-top:var(--sp-2); }
+  .aviso-depi .det{ display:block; font-size:var(--fs-sm); color:var(--text-tenue); }
+  .aviso-depi .plata{ margin-left:auto; font-family:var(--font-display);
+                      font-weight:var(--fw-black); font-variant-numeric:tabular-nums; }
   .nota-depi{ font-size:var(--fs-sm); color:var(--text-tenue);
               padding:var(--sp-2) 0; border-top:1px solid var(--border-sutil); }
   /* Lo que se hizo ese día, a secas: sin horas ni "falta el tiempo", que no

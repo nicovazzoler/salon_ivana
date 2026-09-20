@@ -42,6 +42,10 @@ async function pedir(url, opts){
 const RECUERDO = "sueldos_empleado";
 
 let EMPLEADOS = [], ITEMS = [], EMP = null, D = null, FORMAS = [];
+// Todas las activas, aparte de EMPLEADOS: a la empleada esa lista se le
+// recorta a ella sola, y para elegir a la ayudante del lunes necesita ver a
+// las demás. Son los mismos nombres que ya ve en el desplegable de facturar.
+let TODAS = [];
 const DUENO = esDueno();
 /* La misma tarjeta la miran dos personas distintas: la empleada mira lo suyo y
    la dueña mira lo de otra. Los rótulos cambian con eso, porque "se te debe" en
@@ -103,6 +107,7 @@ async function arranque(){
   // La empleada se ve solo a ella: entró con su código y el resto no es asunto
   // suyo (el servidor tampoco se lo contestaría).
   EMPLEADOS = await listaEmpleados();
+  TODAS = await (await pedir("/api/empleados")).json();
   const sel = $("#quien");
   sel.onchange = () => { localStorage.setItem(RECUERDO, sel.value); cargar(); };
   if(DUENO){
@@ -339,9 +344,10 @@ function pintar(){
      <span class="val">${fmt(D.en_espera)}</span>
      <span class="nota">${D.sin_tiempo} ${D.sin_tiempo===1?"trabajo":"trabajos"} esperando que se cargue cuánto duró</span></div>`);
 
-  $("#cuerpo").innerHTML = (D.ciclos.length
+  const avisos = bloqueAvisos();
+  $("#cuerpo").innerHTML = avisos + (D.ciclos.length
     ? D.ciclos.map(dibujarCiclo).join("")
-    : `<div class="vacio"><b>${VOS.sinNada}</b>${VOS.comoAparece}</div>`) + bloqueHoy();
+    : (avisos ? "" : `<div class="vacio"><b>${VOS.sinNada}</b>${VOS.comoAparece}</div>`)) + bloqueHoy();
   enganchar();
 }
 
@@ -375,9 +381,15 @@ const trabajosDelDia = c => c.dias.flatMap(d => d.trabajos);
 
    Se ve la cuenta entera —lo que entró, lo que salió y las dos mitades— porque
    es un negocio a medias: la mitad que le toca no se entiende sin los dos
-   números de arriba. Cerrar sigue siendo de la dueña; la empleada lo mira. */
+   números de arriba. Los gastos se cargan desde acá y no desde Caja, que es de
+   la dueña: son los costos de SU día y son los únicos que le bajan la parte.
+   Cerrar sigue siendo de la dueña. */
 function dibujarDepilacion(c){
   const q = c.cuenta;
+  const ayudantes = q.egresos_detalle.filter(e => e.ayudante);
+  const otros = q.egresos_detalle.filter(e => !e.ayudante);
+  const borrar = e => `<button class="b-out btn-mini borrar-gasto" data-id="${e.id}"
+      title="Sacar este gasto del día">✕</button>`;
   return `<div class="ciclo depi" data-desde="${c.desde}">
     <div class="ciclo-cab">
       <div>
@@ -389,12 +401,25 @@ function dibujarDepilacion(c){
     <div class="ciclo-cuerpo">
       <div class="cuenta-depi">
         <div class="ren"><span>Lo que entró</span><b>${fmt(q.recaudado)}</b></div>
-        ${q.egresos_detalle.map(e => `<div class="ren chico">
-            <span>${esc(e.concepto || e.tipo || "Gasto")}</span><span>−${fmt(e.monto)}</span></div>`).join("")}
+        ${otros.map(e => `<div class="ren chico">
+            <span>${e.numero ? "#" + e.numero + " " : ""}${esc(e.concepto || e.tipo || "Gasto")}</span>
+            <span>−${fmt(e.monto)} ${borrar(e)}</span></div>`).join("")}
+        ${ayudantes.map(e => `<div class="ren chico ayudante">
+            <span>Ayudante · ${esc(e.concepto || "sin nombre")}${
+              e.notas ? ` <em class="det">(${esc(e.notas)})</em>` : ""}</span>
+            <span>−${fmt(e.monto)} ${borrar(e)}</span></div>`).join("")}
+        ${ayudantes.length ? "" : `<div class="ren chico falta-ayudante">
+            <span>Pago a la ayudante</span>
+            <span><button class="b-out btn-mini btn-ayudante" data-fecha="${c.desde}">Cargar</button></span>
+          </div>`}
         <div class="ren"><span>Gastos del día</span><b class="${q.gastos ? "resta" : ""}">${q.gastos ? "−" : ""}${fmt(q.gastos)}</b></div>
         <div class="ren total"><span>Queda</span><b>${fmt(q.resto)}</b></div>
         <div class="ren mitad"><span>${DUENO ? "Para " + esc(D.empleado.nombre) : "Te toca"}</span><b>${fmt(q.parte_empleada)}</b></div>
         <div class="ren mitad"><span>Para el salón</span><b>${fmt(q.parte_salon)}</b></div>
+      </div>
+      <div class="dia-acciones">
+        <button class="b-out btn-mini btn-gasto" data-fecha="${c.desde}">+ Gasto del día</button>
+        ${ayudantes.length ? `<button class="b-out btn-mini btn-ayudante" data-fecha="${c.desde}">+ Otra ayudante</button>` : ""}
       </div>
       ${q.deuda > 0 ? `<div class="aviso">⚠️ Falta cobrar ${fmt(q.deuda)} de este día${
           q.parte_empleada <= 0 ? ", que es por lo que no hay nada para repartir todavía" : ""}. Cuando se cobre, el reparto sube solo.</div>` : ""}
@@ -402,13 +427,36 @@ function dibujarDepilacion(c){
       ${!q.deuda && q.resto >= 0 && q.parte_empleada <= 0 && q.comprobantes === 0
         ? `<div class="aviso">Todavía no se facturó nada de este día.</div>` : ""}
       ${trabajosDelDia(c).length ? `
-        <div class="nota-depi">Lo que se anotó este día no se paga por comisión —ya está adentro del reparto—, pero se ve igual: escondido parecería que se perdió.</div>
+        <div class="nota-depi">Lo que se anotó este día no va por comisión para nadie —ya está adentro del reparto—, pero se ve igual: escondido parecería que se perdió.</div>
         <div class="lista-depi">${trabajosDelDia(c).map(t => `<div>
           <span>${esc(t.nombre)}${t.cantidad > 1 ? ` ×${t.cantidad}` : ""}</span>
           <span class="det">${t.numero ? "#" + t.numero : "sin comprobante"}${t.cliente ? " · " + esc(t.cliente) : ""}</span>
         </div>`).join("")}</div>` : ""}
       ${DUENO ? filaCerrar(c, q.parte_empleada > 0) : ""}
     </div>
+  </div>`;
+}
+
+/* El aviso de la ayudante: NO es un ciclo.
+
+   Para ella el lunes de depilación no se cierra ni se liquida —la plata salió de
+   la caja el día que se le pagó, como cualquier gasto—, así que lo único que
+   tiene que ver es cuánto cobró. Es también el lugar donde dice por qué ese
+   lunes no le aparece ninguna comisión: sin eso, el día se le borra de la
+   pantalla y parece que se perdió. */
+function bloqueAvisos(){
+  const av = D.avisos_depilacion || [];
+  if(!av.length) return "";
+  return `<div class="avisos-depi">
+    ${av.map(a => `<div class="aviso-depi">
+      <div>
+        <b>Depilación · ${diaDe(a.fecha)} ${fechaCorta(a.fecha)}</b>
+        <span class="det">${a.monto
+          ? "Cobro por el día. No hay ciclo que cerrar: ya te lo pagaron."
+          : "Ese día se reparte entero entre la que lo llevó y el salón, así que no va por comisión."}</span>
+      </div>
+      <span class="plata">${a.monto ? fmt(a.monto) : "—"}</span>
+    </div>`).join("")}
   </div>`;
 }
 
@@ -587,6 +635,19 @@ function enganchar(){
       await mandar("/api/sueldos/trabajo-suelto/"+a.dataset.trabajo, "DELETE");
     };
   });
+  // los gastos del lunes de depilación
+  document.querySelectorAll(".btn-gasto").forEach(b => {
+    b.onclick = () => abrirFormGasto(b, false);
+  });
+  document.querySelectorAll(".btn-ayudante").forEach(b => {
+    b.onclick = () => abrirFormGasto(b, true);
+  });
+  document.querySelectorAll(".borrar-gasto").forEach(b => {
+    b.onclick = async () => {
+      if(!confirm("¿Sacar este gasto del día? El reparto se recalcula solo.")) return;
+      await mandar(`/api/sueldos/depilacion/gasto/${b.dataset.id}?empleado_id=${EMP}`, "DELETE");
+    };
+  });
   // lo de la dueña
   document.querySelectorAll(".btn-dia").forEach(b => {
     b.onclick = async () => {
@@ -660,6 +721,69 @@ function abrirFormTrabajo(boton){
       fecha, minutos});
   };
   caja.querySelector(".fHoras").focus();
+}
+
+/* El gasto de un día de depilación se carga acá y no en Caja.
+
+   Dos formas del mismo formulario: el gasto común pide tipo y concepto, y el de
+   la ayudante pide QUIÉN, porque es un pago a una persona y eso es lo que
+   después le aparece a ella en su pantalla. El monto viene puesto con el fijo y
+   se puede pisar: si se pisa, el egreso se queda con el número viejo escrito. */
+function abrirFormGasto(boton, esAyudante){
+  document.querySelectorAll(".form-gasto").forEach(x => x.remove());
+  const fecha = boton.dataset.fecha;
+  const c = D.ciclos.find(x => x.desde === fecha);
+  const fijo = (c && c.cuenta && c.cuenta.pago_ayudante) || 0;
+  // La que lleva el día no puede ser su propia ayudante: cobraría dos veces el
+  // mismo día y la mitad de la resta sería contra ella misma.
+  const otras = TODAS.filter(e => e.nombre !== D.empleado.nombre);
+  const caja = document.createElement("div");
+  caja.className = "agregar form-gasto";
+  caja.innerHTML = esAyudante
+    ? `<div class="ancho"><label>¿Quién ayudó el ${fechaCorta(fecha)}?</label>
+         <select class="gQuien">
+           ${otras.map(e => `<option value="${esc(e.nombre)}">${esc(e.nombre)}</option>`).join("")}
+           <option value="">Otra persona…</option>
+         </select></div>
+       <div class="ancho gOtra" style="display:none;"><label>Nombre</label>
+         <input class="gNombre" maxlength="60" placeholder="No es del salón"></div>
+       <div style="flex:0 0 130px;"><label>Se le paga</label>
+         <input type="number" class="gMonto" min="1" inputmode="numeric" value="${fijo || ""}"></div>
+       <button class="b-ok gOk">Anotar el pago</button>
+       <button class="b-out gNo">Cancelar</button>
+       ${fijo ? `<span class="nota">El fijo son ${fmt(fijo)}. Si ponés otro número queda escrito que se cambió.</span>` : ""}`
+    : `<div class="ancho"><label>Gasto del ${fechaCorta(fecha)}</label>
+         <input class="gConcepto" maxlength="80" placeholder="Cera, descartables…"></div>
+       <div style="flex:0 0 130px;"><label>Monto</label>
+         <input type="number" class="gMonto" min="1" inputmode="numeric"></div>
+       <button class="b-ok gOk">Agregar</button>
+       <button class="b-out gNo">Cancelar</button>
+       <span class="nota">Entra en la resta del día, así que baja las dos mitades.</span>`;
+  boton.after(caja);
+  caja.querySelector(".gNo").onclick = () => caja.remove();
+  const sel = caja.querySelector(".gQuien");
+  if(sel) sel.onchange = () => {
+    caja.querySelector(".gOtra").style.display = sel.value ? "none" : "";
+    if(!sel.value) caja.querySelector(".gNombre").focus();
+  };
+  caja.querySelector(".gOk").onclick = async () => {
+    const monto = parseInt(caja.querySelector(".gMonto").value, 10) || 0;
+    if(monto <= 0){ toast("Poné cuánto fue"); return; }
+    let cuerpo = {empleado_id: EMP, fecha, monto};
+    if(esAyudante){
+      const elegida = sel.value || caja.querySelector(".gNombre").value.trim();
+      if(!elegida){ toast("Decí quién ayudó"); return; }
+      const suya = otras.find(e => e.nombre === elegida);
+      cuerpo = {...cuerpo, ayudante: true, concepto: elegida,
+                ayudante_id: suya ? suya.id : null, tipo: "Ayudante depilación"};
+    } else {
+      const que = caja.querySelector(".gConcepto").value.trim();
+      if(!que){ toast("Poné qué se gastó"); return; }
+      cuerpo = {...cuerpo, concepto: que, tipo: "Insumos"};
+    }
+    await mandar("/api/sueldos/depilacion/gasto", "POST", cuerpo);
+  };
+  caja.querySelector(esAyudante ? ".gMonto" : ".gConcepto").focus();
 }
 
 /* Un solo lugar donde se habla con el servidor: si algo falla se muestra el
