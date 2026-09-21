@@ -147,6 +147,13 @@
     background:var(--bg-sutil); color:var(--text-tenue); border:1px solid var(--border-sutil);
   }
   .dia-acciones{ margin-top:var(--sp-2); }
+  /* El borrón y cuenta nueva: una línea, no un formulario. Se toca una vez por
+     año y tenerlo desplegado invita a moverlo sin querer. */
+  .arranque{ display:flex; flex-wrap:wrap; align-items:center; gap:var(--sp-2);
+             margin-top:var(--sp-3); padding-top:var(--sp-3);
+             border-top:1px solid var(--border-sutil); font-size:var(--fs-sm);
+             color:var(--text-tenue); }
+  .arranque input[type=date]{ width:auto; }
 
   /* La puerta de "un trabajo de hoy": siempre visible al final, tenga o no
      ciclos arriba. Con borde punteado para que se lea como un lugar donde
@@ -267,6 +274,7 @@
       <a href="/admin">Admin → Empleados</a>, y el porcentaje de un servicio en particular,
       en el catálogo.</p></div></div>
     <div id="cfgGenerales"></div>
+    <div id="cfgArranque"></div>
 
     <p class="muted" style="margin:var(--sp-3) 0 0;">Los empleados se cargan en
        <a href="/admin#empleados">Admin</a>, con el resto de las listas.</p>
@@ -291,9 +299,10 @@
   <!-- Lo ya pagado lo miran las dos: la dueña todos los cierres, la empleada los
        suyos (el servidor no le contesta otra cosa). -->
   <div class="card" id="cardLiquidaciones" style="display:none;">
-    <div class="card-head"><div class="titulo"><h2 id="tituloPagado">🧾 Ya pagado</h2>
-      <p id="bajadaPagado">Los cierres anteriores, con los números tal como estaban ese día.</p></div></div>
-    <div id="listaLiq"></div>
+    <div class="card-head con-datos"><div class="titulo"><h2 id="tituloPagado">🧾 Ya pagado</h2>
+      <p id="bajadaPagado">Los cierres anteriores, con los números tal como estaban ese día.</p></div>
+      <button class="b-out" id="verPagado">Ver</button></div>
+    <div id="listaLiq" style="display:none;"></div>
   </div>
 
 </div>

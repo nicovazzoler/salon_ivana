@@ -208,6 +208,10 @@ class ExcepcionHorario(Base):
     desde = Column(String)                                # NULL = no viene
     hasta = Column(String)
     motivo = Column(String)
+    # Quién lleva ese día, para el lunes de depilación. Se guarda en todas las
+    # filas de la fecha porque se escriben juntas al abrir el día, y así la
+    # pregunta "¿de quién es este lunes?" se contesta leyendo cualquiera.
+    a_cargo = Column(String)
     empleado = relationship("Empleado")
 
 class NotaDiaria(Base):

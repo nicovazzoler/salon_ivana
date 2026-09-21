@@ -661,6 +661,11 @@ function panelAbrirDia(){
       <div class="campo"><label>Motivo (opcional)</label><input class="aMotivo" placeholder="Depilación"></div>
       <div class="campo" style="flex:1 1 100%;"><label>Quiénes vienen</label>
         <span class="chips-emp"></span></div>
+      <div class="campo aCargoCampo" style="flex:1 1 100%; display:none;">
+        <label>Quién lleva el día</label>
+        <select class="aCargo"></select>
+        <p class="muted" style="margin:0;">Solo para el lunes de depilación: es la que se lleva la
+          mitad del reparto. Si no se elige, se toma la que más facture ese día.</p></div>
       <button class="b-ok aGuardar">Guardar el día</button>
       <button class="b-out aCerrar">Cerrar</button>
     </div>`;
@@ -680,6 +685,17 @@ function panelAbrirDia(){
       pan.querySelector(".aHasta").value = abierta.tramos[0].hasta;
       if(abierta.motivo) pan.querySelector(".aMotivo").value = abierta.motivo;
     }
+    // La pregunta de quién lleva el día solo tiene sentido el lunes, que es el
+    // único que se reparte. Cualquier otro día se paga por comisión y horas, y
+    // el campo sería una decisión que no cambia nada.
+    if(new Date(fechaActual + "T12:00:00").getDay() === 1){
+      pan.querySelector(".aCargoCampo").style.display = "";
+      const sel = pan.querySelector(".aCargo");
+      sel.innerHTML = `<option value="">La que más facture</option>`
+        + d.empleados.map(e => `<option>${titulo(e.nombre)}</option>`).join("");
+      const yaEsta = d.empleados.find(e => e.a_cargo);
+      if(yaEsta) sel.value = yaEsta.a_cargo;
+    }
   });
   $("#vista").before(pan);
   pan.querySelector(".aCerrar").onclick = () => pan.remove();
@@ -690,7 +706,8 @@ function panelAbrirDia(){
     const r = await authFetch("/api/agenda/abrir-dia", {method:"POST",
       headers:{"Content-Type":"application/json"},
       body: JSON.stringify({fecha:fechaActual, empleados:ids, desde, hasta,
-                            motivo: pan.querySelector(".aMotivo").value})});
+                            motivo: pan.querySelector(".aMotivo").value,
+                            a_cargo: pan.querySelector(".aCargo").value || null})});
     if(!r.ok){ toast((await r.json().catch(()=>({}))).detail || "No se pudo"); return; }
     pan.remove();
     toast(ids.length ? `${ids.length} ${ids.length===1?"empleada":"empleadas"} este día` : "Día cerrado");
