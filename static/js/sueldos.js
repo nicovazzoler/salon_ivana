@@ -108,6 +108,17 @@ function rangoLargo(desde, hasta){
     ? `${Number(d1)} al ${Number(d2)} de ${MESES[Number(mA)-1]}`
     : `${Number(d1)} de ${MESES[Number(mA)-1]} al ${Number(d2)} de ${MESES[Number(mB)-1]}`;
 }
+/* El sábado con el que arranca la semana de pago de un día.
+
+   Lo mismo que ciclo_de() en el backend, pero siempre el sábado de la semana: el
+   lunes es su propio ciclo de un día allá, y acá lo que se busca es dónde empieza
+   la semana, que es donde tiene sentido poner el corte. */
+function sabadoDeLaSemana(iso){
+  const d = new Date(iso + "T12:00:00");
+  d.setDate(d.getDate() - ((d.getDay() + 1) % 7));
+  return d.toISOString().slice(0, 10);
+}
+
 const DIAS = ["Domingo","Lunes","Martes","Miércoles","Jueves","Viernes","Sábado"];
 function diaDe(iso){
   if(!iso) return "";
@@ -250,7 +261,7 @@ async function cargarPanelDueno(){
   // El mismo editor que usa Admin arriba de la lista de empleados: los dos
   // números son uno solo y no pueden dibujarse en dos lados distintos.
   panelGenerales($("#cfgGenerales"), () => cargarPanelDueno());
-  pintarArranque(resumenes[0] ? resumenes[0].arranque : null);
+  pintarArranque(resumenes[0] ? resumenes[0].arranque : null, resumenes);
 
   pintarLiquidaciones();
 }
@@ -261,25 +272,41 @@ async function cargarPanelDueno(){
    volver a aparecer como pendiente. NO borra nada: los trabajos y las horas
    siguen guardados, así que correr el corte para atrás los devuelve enteros.
    Por eso es esto y no un botón de borrar ciclos viejos, que sí sería para
-   siempre y con la plata de otro. */
-function pintarArranque(actual){
+   siempre y con la plata de otro.
+
+   El corte se propone en el SÁBADO de la semana, no en hoy: es donde arranca la
+   semana de pago, y puesto un miércoles la semana en curso aparece cortada por
+   la mitad. Y se dice de antemano cuántos ciclos y cuánta plata dejan de verse,
+   que es lo único que hace falta saber antes de tocar el botón. */
+function pintarArranque(actual, resumenes){
   const cont = $("#cfgArranque");
   if(!cont) return;
+  const sab = sabadoDeLaSemana(hoyArg());
+  const viejos = resumenes.flatMap(r => r.ciclos.filter(c => c.desde < sab));
+  const plata = viejos.reduce((a, c) => a + c.total, 0);
   cont.innerHTML = `
     <div class="arranque">
       <span>${actual
         ? `Los sueldos cuentan desde el <b>${fechaCorta(actual)}</b>. Lo anterior no aparece.`
-        : "Los sueldos cuentan desde siempre."}</span>
-      <input type="date" class="arrFecha" value="${actual || hoyArg()}" max="${hoyArg()}">
+        : "Los sueldos cuentan desde siempre: aparece todo lo que quedó sin pagar."}</span>
+      <input type="date" class="arrFecha" value="${actual || sab}" max="${hoyArg()}">
       <button class="b-out btn-mini arrOk">Mover el corte</button>
       ${actual ? `<button class="b-out btn-mini arrNo">Quitarlo</button>` : ""}
+      ${viejos.length ? `<span class="nota" style="flex:1 1 100%;">Con el corte en el sábado
+        ${fechaCorta(sab)} dejan de aparecer ${viejos.length}
+        ${viejos.length === 1 ? "ciclo" : "ciclos"} anteriores, por ${fmt(plata)}. La semana que
+        arranca ese sábado queda entera.</span>` : ""}
     </div>`;
   cont.querySelector(".arrOk").onclick = async () => {
     const f = cont.querySelector(".arrFecha").value;
     if(!f){ toast("Elegí desde qué día"); return; }
+    const van = resumenes.flatMap(r => r.ciclos.filter(c => c.desde < f));
     if(!confirm(`Los sueldos van a contar desde el ${fechaCorta(f)}.\n\n`
-      + "Lo de antes deja de aparecer como pendiente. No se borra nada: si te "
-      + "equivocás, corrés el corte para atrás y vuelve todo.")) return;
+      + (van.length
+          ? `Dejan de aparecer ${van.length} ${van.length===1?"ciclo":"ciclos"} anteriores, `
+            + `por ${fmt(van.reduce((a,c)=>a+c.total,0))}.\n\n`
+          : "")
+      + "No se borra nada: si te equivocás, corrés el corte para atrás y vuelve todo.")) return;
     if(await mandar("/api/sueldos/arranque", "PUT", {fecha: f})) toast("Corte movido ✓");
   };
   const quitar = cont.querySelector(".arrNo");
