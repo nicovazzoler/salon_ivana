@@ -154,6 +154,11 @@
              border-top:1px solid var(--border-sutil); font-size:var(--fs-sm);
              color:var(--text-tenue); }
   .arranque input[type=date]{ width:auto; }
+  /* Puesto, es un dato y no un control: un renglón gris al pie, sin casillero ni
+     botones a la vista. */
+  .arranque.puesto{ font-size:var(--fs-xs); }
+  .arranque .arrVer{ color:var(--text-tenue); text-decoration:underline; }
+  .arranque .arrCajon{ display:flex; align-items:center; gap:var(--sp-2); }
 
   /* La puerta de "un trabajo de hoy": siempre visible al final, tenga o no
      ciclos arriba. Con borde punteado para que se lea como un lugar donde

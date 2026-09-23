@@ -274,29 +274,48 @@ async function cargarPanelDueno(){
    Por eso es esto y no un botón de borrar ciclos viejos, que sí sería para
    siempre y con la plata de otro.
 
-   El corte se propone en el SÁBADO de la semana, no en hoy: es donde arranca la
-   semana de pago, y puesto un miércoles la semana en curso aparece cortada por
-   la mitad. Y se dice de antemano cuántos ciclos y cuánta plata dejan de verse,
-   que es lo único que hace falta saber antes de tocar el botón. */
+   Se pone UNA vez en la vida del local, así que puesto se achica a un renglón
+   gris: un casillero de fecha y dos botones arriba de la pantalla que se mira
+   todos los días son una invitación a mover sin querer algo que nadie quiso
+   mover. El "cambiar" queda para el único momento en que hace falta de verdad,
+   que es cuando se acaba de poner y se le erró a la fecha.
+
+   Sin corte se ve entero, con la fecha propuesta en el SÁBADO —donde arranca la
+   semana de pago; puesto un miércoles, la semana en curso aparece cortada por la
+   mitad— y diciendo de antemano cuántos ciclos y cuánta plata dejan de verse. */
 function pintarArranque(actual, resumenes){
   const cont = $("#cfgArranque");
   if(!cont) return;
   const sab = sabadoDeLaSemana(hoyArg());
   const viejos = resumenes.flatMap(r => r.ciclos.filter(c => c.desde < sab));
   const plata = viejos.reduce((a, c) => a + c.total, 0);
-  cont.innerHTML = `
-    <div class="arranque">
-      <span>${actual
-        ? `Los sueldos cuentan desde el <b>${fechaCorta(actual)}</b>. Lo anterior no aparece.`
-        : "Los sueldos cuentan desde siempre: aparece todo lo que quedó sin pagar."}</span>
+
+  const controles = `
       <input type="date" class="arrFecha" value="${actual || sab}" max="${hoyArg()}">
-      <button class="b-out btn-mini arrOk">Mover el corte</button>
-      ${actual ? `<button class="b-out btn-mini arrNo">Quitarlo</button>` : ""}
-      ${viejos.length ? `<span class="nota" style="flex:1 1 100%;">Con el corte en el sábado
-        ${fechaCorta(sab)} dejan de aparecer ${viejos.length}
-        ${viejos.length === 1 ? "ciclo" : "ciclos"} anteriores, por ${fmt(plata)}. La semana que
-        arranca ese sábado queda entera.</span>` : ""}
-    </div>`;
+      <button class="b-out btn-mini arrOk">${actual ? "Mover el corte" : "Poner el corte"}</button>
+      ${actual ? `<button class="b-out btn-mini arrNo">Quitarlo</button>` : ""}`;
+
+  cont.innerHTML = actual
+    ? `<div class="arranque puesto">
+         <span>Los sueldos cuentan desde el <b>${fechaCorta(actual)}</b>.</span>
+         <a href="#" class="arrVer">cambiar</a>
+         <span class="arrCajon" style="display:none;">${controles}</span>
+       </div>`
+    : `<div class="arranque">
+         <span>Los sueldos cuentan desde siempre: aparece todo lo que quedó sin pagar.</span>
+         ${controles}
+         ${viejos.length ? `<span class="nota" style="flex:1 1 100%;">Con el corte en el sábado
+           ${fechaCorta(sab)} dejan de aparecer ${viejos.length}
+           ${viejos.length === 1 ? "ciclo" : "ciclos"} anteriores, por ${fmt(plata)}. La semana que
+           arranca ese sábado queda entera.</span>` : ""}
+       </div>`;
+
+  const ver = cont.querySelector(".arrVer");
+  if(ver) ver.onclick = e => {
+    e.preventDefault();
+    cont.querySelector(".arrCajon").style.display = "";
+    ver.remove();
+  };
   cont.querySelector(".arrOk").onclick = async () => {
     const f = cont.querySelector(".arrFecha").value;
     if(!f){ toast("Elegí desde qué día"); return; }
@@ -307,7 +326,7 @@ function pintarArranque(actual, resumenes){
             + `por ${fmt(van.reduce((a,c)=>a+c.total,0))}.\n\n`
           : "")
       + "No se borra nada: si te equivocás, corrés el corte para atrás y vuelve todo.")) return;
-    if(await mandar("/api/sueldos/arranque", "PUT", {fecha: f})) toast("Corte movido ✓");
+    if(await mandar("/api/sueldos/arranque", "PUT", {fecha: f})) toast("Corte puesto ✓");
   };
   const quitar = cont.querySelector(".arrNo");
   if(quitar) quitar.onclick = async () => {
