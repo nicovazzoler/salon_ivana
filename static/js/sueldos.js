@@ -42,6 +42,24 @@ async function pedir(url, opts){
 const RECUERDO = "sueldos_empleado";
 
 let EMPLEADOS = [], ITEMS = [], EMP = null, D = null, FORMAS = [];
+// Todas las activas, aparte de EMPLEADOS: a la empleada esa lista se le
+// recorta a ella sola, y para elegir a la ayudante del lunes necesita ver a
+// las demás. Son los mismos nombres que ya ve en el desplegable de facturar.
+let TODAS = [];
+// Lo pendiente de cada una, que arma el panel de la dueña. Lo usa el desplegable
+// para decidir a quién sigue mostrando.
+let PENDIENTE = {};
+
+/* A quién se le paga sueldo.
+
+   La dueña está en la lista de empleadas —atiende— pero no se paga sueldo a sí
+   misma, y sin código de sueldo es un nombre de más en todos los desplegables de
+   esta pantalla. El código es la señal: el que cobra acá tiene uno para entrar a
+   ver lo suyo.
+
+   Si igual le quedó algo pendiente, aparece. Esconder plata que se debe es peor
+   que mostrar un nombre de más. */
+const seLePaga = e => e.tiene_pin !== false || (PENDIENTE[e.id] || 0) > 0;
 const DUENO = esDueno();
 /* La misma tarjeta la miran dos personas distintas: la empleada mira lo suyo y
    la dueña mira lo de otra. Los rótulos cambian con eso, porque "se te debe" en
@@ -90,6 +108,17 @@ function rangoLargo(desde, hasta){
     ? `${Number(d1)} al ${Number(d2)} de ${MESES[Number(mA)-1]}`
     : `${Number(d1)} de ${MESES[Number(mA)-1]} al ${Number(d2)} de ${MESES[Number(mB)-1]}`;
 }
+/* El sábado con el que arranca la semana de pago de un día.
+
+   Lo mismo que ciclo_de() en el backend, pero siempre el sábado de la semana: el
+   lunes es su propio ciclo de un día allá, y acá lo que se busca es dónde empieza
+   la semana, que es donde tiene sentido poner el corte. */
+function sabadoDeLaSemana(iso){
+  const d = new Date(iso + "T12:00:00");
+  d.setDate(d.getDate() - ((d.getDay() + 1) % 7));
+  return d.toISOString().slice(0, 10);
+}
+
 const DIAS = ["Domingo","Lunes","Martes","Miércoles","Jueves","Viernes","Sábado"];
 function diaDe(iso){
   if(!iso) return "";
@@ -103,6 +132,7 @@ async function arranque(){
   // La empleada se ve solo a ella: entró con su código y el resto no es asunto
   // suyo (el servidor tampoco se lo contestaría).
   EMPLEADOS = await listaEmpleados();
+  TODAS = await (await pedir("/api/empleados")).json();
   const sel = $("#quien");
   sel.onchange = () => { localStorage.setItem(RECUERDO, sel.value); cargar(); };
   if(DUENO){
@@ -116,16 +146,21 @@ async function arranque(){
     $("#tituloDetalle").textContent = "👛 Tu sueldo";
     $("#bajadaDetalle").textContent = "Poné cuánto duró cada trabajo y las horas de cada día. El total se actualiza solo.";
   }
-  ITEMS = await (await pedir("/api/sueldos/items-comision")).json();
+  // Ordenados por nombre: el desplegable se usa buscando uno puntual, y el orden
+  // en que los devuelve la base no le dice nada al que busca.
+  ITEMS = (await (await pedir("/api/sueldos/items-comision")).json())
+    .sort((a, b) => a.nombre.localeCompare(b.nombre, "es"));
   if(DUENO){
     // Las mismas formas de pago con las que se cobra: el egreso del sueldo entra
     // a la caja como cualquier otro, y el arqueo lo suma si dice "Efectivo".
     const cfg = await (await pedir("/api/config")).json();
     FORMAS = cfg.formas_pago || [];
   }
-  llenarSelector();
-  if(!EMPLEADOS.length) return;
+  if(!EMPLEADOS.length){ llenarSelector(); return; }
+  // El panel de la dueña va primero porque es el que sabe cuánto se le debe a
+  // cada una, y de eso depende quién aparece en el desplegable.
   if(DUENO) await cargarPanelDueno(); else await pintarLiquidaciones();
+  llenarSelector();
   await cargar();
 }
 
@@ -150,8 +185,9 @@ function llenarSelector(){
   // Para la empleada el bloque ya se escondió al entrar con el código: su nombre
   // está arriba y no hay nada que elegir.
   if(DUENO) sel.closest(".quien").style.display = "";
-  sel.innerHTML = EMPLEADOS.map(e=>`<option value="${e.id}">${esc(e.nombre)}${e.activo===false?" (de baja)":""}</option>`).join("");
-  if(antes && EMPLEADOS.some(e=>String(e.id)===String(antes))) sel.value = antes;
+  const visibles = DUENO ? EMPLEADOS.filter(seLePaga) : EMPLEADOS;
+  sel.innerHTML = visibles.map(e=>`<option value="${e.id}">${esc(e.nombre)}${e.activo===false?" (de baja)":""}</option>`).join("");
+  if(antes && visibles.some(e=>String(e.id)===String(antes))) sel.value = antes;
   if(DUENO) localStorage.setItem(RECUERDO, sel.value);
 }
 
@@ -161,9 +197,9 @@ function llenarSelector(){
    total viejo al lado de un detalle nuevo. */
 async function refrescar(){
   EMPLEADOS = await listaEmpleados();
-  llenarSelector();
-  if(!EMPLEADOS.length) return;
+  if(!EMPLEADOS.length){ llenarSelector(); return; }
   if(DUENO) await cargarPanelDueno(); else await pintarLiquidaciones();
+  llenarSelector();
   await cargar();
 }
 
@@ -181,37 +217,122 @@ async function cargarPanelDueno(){
   // A las dadas de baja se las sigue viendo SOLO si les quedó algo sin pagar:
   // mientras haya algo pendiente hay que pagárselo, pero una que se fue hace
   // meses y ya cobró todo no tiene por qué seguir en la lista de todos los días.
-  const resumenes = todos.filter(r => r.activo || r.total > 0 || r.ciclos.length);
+  PENDIENTE = Object.fromEntries(todos.map(r => [r.empleado.id, r.total]));
+  const conCodigo = Object.fromEntries(EMPLEADOS.map(e => [e.id, e.tiene_pin !== false]));
+  const resumenes = todos.filter(r => (r.activo || r.total > 0 || r.ciclos.length)
+                                   && (conCodigo[r.empleado.id] || r.total > 0 || r.ciclos.length));
+  /* El general sale de config y NO del resumen de la primera de la lista.
+     Cuando cada una podía tener el suyo, `resumenes[0].valor_hora` pasó a ser el
+     de esa persona: el casillero de abajo edita el general, y con eso adentro,
+     guardarlo le ponía a todas el sueldo de la primera del abecedario. */
+  const gral = await pedir("/api/config").then(r=>r.json()).catch(()=>({}));
+  const distintas = resumenes.filter(r => r.valor_hora !== (gral.valor_hora ?? 0)).length;
   const total = resumenes.reduce((a,r)=>a+r.total, 0);
   const ciclosViejos = resumenes.reduce((a,r)=>a + Math.max(r.ciclos.length - 1, 0), 0);
   $("#kpisDueno").innerHTML = `
     <div class="kpi"><span class="lbl">Total a pagar</span><span class="val">${fmt(total)}</span></div>
-    <div class="kpi"><span class="lbl">Valor hora</span><span class="val">${fmt(resumenes[0] ? resumenes[0].valor_hora : 0)}</span></div>
+    <div class="kpi"><span class="lbl">Valor hora</span><span class="val">${fmt(gral.valor_hora ?? 0)}</span>${
+      distintas ? `<span class="nota">${distintas} ${distintas===1?"cobra":"cobran"} distinto</span>` : ""}</div>
     ${ciclosViejos ? `<div class="kpi"><span class="lbl">Semanas atrasadas</span><span class="val">${ciclosViejos}</span></div>` : ""}`;
   $("#listaEmpleadas").innerHTML = resumenes.map(r=>`
     <div class="fila-emp${r.empleado.id===EMP?" abierta":""}">
       <div>
         <b>${esc(r.empleado.nombre)}${r.activo ? "" : " · de baja"}</b>
-        <span class="det">${r.ciclos.length ? `${r.ciclos.length} ${r.ciclos.length===1?"ciclo":"ciclos"} · ${hhmm(r.minutos_total)}` : "sin nada pendiente"}${
-          r.sin_tiempo ? ` · <span style="color:var(--danger);">${r.sin_tiempo===1 ? "falta 1 duración" : `faltan ${r.sin_tiempo} duraciones`}</span>` : ""}</span>
+        <span class="det">${r.valor_hora !== (gral.valor_hora ?? 0) ? `${fmt(r.valor_hora)} la hora · ` : ""}${
+          r.ciclos.length ? `${r.ciclos.length} ${r.ciclos.length===1?"ciclo":"ciclos"} · ${hhmm(r.minutos_total)}` : "sin nada pendiente"}${
+          r.sin_tiempo ? ` · <span style="color:var(--danger);">${r.sin_tiempo===1 ? "falta 1 duración" : `faltan ${r.sin_tiempo} duraciones`}</span>` : ""}${
+          r.sin_horas ? ` · <span style="color:var(--danger);">${r.sin_horas===1 ? "falta 1 día sin horas" : `faltan ${r.sin_horas} días sin horas`}</span>` : ""}</span>
       </div>
       <div class="plata">${fmt(r.total)}</div>
       <button class="b-out ver" data-emp="${r.empleado.id}">Ver</button>
     </div>`).join("") || `<div class="vacio"><b>No hay empleados cargados</b>
       Agregalos más abajo y ahí empiezan a aparecer acá.</div>`;
+  // "Ver" cambia la empleada del detalle, que está más abajo en la página: sin
+  // el scroll, tocarlo parecía no hacer nada.
   $("#listaEmpleadas").querySelectorAll(".ver").forEach(b=>{
-    b.onclick = () => { $("#quien").value = b.dataset.emp; localStorage.setItem(RECUERDO, b.dataset.emp); cargar(); };
+    b.onclick = async () => {
+      $("#quien").value = b.dataset.emp;
+      localStorage.setItem(RECUERDO, b.dataset.emp);
+      await cargar();
+      $("#tituloDetalle").closest(".card").scrollIntoView({behavior:"smooth", block:"start"});
+    };
   });
 
-  $("#cfgHora").value = resumenes[0] ? resumenes[0].valor_hora : 0;
-  $("#cfgPct").value  = resumenes[0] ? resumenes[0].comision_pct : 40;
-  $("#btnCfg").onclick = async () => {
-    await mandar("/api/config/sueldos", "PUT", {
-      valor_hora: Math.max(0, parseInt($("#cfgHora").value,10)||0),
-      comision_pct: Math.max(0, parseInt($("#cfgPct").value,10)||0)});
-  };
+  // El mismo editor que usa Admin arriba de la lista de empleados: los dos
+  // números son uno solo y no pueden dibujarse en dos lados distintos.
+  panelGenerales($("#cfgGenerales"), () => cargarPanelDueno());
+  pintarArranque(resumenes[0] ? resumenes[0].arranque : null, resumenes);
 
   pintarLiquidaciones();
+}
+
+/* El borrón y cuenta nueva.
+
+   Lo de antes del corte se pagó a mano, por fuera de la app, y no tiene que
+   volver a aparecer como pendiente. NO borra nada: los trabajos y las horas
+   siguen guardados, así que correr el corte para atrás los devuelve enteros.
+   Por eso es esto y no un botón de borrar ciclos viejos, que sí sería para
+   siempre y con la plata de otro.
+
+   Se pone UNA vez en la vida del local, así que puesto se achica a un renglón
+   gris: un casillero de fecha y dos botones arriba de la pantalla que se mira
+   todos los días son una invitación a mover sin querer algo que nadie quiso
+   mover. El "cambiar" queda para el único momento en que hace falta de verdad,
+   que es cuando se acaba de poner y se le erró a la fecha.
+
+   Sin corte se ve entero, con la fecha propuesta en el SÁBADO —donde arranca la
+   semana de pago; puesto un miércoles, la semana en curso aparece cortada por la
+   mitad— y diciendo de antemano cuántos ciclos y cuánta plata dejan de verse. */
+function pintarArranque(actual, resumenes){
+  const cont = $("#cfgArranque");
+  if(!cont) return;
+  const sab = sabadoDeLaSemana(hoyArg());
+  const viejos = resumenes.flatMap(r => r.ciclos.filter(c => c.desde < sab));
+  const plata = viejos.reduce((a, c) => a + c.total, 0);
+
+  const controles = `
+      <input type="date" class="arrFecha" value="${actual || sab}" max="${hoyArg()}">
+      <button class="b-out btn-mini arrOk">${actual ? "Mover el corte" : "Poner el corte"}</button>
+      ${actual ? `<button class="b-out btn-mini arrNo">Quitarlo</button>` : ""}`;
+
+  cont.innerHTML = actual
+    ? `<div class="arranque puesto">
+         <span>Los sueldos cuentan desde el <b>${fechaCorta(actual)}</b>.</span>
+         <a href="#" class="arrVer">cambiar</a>
+         <span class="arrCajon" style="display:none;">${controles}</span>
+       </div>`
+    : `<div class="arranque">
+         <span>Los sueldos cuentan desde siempre: aparece todo lo que quedó sin pagar.</span>
+         ${controles}
+         ${viejos.length ? `<span class="nota" style="flex:1 1 100%;">Con el corte en el sábado
+           ${fechaCorta(sab)} dejan de aparecer ${viejos.length}
+           ${viejos.length === 1 ? "ciclo" : "ciclos"} anteriores, por ${fmt(plata)}. La semana que
+           arranca ese sábado queda entera.</span>` : ""}
+       </div>`;
+
+  const ver = cont.querySelector(".arrVer");
+  if(ver) ver.onclick = e => {
+    e.preventDefault();
+    cont.querySelector(".arrCajon").style.display = "";
+    ver.remove();
+  };
+  cont.querySelector(".arrOk").onclick = async () => {
+    const f = cont.querySelector(".arrFecha").value;
+    if(!f){ toast("Elegí desde qué día"); return; }
+    const van = resumenes.flatMap(r => r.ciclos.filter(c => c.desde < f));
+    if(!confirm(`Los sueldos van a contar desde el ${fechaCorta(f)}.\n\n`
+      + (van.length
+          ? `Dejan de aparecer ${van.length} ${van.length===1?"ciclo":"ciclos"} anteriores, `
+            + `por ${fmt(van.reduce((a,c)=>a+c.total,0))}.\n\n`
+          : "")
+      + "No se borra nada: si te equivocás, corrés el corte para atrás y vuelve todo.")) return;
+    if(await mandar("/api/sueldos/arranque", "PUT", {fecha: f})) toast("Corte puesto ✓");
+  };
+  const quitar = cont.querySelector(".arrNo");
+  if(quitar) quitar.onclick = async () => {
+    if(!confirm("Van a volver a aparecer todos los ciclos anteriores al corte. ¿Seguimos?")) return;
+    if(await mandar("/api/sueldos/arranque", "PUT", {fecha: null})) toast("Corte quitado ✓");
+  };
 }
 
 /* Lo ya pagado, agrupado por ciclo. Un ciclo cerrado es una semana del local:
@@ -224,6 +345,18 @@ async function pintarLiquidaciones(){
   if(!card) return;
   if(!liqs.length){ card.style.display = "none"; return; }
   card.style.display = "";
+  // Plegado por defecto: son todos los cierres de la historia y empujan para
+  // abajo lo que sí se mira todos los días, que es lo que falta pagar.
+  const boton = $("#verPagado"), lista = $("#listaLiq");
+  if(boton){
+    const abierto = lista.style.display === "block";
+    boton.textContent = abierto ? "Ocultar" : `Ver los ${liqs.length}`;
+    boton.onclick = () => {
+      const ahora = lista.style.display !== "block";
+      lista.style.display = ahora ? "block" : "none";
+      boton.textContent = ahora ? "Ocultar" : `Ver los ${liqs.length}`;
+    };
+  }
   if(!DUENO){
     $("#tituloPagado").textContent = "🧾 Lo que ya cobraste";
     $("#bajadaPagado").textContent = "Tus ciclos cerrados, con los números tal como estaban ese día.";
@@ -245,8 +378,9 @@ async function pintarLiquidaciones(){
     return `<div class="ciclo">
       <div class="ciclo-cab">
         <div>
-          <h3>${rangoLargo(c.desde, c.hasta)}</h3>
-          <div class="det">${c.liqs.length} ${c.liqs.length===1?"empleada":"empleadas"} · ${hhmm(min)} trabajadas</div>
+          <h3>${c.liqs.every(l=>l.depilacion) ? "Depilación " : ""}${rangoLargo(c.desde, c.hasta)}</h3>
+          <div class="det">${c.liqs.length} ${c.liqs.length===1?"empleada":"empleadas"}${
+            c.liqs.every(l=>l.depilacion) ? " · se repartió el día" : ` · ${hhmm(min)} trabajadas`}</div>
         </div>
         <div class="plata">${fmt(total)}</div>
       </div>
@@ -254,8 +388,10 @@ async function pintarLiquidaciones(){
         ${c.liqs.map(l => `
           <div class="fila-emp">
             <div><b>${esc(l.empleado||"—")}${l.parcial ? ` <span class="saldo-de">pago parcial</span>` : ""}</b>
-              <span class="det">${hhmm(l.minutos_total)} trabajadas · ${hhmm(l.minutos_pagados)} a ${fmt(l.valor_hora)} = ${fmt(l.total_horas)} · comisiones ${fmt(l.total_comisiones)}${
-                l.egreso_numero ? ` · egreso N-${String(l.egreso_numero).padStart(5,"0")}${l.forma_pago?" en "+esc(l.forma_pago):""}` : ""}${l.notas?" · "+esc(l.notas):""}</span></div>
+              <span class="det">${l.depilacion
+                ? `depilación · entró ${fmt(l.recaudado)} − gastos ${fmt(l.gastos)}, la mitad`
+                : `${hhmm(l.minutos_total)} trabajadas · ${hhmm(l.minutos_pagados)} a ${fmt(l.valor_hora)} = ${fmt(l.total_horas)} · comisiones ${fmt(l.total_comisiones)}`}${
+                l.egreso_numero ? ` · egreso #${l.egreso_numero}${l.forma_pago?" en "+esc(l.forma_pago):""}` : ""}${l.notas?" · "+esc(l.notas):""}</span></div>
             <div class="plata">${fmt(l.total)}</div>
             <button class="b-out verLiq" data-id="${l.id}">Ver</button>
           </div>
@@ -293,6 +429,9 @@ async function cargar(){
 function pintar(){
   const espera = D.en_espera
     ? `<span class="nota">faltan ${D.sin_tiempo} sin duración: ${fmt(D.en_espera)} sin contar</span>` : "";
+  // El reparto del lunes no es comisión ni horas: sin su propio casillero, el
+  // total de arriba tiene plata que ninguno de los otros dos explica.
+  const depis = D.ciclos.filter(c => c.depilacion);
   $("#totales").innerHTML = `
     <div class="kpi destacado">
       <span class="lbl">${VOS.debe}</span>
@@ -308,15 +447,21 @@ function pintar(){
       <span class="lbl">Horas</span>
       <span class="val">${fmt(D.total_horas)}</span>
       <span class="nota">${hhmm(D.minutos_total)} declaradas · ${fmt(D.valor_hora)} la hora</span>
-    </div>`;
+    </div>` + (depis.length ? `
+    <div class="kpi">
+      <span class="lbl">Depilación</span>
+      <span class="val">${fmt(depis.reduce((a, c) => a + c.total, 0))}</span>
+      <span class="nota">${depis.length === 1 ? "el reparto del lunes" : depis.length + " lunes repartidos"}</span>
+    </div>` : "");
   if(espera) $("#totales").insertAdjacentHTML("beforeend",
     `<div class="kpi" style="flex:1 1 100%;"><span class="lbl">Sin contar todavía</span>
      <span class="val">${fmt(D.en_espera)}</span>
      <span class="nota">${D.sin_tiempo} ${D.sin_tiempo===1?"trabajo":"trabajos"} esperando que se cargue cuánto duró</span></div>`);
 
-  $("#cuerpo").innerHTML = (D.ciclos.length
+  const avisos = bloqueAvisos();
+  $("#cuerpo").innerHTML = avisos + (D.ciclos.length
     ? D.ciclos.map(dibujarCiclo).join("")
-    : `<div class="vacio"><b>${VOS.sinNada}</b>${VOS.comoAparece}</div>`) + bloqueHoy();
+    : (avisos ? "" : `<div class="vacio"><b>${VOS.sinNada}</b>${VOS.comoAparece}</div>`)) + bloqueHoy();
   enganchar();
 }
 
@@ -344,13 +489,99 @@ function bloqueHoy(){
   </div>`;
 }
 
-/* Un ciclo es la semana del local: de martes a sábado. No es una ventana para
-   filtrar, es la unidad con la que se paga. Si una semana no se cerró, sigue
-   apareciendo entera al lado de la nueva en vez de mezclarse con ella. */
+const trabajosDelDia = c => c.dias.flatMap(d => d.trabajos);
+
+/* El lunes de depilación no se paga por comisión: se reparte el día.
+
+   Se ve la cuenta entera —lo que entró, lo que salió y las dos mitades— porque
+   es un negocio a medias: la mitad que le toca no se entiende sin los dos
+   números de arriba. Los gastos se cargan desde acá y no desde Caja, que es de
+   la dueña: son los costos de SU día y son los únicos que le bajan la parte.
+   Cerrar sigue siendo de la dueña. */
+function dibujarDepilacion(c){
+  const q = c.cuenta;
+  const ayudantes = q.egresos_detalle.filter(e => e.ayudante);
+  const otros = q.egresos_detalle.filter(e => !e.ayudante);
+  const borrar = e => `<button class="b-out btn-mini borrar-gasto" data-id="${e.id}"
+      title="Sacar este gasto del día">✕</button>`;
+  return `<div class="ciclo depi" data-desde="${c.desde}">
+    <div class="ciclo-cab">
+      <div>
+        <h3>Depilación ${rangoLargo(c.desde, c.hasta)}</h3>
+        <div class="det">${q.comprobantes} ${q.comprobantes===1?"servicio":"servicios"} · se reparte el día, no se paga por comisión</div>
+      </div>
+      <div class="plata">${fmt(c.total)}</div>
+    </div>
+    <div class="ciclo-cuerpo">
+      <div class="cuenta-depi">
+        <div class="ren"><span>Lo que entró</span><b>${fmt(q.recaudado)}</b></div>
+        ${otros.map(e => `<div class="ren chico">
+            <span>${e.numero ? "#" + e.numero + " " : ""}${esc(e.concepto || e.tipo || "Gasto")}</span>
+            <span>−${fmt(e.monto)} ${borrar(e)}</span></div>`).join("")}
+        ${ayudantes.map(e => `<div class="ren chico ayudante">
+            <span>Ayudante · ${esc(e.concepto || "sin nombre")}${
+              e.notas ? ` <em class="det">(${esc(e.notas)})</em>` : ""}</span>
+            <span>−${fmt(e.monto)} ${borrar(e)}</span></div>`).join("")}
+        ${ayudantes.length ? "" : `<div class="ren chico falta-ayudante">
+            <span>Pago a la ayudante</span>
+            <span><button class="b-out btn-mini btn-ayudante" data-fecha="${c.desde}">Cargar</button></span>
+          </div>`}
+        <div class="ren"><span>Gastos del día</span><b class="${q.gastos ? "resta" : ""}">${q.gastos ? "−" : ""}${fmt(q.gastos)}</b></div>
+        <div class="ren total"><span>Queda</span><b>${fmt(q.resto)}</b></div>
+        <div class="ren mitad"><span>${DUENO ? "Para " + esc(D.empleado.nombre) : "Te toca"}</span><b>${fmt(q.parte_empleada)}</b></div>
+        <div class="ren mitad"><span>Para el salón</span><b>${fmt(q.parte_salon)}</b></div>
+      </div>
+      <div class="dia-acciones">
+        <button class="b-out btn-mini btn-gasto" data-fecha="${c.desde}">+ Gasto del día</button>
+        ${ayudantes.length ? `<button class="b-out btn-mini btn-ayudante" data-fecha="${c.desde}">+ Otra ayudante</button>` : ""}
+      </div>
+      ${q.deuda > 0 ? `<div class="aviso">⚠️ Falta cobrar ${fmt(q.deuda)} de este día${
+          q.parte_empleada <= 0 ? ", que es por lo que no hay nada para repartir todavía" : ""}. Cuando se cobre, el reparto sube solo.</div>` : ""}
+      ${q.resto < 0 ? `<div class="aviso">⚠️ Los gastos del día superan lo que entró. No hay nada para repartir.</div>` : ""}
+      ${!q.deuda && q.resto >= 0 && q.parte_empleada <= 0 && q.comprobantes === 0
+        ? `<div class="aviso">Todavía no se facturó nada de este día.</div>` : ""}
+      ${trabajosDelDia(c).length ? `
+        <div class="nota-depi">Lo que se anotó este día no va por comisión para nadie —ya está adentro del reparto—, pero se ve igual: escondido parecería que se perdió.</div>
+        <div class="lista-depi">${trabajosDelDia(c).map(t => `<div>
+          <span>${esc(t.nombre)}${t.cantidad > 1 ? ` ×${t.cantidad}` : ""}</span>
+          <span class="det">${t.numero ? "#" + t.numero : "sin comprobante"}${t.cliente ? " · " + esc(t.cliente) : ""}</span>
+        </div>`).join("")}</div>` : ""}
+      ${DUENO ? filaCerrar(c, q.parte_empleada > 0) : ""}
+    </div>
+  </div>`;
+}
+
+/* El aviso de la ayudante: NO es un ciclo.
+
+   Para ella el lunes de depilación no se cierra ni se liquida —la plata salió de
+   la caja el día que se le pagó, como cualquier gasto—, así que lo único que
+   tiene que ver es cuánto cobró. Es también el lugar donde dice por qué ese
+   lunes no le aparece ninguna comisión: sin eso, el día se le borra de la
+   pantalla y parece que se perdió. */
+function bloqueAvisos(){
+  const av = D.avisos_depilacion || [];
+  if(!av.length) return "";
+  return `<div class="avisos-depi">
+    ${av.map(a => `<div class="aviso-depi">
+      <div>
+        <b>Depilación · ${diaDe(a.fecha)} ${fechaCorta(a.fecha)}</b>
+        <span class="det">${a.monto
+          ? "Cobro por el día. No hay ciclo que cerrar: ya te lo pagaron."
+          : "Ese día se reparte entero entre la que lo llevó y el salón, así que no va por comisión."}</span>
+      </div>
+      <span class="plata">${a.monto ? fmt(a.monto) : "—"}</span>
+    </div>`).join("")}
+  </div>`;
+}
+
+/* Un ciclo es la semana del local: de sábado a viernes, que es cuando se paga.
+   No es una ventana para filtrar, es la unidad con la que se paga: una semana
+   sin cerrar sigue apareciendo entera al lado de la nueva. */
 function dibujarCiclo(c){
+  if(c.depilacion) return dibujarDepilacion(c);
   const hoy = hoyArg();
   const enCurso = hoy >= c.desde && hoy <= c.hasta;
-  const listo = !c.sin_tiempo && c.total > 0;
+  const listo = !c.sin_tiempo && !c.sin_horas && c.total > 0;
   return `<div class="ciclo${enCurso ? " en-curso" : ""}" data-desde="${c.desde}">
     <div class="ciclo-cab">
       <div>
@@ -371,13 +602,18 @@ function dibujarCiclo(c){
    entraron. Las horas se muestran escritas y se editan con el lapicito: con el
    casillero siempre abierto, un número tipeado sin querer es plata. */
 function dibujarDia(d, c){
-  const falta = !d.minutos;
+  // Un día cuyas horas ya se pagaron en un cierre anterior vuelve a aparecer si
+  // se le agrega una comisión con esa fecha. No le falta nada, así que no se
+  // pide ni se ofrece el casillero: cargarlas sería pagarlas dos veces, y el
+  // servidor las rebota igual.
+  const falta = !d.minutos && !d.horas_pagadas;
   return `<div class="dia" data-fecha="${d.fecha}">
     <div class="dia-cab">
       <b>${diaDe(d.fecha)} ${fechaCorta(d.fecha)}</b>
       <span class="dia-horas${falta ? " falta" : ""}">
-        <span class="valor">${falta ? "sin horas" : hhmm(d.minutos)}</span>
-        <button class="b-out btn-mini editar-horas" data-fecha="${d.fecha}" data-min="${d.minutos}">${falta ? "Poner horas" : "✎"}</button>
+        <span class="rot-horas">Horas trabajadas:</span>
+        <span class="valor">${d.horas_pagadas ? "ya cobradas" : (falta ? "sin horas" : hhmm(d.minutos))}</span>
+        ${d.horas_pagadas ? "" : `<button class="b-out btn-mini editar-horas" data-fecha="${d.fecha}" data-min="${d.minutos}">${falta ? "Poner horas" : "✎"}</button>`}
       </span>
       <span class="plata">${fmt(Math.round(Math.max(d.minutos - d.trabajos.reduce((a,t)=>a+(t.minutos||0),0), 0) * D.valor_hora / 60))}</span>
     </div>
@@ -410,7 +646,8 @@ function dibujarTrabajo(t){
       ${falta ? `<span class="falta-tiempo">falta el tiempo</span>` : `<span class="valor">${hhmm(t.minutos)}</span>`}
       <button class="b-out btn-mini editar-min" ${clave} data-min="${t.minutos}">${falta ? "Poner" : "✎"}</button>
     </span>
-    <span class="plata">${falta ? "—" : fmt(t.comision)}</span>
+    <span class="plata${falta ? " no-cuenta" : ""}"${
+      falta ? ` title="Todavía no se cuenta: falta cargarle la duración"` : ""}>${fmt(t.comision)}</span>
   </div>`;
 }
 
@@ -418,41 +655,73 @@ function dibujarTrabajo(t){
    puede verificar contra nada, y son horas que se pagan. Los días con trabajo
    aparecen solos. */
 function filaAgregarDia(c){
-  return `<div class="agregar">
-    <div><label>Agregar un día del ciclo</label>
-      <input type="date" class="nvFecha" min="${c.desde}" max="${c.hasta}" value="${c.desde}"></div>
+  // Detrás de un botón: es la excepción —los días con trabajo aparecen solos— y
+  // abierto son tres casilleros vacíos abajo de cada ciclo, en la pantalla que se
+  // mira todos los días para ver un total.
+  return `<div class="dia-acciones">
+    <button class="b-out btn-mini abrir-dia" data-desde="${c.desde}" data-hasta="${c.hasta}">+ Agregar un día</button>
+  </div>`;
+}
+
+function abrirFormDia(boton){
+  document.querySelectorAll(".form-dia").forEach(x => x.remove());
+  const caja = document.createElement("div");
+  caja.className = "agregar form-dia";
+  caja.innerHTML = `
+    <div><label>Día del ciclo</label>
+      <input type="date" class="nvFecha" min="${boton.dataset.desde}" max="${boton.dataset.hasta}" value="${boton.dataset.desde}"></div>
     <div style="flex:0 0 90px;"><label>Horas</label>
       <input type="number" class="nvHoras" min="0" max="24" inputmode="numeric" placeholder="8"></div>
     <div style="flex:0 0 90px;"><label>Min</label>
       <input type="number" class="nvMin" min="0" max="59" step="5" inputmode="numeric" placeholder="0"></div>
-    <button class="b-out btn-dia">Agregar día</button>
-  </div>`;
+    <button class="b-ok btn-dia">Agregar día</button>
+    <button class="b-out dNo">Cancelar</button>`;
+  boton.after(caja);
+  caja.querySelector(".dNo").onclick = () => caja.remove();
+  caja.querySelector(".btn-dia").onclick = async () => {
+    const fecha = caja.querySelector(".nvFecha").value;
+    const minutos = (parseInt(caja.querySelector(".nvHoras").value,10)||0)*60
+                  + (parseInt(caja.querySelector(".nvMin").value,10)||0);
+    if(!fecha){ toast("Elegí el día"); return; }
+    if(minutos <= 0){ toast("Poné cuántas horas"); return; }
+    await mandar("/api/sueldos/horas", "PUT", {empleado_id: EMP, fecha, minutos});
+  };
+  caja.querySelector(".nvHoras").focus();
 }
 
 /* Cerrar antes de que termine la semana NO es cerrar la semana.
 
-   El sábado es el final del ciclo. Si se paga un miércoles, lo que se paga es lo
-   que va hasta ahí: el ciclo sigue abierto y lo que se trabaje el jueves y el
-   viernes cae en el mismo. Por eso el botón dice "pago parcial" y no "cerrar".
+   El viernes es el final del ciclo y el día de pago. Si se paga un miércoles, lo
+   que se paga es lo que va hasta ahí: el ciclo sigue abierto y lo que se trabaje
+   el jueves y el viernes cae en el mismo. Por eso el botón dice "pago parcial" y
+   no "cerrar".
 
    Al lado queda el cierre anticipado, para el caso en el que la semana sí se
-   terminó antes —el sábado cae feriado, se paga el viernes—: ahí la da por
+   terminó antes —el viernes cae feriado, se paga el jueves—: ahí la da por
    cerrada igual. Son dos cosas distintas y por eso son dos botones. */
 function filaCerrar(c, listo){
-  const termino = hoyArg() > c.hasta;
+  // El viernes mismo YA es cerrar la semana: es el último día y el de pago. Con
+  // ">" el cierre normal de todas las semanas salía como "pago parcial".
+  const termino = hoyArg() >= c.hasta;
   const aviso = c.sin_tiempo
     ? `<div class="aviso">⚠️ ${c.sin_tiempo} ${c.sin_tiempo===1?"trabajo":"trabajos"} sin duración. Hasta que la tengan no se sabe cuántas horas hay que pagar aparte, así que este ciclo no se puede cerrar.</div>`
+    : c.sin_horas
+    ? `<div class="aviso">⚠️ ${c.sin_horas} ${c.sin_horas===1?"día":"días"} sin horas declaradas. Un día en cero se paga solo por comisión y las horas de ese día se pierden, así que este ciclo no se puede cerrar.</div>`
     : (termino ? "" : `<div class="aviso">Esta semana no terminó todavía. Lo que se pague ahora es lo que va hasta hoy: lo que trabaje después vuelve a aparecer en este mismo ciclo.</div>`);
   return `<div class="cierre">
     <div style="display:flex;align-items:center;gap:var(--sp-2);">
       <label style="margin:0;">Se paga con</label>
       <select class="formaCierre" style="width:auto;">${FORMAS.map(f=>`<option${f==="Efectivo"?" selected":""}>${esc(f)}</option>`).join("")}</select>
     </div>
+    <div style="display:flex;align-items:center;gap:var(--sp-2);">
+      <label style="margin:0;">el día</label>
+      <input type="date" class="fechaCierre" value="${hoyArg()}" max="${hoyArg()}" style="width:auto;">
+    </div>
     <input class="nota notaCierre" placeholder="Nota (opcional)">
     <button class="b-ok btn-cerrar" ${listo ? "" : "disabled"}>${
       termino ? `Cerrar y pagar ${fmt(c.total)}` : `Pago parcial de ${fmt(c.total)}`}</button>
     ${termino ? "" : `<button class="b-out btn-cerrar anticipado" ${listo ? "" : "disabled"}
-        title="La semana terminó antes: sábado feriado, por ejemplo">Cerrar la semana igual</button>`}
+        title="La semana terminó antes: viernes feriado, por ejemplo">Cerrar la semana igual</button>`}
     ${aviso}
   </div>`;
 }
@@ -513,17 +782,22 @@ function enganchar(){
       await mandar("/api/sueldos/trabajo-suelto/"+a.dataset.trabajo, "DELETE");
     };
   });
-  // lo de la dueña
-  document.querySelectorAll(".btn-dia").forEach(b => {
+  // los gastos del lunes de depilación
+  document.querySelectorAll(".btn-gasto").forEach(b => {
+    b.onclick = () => abrirFormGasto(b, false);
+  });
+  document.querySelectorAll(".btn-ayudante").forEach(b => {
+    b.onclick = () => abrirFormGasto(b, true);
+  });
+  document.querySelectorAll(".borrar-gasto").forEach(b => {
     b.onclick = async () => {
-      const caja = b.closest(".agregar");
-      const fecha = caja.querySelector(".nvFecha").value;
-      const minutos = (parseInt(caja.querySelector(".nvHoras").value,10)||0)*60
-                    + (parseInt(caja.querySelector(".nvMin").value,10)||0);
-      if(!fecha){ toast("Elegí el día"); return; }
-      if(minutos <= 0){ toast("Poné cuántas horas"); return; }
-      await mandar("/api/sueldos/horas", "PUT", {empleado_id: EMP, fecha, minutos});
+      if(!confirm("¿Sacar este gasto del día? El reparto se recalcula solo.")) return;
+      await mandar(`/api/sueldos/depilacion/gasto/${b.dataset.id}?empleado_id=${EMP}`, "DELETE");
     };
+  });
+  // lo de la dueña
+  document.querySelectorAll(".abrir-dia").forEach(b => {
+    b.onclick = () => abrirFormDia(b);
   });
   document.querySelectorAll(".btn-cerrar").forEach(b => {
     b.onclick = async () => {
@@ -538,9 +812,11 @@ function enganchar(){
         ? `Pago parcial de ${fmt(c.total)} a ${D.empleado.nombre} por lo que va de ${rangoLargo(c.desde, c.hasta)}.\n`
           + `La semana sigue abierta: lo que trabaje después vuelve a aparecer acá.`
         : `Se le pagan ${fmt(c.total)} a ${D.empleado.nombre} por ${rangoLargo(c.desde, c.hasta)}, y la semana queda cerrada.`;
-      if(!confirm(`${que}\n\nSe paga en ${forma} y el egreso queda anotado en la caja de hoy.\n\nEsto no se puede deshacer. ¿Seguimos?`)) return;
+      const fecha = caja.querySelector(".fechaCierre").value || hoyArg();
+      const dia = fecha === hoyArg() ? "la caja de hoy" : "la caja del " + fechaCorta(fecha);
+      if(!confirm(`${que}\n\nSe paga en ${forma} y el egreso queda anotado en ${dia}.\n\nEsto no se puede deshacer. ¿Seguimos?`)) return;
       if(await mandar("/api/sueldos/cerrar", "POST", {empleado_id: EMP, desde: ciclo, forma_pago: forma,
-                                                      anticipado,
+                                                      anticipado, fecha,
                                                       notas: caja.querySelector(".notaCierre").value.trim() || null}))
         toast(parcial ? "Pago parcial hecho ✓" : "Pagado ✓");
     };
@@ -586,6 +862,69 @@ function abrirFormTrabajo(boton){
       fecha, minutos});
   };
   caja.querySelector(".fHoras").focus();
+}
+
+/* El gasto de un día de depilación se carga acá y no en Caja.
+
+   Dos formas del mismo formulario: el gasto común pide tipo y concepto, y el de
+   la ayudante pide QUIÉN, porque es un pago a una persona y eso es lo que
+   después le aparece a ella en su pantalla. El monto viene puesto con el fijo y
+   se puede pisar: si se pisa, el egreso se queda con el número viejo escrito. */
+function abrirFormGasto(boton, esAyudante){
+  document.querySelectorAll(".form-gasto").forEach(x => x.remove());
+  const fecha = boton.dataset.fecha;
+  const c = D.ciclos.find(x => x.desde === fecha);
+  const fijo = (c && c.cuenta && c.cuenta.pago_ayudante) || 0;
+  // La que lleva el día no puede ser su propia ayudante: cobraría dos veces el
+  // mismo día y la mitad de la resta sería contra ella misma.
+  const otras = TODAS.filter(e => e.nombre !== D.empleado.nombre);
+  const caja = document.createElement("div");
+  caja.className = "agregar form-gasto";
+  caja.innerHTML = esAyudante
+    ? `<div class="ancho"><label>¿Quién ayudó el ${fechaCorta(fecha)}?</label>
+         <select class="gQuien">
+           ${otras.map(e => `<option value="${esc(e.nombre)}">${esc(e.nombre)}</option>`).join("")}
+           <option value="">Otra persona…</option>
+         </select></div>
+       <div class="ancho gOtra" style="display:none;"><label>Nombre</label>
+         <input class="gNombre" maxlength="60" placeholder="No es del salón"></div>
+       <div style="flex:0 0 130px;"><label>Se le paga</label>
+         <input type="number" class="gMonto" min="1" inputmode="numeric" value="${fijo || ""}"></div>
+       <button class="b-ok gOk">Anotar el pago</button>
+       <button class="b-out gNo">Cancelar</button>
+       ${fijo ? `<span class="nota">El fijo son ${fmt(fijo)}. Si ponés otro número queda escrito que se cambió.</span>` : ""}`
+    : `<div class="ancho"><label>Gasto del ${fechaCorta(fecha)}</label>
+         <input class="gConcepto" maxlength="80" placeholder="Cera, descartables…"></div>
+       <div style="flex:0 0 130px;"><label>Monto</label>
+         <input type="number" class="gMonto" min="1" inputmode="numeric"></div>
+       <button class="b-ok gOk">Agregar</button>
+       <button class="b-out gNo">Cancelar</button>
+       <span class="nota">Entra en la resta del día, así que baja las dos mitades.</span>`;
+  boton.after(caja);
+  caja.querySelector(".gNo").onclick = () => caja.remove();
+  const sel = caja.querySelector(".gQuien");
+  if(sel) sel.onchange = () => {
+    caja.querySelector(".gOtra").style.display = sel.value ? "none" : "";
+    if(!sel.value) caja.querySelector(".gNombre").focus();
+  };
+  caja.querySelector(".gOk").onclick = async () => {
+    const monto = parseInt(caja.querySelector(".gMonto").value, 10) || 0;
+    if(monto <= 0){ toast("Poné cuánto fue"); return; }
+    let cuerpo = {empleado_id: EMP, fecha, monto};
+    if(esAyudante){
+      const elegida = sel.value || caja.querySelector(".gNombre").value.trim();
+      if(!elegida){ toast("Decí quién ayudó"); return; }
+      const suya = otras.find(e => e.nombre === elegida);
+      cuerpo = {...cuerpo, ayudante: true, concepto: elegida,
+                ayudante_id: suya ? suya.id : null, tipo: "Ayudante depilación"};
+    } else {
+      const que = caja.querySelector(".gConcepto").value.trim();
+      if(!que){ toast("Poné qué se gastó"); return; }
+      cuerpo = {...cuerpo, concepto: que, tipo: "Insumos"};
+    }
+    await mandar("/api/sueldos/depilacion/gasto", "POST", cuerpo);
+  };
+  caja.querySelector(esAyudante ? ".gMonto" : ".gConcepto").focus();
 }
 
 /* Un solo lugar donde se habla con el servidor: si algo falla se muestra el

@@ -52,7 +52,8 @@ ORDEN = [
     ("clientes", models.Cliente, ["id", "nombre", "telefono", "alias", "notas",
                                   "direccion", "dni", "activo"], ["creado"]),
     ("formas_pago", models.FormaPago, ["id", "nombre", "activo"], []),
-    ("empleados", models.Empleado, ["id", "nombre", "activo", "pin_salt", "pin_hash"], []),
+    ("empleados", models.Empleado, ["id", "nombre", "activo", "pin_salt", "pin_hash",
+                                    "valor_hora"], []),
     ("tipos_egreso", models.TipoEgreso, ["id", "nombre", "activo", "privado"], []),
     ("usuarios", models.Usuario, ["id", "usuario", "salt", "hash", "rol"], []),
     ("config", models.Config, ["clave", "valor"], []),
@@ -65,18 +66,26 @@ ORDEN = [
     ("egresos", models.Egreso, ["id", "numero", "tipo", "concepto", "monto",
                                 "forma_pago", "notas", "privado"], ["fecha"]),
     ("turnos", models.Turno, ["id", "fecha", "hora", "cliente_id", "cliente",
-                              "servicio", "peluquero", "notas", "activo"], []),
+                              "servicio", "peluquero", "notas", "activo",
+                              "duracion_min"], []),
+    ("horarios_empleado", models.HorarioEmpleado,
+     ["id", "empleado_id", "dia_semana", "desde", "hasta"], []),
+    ("excepciones_horario", models.ExcepcionHorario,
+     ["id", "empleado_id", "fecha", "desde", "hasta", "motivo"], []),
     ("movimientos_stock", models.MovimientoStock, ["id", "item_id", "tipo", "antes",
                                                    "despues", "cambio", "motivo",
                                                    "usuario"], ["fecha"]),
     ("ventas", models.Venta, ["id", "forma_pago", "alias", "cliente",
                               "peluquero", "total"], ["fecha"]),
     ("pagos", models.Pago, ["id", "comprobante_id", "monto", "saldado", "forma_pago",
-                            "alias", "desc_aplicado"], ["fecha"]),
+                            "alias", "desc_aplicado", "sena_id"], ["fecha"]),
+    ("senas", models.Sena, ["id", "numero", "cliente_id", "monto", "forma_pago", "alias",
+                            "notas", "comprobante_id", "anulada", "usuario"], ["fecha"]),
     ("liquidaciones", models.Liquidacion,
      ["id", "empleado_id", "desde", "hasta", "valor_hora", "comision_pct",
       "minutos_total", "minutos_comision", "minutos_pagados",
-      "total_comisiones", "total_horas", "total", "notas", "egreso_id", "parcial"], ["cerrada"]),
+      "total_comisiones", "total_horas", "total", "notas", "egreso_id", "parcial",
+      "depilacion", "recaudado", "gastos"], ["cerrada"]),
     ("horas_trabajadas", models.HoraTrabajada,
      ["id", "empleado_id", "fecha", "minutos", "liquidacion_id"], ["cargado"]),
 ]
@@ -113,6 +122,29 @@ def _insertar(db, modelo, filas):
     return len(filas)
 
 
+def _revisar_esquema(engine):
+    """Corta si al destino le faltan columnas, antes de escribir nada.
+
+    `create_all` crea las tablas que no están, pero a una que ya está no le
+    agrega una columna nueva: eso lo hace `migrar()` al arrancar la app. Un
+    destino de una versión anterior revienta recién a mitad de la carga, con un
+    error de SQLite que no dice qué hacer y la base por la mitad.
+    """
+    from sqlalchemy import inspect
+    insp = inspect(engine)
+    faltan = []
+    for tabla in models.Base.metadata.sorted_tables:
+        if not insp.has_table(tabla.name):
+            continue
+        hay = {c["name"] for c in insp.get_columns(tabla.name)}
+        faltan += [f"{tabla.name}.{c.name}" for c in tabla.columns if c.name not in hay]
+    if faltan:
+        sys.exit(f"Al destino le faltan columnas: {', '.join(faltan[:6])}"
+                 f"{'...' if len(faltan) > 6 else ''}\n"
+                 f"Es de una versión anterior de la app. Restaurá en un archivo nuevo, o "
+                 f"levantá la app una vez apuntando ahí para que corran las migraciones.")
+
+
 def _esta_vacia(db):
     """Mira las tablas donde vive lo que no se puede reponer a mano."""
     for modelo in (models.Comprobante, models.Cliente, models.Item, models.Pago):
@@ -121,12 +153,26 @@ def _esta_vacia(db):
     return True
 
 
+def _todas_las_tablas():
+    """Todo lo que toca una restauración, en orden de carga.
+
+    Una sola lista para vaciar y para reiniciar las secuencias: con dos, una
+    tabla que se agregue entra en una y no en la otra, y lo que falla no es la
+    restauración sino la de después.
+
+    Las que no salen de ORDEN van al final porque se insertan aparte: las líneas
+    van anidadas adentro del comprobante, y los trabajos a comisión después de
+    ellas, que es a lo que apuntan.
+    """
+    return ([m for _, m, _, _ in ORDEN]
+            + [models.VentaLinea, models.ComprobanteLinea,
+               models.ComprobanteExtra, models.Comprobante,
+               models.TrabajoComision])
+
+
 def _vaciar(db):
     # Al revés del orden de carga, para no chocar con las claves foráneas.
-    modelos = [m for _, m, _, _ in ORDEN]
-    modelos += [models.VentaLinea, models.ComprobanteLinea,
-                models.ComprobanteExtra, models.Comprobante]
-    for modelo in reversed(modelos):
+    for modelo in reversed(_todas_las_tablas()):
         db.execute(modelo.__table__.delete())
 
 
@@ -138,8 +184,7 @@ def _reiniciar_secuencias(db, engine):
     """
     if not engine.url.get_backend_name().startswith("postgres"):
         return
-    for modelo in [m for _, m, _, _ in ORDEN] + [models.VentaLinea, models.ComprobanteLinea,
-                                                 models.ComprobanteExtra, models.Comprobante]:
+    for modelo in _todas_las_tablas():
         tabla = modelo.__tablename__
         if "id" not in modelo.__table__.c:
             continue
@@ -162,6 +207,7 @@ def restaurar(archivo, destino, vaciar=False, sin_preguntar=False):
 
     engine = create_engine(destino)
     models.Base.metadata.create_all(engine)
+    _revisar_esquema(engine)
     db = sessionmaker(bind=engine)()
 
     try:
@@ -180,8 +226,8 @@ def restaurar(archivo, destino, vaciar=False, sin_preguntar=False):
 
         total = {}
         for clave, modelo, campos, campos_fecha in ORDEN:
-            if clave == "pagos":
-                continue   # después de comprobantes: apunta a ellos
+            if clave in ("pagos", "senas"):
+                continue   # después de comprobantes: apuntan a ellos
             total[clave] = _insertar(db, modelo, _filas(datos, clave, campos, campos_fecha, version))
 
         # Comprobantes en dos pasadas: primero todos sin convertido_de, después el
@@ -213,9 +259,18 @@ def restaurar(archivo, destino, vaciar=False, sin_preguntar=False):
              "fecha", "minutos", "liquidacion_id", "base", "comision"],
             [], version))
 
+        # Las señas van ANTES que los pagos: un abono que salió de una seña la
+        # apunta con una clave foránea.
+        total["senas"] = _insertar(db, models.Sena, _filas(
+            datos, "senas",
+            ["id", "numero", "cliente_id", "monto", "forma_pago", "alias", "notas",
+             "comprobante_id", "anulada", "usuario"],
+            ["fecha"], version))
+
         total["pagos"] = _insertar(db, models.Pago, _filas(
             datos, "pagos",
-            ["id", "comprobante_id", "monto", "saldado", "forma_pago", "alias", "desc_aplicado"],
+            ["id", "comprobante_id", "monto", "saldado", "forma_pago", "alias",
+             "desc_aplicado", "sena_id"],
             ["fecha"], version))
 
         vinculos = [{"_id": c["id"], "conv": c.get("convertido_de")}

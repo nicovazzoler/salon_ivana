@@ -99,8 +99,44 @@
 </div>
 <div class="toast" id="toast"></div>
 
+<style>
+  /* Las señas de la clienta: un saldo a favor, no una deuda. */
+  .senas-box{ margin-top:var(--sp-3); padding-top:var(--sp-3); border-top:1px solid var(--border-sutil); }
+  .eti-senas{
+    font-size:var(--fs-xs); letter-spacing:var(--tracking-eti); text-transform:uppercase;
+    color:var(--acento); font-weight:var(--fw-bold); margin-bottom:var(--sp-2);
+  }
+  .sena-fila{
+    display:flex; align-items:center; gap:var(--sp-3); flex-wrap:wrap;
+    padding:8px 0; border-bottom:1px solid var(--border-sutil);
+  }
+  .sena-fila:last-child{ border-bottom:none; }
+  .sena-fila b{ font-family:var(--font-display); font-size:var(--fs-lg); color:var(--success); }
+  .sena-fila .det{ display:block; font-size:var(--fs-sm); color:var(--text-tenue); }
+  .sena-fila .estado{
+    margin-left:auto; font-size:var(--fs-sm); color:var(--text-tenue);
+  }
+  /* Usada y devuelta se ven igual de apagadas, pero quedan: son la prueba de
+     que esa plata ya se descontó. Sin ellas parecería que se perdió. */
+  .sena-fila.usada, .sena-fila.anulada{ opacity:.55; }
+  .sena-fila.usada b, .sena-fila.anulada b{ color:var(--text-suave); }
+
+  .panel-sena{
+    margin:var(--sp-3) 0; padding:var(--sp-3) var(--sp-4);
+    background:var(--bg-sutil); border:1px solid var(--acento-border); border-radius:var(--r-lg);
+  }
+  .panel-sena .cab b{ font-family:var(--font-display); font-size:var(--fs-lg); color:var(--text-titulo); }
+  .panel-sena .cab .det{ display:block; font-size:var(--fs-sm); color:var(--text-tenue); margin-bottom:var(--sp-3); }
+  .panel-sena .campos{ display:flex; flex-wrap:wrap; gap:var(--sp-3); }
+  .panel-sena .campo{ display:flex; flex-direction:column; gap:3px; flex:1 1 150px; }
+  .panel-sena .campo.ancho{ flex:2 1 220px; }
+  .panel-sena .campo label{ margin:0; }
+  .panel-sena .campo input, .panel-sena .campo select{ width:100%; }
+  .panel-sena .acc{ display:flex; gap:var(--sp-2); margin-top:var(--sp-3); flex-wrap:wrap; }
+</style>
 <script src="/static/auth.js"></script>
 <script src="/static/js/peluquero.js"></script>
+<script src="/static/js/senas.js"></script>
 <script src="/static/escpos.js"></script>
 <script>
 requireLogin(); pintarNav();
@@ -157,7 +193,7 @@ async function cargar(){
         <div class="muted">${[c.dni && "DNI "+c.dni, c.direccion].filter(Boolean).join(" · ") || "—"}</div>
       </div>
       <div class="saldo-box">
-        <div class="lbl">Saldo adeudado</div>
+        <div class="lbl">Saldo</div>
         <div class="val" style="color:${data.saldo_total>0?'var(--danger)':'var(--acento)'};">${fmt(data.saldo_total)}</div>
         <button style="margin-top:8px;background:var(--acento);" onclick="location.href='/facturar?cliente=${encodeURIComponent(c.nombre)}'">+ Facturar</button>
       </div>
@@ -165,6 +201,7 @@ async function cargar(){
     <div class="fila acciones">
       ${data.saldo_total>0 ? `<a class="btnAbonar" href="/ticket?tipo=cuenta&cliente=${id}">🖨️ Imprimir cuenta</a>` : ''}
       <button class="b-out" id="btnEditar">✏️ Editar datos</button>
+      <button class="b-out" id="btnSena">💵 Tomar seña</button>
       ${getRol()==="dueno" ? '<button class="b-del" id="btnEliminar">🗑️ Eliminar</button>' : ''}
     </div>
     <div class="editar-box" id="editarBox">
@@ -180,9 +217,15 @@ async function cargar(){
         <button class="b-ok" id="btnGuardar">Guardar cambios</button>
         <button class="b-out" id="btnCancelar">Cancelar</button>
       </div>
+    </div>
+    <div id="cajaSena"></div>
+    <div class="senas-box">
+      <div class="eti-senas">Señas</div>
+      <div id="listaSenas"></div>
     </div>`;
 
   const editBox=$("#editarBox");
+  refrescarSenas();
   function llenarForm(){
     $("#eNombre").value    = c.nombre    || "";
     $("#eTelefono").value  = c.telefono  || "";
@@ -191,6 +234,11 @@ async function cargar(){
     $("#eDireccion").value = c.direccion || "";
     $("#eNotas").value     = c.notas     || "";
   }
+  $("#btnSena").onclick=()=>{
+    if($("#cajaSena").firstChild){ $("#cajaSena").innerHTML=""; return; }
+    $("#cajaSena").appendChild(panelSena(c.id, c.nombre, refrescarSenas));
+  };
+
   $("#btnEditar").onclick=()=>{
     if(editBox.style.display==="block"){ editBox.style.display="none"; return; }
     llenarForm();
@@ -456,6 +504,19 @@ document.querySelectorAll("#tabsTipo button").forEach(b=>{
     renderComprobantes();
   };
 });
+
+/* Las señas de la clienta. Se refresca sola al tomar una y al devolverla: es un
+   saldo a favor y verlo desactualizado se cobra dos veces. */
+async function refrescarSenas(){
+  const cont = $("#listaSenas"); if(!cont) return;
+  const senas = await (await authFetch(`/api/senas?cliente_id=${id}`)).json().catch(()=>[]);
+  pintarSenas(cont, senas, async s => {
+    if(!confirm(`Devolver la seña de ${fmt(s.monto)}. ¿Seguimos?`)) return;
+    const r = await authFetch(`/api/senas/${s.id}`, {method:"DELETE"});
+    if(!r.ok){ toast((await r.json().catch(()=>({}))).detail || "No se pudo"); return; }
+    toast("Seña devuelta"); refrescarSenas();
+  });
+}
 
 const dl=document.createElement("datalist"); dl.id="aliasDL"; document.body.appendChild(dl);
 cargar().then(()=>{ dl.innerHTML=ALIAS.map(a=>`<option value="${a}">`).join(""); });

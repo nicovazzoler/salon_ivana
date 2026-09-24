@@ -11,7 +11,14 @@ const DUENO = esDueno();
 const $=s=>document.querySelector(s);
 const fmt=n=>"$"+(n||0).toLocaleString("es-AR");
 const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
-let catActual=null;
+/* La categoría que se está mirando, con tres estados y no dos:
+   - un nombre  → esa categoría, que es lo que se le pide al servidor;
+   - null       → "Todas", que es una VISTA y no una categoría;
+   - undefined  → todavía no se eligió nada (la primera carga elige la primera).
+   El "Todas" no se podía representar y por eso el botón no hacía nada: caía en
+   `cargarItems()`, que pedía los ítems de la categoría en la que estabas parado
+   y volvía a dibujar exactamente lo mismo. */
+let catActual;
 /* La categoría elegida MIENTRAS hay un filtro puesto, que no es lo mismo que
    `catActual`. Sin filtro, la categoría ES la vista: se le piden al servidor los
    ítems de esa y nada más. Con el filtro de comisión prendido la vista es el
@@ -25,6 +32,9 @@ let ITEMS_ALL=[];
    suyo. Se muestra como sugerencia en la ficha para que se vea contra qué se
    está eligiendo; el que manda es el del servidor. */
 let COMISION_GENERAL = 40;
+/* El valor hora general, el mismo que se edita en Sueldos. Acá se lee para
+   mostrar contra qué se está eligiendo cuando alguien cobra distinto. */
+let VALOR_HORA_GENERAL = 0;
 /* El mismo mínimo que pide el servidor. Se chequea acá para avisar antes de
    mandar, no en lugar de allá: el que frena de verdad es el backend. */
 const LARGO_MINIMO_PASS = 8;
@@ -45,6 +55,8 @@ function toast(m){const t=$("#toast");t.textContent=m;t.classList.add("show");se
 // mostrarlo como referencia en la ficha del ítem.
 authFetch("/api/config").then(r=>r.json()).then(c=>{
   if(c && c.comision_pct != null) COMISION_GENERAL = c.comision_pct;
+  if(c && c.valor_hora  != null) VALOR_HORA_GENERAL = c.valor_hora;
+  if($("#listaEmpleados")) cargarEmpleados();   // redibuja con el general ya sabido
 }).catch(()=>{});
 
 async function cargarCats(){
@@ -55,7 +67,9 @@ async function cargarCats(){
   // devolvía la lista a la primera categoría del abecedario y había que volver a
   // buscar dónde estabas para tocar el ítem de al lado.
   if(catActual && cats.includes(catActual)) $("#selCat").value=catActual;
-  catActual=$("#selCat").value;
+  // Solo en la primera carga se adopta la primera del abecedario. Después manda
+  // lo que eligió el usuario, "Todas" incluido, que es null y no hay que pisar.
+  if(catActual === undefined) catActual=$("#selCat").value;
   ITEMS_ALL=await (await authFetch("/api/items/all")).json();
   filtrarItems();
 }
@@ -105,6 +119,10 @@ function filtrarItems(){
 }
 
 async function cargarItems(){
+  /* "Todas" no se le pide al servidor: ya está todo en ITEMS_ALL, que se trae
+     entero al cargar la pantalla. Pedirlo sería un viaje al pedo, y además no
+     hay nada que pedir —no existe la categoría "todas"—. */
+  if(catActual == null){ renderItems(ITEMS_ALL, true); return; }
   const items=await (await authFetch("/api/items?categoria="+encodeURIComponent(catActual))).json();
   renderItems(items, false);
 }
@@ -185,13 +203,14 @@ function pintarRail(){
       if(soloCom){ catFiltro = nombre; }
       else {
         catFiltro = null;
-        if(nombre) { catActual = nombre; $("#selCat").value = nombre; }
+        catActual = nombre;                       // null = Todas, y es un estado
+        if(nombre) $("#selCat").value = nombre;
       }
       filtrarItems();
     };
     rail.appendChild(b);
   };
-  agregar(null, "Todas", base.length, buscando && !catFiltro);
+  agregar(null, "Todas", base.length, buscando ? !catFiltro : catActual == null);
   [...cuentas.keys()].sort().forEach(c =>
     agregar(c, c, cuentas.get(c), buscando ? c === catFiltro : c === catActual));
 }
@@ -209,20 +228,26 @@ function pintarRail(){
 function renderItemsEditables(items, mostrarCat){
   const cont=$("#listaItems");
   if(items.length===0){ cont.innerHTML='<p class="muted">Sin ítems para mostrar.</p>'; return; }
-  /* Elegir de a varios aparece solo con el filtro de comisión puesto. En la
-     lista común no serviría de nada —lo único que se pone en tanda es el
-     porcentaje— y una columna de casilleros que no hacen nada se toca igual. */
-  const eligiendo = $("#soloComision").classList.contains("on") && items.length > 1;
+  /* Elegir de a varios está en todo el modo edición: en tanda se ponen dos cosas
+     —el porcentaje y la categoría— y mover de categoría hace falta justamente
+     cuando estás mirando una sola y ves los tres que no van ahí. */
+  const eligiendo = items.length > 1;
   if(eligiendo) cont.appendChild(barraSeleccion());
   items.forEach(it=>{
     const row=document.createElement("div");
     row.className = "item-row" + (eligiendo ? " con-sel" : "");
-    const cat = mostrarCat ? `<span class="tag neutro">${esc(it.categoria)}</span>` : "";
     // Si este ítem ya venía tocado desde otra categoría, se muestra como quedó y
     // no como está en la base: el cambio sigue pendiente hasta que se guarde.
     const pend = CAMBIOS.get(it.id);
     const v = pend || {nombre:it.nombre, precio:it.precio, es_comision:!!it.es_comision,
-                       comision_pct:it.comision_pct};
+                       comision_pct:it.comision_pct, categoria:it.categoria};
+    /* El chip de categoría aparece siempre que la fila esté MOVIDA, aunque se
+       esté mirando una sola categoría: sin eso, mover un ítem afuera lo dejaba
+       en la lista sin ninguna señal de que ya no pertenece ahí. */
+    const movida = (v.categoria || it.categoria) !== it.categoria;
+    const cat = (mostrarCat || movida)
+      ? `<span class="tag ${movida?"movido":"neutro"}">${movida?"→ ":""}${esc(v.categoria || it.categoria)}</span>`
+      : "";
     /* El porcentaje se edita acá adentro, al lado de la marca de comisión. Es la
        razón principal para entrar a este modo: prendés el filtro de comisión,
        entrás a editar y quedan todos los porcentajes del catálogo uno abajo del
@@ -249,13 +274,17 @@ function renderItemsEditables(items, mostrarCat){
       // "" = sin porcentaje propio. Se guarda como null y el ítem usa el general.
       return t === "" ? null : Math.max(0, Math.min(100, parseInt(t,10) || 0));
     };
+    // La categoría no tiene casillero en la fila: se cambia desde la barra de
+    // arriba, para varios de una. La fila la lleva puesta para saber si se movió.
+    let catFila = v.categoria || it.categoria;
     const leer=()=>({nombre:row.querySelector(".n").value.trim(),
                      precio:parseInt(row.querySelector(".p").value,10),
                      es_comision:row.querySelector(".com").checked,
-                     comision_pct:leerPct()});
+                     comision_pct:leerPct(), categoria:catFila});
     const original=JSON.stringify({nombre:it.nombre, precio:it.precio,
                                    es_comision:!!it.es_comision,
-                                   comision_pct:it.comision_pct ?? null});
+                                   comision_pct:it.comision_pct ?? null,
+                                   categoria:it.categoria});
     const marcar=()=>{
       const ahora=leer();
       const sucia = JSON.stringify(ahora)!==original;
@@ -264,7 +293,12 @@ function renderItemsEditables(items, mostrarCat){
          lo tipeado: había que acordarse de guardar antes de moverse, o se perdía
          sin aviso. Así se pueden recorrer todas las categorías y guardar una vez
          al final. */
-      if(sucia) CAMBIOS.set(it.id, {...ahora, categoria:it.categoria, nombreViejo:it.nombre});
+      /* `catOriginal` es de DÓNDE salió la fila, no a dónde va: sirve para contar
+         cuántas categorías se tocaron. Antes se guardaba como `categoria` y le
+         pisaba a la de `ahora`, así que mover un ítem se veía en pantalla —el
+         chip, la fila marcada, la cuenta— pero al guardar se mandaba la
+         categoría vieja y no se movía nada. */
+      if(sucia) CAMBIOS.set(it.id, {...ahora, catOriginal:it.categoria, nombreViejo:it.nombre});
       else CAMBIOS.delete(it.id);
       row.classList.toggle("sucia", sucia);
       // El de transferencia lo calcula el servidor al guardar. Mientras el
@@ -284,6 +318,17 @@ function renderItemsEditables(items, mostrarCat){
     });
     // El de elegir no es un dato del ítem: no lo ensucia, solo refresca la barra.
     if(eligiendo) row.querySelector(".sel").addEventListener("change", pintarSeleccion);
+    // La barra mueve de categoría llamando acá: la fila sigue siendo la única que
+    // sabe leerse y marcarse, así no hay dos lugares que escriban en CAMBIOS.
+    row.mover = (destino) => {
+      catFila = destino;
+      row.querySelector(".meta .tag")?.remove();
+      const chip = document.createElement("span");
+      chip.className = "tag" + (destino !== it.categoria ? " movido" : " neutro");
+      chip.textContent = (destino !== it.categoria ? "→ " : "") + destino;
+      row.querySelector(".transf").after(chip);
+      marcar();
+    };
     if(pend) row.classList.add("sucia");
     cont.appendChild(row);
   });
@@ -330,7 +375,11 @@ function barraSeleccion(){
     <input type="number" class="pct-todos" min="0" max="100" inputmode="numeric"
            placeholder="%" aria-label="Porcentaje para los elegidos">
     <button type="button" class="b-tinta poner" disabled>Aplicar</button>
-    <button type="button" class="b-out general" disabled>Que usen el general</button>`;
+    <button type="button" class="b-out general" disabled>Que usen el general</button>
+    <span class="corte"></span>
+    <label class="rot">Mover a</label>
+    <input class="cat-todos" list="cats" placeholder="categoría" aria-label="Categoría destino">
+    <button type="button" class="b-tinta mover" disabled>Mover</button>`;
 
   const filas = () => [...$("#listaItems").querySelectorAll(".item-row")];
   const marcar = (v) => { filas().forEach(r=>{ r.querySelector(".sel").checked=v; }); pintarSeleccion(); };
@@ -367,6 +416,22 @@ function barraSeleccion(){
     aplicar(String(n));
   };
   barra.querySelector(".general").onclick = () => aplicar("");
+
+  /* Mover de categoría, que es la otra cosa que se hace de a varios: entrás a
+     una categoría, ves los tres que no van ahí y los mandás juntos. Tampoco
+     guarda solo —queda como cambio pendiente, con el chip diciendo a dónde van—
+     porque mover veinte ítems sin poder mirarlos antes es de las cosas que se
+     arreglan de a una. */
+  barra.querySelector(".mover").onclick = () => {
+    const destino = barra.querySelector(".cat-todos").value.trim();
+    if(!destino){ toast("Escribí o elegí la categoría destino"); barra.querySelector(".cat-todos").focus(); return; }
+    const elegidas = filas().filter(r => r.querySelector(".sel").checked);
+    elegidas.forEach(r => r.mover(destino));
+    toast(`${elegidas.length} ${elegidas.length===1?"ítem":"ítems"} a "${destino}" · falta guardar`);
+  };
+  barra.querySelector(".cat-todos").addEventListener("keydown", e=>{
+    if(e.key === "Enter") barra.querySelector(".mover").click();
+  });
   barra.querySelector(".pct-todos").addEventListener("keydown", e=>{
     if(e.key === "Enter") barra.querySelector(".poner").click();
   });
@@ -384,7 +449,7 @@ function pintarSeleccion(){
   barra.querySelector(".cuantos").textContent =
     n === 0 ? "Ninguno elegido" : `${n} de ${filas.length} elegido${n===1?"":"s"}`;
   barra.classList.toggle("hay", n > 0);
-  ["poner","general","ninguno"].forEach(c => barra.querySelector("."+c).disabled = n === 0);
+  ["poner","general","ninguno","mover"].forEach(c => barra.querySelector("."+c).disabled = n === 0);
   barra.querySelector(".todos").disabled = n === filas.length;
 }
 
@@ -396,7 +461,7 @@ function pintarBarra(){
   const btn=$("#btnGuardarTodos"), nota=btn && btn.nextElementSibling;
   if(!btn) return;
   const n = CAMBIOS.size;
-  const cats = new Set([...CAMBIOS.values()].map(c=>c.categoria)).size;
+  const cats = new Set([...CAMBIOS.values()].map(c=>c.catOriginal)).size;
   btn.style.display = n ? "" : "none";
   btn.textContent = `Guardar ${n} ${n===1?"cambio":"cambios"}`;
   nota.textContent = n
@@ -416,6 +481,7 @@ async function guardarTodos(){
       headers:{"Content-Type":"application/json"},
       // -1 es "sacale el propio y que use el general"; null sería "no lo toques".
       body: JSON.stringify({nombre:v.nombre, precio:v.precio, es_comision:v.es_comision,
+                            categoria: v.categoria,
                             comision_pct: v.comision_pct == null ? -1 : v.comision_pct})});
     if(r.ok) CAMBIOS.delete(id); else malos.push(v.nombreViejo);
   }
@@ -587,16 +653,17 @@ $("#btnNuevoItem").onclick = () => {
 };
 
 // Uno solo abierto en toda la tarjeta, el de crear incluido.
-function cerrarPaneles(){
-  document.querySelectorAll("#catalogo .panel-edicion, #listaItems ~ .ficha-item").forEach(p=>p.remove());
-  document.querySelectorAll(".btn-item.abierto").forEach(b=>b.classList.remove("abierto"));
-}
-
 $("#btnRenombrar").onclick=async()=>{
-  const nuevo=prompt(`Renombrar la categoría "${catActual}" a:`,catActual);
-  if(!nuevo||nuevo.trim()===catActual)return;
+  // Renombrar necesita UNA categoría. Con "Todas" o con un filtro puesto no hay
+  // ninguna elegida, y antes esto abría un prompt que decía "undefined".
+  const cat = catFiltro || catActual;
+  if(!cat){ toast("Elegí una categoría para renombrarla"); return; }
+  const nuevo=prompt(`Renombrar la categoría "${cat}" a:`,cat);
+  if(!nuevo||nuevo.trim()===cat)return;
   await authFetch("/api/categorias",{method:"PUT",headers:{"Content-Type":"application/json"},
-    body:JSON.stringify({viejo:catActual,nuevo:nuevo.trim()})});
+    body:JSON.stringify({viejo:cat,nuevo:nuevo.trim()})});
+  if(catActual === cat) catActual = nuevo.trim();
+  if(catFiltro === cat) catFiltro = nuevo.trim();
   toast("Categoría renombrada");await cargarCats();
 };
 
@@ -853,61 +920,65 @@ window.acotarLista = cont => { acotar(cont); cont.addEventListener("scroll", () 
    que se lee todos los días. */
 let VER_BAJAS = false;
 
+/* De lo general a lo particular: arriba los dos números que valen para todas, y
+   después una línea por persona con un solo botón.
+
+   Antes cada empleada traía cinco botones —renombrar, código, valor hora,
+   horario, sacar—. Con cuatro personas eran veinte, que en la tablet no entran
+   en una línea y dejan el nombre como lo más chico del renglón. */
+let HORARIOS = {};
+
 async function cargarEmpleados(){
   const cont = $("#listaEmpleados");
   if(!cont) return;
-  const todos = await (await authFetch("/api/empleados?todos=true")).json();
+  const [todos, horarios] = await Promise.all([
+    (await authFetch("/api/empleados?todos=true")).json(),
+    (await authFetch("/api/horarios")).json().catch(() => ({})),
+  ]);
+  HORARIOS = horarios || {};
   const bajas = todos.filter(e => !e.activo).length;
   const emps = VER_BAJAS ? todos : todos.filter(e => e.activo);
   cont.innerHTML = "";
 
+  const gral = document.createElement("div");
+  panelGenerales(gral, c => {
+    VALOR_HORA_GENERAL = c.valor_hora;
+    cargarEmpleados();
+  });
+  cont.appendChild(gral);
+
   emps.forEach(e => {
     const fila = document.createElement("div");
-    fila.className = "usuario-fila";
-
-    const nom = document.createElement("span");
-    nom.className = "n"; nom.textContent = e.nombre;   // lo escribe una persona
-    const meta = document.createElement("span");
-    meta.className = "meta";
-    meta.textContent = (e.activo ? "" : "de baja · ") + (e.tiene_pin ? "con código" : "sin código");
-    if(!e.tiene_pin) meta.style.color = "var(--danger)";
+    fila.className = "emp-fila";
 
     const quien = document.createElement("span");
-    quien.className = "quien"; quien.append(nom, meta);
+    quien.className = "quien";
+    const nom = document.createElement("b");
+    nom.textContent = e.nombre;                      // lo escribe una persona
+    const meta = document.createElement("span");
+    meta.className = "meta";
+    meta.textContent = resumenHorario(e.id);
+    quien.append(nom, meta);
 
-    const acc = document.createElement("span"); acc.className = "acc";
-    const bNom = Object.assign(document.createElement("button"),
-                               {className:"b-out", textContent:"Renombrar"});
-    const bPin = Object.assign(document.createElement("button"),
-                               {className:"b-out", textContent: e.tiene_pin ? "Cambiar código" : "Poner código"});
-    const bBaja = Object.assign(document.createElement("button"),
-                                {className: e.activo ? "b-del" : "b-ok",
-                                 textContent: e.activo ? "Sacar" : "Reactivar"});
-    acc.append(bNom, bPin, bBaja);
-    fila.append(quien, acc);
+    const marcas = document.createElement("span");
+    marcas.className = "marcas";
+    // Solo lo que se sale de lo normal. Una columna que dice lo mismo en todas
+    // las filas ocupa lugar sin decir nada.
+    if(!e.activo) marcas.appendChild(chip("de baja", "gris"));
+    if(!e.tiene_pin) marcas.appendChild(chip("sin código"));
+    if(e.valor_hora != null) marcas.appendChild(chip(`$${e.valor_hora.toLocaleString("es-AR")} la hora`, "gris"));
+
+    const abrir = Object.assign(document.createElement("button"),
+                                {className:"b-out abrir", textContent:"Abrir"});
+    fila.append(quien, marcas, abrir);
     cont.appendChild(fila);
 
-    const abrir = tipo => {
-      cont.querySelectorAll(".panel-edicion").forEach(x => x.remove());
-      fila.after(panelEmpleado(e, tipo));
-    };
-    bNom.onclick = () => abrir("nombre");
-    bPin.onclick = () => abrir("pin");
-    bBaja.onclick = async () => {
-      if(!e.activo){
-        const r = await authFetch(`/api/empleados/${e.id}`, {method:"PUT",
-          headers:{"Content-Type":"application/json"}, body:JSON.stringify({activo: true})});
-        if(!r.ok){ toast((await r.json().catch(()=>({}))).detail || "No se pudo"); return; }
-        toast("Reactivada"); await refrescarEmpleados(); return;
-      }
-      // El DELETE decide solo: si nunca hizo nada lo borra de verdad, y si tiene
-      // historia lo da de baja. Por eso el aviso cuenta las dos cosas.
-      if(!confirm(`Sacar a "${e.nombre}" de la lista.\n\nSi nunca trabajó, se borra del todo. Si ya tiene comprobantes o sueldos, queda dado de baja: deja de aparecer para elegir y no puede entrar a su sueldo, pero lo suyo sigue estando.\n\n¿Seguimos?`)) return;
-      const r = await authFetch(`/api/empleados/${e.id}`, {method:"DELETE"});
-      if(!r.ok){ toast((await r.json().catch(()=>({}))).detail || "No se pudo"); return; }
-      const d = await r.json();
-      toast(d.borrado ? "Borrado" : `Dada de baja · tiene ${d.usos} ${d.usos===1?"registro":"registros"} a su nombre`);
-      await refrescarEmpleados();
+    abrir.onclick = () => {
+      const abierto = cont.querySelector(".panel-persona");
+      const eraEsta = abierto && abierto.dataset.emp === String(e.id);
+      cerrarPersona();
+      if(eraEsta) return;                            // el mismo botón lo cierra
+      fila.after(panelPersona(e));
     };
   });
 
@@ -922,27 +993,138 @@ async function cargarEmpleados(){
 
   dibujarCrearEmpleado();
   await cargarFusion();
+  pintarBarraHorario(todos);
+  pintarGrillaHorarios(todos);
 }
+
+/* Uno abierto por vez. Con dos personas desplegadas la lista deja de ser una
+   lista y pasa a ser dos formularios a medio llenar. */
+function cerrarPersona(){
+  document.querySelectorAll(".panel-persona").forEach(p => p.remove());
+}
+
+function chip(texto, clase){
+  const c = document.createElement("span");
+  c.className = "chip-emp" + (clase ? " " + clase : "");
+  c.textContent = texto;
+  return c;
+}
+
+/* "Mar a sáb · 10 a 13 · 16 a 20", o el día suelto si no es un bloque seguido.
+   Es lo que reemplaza al valor hora en el renglón: el horario se mira mucho más
+   seguido que lo que cobra la hora, que casi siempre es el general. */
+function resumenHorario(empId){
+  const tramos = HORARIOS[String(empId)] || [];
+  if(!tramos.length) return "sin horario cargado";
+  const dias = [...new Set(tramos.map(t => t.dia_semana))].sort((a,b) => a-b);
+  const corto = d => DIAS_SEM[d].slice(0,3).toLowerCase();
+  const seguidos = dias.every((d,i) => i === 0 || d === dias[i-1] + 1);
+  const cuando = dias.length === 1 ? corto(dias[0])
+               : seguidos ? `${corto(dias[0])} a ${corto(dias[dias.length-1])}`
+               : dias.map(corto).join(", ");
+  // Los tramos del primer día alcanzan: si alguno fuera distinto, se ve en la
+  // grilla de abajo, que es justo para lo que está.
+  const delDia = tramos.filter(t => t.dia_semana === dias[0])
+                       .sort((a,b) => a.desde.localeCompare(b.desde))
+                       .map(t => `${hm(t.desde)} a ${hm(t.hasta)}`).join(" · ");
+  return `${cuando} · ${delDia}`;
+}
+const hm = s => (s || "").replace(/^0/, "").replace(/:00$/, "");
+
+/* Todo lo de una persona junto. Cada renglón abre abajo el editor que ya
+   existía cuando cada cosa era un botón suelto: lo que cambió es dónde se
+   entra, no lo que hace cada uno. */
+function panelPersona(e){
+  const pan = document.createElement("div");
+  pan.className = "panel-persona";
+  pan.dataset.emp = e.id;
+  const vh = e.valor_hora != null
+    ? `$${e.valor_hora.toLocaleString("es-AR")}`
+    : `$${VALOR_HORA_GENERAL.toLocaleString("es-AR")} (el general)`;
+  pan.innerHTML = `
+    <div class="linea" data-tipo="nombre">
+      <span class="et">Nombre<small>Arrastra a sus comprobantes y turnos</small></span>
+      <span class="dato">${escHtml(e.nombre)}</span>
+      <button class="b-out">Cambiar</button></div>
+    <div class="linea" data-tipo="pin">
+      <span class="et">Código<small>Con esto abre su sueldo</small></span>
+      <span class="dato">${e.tiene_pin ? "puesto" : `<span class="chip-emp">no tiene</span>`}</span>
+      <button class="b-out">${e.tiene_pin ? "Cambiar" : "Poner código"}</button></div>
+    <div class="linea" data-tipo="vh">
+      <span class="et">Lo que cobra la hora<small>Vacío quiere decir el general</small></span>
+      <span class="dato">${vh}</span>
+      <button class="b-out">Cambiar</button></div>
+    <div class="linea" data-tipo="horario">
+      <span class="et">Horario<small>El de siempre. Un día suelto se cambia en la agenda</small></span>
+      <span class="dato">${escHtml(resumenHorario(e.id))}</span>
+      <button class="b-out">Cambiar</button></div>
+    <div class="linea" data-tipo="baja">
+      <span class="et">${e.activo ? "Sacar de la lista" : "Reactivar"}<small>${e.activo
+        ? "Si ya trabajó queda de baja y lo suyo sigue estando"
+        : "Vuelve a aparecer para elegir"}</small></span>
+      <span class="dato"></span>
+      <button class="${e.activo ? "b-del" : "b-ok"}">${e.activo ? "Sacar" : "Reactivar"}</button></div>`;
+
+  pan.querySelectorAll(".linea").forEach(linea => {
+    linea.querySelector("button").onclick = async () => {
+      const tipo = linea.dataset.tipo;
+      if(tipo === "baja") return void bajaOReactivar(e);
+      pan.querySelectorAll(".panel-edicion, .panel-horario").forEach(x => x.remove());
+      linea.after(tipo === "horario" ? panelHorario(e) : panelEmpleado(e, tipo));
+    };
+  });
+  return pan;
+}
+
+async function bajaOReactivar(e){
+  if(!e.activo){
+    const r = await authFetch(`/api/empleados/${e.id}`, {method:"PUT",
+      headers:{"Content-Type":"application/json"}, body:JSON.stringify({activo: true})});
+    if(!r.ok){ toast((await r.json().catch(()=>({}))).detail || "No se pudo"); return; }
+    toast("Reactivada"); await refrescarEmpleados(); return;
+  }
+  // El DELETE decide solo: si nunca hizo nada lo borra de verdad, y si tiene
+  // historia lo da de baja. Por eso el aviso cuenta las dos cosas.
+  if(!confirm(`Sacar a "${e.nombre}" de la lista.\n\nSi nunca trabajó, se borra del todo. Si ya tiene comprobantes o sueldos, queda dado de baja: deja de aparecer para elegir y no puede entrar a su sueldo, pero lo suyo sigue estando.\n\n¿Seguimos?`)) return;
+  const r = await authFetch(`/api/empleados/${e.id}`, {method:"DELETE"});
+  if(!r.ok){ toast((await r.json().catch(()=>({}))).detail || "No se pudo"); return; }
+  const d = await r.json();
+  toast(d.borrado ? "Borrado" : `Dada de baja · tiene ${d.usos} ${d.usos===1?"registro":"registros"} a su nombre`);
+  await refrescarEmpleados();
+}
+
+const escHtml = s => String(s ?? "").replace(/[&<>"']/g,
+  c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 
 /* Un panel por vez, como en usuarios: el nombre y el código no se cambian juntos
    casi nunca, y tenerlos siempre a la vista convierte una lista que se mira en
    un formulario a medio llenar. */
 function panelEmpleado(e, tipo){
-  const esPin = tipo === "pin";
+  const esPin = tipo === "pin", esVh = tipo === "vh";
+  const rotulo = esPin ? "Código nuevo (4 a 8 números)"
+               : esVh ? "Lo que cobra la hora" : "Nombre";
   const pan = document.createElement("div");
   pan.className = "panel-edicion";
   pan.innerHTML = `
-    <div class="campo"><label>${esPin ? "Código nuevo (4 a 8 números)" : "Nombre"}</label>
-      <input class="valor" type="${esPin ? "text" : "text"}" ${esPin ? 'inputmode="numeric" maxlength="8" autocomplete="off" placeholder="Ej: 2468"' : ""}></div>
+    <div class="campo"><label>${rotulo}</label>
+      <input class="valor" type="${esVh ? "number" : "text"}" ${
+        esPin ? 'inputmode="numeric" maxlength="8" autocomplete="off" placeholder="Ej: 2468"' : ""}${
+        esVh ? ` min="0" inputmode="numeric" placeholder="${VALOR_HORA_GENERAL} (el general)"` : ""}></div>
     <span class="acc">
       <button class="b-ok aceptar">Guardar</button>
       <button class="b-out cancelar">Cancelar</button>
       ${esPin && e.tiene_pin ? `<button class="b-del sacar">Sacar el código</button>` : ""}
+      ${esVh && e.valor_hora != null ? `<button class="b-out general">Que use el general</button>` : ""}
     </span>
     ${esPin ? `<p class="muted" style="flex:1 1 100%;margin:0;">El código no se puede volver a ver:
-       se guarda encriptado, como las contraseñas. Si se olvida, se pone uno nuevo.</p>` : ""}`;
+       se guarda encriptado, como las contraseñas. Si se olvida, se pone uno nuevo.</p>` : ""}
+    ${esVh ? `<p class="muted" style="flex:1 1 100%;margin:0;">Vacío quiere decir que cobra el general
+       ($${VALOR_HORA_GENERAL.toLocaleString("es-AR")}), que se cambia en Sueldos. Esto es solo para
+       quien cobre distinto. Los sueldos ya cerrados no se tocan: cada liquidación guarda el valor
+       con el que se pagó.</p>` : ""}`;
   const campo = pan.querySelector(".valor");
-  if(!esPin) campo.value = e.nombre;
+  if(!esPin && !esVh) campo.value = e.nombre;
+  if(esVh && e.valor_hora != null) campo.value = e.valor_hora;
 
   pan.querySelector(".cancelar").onclick = () => pan.remove();
   const sacar = pan.querySelector(".sacar");
@@ -950,10 +1132,24 @@ function panelEmpleado(e, tipo){
     if(!confirm(`Sin código, ${e.nombre} no va a poder entrar a su sueldo. ¿Se lo sacamos?`)) return;
     await guardarEmpleado(`/api/empleados/${e.id}/pin`, {pin: null}, "Código sacado");
   };
+  const general = pan.querySelector(".general");
+  // -1 es el centinela de "sacale el propio": mandar null sería "no lo toques".
+  if(general) general.onclick = () =>
+    guardarEmpleado(`/api/empleados/${e.id}`, {valor_hora: -1}, "Vuelve al valor general");
   pan.querySelector(".aceptar").onclick = async () => {
     const v = campo.value.trim();
-    if(!v){ toast(esPin ? "Escribí el código nuevo" : "El nombre no puede quedar vacío"); return; }
+    if(!v){
+      // En el valor hora, vacío es una respuesta válida: quiere decir el general.
+      if(esVh){ await guardarEmpleado(`/api/empleados/${e.id}`, {valor_hora: -1}, "Vuelve al valor general"); return; }
+      toast(esPin ? "Escribí el código nuevo" : "El nombre no puede quedar vacío"); return;
+    }
     if(esPin && (!/^\d{4,8}$/.test(v))){ toast("El código son de 4 a 8 números"); return; }
+    if(esVh){
+      const n = parseInt(v, 10);
+      if(isNaN(n) || n < 0){ toast("El valor hora tiene que ser un número"); return; }
+      await guardarEmpleado(`/api/empleados/${e.id}`, {valor_hora: n}, "Valor hora guardado");
+      return;
+    }
     if(esPin) await guardarEmpleado(`/api/empleados/${e.id}/pin`, {pin: v}, "Código guardado");
     else      await guardarEmpleado(`/api/empleados/${e.id}`, {nombre: v}, "Nombre cambiado");
   };
@@ -962,6 +1158,173 @@ function panelEmpleado(e, tipo){
     if(ev.key === "Escape") pan.remove();
   });
   setTimeout(() => campo.focus(), 0);
+  return pan;
+}
+
+/* El horario fijo de la semana: se edita entera y se guarda de una vez.
+
+   Dos tramos por día como máximo —entra, corta al mediodía, vuelve— y el día
+   destildado es "no trabaja", que en la agenda se dibuja distinto de trabajar
+   cero horas. */
+const DIAS_SEM = ["Lunes","Martes","Miércoles","Jueves","Viernes","Sábado","Domingo"];
+
+function panelHorario(e){
+  const pan = document.createElement("div");
+  pan.className = "panel-horario";
+  pan.innerHTML = `<p class="muted" style="margin:0 0 var(--sp-2);">
+      El horario de siempre de ${esc(e.nombre)}. En la agenda se dibuja como su columna del día.
+      Un día suelto —se cambió con otra, o el lunes de depilación— se carga desde la agenda, no acá.</p>
+    <div class="de-una">
+      <span class="rot">El horario de la semana</span>
+      <span class="tramo"><input type="time" class="ud1" value="08:00"><span class="a">a</span><input type="time" class="uh1" value="20:00"></span>
+      <label class="marca corta"><input type="checkbox" class="udoble"> corta al mediodía</label>
+      <span class="tramo ut2" hidden><input type="time" class="ud2" value="15:00"><span class="a">a</span><input type="time" class="uh2" value="19:00"></span>
+      <span class="chips">${DIAS_SEM.map((d,i)=>
+        `<button type="button" class="chip-dia${i>=1 && i<=5 ? " on":""}" data-d="${i}">${d.slice(0,3)}</button>`).join("")}</span>
+      <button class="b-tinta aplicar">Aplicar</button>
+    </div>
+    <p class="resumen"></p>
+    <div class="dias" hidden></div>
+    <span class="acc">
+      <button class="b-ok guardar">Guardar el horario</button>
+      <button class="b-out cancelar">Cancelar</button>
+      <button class="b-out porDia">Ajustar día por día</button>
+    </span>`;
+  const cajaDias = pan.querySelector(".dias");
+
+  const filaDia = (i) => {
+    const d = document.createElement("div");
+    d.className = "dia-horario";
+    d.innerHTML = `
+      <label class="marca"><input type="checkbox" class="trabaja"> ${DIAS_SEM[i]}</label>
+      <span class="tramo t1"><input type="time" class="d1"><span class="a">a</span><input type="time" class="h1"></span>
+      <label class="marca corta"><input type="checkbox" class="doble"> corta al mediodía</label>
+      <span class="tramo t2" hidden><input type="time" class="d2"><span class="a">a</span><input type="time" class="h2"></span>`;
+    const pintar = () => {
+      const on = d.querySelector(".trabaja").checked;
+      d.classList.toggle("off", !on);
+      d.querySelectorAll("input[type=time], .doble").forEach(x => x.disabled = !on);
+      d.querySelector(".t2").hidden = !(on && d.querySelector(".doble").checked);
+    };
+    d.querySelector(".trabaja").onchange = pintar;
+    d.querySelector(".doble").onchange = pintar;
+    d._pintar = pintar;
+    return d;
+  };
+  const filas = DIAS_SEM.map((_, i) => { const f = filaDia(i); cajaDias.appendChild(f); return f; });
+
+  const poner = (f, tramos) => {
+    f.querySelector(".trabaja").checked = tramos.length > 0;
+    f.querySelector(".d1").value = tramos[0] ? tramos[0].desde : "08:00";
+    f.querySelector(".h1").value = tramos[0] ? tramos[0].hasta : "20:00";
+    f.querySelector(".doble").checked = tramos.length > 1;
+    f.querySelector(".d2").value = tramos[1] ? tramos[1].desde : "15:00";
+    f.querySelector(".h2").value = tramos[1] ? tramos[1].hasta : "19:00";
+    f._pintar();
+  };
+
+  /* Lo que se ve primero es la semana entera, que es como se carga de verdad:
+     todas hacen el mismo horario casi todos los días. Los renglones de cada día
+     aparecen al pedirlos —debajo hay un resumen de lo que está guardado, así
+     esconderlos no esconde el dato—. */
+  const resumen = pan.querySelector(".resumen");
+  const hhmm = t => t;
+  const pintarResumen = () => {
+    const partes = [];
+    filas.forEach((f, i) => {
+      if(!f.querySelector(".trabaja").checked) return;
+      let t = `${hhmm(f.querySelector(".d1").value)}–${hhmm(f.querySelector(".h1").value)}`;
+      if(f.querySelector(".doble").checked)
+        t += ` y ${hhmm(f.querySelector(".d2").value)}–${hhmm(f.querySelector(".h2").value)}`;
+      partes.push([DIAS_SEM[i], t]);
+    });
+    if(!partes.length){ resumen.textContent = "Todavía no tiene horario cargado."; return; }
+    // Los días seguidos con el mismo horario se juntan: "Mar a Sáb 10–19" en vez
+    // de cinco renglones que dicen lo mismo.
+    const juntos = [];
+    partes.forEach(([dia, t]) => {
+      const ult = juntos[juntos.length - 1];
+      if(ult && ult.t === t) ult.hasta = dia; else juntos.push({desde: dia, hasta: null, t});
+    });
+    resumen.innerHTML = juntos.map(g =>
+      `<b>${g.hasta ? `${g.desde} a ${g.hasta}` : g.desde}</b> ${esc(g.t)}`).join(" · ");
+  };
+  filas.forEach(f => f.addEventListener("change", pintarResumen));
+
+  authFetch("/api/horarios").then(r => r.json()).then(todos => {
+    const mios = (todos[String(e.id)] || []);
+    filas.forEach((f, i) => poner(f, mios.filter(h => h.dia_semana === i)
+                                       .sort((a, b) => a.desde.localeCompare(b.desde))));
+    // La fila de arriba arranca con el horario que más se repite, para que
+    // "Aplicar" sea un retoque y no volver a escribir todo desde cero.
+    const conteo = new Map();
+    filas.forEach((f, i) => {
+      if(!f.querySelector(".trabaja").checked) return;
+      const k = [f.querySelector(".d1").value, f.querySelector(".h1").value,
+                 f.querySelector(".doble").checked, f.querySelector(".d2").value,
+                 f.querySelector(".h2").value].join("|");
+      conteo.set(k, (conteo.get(k) || 0) + 1);
+    });
+    const comun = [...conteo.entries()].sort((a, b) => b[1] - a[1])[0];
+    if(comun){
+      const [d1, h1, doble, d2, h2] = comun[0].split("|");
+      pan.querySelector(".ud1").value = d1; pan.querySelector(".uh1").value = h1;
+      pan.querySelector(".udoble").checked = doble === "true";
+      pan.querySelector(".ud2").value = d2; pan.querySelector(".uh2").value = h2;
+      pan.querySelector(".ut2").hidden = doble !== "true";
+    }
+    pintarResumen();
+  }).catch(() => { filas.forEach(f => poner(f, [])); pintarResumen(); });
+
+  pan.querySelector(".porDia").onclick = () => {
+    const caja = pan.querySelector(".dias");
+    caja.hidden = !caja.hidden;
+    pan.querySelector(".porDia").textContent = caja.hidden ? "Ajustar día por día" : "Ocultar los días";
+    resumen.hidden = !caja.hidden;
+  };
+
+  /* Cargar la semana entera en un solo gesto: se escribe el horario una vez, se
+     marcan los días y se aplica. Vienen marcados de martes a sábado, que es la
+     semana del local; el lunes queda afuera porque no se abre todas las semanas y
+     se marca desde la agenda, fecha por fecha. */
+  pan.querySelectorAll(".chip-dia").forEach(c =>
+    c.onclick = () => c.classList.toggle("on"));
+  pan.querySelector(".udoble").onchange = () =>
+    pan.querySelector(".ut2").hidden = !pan.querySelector(".udoble").checked;
+  pan.querySelector(".aplicar").onclick = () => {
+    const elegidos = [...pan.querySelectorAll(".chip-dia.on")].map(c => +c.dataset.d);
+    if(!elegidos.length){ toast("Marcá a qué días"); return; }
+    const tramos = [{desde: pan.querySelector(".ud1").value, hasta: pan.querySelector(".uh1").value}];
+    if(pan.querySelector(".udoble").checked)
+      tramos.push({desde: pan.querySelector(".ud2").value, hasta: pan.querySelector(".uh2").value});
+    if(tramos.some(t => !t.desde || !t.hasta)){ toast("Completá las horas"); return; }
+    // Se pisa solo lo marcado: los días que no se eligieron quedan como estaban,
+    // así se puede aplicar la tanda y después corregir el sábado a mano.
+    elegidos.forEach(i => poner(filas[i], tramos));
+    pintarResumen();
+    toast(`${elegidos.length} ${elegidos.length===1?"día":"días"} con ese horario · falta guardar`);
+  };
+  pan.querySelector(".cancelar").onclick = () => pan.remove();
+  pan.querySelector(".guardar").onclick = async () => {
+    const tramos = [];
+    for(let i = 0; i < filas.length; i++){
+      const f = filas[i];
+      if(!f.querySelector(".trabaja").checked) continue;
+      const d1 = f.querySelector(".d1").value, h1 = f.querySelector(".h1").value;
+      if(!d1 || !h1){ toast(`Completá las horas del ${DIAS_SEM[i].toLowerCase()}`); return; }
+      tramos.push({dia_semana: i, desde: d1, hasta: h1});
+      if(f.querySelector(".doble").checked){
+        const d2 = f.querySelector(".d2").value, h2 = f.querySelector(".h2").value;
+        if(!d2 || !h2){ toast(`Completá el segundo tramo del ${DIAS_SEM[i].toLowerCase()}`); return; }
+        tramos.push({dia_semana: i, desde: d2, hasta: h2});
+      }
+    }
+    const r = await authFetch(`/api/horarios/${e.id}`, {method:"PUT",
+      headers:{"Content-Type":"application/json"}, body: JSON.stringify({tramos})});
+    if(!r.ok){ toast((await r.json().catch(()=>({}))).detail || "No se pudo guardar"); return; }
+    pan.remove();
+    toast(tramos.length ? "Horario guardado" : "Quedó sin horario cargado");
+  };
   return pan;
 }
 
@@ -996,6 +1359,134 @@ function dibujarCrearEmpleado(){
     await refrescarEmpleados();
   };
   campo.addEventListener("keydown", ev => { if(ev.key === "Enter") caja.querySelector(".agregar").click(); });
+}
+
+/* La semana del local en una grilla: filas las empleadas, columnas los días.
+
+   Se mira, no se edita: para cambiar están la barra de arriba —ponerle el mismo
+   horario a varias de una— y el panel de cada persona. Una celda que fuera un
+   formulario se toca sin querer con el dedo, que es con lo que se usa esto.
+
+   Sirve para lo que antes había que reconstruir abriendo panel por panel: quién
+   abre el sábado, qué días no viene nadie, a qué hora hay una sola persona. */
+function pintarGrillaHorarios(emps){
+  const caja = $("#grillaHorario");
+  if(!caja) return;
+  const activas = emps.filter(e => e.activo);
+  if(!activas.length){ caja.innerHTML = `<p class="muted">Todavía no hay nadie en la lista.</p>`; return; }
+
+  const tramosDe = (e, d) => (HORARIOS[String(e.id)] || [])
+    .filter(t => t.dia_semana === d)
+    .sort((a,b) => a.desde.localeCompare(b.desde));
+  // Un día en el que no trabaja nadie es el local cerrado, y se marca entero:
+  // es la lectura que más se busca cuando se mira la semana.
+  const cerrado = d => activas.every(e => !tramosDe(e, d).length);
+
+  caja.innerHTML = `<div class="tabla-horario"><table>
+    <thead><tr><th class="quien">Quién</th>${DIAS_SEM.map((d,i) =>
+      `<th${cerrado(i) ? ' class="cerrado"' : ""}>${d.slice(0,3)}</th>`).join("")}</tr></thead>
+    <tbody>${activas.map(e => `<tr data-emp="${e.id}">
+      <td class="quien">${escHtml(e.nombre)}</td>${DIAS_SEM.map((_, i) => {
+        const ts = tramosDe(e, i);
+        return `<td class="${ts.length ? "" : "libre"}${cerrado(i) ? " cerrado" : ""}">${
+          ts.length ? ts.map(t => `<span>${hm(t.desde)}–${hm(t.hasta)}</span>`).join("") : "—"}</td>`;
+      }).join("")}</tr>`).join("")}</tbody></table></div>`;
+
+  // Tocar una fila lleva a esa persona, que es donde se cambia su horario.
+  caja.querySelectorAll("tbody tr").forEach(tr => {
+    tr.onclick = () => {
+      const e = activas.find(x => String(x.id) === tr.dataset.emp);
+      const fila = [...document.querySelectorAll("#listaEmpleados .emp-fila")]
+        .find(f => f.querySelector("b").textContent === e.nombre);
+      if(!fila) return;
+      cerrarPersona();
+      fila.after(panelPersona(e));
+      const pan = fila.nextElementSibling;
+      pan.querySelector('.linea[data-tipo="horario"] button').click();
+      pan.scrollIntoView({behavior:"smooth", block:"center"});
+    };
+  });
+}
+
+/* Ponerle el mismo horario a varias de una. Es el "para todas" del horario, y
+   está arriba por lo mismo que el valor hora general: lo que alcanza a más
+   gente va primero.
+
+   Solo pisa los días elegidos: el resto de la semana de cada una queda como
+   estaba. Mandar la semana entera con un solo tramo le borraría a Agustina el
+   corte del mediodía sin avisar. */
+function pintarBarraHorario(emps){
+  const caja = $("#barraHorario");
+  if(!caja) return;
+  const activas = emps.filter(e => e.activo);
+  caja.innerHTML = `
+    <div class="de-una">
+      <span class="rot">Ponerle el mismo horario a</span>
+      <span class="chips quienes">${activas.map(e =>
+        `<button type="button" class="chip-dia" data-emp="${e.id}">${escHtml(e.nombre)}</button>`).join("")}
+        <button type="button" class="chip-dia todas">Todas</button></span>
+      <span class="rot">los días</span>
+      <span class="chips dias">${DIAS_SEM.map((d,i) =>
+        `<button type="button" class="chip-dia" data-d="${i}">${d.slice(0,3)}</button>`).join("")}</span>
+      <span class="tramo"><input type="time" class="bd1" value="08:00"><span class="a">a</span><input type="time" class="bh1" value="20:00"></span>
+      <label class="marca corta"><input type="checkbox" class="bdoble"> corta al mediodía</label>
+      <span class="tramo bt2" hidden><input type="time" class="bd2" value="16:00"><span class="a">a</span><input type="time" class="bh2" value="20:00"></span>
+      <button class="b-tinta aplicar" disabled>Aplicar</button>
+    </div>
+    <p class="muted resumen-barra" style="margin:var(--sp-2) 0 0;">Elegí a quién y qué días. Solo se
+      cambian esos días; el resto de la semana de cada una queda como está.</p>`;
+
+  const sel = s => caja.querySelector(s), todos = s => [...caja.querySelectorAll(s)];
+  const elegidas = () => todos(".quienes .chip-dia.on[data-emp]").map(b => Number(b.dataset.emp));
+  const diasSel  = () => todos(".dias .chip-dia.on").map(b => Number(b.dataset.d));
+  const aplicar = sel(".aplicar");
+
+  const repintar = () => {
+    const q = elegidas().length, d = diasSel().length;
+    aplicar.disabled = !q || !d;
+    sel(".resumen-barra").textContent = (!q || !d)
+      ? "Elegí a quién y qué días. Solo se cambian esos días; el resto de la semana de cada una queda como está."
+      : `Le cambia ${d === 1 ? "1 día" : d + " días"} a ${q === 1 ? "1 persona" : q + " personas"}. El resto de su semana queda como está.`;
+    sel(".todas").classList.toggle("on", q === activas.length && q > 0);
+  };
+
+  todos(".quienes .chip-dia[data-emp], .dias .chip-dia").forEach(b =>
+    b.onclick = () => { b.classList.toggle("on"); repintar(); });
+  sel(".todas").onclick = () => {
+    const prender = elegidas().length !== activas.length;
+    todos(".quienes .chip-dia[data-emp]").forEach(b => b.classList.toggle("on", prender));
+    repintar();
+  };
+  sel(".bdoble").onchange = () => { sel(".bt2").hidden = !sel(".bdoble").checked; };
+
+  aplicar.onclick = async () => {
+    const dias = diasSel(), ids = elegidas();
+    const tramo1 = {desde: sel(".bd1").value, hasta: sel(".bh1").value};
+    const tramos = [tramo1];
+    if(sel(".bdoble").checked) tramos.push({desde: sel(".bd2").value, hasta: sel(".bh2").value});
+    for(const t of tramos){
+      if(!t.desde || !t.hasta || t.hasta <= t.desde){ toast("Revisá las horas: la de salida va después"); return; }
+    }
+    const nombres = ids.map(id => (emps.find(e => e.id === id) || {}).nombre).filter(Boolean);
+    if(!confirm(`Se les pone ${tramos.map(t => `${hm(t.desde)} a ${hm(t.hasta)}`).join(" y ")} `
+      + `los ${dias.map(d => DIAS_SEM[d].toLowerCase()).join(", ")} a: ${nombres.join(", ")}.\n\n`
+      + `Lo que tuvieran esos días se reemplaza. El resto de la semana no se toca.`)) return;
+
+    aplicar.disabled = true;
+    let listas = 0;
+    for(const id of ids){
+      const quedan = (HORARIOS[String(id)] || []).filter(t => !dias.includes(t.dia_semana));
+      const nuevos = dias.flatMap(d => tramos.map(t => ({dia_semana: d, desde: t.desde, hasta: t.hasta})));
+      const r = await authFetch(`/api/horarios/${id}`, {method:"PUT",
+        headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({tramos: [...quedan.map(t => ({dia_semana: t.dia_semana, desde: t.desde, hasta: t.hasta})), ...nuevos]})});
+      if(r.ok) listas++;
+      else toast((await r.json().catch(()=>({}))).detail || "No se pudo con alguna");
+    }
+    toast(`Horario puesto a ${listas} ${listas === 1 ? "persona" : "personas"}`);
+    await cargarEmpleados();
+  };
+  repintar();
 }
 
 async function refrescarEmpleados(){ await cargarEmpleados(); }

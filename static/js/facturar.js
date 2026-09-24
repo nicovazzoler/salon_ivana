@@ -23,11 +23,25 @@ $("#btnGuardarEgreso").onclick=async()=>{
   const monto=parseInt($("#egMonto").value);
   if(!tipo || !monto){ toast("Completá tipo y monto"); return; }
   await authFetch("/api/tipos-egreso",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({nombre:tipo})});
-  await authFetch("/api/egresos",{method:"POST",headers:{"Content-Type":"application/json"},
-    body:JSON.stringify({tipo, concepto:$("#egConcepto").value, monto, forma_pago:$("#egPago").value})});
+  const fecha = ($("#egFecha") && $("#egFecha").value) || null;
+  const r = await authFetch("/api/egresos",{method:"POST",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({tipo, concepto:$("#egConcepto").value, monto,
+                         forma_pago:$("#egPago").value, fecha})});
+  if(!r.ok){ toast((await r.json().catch(()=>({}))).detail || "No se pudo"); return; }
   $("#egTipo").value=""; $("#egConcepto").value=""; $("#egMonto").value="";
-  toast("Egreso registrado"); avisoEgresoPrivado(); cargarEgresosHoy();
+  toast(fecha ? `Egreso registrado con fecha ${fecha.split("-").reverse().slice(0,2).join("/")}`
+              : "Egreso registrado");
+  avisoEgresoPrivado(); cargarEgresosHoy();
 };
+
+/* El casillero de la fecha se marca cuando tiene algo puesto, para que no quede
+   una fecha vieja sin que se vea. */
+if($("#egOtroDiaBox")){
+  const caja = $("#egOtroDiaBox"), campo = $("#egFecha");
+  const pintar = () => caja.classList.toggle("activo", !!campo.value);
+  campo.addEventListener("change", pintar);
+  $("#egBtnHoy").onclick = () => { campo.value = ""; caja.open = false; pintar(); };
+}
 
 /* Aviso del arqueo.
 
@@ -212,19 +226,39 @@ function categorias(){
   return set.sort((a,b)=>a.localeCompare(b,'es'));
 }
 
+/* "A comisión" no es una categoría: es un atajo.
+
+   Los trabajos que se le pagan a quien los hace están repartidos en cortes, en
+   color, en reflejos. Para cargarlos hay que acordarse de en cuál cayó cada uno,
+   y son los que más se buscan. Esta pastilla los junta a todos sin sacarlos de
+   su categoría —cada ítem sigue donde estaba, esto es otra puerta para llegar—.
+   El nombre empieza con caracteres que ninguna categoría real puede tener, para
+   que nunca choque con una que alguien escriba a mano. */
+const CAT_COMISION = "\u0000comision";
+function itemsDe(cat){
+  return cat === CAT_COMISION ? CATALOGO.filter(i => i.es_comision)
+                              : CATALOGO.filter(i => i.categoria === cat);
+}
+function rotuloCat(cat){ return cat === CAT_COMISION ? "A comisión" : cat; }
+
 /* El rail se dibuja UNA vez y queda siempre a la vista: desde cualquier lugar
    (dentro de un grupo, o buscando) se puede saltar a otra categoría sin volver. */
 function pintarRail(){
   const rail=$("#catPills"); rail.innerHTML="";
   const cuentas=new Map();
   CATALOGO.forEach(it=>cuentas.set(it.categoria,(cuentas.get(it.categoria)||0)+1));
-  categorias().forEach(c=>{
+  const agregar=(cat, etiqueta, cuenta, extra)=>{
     const b=document.createElement("button");
-    b.className="cat-pill"; b.dataset.cat=c;
-    b.innerHTML=`<span class="nom">${esc(c)}</span><span class="cuenta">${cuentas.get(c)||0}</span>`;
-    b.onclick=()=>{ $("#buscar").value=""; abrirCategoria(c); };
+    b.className="cat-pill" + (extra || ""); b.dataset.cat=cat;
+    b.innerHTML=`<span class="nom">${esc(etiqueta)}</span><span class="cuenta">${cuenta}</span>`;
+    b.onclick=()=>{ $("#buscar").value=""; abrirCategoria(cat); };
     rail.appendChild(b);
-  });
+  };
+  // Primera de todas y marcada aparte: es un atajo, no una categoría más. Si no
+  // hay ningún ítem a comisión no aparece, para no ofrecer una puerta vacía.
+  const aComision = CATALOGO.filter(i=>i.es_comision).length;
+  if(aComision) agregar(CAT_COMISION, "A comisión", aComision, " especial");
+  categorias().forEach(c => agregar(c, c, cuentas.get(c) || 0));
 }
 function marcarRail(cat){
   $("#catPills").querySelectorAll(".cat-pill").forEach(p=>p.classList.toggle("on", p.dataset.cat===cat));
@@ -243,7 +277,7 @@ function abrirCategoria(cat){
   vista="items"; catActual=cat; grupoActual=null;
   marcarRail(cat);
   $("#barraNav").style.display="none";
-  const items=CATALOGO.filter(i=>i.categoria===cat);
+  const items=itemsDe(cat);
   const grupos=new Map();
   items.forEach(it=>{ const{base,variante}=parseNombre(it.nombre);
     if(!grupos.has(base))grupos.set(base,[]); grupos.get(base).push({variante,it}); });
@@ -251,7 +285,10 @@ function abrirCategoria(cat){
   [...grupos.entries()].forEach(([base,arr])=>{
     if(arr.length===1){
       const it=arr[0].it; const b=document.createElement("button"); b.className="btn-item";
-      b.innerHTML=`<span class="n">${it.nombre}</span>${precioBtn(it)}`;
+      // En "A comisión" los ítems vienen de categorías distintas, así que cada uno
+      // dice de cuál es. Adentro de una categoría el dato sobra: son todos de ahí.
+      const mini = cat === CAT_COMISION ? `<span class="cat-mini">${esc(it.categoria)}</span>` : "";
+      b.innerHTML=`<span class="n">${it.nombre}</span>${mini}${precioBtn(it)}`;
       b.onclick=()=>agregar(it); g.appendChild(b);
     } else {
       const labels=arr.map(a=>a.variante).filter(Boolean).sort((a,b)=>ordenVar(a)-ordenVar(b));
@@ -264,7 +301,7 @@ function abrirCategoria(cat){
 function abrirGrupo(base,arr){
   vista="grupo"; grupoActual=base;
   $("#barraNav").style.display="flex";
-  $("#volver").textContent="← "+catActual; $("#tituloCat").textContent=base;
+  $("#volver").textContent="← "+rotuloCat(catActual); $("#tituloCat").textContent=base;
   const ordenado=[...arr].sort((a,b)=>ordenVar(a.variante)-ordenVar(b.variante));
   const g=$("#items"); g.innerHTML="";
   ordenado.forEach(({variante,it})=>{
@@ -436,6 +473,7 @@ function renderTicket(){
   const cont=$("#lineas"); cont.innerHTML="";
 
   if(ticket.length===0){ cont.innerHTML='<p class="muted">Tocá un servicio para empezar.</p>'; }
+  marcarAtendio();
   ticket.forEach((l,i)=>{
 
     const editando = !!l.editando;          // línea de ítem extra abierta para editar
@@ -884,16 +922,48 @@ async function imprimirComprobante(id){
   }
 }
 
+/* El número es el que la app va a usar, pedido justo antes: no se reserva nada.
+   Si no se puede saber, se pregunta igual sin el número —lo que importa es el
+   total y con qué se cobra—. */
+async function confirmarAntesDeGenerar(tipo, cliente){
+  const esTicket = tipo === "ticket";
+  let num = "";
+  try{
+    const r = await authFetch(`/api/comprobantes/proximo-numero?tipo=${tipo}`);
+    if(r.ok) num = " " + (esTicket ? "A" : "P") + "-" + String((await r.json()).numero).padStart(5, "0");
+  }catch(e){}
+  const forma = esTicket ? (formaPago === "efectivo" ? "Efectivo" : "Transferencia") : null;
+  const total = $("#total") ? $("#total").textContent.trim() : "";
+  return confirm(
+    `¿Generamos el ${esTicket ? "ticket" : "presupuesto"}${num}?\n\n` +
+    `Cliente: ${cliente}\n` +
+    (total ? `Total: ${total}${forma ? " en " + forma : ""}\n` : "") +
+    "\nDespués solo se corrige anulándolo.");
+}
+
+/* Si en el ticket hay algún ítem a comisión. De eso depende que haga falta
+   decir quién atendió. */
+const hayComision = () =>
+  ticket.some(l => l.item_id && (CATALOGO.find(i => i.id === l.item_id) || {}).es_comision);
+
+/* El asterisco de "Atendió" se prende solo cuando de verdad es obligatorio. Fijo,
+   mentía en la mitad de los cobros. */
+function marcarAtendio(){
+  const m = $("#reqPeluquero");
+  if(m) m.style.display = hayComision() ? "" : "none";
+}
+
 // Valida el cliente (obligatorio) y crea el comprobante. Devuelve el objeto creado o null.
 async function crearComprobante(){
   const nom=$("#cliente").value.trim();
   if(!nom){ toast("Falta el nombre del cliente"); $("#cliente").focus(); return null; }
-  // Obligatorio en el ticket y no en el presupuesto: el presupuesto es un precio
-  // que se pasa, no trabajo hecho, así que no hay comisión que atribuirle. Si
-  // después se convierte en ticket, se completa desde el detalle del
-  // comprobante, que es donde está el "Atendió" editable.
-  if(tipo === "ticket" && EMPLEADOS.length && !$("#peluquero").value){
-    toast("Elegí quién atendió"); $("#peluquero").focus(); return null;
+  // Solo cuando hay algo a comisión, que es de lo único que sale un sueldo: un
+  // shampoo que se lleva no se le atribuye a nadie. Y nunca en el presupuesto,
+  // que es un precio que se pasa y no trabajo hecho; si después se convierte en
+  // ticket, el "Atendió" se completa desde el detalle del comprobante.
+  if(tipo === "ticket" && EMPLEADOS.length && hayComision() && !$("#peluquero").value){
+    toast("Elegí quién atendió: hay un trabajo a comisión");
+    $("#peluquero").focus(); return null;
   }
  let cliId = clienteIdSel;                     // lo que elegiste del dropdown (o null)
 
@@ -914,6 +984,12 @@ async function crearComprobante(){
       CLIENTES.push({id:nuevo.id, nombre:nom});
     }
   }
+  /* Última parada antes de que exista: se dice qué número va a llevar, a nombre
+     de quién, cuánto y con qué se cobra. Es lo que sale impreso y lo que entra a
+     la caja, y el papel se manda apenas se guarda: revisarlo después ya es
+     anular y volver a hacerlo. */
+  if(!await confirmarAntesDeGenerar(tipo, nom)) return null;
+
   const body={
     tipo,
     cliente_id: cliId,
@@ -984,7 +1060,20 @@ cliDrop.addEventListener("click", e=>{          // elegir una opción → guarda
   cliInput.value = opt.dataset.nom;
   cliDrop.style.display = "none";
   mostrarNotaCliente(opt.dataset.nota || "");
+  mirarSenas();
 });
+
+/* Si la clienta dejó plata adelantada hay que verlo ANTES de cobrar, no después:
+   cobrarle todo y recién ahí acordarse es devolverle plata en el mostrador. */
+let SENAS_CLIENTA = [];
+async function mirarSenas(){
+  const caja = $("#avisoSena");
+  SENAS_CLIENTA = clienteIdSel ? await senasLibres(clienteIdSel) : [];
+  const total = SENAS_CLIENTA.reduce((a, s) => a + s.monto, 0);
+  caja.style.display = total ? "flex" : "none";
+  if(total) caja.innerHTML = `<b>Tiene ${fmt(total)} de seña</b>
+    <span>al cobrar se pregunta si ${SENAS_CLIENTA.length === 1 ? "se usa" : "se usan"}</span>`;
+}
 
 /* La nota del cliente elegido queda a la vista mientras se arma el ticket, en
    un renglón chico debajo del campo. No es un cartel ni bloquea nada: si
@@ -1005,10 +1094,18 @@ $("#cobrarTodo").onclick=async()=>{
   const otroDia = esDeOtroDia();
   const d=await crearComprobante();
   if(!d){ renderTicket(); return; }
+  // Las señas se aplican ANTES de calcular lo que falta cobrar: si no, se le
+  // cobraría el total y la plata que ya dejó quedaría a favor para siempre.
+  await aplicarSenasSiHay(d.id);
   const c=await (await authFetch("/api/comprobantes/"+d.id)).json();
 
   const forma = formaPago==="efectivo" ? "Efectivo" : "Transferencia";
   const monto = c.saldo;            // el total ya trae el descuento: se salda 1:1
+  if(monto <= 0){
+    toast("Cubierto con la seña ✓"); limpiar();
+    if(!otroDia) imprimirComprobante(d.id);
+    return;
+  }
 
   const r=await authFetch("/api/comprobantes/"+d.id+"/pagos",{method:"POST",headers:{"Content-Type":"application/json"},
     body:JSON.stringify({monto, saldado:monto, forma_pago:forma, alias:null, del_servicio:true})});
@@ -1023,8 +1120,32 @@ $("#cobrarParte").onclick=async()=>{
   compEsDeOtroDia = esDeOtroDia();    // se recuerda: al finalizar decide si imprime
   const d=await crearComprobante();
   if(!d){ renderTicket(); return; }
+  await aplicarSenasSiHay(d.id);
   compActual=d.id; abrirCobro();     // ← esta línea es la que setea compActual
 };
+
+/* Aplica lo que la clienta tenga a favor, preguntando primero.
+
+   Pregunta porque la seña era para un trabajo puntual: si vino por otra cosa y
+   se descuenta sola, el día que venga por lo que señó ya no la tiene. Diciendo
+   que no, la seña queda libre para la próxima. */
+async function aplicarSenasSiHay(compId){
+  if(!SENAS_CLIENTA.length) return;
+  const total = SENAS_CLIENTA.reduce((a, s) => a + s.monto, 0);
+  const cuantas = SENAS_CLIENTA.length === 1
+    ? `${fmt(total)} de seña`
+    : `${fmt(total)} en ${SENAS_CLIENTA.length} señas`;
+  const ok = confirm(`${cliInput.value.trim() || "La clienta"} tiene ${cuantas}.\n\n` +
+    `¿Se ${SENAS_CLIENTA.length === 1 ? "la" : "las"} descontamos de este ticket?\n` +
+    `Si decís que no, queda a favor para la próxima.`);
+  if(!ok){ SENAS_CLIENTA = []; return; }
+  const r = await authFetch(`/api/comprobantes/${compId}/aplicar-senas`, {method:"POST"});
+  if(r.ok){
+    const d = await r.json();
+    toast(`Se descontaron ${fmt(d.total)} de seña`);
+  }
+  SENAS_CLIENTA = [];
+}
 
 // Dejar a cuenta: crea el comprobante sin ningún pago. Queda pendiente en la cuenta.
 $("#dejarCuenta").onclick=async()=>{
@@ -1055,6 +1176,7 @@ function limpiar(){
   // La fecha vuelve a hoy sí o sí. Si quedara pegada, el servicio siguiente se
   // cargaría sin querer en el día viejo y a nadie se le ocurriría mirar ahí.
   ticket=[]; $("#cliente").value=""; clienteIdSel=null; $("#peluquero").value="";
+  SENAS_CLIENTA=[]; if($("#avisoSena")) $("#avisoSena").style.display="none";
   compEsDeOtroDia=false;
   if(hayOtroDia()){ $("#fechaServicio").value=""; $("#otroDiaBox").open=false; }
   pintarOtroDia();
@@ -1242,17 +1364,10 @@ function hayTicketSinCobrar(){
   return ticket.length > 0 || EXTRAS.length > 0;
 }
 
-/* La marca de borrador, arriba del ticket. Se actualiza sola porque
-   actualizarTotales() corre en cada cambio. */
+/* La marca de borrador vive en el MENÚ, no acá: en facturar el ticket está a la
+   vista y el cartel repetía lo que ya se ve. En las otras pantallas sí hace
+   falta, que es donde uno se olvida de que dejó algo sin cobrar. */
 function pintarAvisoBorrador(){
-  const caja = $("#avisoBorrador");
-  if(!caja) return;
-  const n = ticket.length;
-  caja.style.display = hayTicketSinCobrar() ? "" : "none";
-  caja.textContent = n
-    ? `Borrador guardado · ${n} ${n===1?"ítem":"ítems"} sin cobrar`
-    : "Borrador guardado";
-  // y que el menú lo muestre en todas las pantallas
   if(window.marcarBorradorEnMenu) window.marcarBorradorEnMenu();
 }
 

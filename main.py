@@ -86,11 +86,55 @@ def migrar():
             with engine.begin() as con:
                 con.execute(text("ALTER TABLE empleados ADD COLUMN pin_salt VARCHAR"))
                 con.execute(text("ALTER TABLE empleados ADD COLUMN pin_hash VARCHAR"))
+        if "valor_hora" not in emcols:
+            with engine.begin() as con:
+                con.execute(text("ALTER TABLE empleados ADD COLUMN valor_hora INTEGER"))
+    if insp.has_table("horarios_empleado"):
+        hcols = [c["name"] for c in insp.get_columns("horarios_empleado")]
+        # El horario mensual ("el 2º lunes") se sacó: ahora el día suelto se marca
+        # por fecha desde la agenda. Las filas que tenían semana quedarían valiendo
+        # TODOS los lunes, que es lo contrario de lo que se cargó, así que se
+        # borran. Con marca en config para que corra una sola vez: si no, cada
+        # reinicio le borraría un lunes recién cargado a mano.
+        if "semana_del_mes" in hcols:
+            with engine.begin() as con:
+                ya = con.execute(text("SELECT 1 FROM config WHERE clave = :k"),
+                                 {"k": "limpie_horarios_mensuales"}).first()
+                if not ya:
+                    con.execute(text("DELETE FROM horarios_empleado WHERE semana_del_mes IS NOT NULL"))
+                    con.execute(text("INSERT INTO config (clave, valor) VALUES (:k, :v)"),
+                                {"k": "limpie_horarios_mensuales", "v": "1"})
+    if insp.has_table("senas"):
+        scols = [c["name"] for c in insp.get_columns("senas")]
+        if "numero" not in scols:
+            with engine.begin() as con:
+                con.execute(text("ALTER TABLE senas ADD COLUMN numero INTEGER"))
+                # Las que ya estaban se numeran por orden de id, una sola vez.
+                for i, (sid,) in enumerate(con.execute(text("SELECT id FROM senas ORDER BY id")), 1):
+                    con.execute(text("UPDATE senas SET numero = :n WHERE id = :i"), {"n": i, "i": sid})
+    if insp.has_table("pagos"):
+        pcols = [c["name"] for c in insp.get_columns("pagos")]
+        if "sena_id" not in pcols:
+            with engine.begin() as con:
+                con.execute(text("ALTER TABLE pagos ADD COLUMN sena_id INTEGER"))
+    if insp.has_table("turnos"):
+        tucols = [c["name"] for c in insp.get_columns("turnos")]
+        if "duracion_min" not in tucols:
+            with engine.begin() as con:
+                con.execute(text("ALTER TABLE turnos ADD COLUMN duracion_min INTEGER"))
+                # Los turnos viejos son un punto en el día. 30 minutos es el turno
+                # más corto del local: es la suposición que menos horario tapa de
+                # más en la grilla, y cada uno se corrige abriéndolo.
+                con.execute(text("UPDATE turnos SET duracion_min = 30 WHERE duracion_min IS NULL"))
     if insp.has_table("liquidaciones"):
         licols = [c["name"] for c in insp.get_columns("liquidaciones")]
         if "egreso_id" not in licols:
             with engine.begin() as con:
                 con.execute(text("ALTER TABLE liquidaciones ADD COLUMN egreso_id INTEGER"))
+        for col, tipo in (("depilacion", "BOOLEAN"), ("recaudado", "INTEGER"), ("gastos", "INTEGER")):
+            if col not in licols:
+                with engine.begin() as con:
+                    con.execute(text(f"ALTER TABLE liquidaciones ADD COLUMN {col} {tipo}"))
         if "parcial" not in licols:
             with engine.begin() as con:
                 con.execute(text("ALTER TABLE liquidaciones ADD COLUMN parcial BOOLEAN DEFAULT FALSE"))
@@ -120,6 +164,19 @@ def migrar():
             # todavía), pero igual quedan a la vista: esconder de golpe egresos
             # viejos le cambiaría la caja de días ya cerrados a quien la mire.
             con.execute(text("UPDATE egresos SET privado = FALSE WHERE privado IS NULL"))
+    # El pago a la ayudante del lunes de depilación. Sin UPDATE que las ponga en
+    # FALSE a propósito: acá el NULL de los egresos viejos significa lo mismo que
+    # el FALSE —no son el pago a nadie— y el filtro pregunta por `== True`, que
+    # los deja afuera igual.
+    for col, tipo in (("ayudante", "BOOLEAN"), ("empleado_id", "INTEGER")):
+        if col not in ecols:
+            with engine.begin() as con:
+                con.execute(text(f"ALTER TABLE egresos ADD COLUMN {col} {tipo}"))
+    if insp.has_table("excepciones_horario"):
+        excols = [c["name"] for c in insp.get_columns("excepciones_horario")]
+        if "a_cargo" not in excols:
+            with engine.begin() as con:
+                con.execute(text("ALTER TABLE excepciones_horario ADD COLUMN a_cargo VARCHAR"))
     tecols = [c["name"] for c in insp.get_columns("tipos_egreso")]
     if "privado" not in tecols:
         with engine.begin() as con:
@@ -236,6 +293,7 @@ class EgresoIn(BaseModel):
     # casilla y eran dos formas de decir lo mismo, que tarde o temprano se
     # contradicen entre sí.
     tipo: str; concepto: str | None = None; monto: int; forma_pago: str | None = None; notas: str | None = None
+    fecha: str | None = None              # 'YYYY-MM-DD' argentino: para anotar un gasto de otro día
 class EgresoEdit(BaseModel):
     tipo: str | None = None; concepto: str | None = None; monto: int | None = None
     forma_pago: str | None = None; notas: str | None = None
@@ -247,6 +305,9 @@ class EmpleadoIn(BaseModel):
     nombre: str
 class EmpleadoEdit(BaseModel):
     nombre: str | None = None; activo: bool | None = None
+    # -1 = sacale el propio y que use el general. El centinela hace falta porque
+    # None ya significa "este campo no vino", igual que en el % de los ítems.
+    valor_hora: int | None = None
 class FusionIn(BaseModel):
     origen_id: int; destino_id: int      # el origen desaparece dentro del destino
 class PinIn(BaseModel):
@@ -254,9 +315,17 @@ class PinIn(BaseModel):
 class EntrarSueldoIn(BaseModel):
     empleado_id: int; pin: str
 class SueldosConfigIn(BaseModel):
-    # Los dos números con los que se arma el sueldo. Van juntos porque se miran
+    # Los números con los que se arma el sueldo. Van juntos porque se miran
     # juntos: cambiar uno sin ver el otro es como no verlos.
     valor_hora: int | None = None; comision_pct: int | None = None
+    pago_ayudante: int | None = None
+class GastoDepiIn(BaseModel):
+    empleado_id: int                      # de quién es el lunes, no quién cobra
+    fecha: str                            # 'YYYY-MM-DD' argentino del lunes
+    monto: int
+    tipo: str | None = None; concepto: str | None = None; forma_pago: str | None = None
+    ayudante: bool = False
+    ayudante_id: int | None = None        # si la ayudante es del salón
 class HorasIn(BaseModel):
     empleado_id: int; fecha: str; minutos: int
 class MinutosTrabajoIn(BaseModel):
@@ -268,10 +337,14 @@ class MinutosTrabajoIn(BaseModel):
 class CerrarIn(BaseModel):
     empleado_id: int; notas: str | None = None
     desde: str | None = None             # qué ciclo se cierra; None = el más viejo
-    # Cerrar la semana aunque todavía no haya terminado: el sábado cae feriado, o
-    # se decide pagar el viernes. Sin esto, un cierre antes de tiempo es un pago
+    # Cerrar la semana aunque todavía no haya terminado: el viernes cae feriado, o
+    # se decide pagar el jueves. Sin esto, un cierre antes de tiempo es un pago
     # parcial y el resto de la semana se sigue acumulando en el mismo ciclo.
     anticipado: bool = False
+    # Con qué fecha queda el egreso del sueldo. Sin esto es el día del cierre, y
+    # cerrar hoy una semana que se pagó el viernes le mueve la plata de día a las
+    # dos cajas.
+    fecha: str | None = None
     # Con qué plata se le pagó. Importa: el arqueo suma comparando
     # forma_pago == "Efectivo", así que un sueldo pagado en efectivo tiene que
     # decir exactamente eso o la caja del día cierra de más.
@@ -287,6 +360,8 @@ class AjusteItemEdit(BaseModel):
     nombre: str | None = None; porcentaje: int | None = None; monto: int | None = None
 class StockIn(BaseModel):
     stock_actual: int; stock_minimo: int = 0
+class ConsumoIn(BaseModel):
+    item_id: int; cantidad: int = 1; motivo: str | None = None
 class LoginIn(BaseModel):
     usuario: str; password: str
 class UsuarioIn(BaseModel):
@@ -299,8 +374,26 @@ class FondoIn(BaseModel):
     valor: int; fecha: str | None = None
 class NombreIn(BaseModel):
     nombre: str
+class SenaIn(BaseModel):
+    cliente_id: int; monto: int
+    forma_pago: str = "Efectivo"; alias: str | None = None; notas: str | None = None
 class TurnoIn(BaseModel):
     fecha: str | None = None; hora: str; cliente: str; cliente_id: int | None = None; servicio: str; peluquero: str | None = None; notas: str | None = None
+    duracion_min: int = 30
+class TramoIn(BaseModel):
+    dia_semana: int; desde: str; hasta: str
+class AbrirDiaIn(BaseModel):
+    fecha: str; empleados: list[int]
+    desde: str; hasta: str; motivo: str | None = None
+    a_cargo: str | None = None            # quién lleva el día, para la depilación
+class HorarioIn(BaseModel):
+    # La semana entera de una. Mandar tramos sueltos dejaría estados a medio
+    # guardar —el lunes nuevo con el martes viejo— y nadie sabría cuál es el bueno.
+    tramos: list[TramoIn]
+class ExcepcionIn(BaseModel):
+    empleado_id: int; fecha: str
+    desde: str | None = None; hasta: str | None = None   # los dos en None = no viene
+    motivo: str | None = None
 class NotaIn(BaseModel):
     texto: str; fecha: str | None = None
 
@@ -471,10 +564,51 @@ def migrar_notas_entre_parentesis():
         if movidos:
             print(f"Migración: {movidos} cliente(s) con el paréntesis pasado a notas.")
 
+def migrar_nombres_a_capitalizados():
+    """Capitaliza los nombres de clientes ya cargados, una sola vez.
+
+    `nombre_propio()` corre al guardar desde hace rato, pero lo anterior quedó
+    como se tipeó apurado: "abigail cuello" en la ficha y también en el papel.
+
+    Se toca el nombre copiado en el comprobante además del de la ficha, porque
+    es el que sale impreso y el del ticket viejo no se regenera. Va por nombres
+    distintos y no por fila: con mil tickets de la misma clienta son mil filas y
+    un solo nombre que arreglar.
+    """
+    MARCA = "capitalice_nombres"
+    from sqlalchemy.orm import Session as _S
+    with _S(engine) as db:
+        if db.query(models.Config).filter_by(clave=MARCA).first():
+            return
+        tocados = 0
+        for cli in db.query(models.Cliente).all():
+            bien = nombre_propio(cli.nombre or "")
+            if bien and bien != cli.nombre:
+                cli.nombre = bien; tocados += 1
+        nombres = [n for (n,) in db.query(models.Comprobante.cliente_nombre)
+                                   .filter(models.Comprobante.cliente_nombre.isnot(None))
+                                   .distinct() if n]
+        for viejo in nombres:
+            bien = nombre_propio(viejo)
+            if bien and bien != viejo:
+                db.query(models.Comprobante).filter(
+                    models.Comprobante.cliente_nombre == viejo).update(
+                    {"cliente_nombre": bien}, synchronize_session=False)
+        db.add(models.Config(clave=MARCA, valor=str(tocados)))
+        db.commit()
+        if tocados:
+            print(f"Migración: {tocados} nombre(s) de cliente capitalizados.")
+
+
 try:
     migrar_notas_entre_parentesis()
 except Exception as _e:
     print("Aviso: no se pudo migrar los nombres entre paréntesis:", _e)
+
+try:
+    migrar_nombres_a_capitalizados()
+except Exception as _e:
+    print("Aviso: no se pudieron capitalizar los nombres:", _e)
 
 try:
     migrar_peluqueros_a_empleados()
@@ -684,7 +818,7 @@ def forma_comprobante(db, comp, pagos_precargados=None) -> str:
 # venta a una caja de 2024 y nadie la vería nunca más).
 DIAS_ATRAS_MAX = 60
 
-def fecha_del_servicio(iso: str | None, ahora):
+def fecha_del_servicio(iso: str | None, ahora, que: str = "un servicio"):
     """Instante UTC que hay que guardar para un servicio hecho el día `iso`.
 
     Sin `iso` (el caso normal) es simplemente ahora. Con `iso`, se guarda el
@@ -700,7 +834,7 @@ def fecha_del_servicio(iso: str | None, ahora):
         raise HTTPException(400, "Fecha inválida (se espera AAAA-MM-DD)")
     hoy = hoy_argentina()
     if d > hoy:
-        raise HTTPException(400, "No se puede anotar un servicio con fecha futura")
+        raise HTTPException(400, f"No se puede anotar {que} con fecha futura")
     if (hoy - d).days > DIAS_ATRAS_MAX:
         raise HTTPException(400, f"No se puede retroceder más de {DIAS_ATRAS_MAX} días")
     if d == hoy:
@@ -726,6 +860,10 @@ def siguiente_numero_egreso(db) -> int:
     igual en SQLite y en PostgreSQL."""
     ultimo = db.query(models.Egreso).order_by(models.Egreso.numero.desc()).first()
     return ((ultimo.numero or 0) + 1) if ultimo else 1
+
+def siguiente_numero_sena(db) -> int:
+    ultima = db.query(models.Sena).order_by(models.Sena.numero.desc()).first()
+    return ((ultima.numero or 0) + 1) if ultima else 1
 
 def siguiente_numero(db, tipo: str) -> int:
     """Devuelve el próximo número de la secuencia para ese tipo de comprobante."""
@@ -915,8 +1053,12 @@ def catalogo(_ = Depends(usuario_actual), db: Session = Depends(get_db)):
     """Todo el catálogo activo de una sola vez (para buscador y agrupado en Facturación)."""
     q = (db.query(models.Item).filter(models.Item.activo == True)
            .order_by(models.Item.categoria, models.Item.nombre))
-    return [{"id": i.id, "nombre": i.nombre, "precio": i.precio, "precio_transfer": i.precio_transfer,"categoria": i.categoria,  
-             "es_producto": i.es_producto} for i in q]
+    # es_comision viaja para que facturar pueda armar la pastilla "A comisión",
+    # que junta los trabajos que se le pagan a quien los hace sin importar en qué
+    # categoría estén. No cambia ningún precio: es otra forma de encontrarlos.
+    return [{"id": i.id, "nombre": i.nombre, "precio": i.precio, "precio_transfer": i.precio_transfer,
+             "categoria": i.categoria, "es_producto": i.es_producto,
+             "es_comision": bool(i.es_comision)} for i in q]
 
 @app.get("/api/config")
 def config(user = Depends(usuario_actual), db: Session = Depends(get_db)):
@@ -933,6 +1075,17 @@ def config(user = Depends(usuario_actual), db: Session = Depends(get_db)):
             # El porcentaje general de comisión: Admin lo muestra como referencia
             # cuando un ítem no tiene el suyo.
             "comision_pct": comision_pct(db),
+            "pago_ayudante": pago_ayudante(db),
+            # Quiénes NO cambian cuando se toca el general. Viajan con la config
+            # y no en un pedido aparte para que el editor pueda decirlo antes de
+            # guardar: sin esto, cambiar el valor hora es apretar un botón sin
+            # saber a cuántas les llega.
+            "hora_propia": [e.nombre for e in db.query(models.Empleado).filter(
+                models.Empleado.activo == True,
+                models.Empleado.valor_hora.isnot(None)).order_by(models.Empleado.nombre)],
+            "pct_propio": db.query(models.Item).filter(
+                models.Item.activo == True,
+                models.Item.comision_pct.isnot(None)).count(),
             "tipos_privados": [t.nombre for t in db.query(models.TipoEgreso).filter(
                 models.TipoEgreso.activo == True, models.TipoEgreso.privado == True)] if es_dueno(user) else []}
 
@@ -1124,6 +1277,42 @@ def valor_hora(db) -> int:
 def comision_pct(db) -> int:
     return _cfg_int(db, "comision_pct", COMISION_PCT_DEFECTO)
 
+def arranque_sueldos(db) -> str | None:
+    """Desde qué día cuentan los sueldos, o None si desde siempre.
+
+    Es el borrón y cuenta nueva: lo anterior se pagó a mano, por fuera de la
+    app, y no tiene que volver a aparecer como pendiente. No borra nada —los
+    trabajos y las horas siguen ahí— así que correr el corte para atrás los
+    devuelve. Mira la fecha del SERVICIO y no cuándo se anotó, que es lo que
+    significa "de este sábado en adelante".
+    """
+    fila = db.query(models.Config).filter_by(clave="sueldos_arranque").first()
+    valor = (fila.valor or "")[:10] if fila else ""
+    try:
+        date.fromisoformat(valor); return valor
+    except ValueError:
+        return None
+
+def pago_ayudante(db) -> int:
+    """Lo que se le paga a la ayudante por un lunes de depilación.
+
+    Es un número fijo y no un porcentaje: la ayudante cobra por el día, no por lo
+    que se facture. Lo pone la dueña y viene puesto en la tarjeta del lunes; ahí
+    se puede cambiar para ese día suelto, y el cambio queda escrito en el egreso.
+    """
+    return _cfg_int(db, "pago_ayudante", 0)
+
+def vh_de(empleado, general: int) -> int:
+    """Lo que cobra la hora esta persona.
+
+    Mismo criterio que el porcentaje por ítem: el propio si lo tiene, el general
+    si no. Se resuelve acá y no en cada cuenta para que haya UN solo lugar donde
+    dice cuál gana, y para que el día que alguien cobre distinto no haya que
+    acordarse de tocar tres funciones.
+    """
+    propio = getattr(empleado, "valor_hora", None) if empleado else None
+    return propio if propio is not None else general
+
 def pct_de(item, pct_general: int) -> int:
     """El porcentaje que le toca a un ítem: el suyo si tiene, si no el general.
 
@@ -1141,19 +1330,24 @@ def base_suelto(t, item) -> int:
     no hubo comprobante donde ajustar nada."""
     return (item.precio or 0) * (t.cantidad or 1)
 
-def base_comision(linea) -> int:
+def base_comision(linea, comp=None) -> int:
     """Sobre cuánta plata se calcula la comisión de una línea.
 
-    Es el precio EFECTIVO con el ajuste de esa línea aplicado, por la cantidad.
-    No entra el descuento del comprobante: se acordó que la comisión se cuenta
-    sobre el trabajo, no sobre lo que después se le perdonó al cliente.
+    Lo que la clienta terminó pagando por ESE trabajo: el precio efectivo, con
+    el ajuste de la línea y con el descuento del comprobante.
+
+    La diferencia entre la lista de transferencia y la de efectivo NO baja la
+    base, y por eso se arranca del precio efectivo: no es un descuento que se le
+    hizo a nadie, son las dos listas de precios del local.
     """
     unidad = precio_con_ajuste(linea.precio_efectivo or 0,
                                linea.ajuste_pct, linea.ajuste_monto)
-    return unidad * (linea.cantidad or 1)
+    base = unidad * (linea.cantidad or 1)
+    pct = (comp.descuento_pct or 0) if comp is not None else 0
+    return base - round(base * pct / 100) if pct else base
 
-def comision_de(linea, pct: int) -> int:
-    return round(base_comision(linea) * pct / 100)
+def comision_de(linea, pct: int, comp=None) -> int:
+    return round(base_comision(linea, comp) * pct / 100)
 
 def lineas_a_comision_pendientes(db, empleado):
     """Las líneas a comisión de esa empleada que todavía no se pagaron.
@@ -1191,29 +1385,204 @@ def lineas_a_comision_pendientes(db, empleado):
         # nadie se enteraría. Los viejos igual quedan afuera: se anotaron antes.
         anotado = func.coalesce(models.Comprobante.cargado, models.Comprobante.fecha)
         q = q.filter(anotado >= datetime.fromisoformat(desde.valor))
-    return q.order_by(models.Comprobante.fecha).all()
+    # El otro corte, el del borrón y cuenta nueva. Este SÍ mira el día del
+    # servicio: "arrancamos de cero el sábado" quiere decir que el trabajo del
+    # jueves anterior no entra, se haya anotado cuando se haya anotado.
+    arranque = arranque_sueldos(db)
+    if arranque:
+        q = q.filter(models.Comprobante.fecha >= _rango_dia(date.fromisoformat(arranque))[0])
+    filas = q.order_by(models.Comprobante.fecha).all()
+    # El lunes de depilación no paga comisión a NADIE: el día se reparte entero,
+    # así que lo que se atendió ese lunes ya está adentro del reparto. Sin esto,
+    # la ayudante cobraba su monto del día y además la comisión de lo que atendió,
+    # y el salón pagaba el mismo trabajo dos veces.
+    #
+    # Se filtra en Python y no en SQL porque "es día de depilación" no es una
+    # fecha: es haber abierto ese lunes o haber facturado algo, y esa pregunta ya
+    # vive en es_dia_depilacion(). Son los lunes distintos que aparezcan, no una
+    # consulta por línea.
+    lunes = {d for d in {hora_argentina(c.fecha).date() for _, c, _ in filas} if d.weekday() == 0}
+    depis = {d for d in lunes if es_dia_depilacion(db, d)}
+    return [f for f in filas if hora_argentina(f[1].fecha).date() not in depis]
 
 def ciclo_de(f: date) -> tuple[date, date]:
-    """A qué ciclo de sueldo pertenece un día.
+    """A qué semana de pago pertenece un día: de sábado a viernes.
 
-    El ciclo es de MARTES a SÁBADO, que es la semana del local. No es una ventana
-    para filtrar: es la unidad con la que se paga. Un ciclo que no se cerró queda
-    pendiente y sigue apareciendo, así que atrasarse en pagar no mezcla dos
-    semanas en un solo número.
+    Es la unidad con la que se paga, no una ventana para filtrar: un ciclo sin
+    cerrar sigue apareciendo entero al lado del nuevo.
 
-    El lunes es su propio ciclo de un día. El local no abre los lunes; si un día
-    se trabaja uno, es un extra y se paga como tal, no metido adentro de la
-    semana que arranca al día siguiente.
-
-    El domingo tampoco se trabaja, pero si aparece algo cargado ahí se lo lleva
-    el ciclo que acaba de terminar: es la continuación de esa semana, no el
-    arranque de la próxima.
+    El lunes es su propio ciclo de un día —la depilación, una vez por mes—, y el
+    domingo se lo lleva el sábado que acaba de arrancar. Ojo con el `dow + 2`: el
+    ciclo ARRANCA el sábado, que con weekday() cae después del viernes en el
+    número pero antes en el ciclo.
     """
-    dow = f.weekday()                       # 0=lunes … 5=sábado, 6=domingo
-    if dow == 0: return f, f
-    if dow == 6: return f - timedelta(days=5), f - timedelta(days=1)
-    ini = f - timedelta(days=dow - 1)       # el martes de esa semana
-    return ini, ini + timedelta(days=4)     # y su sábado
+    dow = f.weekday()                                  # 0=lunes … 5=sábado, 6=domingo
+    if dow == 0: return f, f                           # el lunes, suelto
+    if dow == 5: return f, f + timedelta(days=6)       # sábado: arranca la semana
+    if dow == 6: return f - timedelta(days=1), f + timedelta(days=5)   # domingo: sigue al sábado
+    ini = f - timedelta(days=dow + 2)                  # martes..viernes → el sábado anterior
+    return ini, ini + timedelta(days=6)                # y su viernes
+
+def es_dia_depilacion(db, f: date) -> bool:
+    """Si ese lunes el local abrió para depilación.
+
+    Dos señales, las dos válidas: que alguien lo haya marcado con "Abrir este
+    día", o que simplemente haya movimiento. La segunda existe para el lunes que
+    se trabajó y nadie se acordó de marcarlo: el número tiene que estar igual.
+    """
+    if f.weekday() != 0: return False
+    ini, fin = _rango_dia(f)
+    hay_horario = db.query(models.ExcepcionHorario).filter(
+        models.ExcepcionHorario.fecha == f.isoformat(),
+        models.ExcepcionHorario.desde.isnot(None)).first()
+    if hay_horario: return True
+    return db.query(models.Comprobante).filter(
+        models.Comprobante.fecha >= ini, models.Comprobante.fecha < fin,
+        models.Comprobante.activo == True).first() is not None
+
+def empleada_del_dia(db, f: date) -> str | None:
+    """De quién es el lunes de depilación: la que más facturó ese día.
+
+    Tiene que dar UNA sola: el reparto es entero, así que si se lo mostrara a
+    todas las que atendieron algo, el mismo número aparecería dos veces. La
+    ayudante no entra acá —cobra un monto fijo, que es un egreso del día—.
+
+    Va por lo facturado y no por lo cobrado para que no se mueva: quién llevó el
+    día no cambia porque una clienta pague la semana que viene.
+    """
+    # Si al abrir el día se eligió quién lo lleva, manda eso. Deducirlo de quién
+    # facturó más alcanza para el lunes que nadie marcó, pero el día que la que
+    # lo lleva se olvide de ponerse como peluquera en los tickets, el reparto se
+    # lo lleva la que la ayudó y nadie entiende por qué.
+    elegida = db.query(models.ExcepcionHorario.a_cargo).filter(
+        models.ExcepcionHorario.fecha == f.isoformat(),
+        models.ExcepcionHorario.a_cargo.isnot(None)).first()
+    if elegida: return elegida[0]
+    ini, fin = _rango_dia(f)
+    comps = db.query(models.Comprobante).filter(
+        models.Comprobante.fecha >= ini, models.Comprobante.fecha < fin,
+        models.Comprobante.activo == True, models.Comprobante.tipo == "ticket",
+        models.Comprobante.peluquero.isnot(None)).all()
+    if not comps: return None
+    por_comp = pagos_por_comprobante(db, comps)
+    por_nombre = {}
+    for c in comps:
+        por_nombre[c.peluquero] = (por_nombre.get(c.peluquero, 0)
+                                   + estado_comprobante(db, c, por_comp)["total_final"])
+    # El nombre y no el id: es con lo que el comprobante guarda al peluquero, y
+    # un nombre que ya no esté en la lista de empleadas tiene que quedar afuera
+    # igual, no volverse "de cualquiera".
+    return max(por_nombre, key=lambda n: (por_nombre[n], n))
+
+def lunes_depi_trabajados(db, empleado) -> list[str]:
+    """Los lunes de depilación en los que esta empleada atendió algo.
+
+    Son suyos o no —eso lo decide empleada_del_dia—, pero en los dos casos la
+    pantalla tiene algo que decir: o el reparto, o el aviso de que ese día no va
+    por comisión. Sale de los tickets a su nombre y no de las líneas a comisión,
+    porque las de un día de depilación se filtran antes: buscándolas ahí, el
+    lunes de la ayudante desaparecía de su pantalla sin dejar rastro.
+    """
+    desde = db.query(models.Config).filter_by(clave="sueldos_desde").first()
+    q = db.query(models.Comprobante.fecha).filter(
+        models.Comprobante.activo == True, models.Comprobante.tipo == "ticket",
+        models.Comprobante.peluquero == empleado.nombre)
+    if desde and desde.valor:
+        anotado = func.coalesce(models.Comprobante.cargado, models.Comprobante.fecha)
+        q = q.filter(anotado >= datetime.fromisoformat(desde.valor))
+    arranque = arranque_sueldos(db)
+    lunes = {hora_argentina(f).date() for (f,) in q.all()}
+    return sorted(d.isoformat() for d in lunes
+                  if d.weekday() == 0 and es_dia_depilacion(db, d)
+                  and (not arranque or d.isoformat() >= arranque))
+
+def lunes_depi_pendientes(db, empleado) -> list[str]:
+    """Los lunes de depilación suyos que todavía no se cerraron.
+
+    El día le corresponde aunque no tenga ni un ítem a comisión ni una hora
+    cargada, que es lo normal en depilación: el reparto sale del día entero.
+
+    Y como puede no haber ni un trabajo detrás, lo que dice que ya se pagó es la
+    liquidación, no los trabajos marcados.
+    """
+    cerrados = {l.desde for l in db.query(models.Liquidacion).filter(
+        models.Liquidacion.empleado_id == empleado.id,
+        models.Liquidacion.depilacion == True).all()}
+    return [d for d in lunes_depi_trabajados(db, empleado)
+            if d not in cerrados
+            and empleada_del_dia(db, date.fromisoformat(d)) == empleado.nombre]
+
+def cuenta_depilacion(db, f: date) -> dict:
+    """El reparto del día de depilación: recaudado − gastos, mitad y mitad.
+
+    Recaudado son los PAGOS de los comprobantes de ese día, no la caja del día:
+    una seña cobrada el jueves es plata de este lunes aunque haya entrado antes.
+    """
+    ini, fin = _rango_dia(f)
+    comps = db.query(models.Comprobante).filter(
+        models.Comprobante.fecha >= ini, models.Comprobante.fecha < fin,
+        models.Comprobante.activo == True, models.Comprobante.tipo == "ticket").all()
+    ids = [c.id for c in comps]
+    pagos = (db.query(models.Pago).filter(models.Pago.comprobante_id.in_(ids)).all()
+             if ids else [])
+    recaudado = sum(p.monto for p in pagos)
+    # Lo que se atendió ese lunes pero todavía no se cobró. No es parte del
+    # reparto —el reparto es de la plata que entró— pero hay que decirlo: si no,
+    # una parte en cero parece que el día no dio nada cuando lo que falta es
+    # cobrar. Cuando la clienta pague, el abono cae en el comprobante de ese
+    # lunes y el reparto sube solo.
+    por_comp = pagos_por_comprobante(db, comps)
+    deuda = sum(max(estado_comprobante(db, c, por_comp)["saldo"], 0) for c in comps)
+
+    # Los privados —alquiler, sueldos— no son costo del día: bajarle la parte a
+    # la empleada con el alquiler del local no es el trato, y además el detalle
+    # se lo muestra a ella, que no tiene que ver esos números.
+    egresos = db.query(models.Egreso).filter(
+        models.Egreso.fecha >= ini, models.Egreso.fecha < fin,
+        _no_privado(models.Egreso.privado)).all()
+    gastos = sum(e.monto or 0 for e in egresos)
+
+    resto = recaudado - gastos
+    # La mitad impar le queda al salón: repartir un peso de más a cada lado no
+    # cierra, y el salón es el que puede absorberlo sin que a nadie le falte.
+    parte = resto // 2 if resto > 0 else 0
+    return {
+        "fecha": f.isoformat(),
+        "recaudado": recaudado, "gastos": gastos, "resto": resto, "deuda": deuda,
+        "parte_empleada": parte, "parte_salon": resto - parte,
+        "comprobantes": len(comps), "pagos": len(pagos),
+        # Lo que viene puesto en el renglón de la ayudante. Viaja con la cuenta y
+        # no se lee aparte para que la pantalla no tenga que preguntar dos veces.
+        "pago_ayudante": pago_ayudante(db),
+        "egresos_detalle": [{"id": e.id, "numero": e.numero, "tipo": e.tipo,
+                             "concepto": e.concepto, "monto": e.monto or 0,
+                             "ayudante": bool(e.ayudante), "empleado_id": e.empleado_id,
+                             "notas": e.notas} for e in egresos],
+    }
+
+def avisos_depilacion(db, empleado, dias_ajenos) -> list[dict]:
+    """Los lunes de depilación en los que trabajó pero que no son su reparto.
+
+    Para la ayudante NO hay ciclo y no hay nada que cerrar: la plata le salió de
+    la caja el día que se le pagó, como cualquier otro gasto del local. Esto es el
+    registro, para que le quede escrito cuánto cobró y por qué ese día no le
+    aparece ninguna comisión.
+
+    Los días sin pago aparecen igual: que se anote solo lo cobrado dejaría al día
+    que atendió y todavía no le pagaron sin ningún renglón que lo diga.
+    """
+    pagos = (db.query(models.Egreso)
+               .filter(models.Egreso.ayudante == True,
+                       models.Egreso.empleado_id == empleado.id)
+               .order_by(models.Egreso.fecha.desc()).limit(12).all())
+    avisos = {}
+    for e in pagos:
+        f = hora_argentina(e.fecha).date().isoformat()
+        a = avisos.setdefault(f, {"fecha": f, "monto": 0, "trabajo": False})
+        a["monto"] += e.monto or 0
+    for f in dias_ajenos:
+        avisos.setdefault(f, {"fecha": f, "monto": 0})["trabajo"] = True
+    return sorted(avisos.values(), key=lambda a: a["fecha"], reverse=True)
 
 def resumen_pendiente(db, empleado) -> dict:
     """Lo que se le debe a una empleada, partido en ciclos.
@@ -1229,7 +1598,10 @@ def resumen_pendiente(db, empleado) -> dict:
     puede cerrar hasta que estén todos completos.
     """
     pct = comision_pct(db)
-    vh = valor_hora(db)
+    # El de la persona si lo tiene; si no, el general. La foto que se guarda al
+    # cerrar sigue saliendo de acá, así que una liquidación vieja conserva el
+    # valor con el que se pagó aunque después se le cambie el sueldo.
+    vh = vh_de(empleado, valor_hora(db))
 
     minutos_por_linea = dict(
         db.query(models.TrabajoComision.linea_id, models.TrabajoComision.minutos)
@@ -1256,16 +1628,18 @@ def resumen_pendiente(db, empleado) -> dict:
             "cliente_id": comp.cliente_id,
             "fecha": hora_argentina(comp.fecha).date().isoformat(),
             "nombre": linea.nombre, "cantidad": linea.cantidad,
-            "base": base_comision(linea), "comision": comision_de(linea, pct_linea),
+            "base": base_comision(linea, comp), "comision": comision_de(linea, pct_linea, comp),
             "minutos": minutos_por_linea.get(linea.id, 0) or 0,
             "cliente": comp.cliente_nombre, "suelto": False})
 
     # Y los sueltos, que no tienen comprobante detrás.
-    sueltos = (db.query(models.TrabajoComision)
-                 .filter(models.TrabajoComision.empleado_id == empleado.id,
-                         models.TrabajoComision.linea_id.is_(None),
-                         models.TrabajoComision.liquidacion_id.is_(None))
-                 .order_by(models.TrabajoComision.fecha).all())
+    arranque = arranque_sueldos(db)
+    q_sueltos = (db.query(models.TrabajoComision)
+                   .filter(models.TrabajoComision.empleado_id == empleado.id,
+                           models.TrabajoComision.linea_id.is_(None),
+                           models.TrabajoComision.liquidacion_id.is_(None)))
+    if arranque: q_sueltos = q_sueltos.filter(models.TrabajoComision.fecha >= arranque)
+    sueltos = q_sueltos.order_by(models.TrabajoComision.fecha).all()
     for t in sueltos:
         item = db.get(models.Item, t.item_id) if t.item_id else None
         b = base_suelto(t, item) if item else 0
@@ -1278,10 +1652,11 @@ def resumen_pendiente(db, empleado) -> dict:
             "base": b, "comision": round(b * p / 100), "minutos": t.minutos or 0,
             "cliente": None, "suelto": True})
 
-    horas = (db.query(models.HoraTrabajada)
-               .filter(models.HoraTrabajada.empleado_id == empleado.id,
-                       models.HoraTrabajada.liquidacion_id.is_(None))
-               .order_by(models.HoraTrabajada.fecha).all())
+    q_horas = (db.query(models.HoraTrabajada)
+                 .filter(models.HoraTrabajada.empleado_id == empleado.id,
+                         models.HoraTrabajada.liquidacion_id.is_(None)))
+    if arranque: q_horas = q_horas.filter(models.HoraTrabajada.fecha >= arranque)
+    horas = q_horas.order_by(models.HoraTrabajada.fecha).all()
 
     # --- se arma un día por fecha, con sus trabajos adentro ---
     # Un día en el que hizo un trabajo es un día que trabajó: aparece solo, con
@@ -1296,7 +1671,35 @@ def resumen_pendiente(db, empleado) -> dict:
         if f not in dias:
             dias[f] = {"id": None, "fecha": f, "minutos": 0, "sugerido": True, "trabajos": []}
         dias[f]["trabajos"].append(t)
-    for d in dias.values():
+    # El lunes de depilación entra aunque esté vacío: el reparto es del día, no
+    # de los trabajos, y la depilación casi nunca se factura con ítems a comisión.
+    depis = set(lunes_depi_pendientes(db, empleado))
+    for f in depis:
+        dias.setdefault(f, {"id": None, "fecha": f, "minutos": 0, "sugerido": True, "trabajos": []})
+    # Un lunes de depilación que NO es suyo no le arma ciclo a nadie. El día se
+    # reparte entre la que lo llevó y el salón, y la ayudante cobra su monto como
+    # gasto de ese día: si además se le pagaran las horas que cargó, el mismo día
+    # se pagaría dos veces. Sale del ciclo y se le avisa aparte, que esconderlo
+    # sin decir nada se lee como que se perdió.
+    ajenos = {f for f in dias if f not in depis
+              and date.fromisoformat(f).weekday() == 0
+              and es_dia_depilacion(db, date.fromisoformat(f))}
+    for f in ajenos: dias.pop(f)
+    # Y los lunes en los que atendió sin que le quedara nada pendiente, que son
+    # la mayoría: sus líneas ya se filtraron por ser de un día de depilación, así
+    # que el día no llegó hasta acá. Sin esto, la ayudante ve la pantalla igual
+    # que un día que no trabajó.
+    ajenos = sorted(ajenos | (set(lunes_depi_trabajados(db, empleado)) - depis))
+    # Días cuyas horas YA se pagaron en un cierre anterior. El día puede volver a
+    # aparecer —una comisión nueva con fecha de esa semana— y su casillero de
+    # horas está vacío, pero ahí no falta nada: esas horas ya se cobraron y el
+    # servidor no deja volver a cargarlas. Sin esta marca, el ciclo pedía horas
+    # que era imposible poner y no se podía cerrar nunca.
+    ya_pagadas = {f for (f,) in db.query(models.HoraTrabajada.fecha).filter(
+        models.HoraTrabajada.empleado_id == empleado.id,
+        models.HoraTrabajada.liquidacion_id.isnot(None)).distinct()}
+    for f, d in dias.items():
+        d["horas_pagadas"] = f in ya_pagadas and not d["minutos"]
         d["trabajos"].sort(key=lambda t: (t["numero"] or 0, t["id"] or 0))
 
     # --- y los días se agrupan en ciclos ---
@@ -1326,14 +1729,29 @@ def resumen_pendiente(db, empleado) -> dict:
         pagado_antes = (db.query(func.coalesce(func.sum(models.Liquidacion.total), 0))
                           .filter(models.Liquidacion.empleado_id == empleado.id,
                                   models.Liquidacion.desde == c["desde"]).scalar() or 0)
+        # El lunes de depilación no se paga por comisión: se reparte el día. El
+        # ciclo se marca y el total sale del reparto, no de las comisiones.
+        depi = c["desde"] in depis
+        cuenta = cuenta_depilacion(db, date.fromisoformat(c["desde"])) if depi else None
+
         c.update({
+            "depilacion": depi, "cuenta": cuenta,
             "pagado_antes": pagado_antes,
             "minutos_total": min_total, "minutos_comision": min_com,
             "minutos_pagados": min_pagados,
             "total_comisiones": total_com, "total_horas": total_horas,
-            "total": total_com + total_horas,
-            "sin_tiempo": len(faltan),
-            "en_espera": sum(t["comision"] for t in faltan),
+            "total": cuenta["parte_empleada"] if depi else total_com + total_horas,
+            # Un día sin horas declaradas frena el cierre igual que un trabajo sin
+            # duración. Las horas son lo único que pone la empleada, y un día en
+            # cero se paga como si no hubiera venido: solo las comisiones, sin las
+            # horas que ese día se trabajaron aparte. Antes el cierre lo dejaba
+            # pasar y la diferencia no se veía en ningún lado.
+            "sin_horas": 0 if depi else sum(1 for d in c["dias"]
+                                            if not d["minutos"] and not d["horas_pagadas"]),
+            # Un trabajo sin duración frena el cierre de una semana normal, pero
+            # en depilación no entra en la cuenta: el reparto sale del día.
+            "sin_tiempo": 0 if depi else len(faltan),
+            "en_espera": 0 if depi else sum(t["comision"] for t in faltan),
         })
         salida.append(c)
 
@@ -1341,12 +1759,15 @@ def resumen_pendiente(db, empleado) -> dict:
         "empleado": {"id": empleado.id, "nombre": empleado.nombre},
         "valor_hora": vh, "comision_pct": pct,
         "ciclos": salida,
+        "avisos_depilacion": avisos_depilacion(db, empleado, ajenos),
         "total": sum(c["total"] for c in salida),
         "total_comisiones": sum(c["total_comisiones"] for c in salida),
         "total_horas": sum(c["total_horas"] for c in salida),
         "minutos_total": sum(c["minutos_total"] for c in salida),
         "sin_tiempo": sum(c["sin_tiempo"] for c in salida),
+        "sin_horas": sum(c["sin_horas"] for c in salida),
         "en_espera": sum(c["en_espera"] for c in salida),
+        "arranque": arranque_sueldos(db),
     }
 
 # ---------- empleados ----------
@@ -1432,6 +1853,77 @@ def sueldo_pendiente(empleado_id: int, user = Depends(usuario_actual),
                      quien = Depends(token_sueldo), db: Session = Depends(get_db)):
     permitir_sueldo(db, user, quien, empleado_id)
     return resumen_pendiente(db, _empleado_o_404(db, empleado_id))
+
+def _lunes_suyo(db, empleado, iso: str) -> date:
+    """El lunes de depilación de esa empleada, o un error.
+
+    Todo lo que se toca de un día de depilación pasa por acá: cargar un gasto de
+    un día que no es suyo sería bajarle la parte a otra, y un día ya cerrado
+    quedaría con la cuenta cambiada después de pagado.
+    """
+    try:
+        f = date.fromisoformat(iso[:10])
+    except ValueError:
+        raise HTTPException(400, "Fecha inválida")
+    if not es_dia_depilacion(db, f) or empleada_del_dia(db, f) != empleado.nombre:
+        raise HTTPException(403, "Ese día no es tuyo")
+    ya = db.query(models.Liquidacion).filter(
+        models.Liquidacion.empleado_id == empleado.id,
+        models.Liquidacion.depilacion == True,
+        models.Liquidacion.desde == f.isoformat()).first()
+    if ya: raise HTTPException(409, "Ese día ya se cerró")
+    return f
+
+@app.post("/api/sueldos/depilacion/gasto")
+def gasto_depilacion(g: GastoDepiIn, user = Depends(usuario_actual),
+                     quien = Depends(token_sueldo), db: Session = Depends(get_db)):
+    """Un gasto del lunes de depilación, cargado desde la pantalla de sueldos.
+
+    Lo carga la que lleva el día, que en Caja no entra: son los costos de SU día
+    y son los únicos que le bajan la parte, así que si tuviera que pedirlos, el
+    reparto sale mal el día que la dueña no esté. Nunca es privado —un gasto que
+    baja el reparto tiene que estar a la vista de la que lo cobra— y la fecha es
+    la del lunes, no la de hoy: cargado con fecha de hoy, la cuenta de ese lunes
+    le queda alta.
+    """
+    permitir_sueldo(db, user, quien, g.empleado_id)
+    emp = _empleado_o_404(db, g.empleado_id)
+    f = _lunes_suyo(db, emp, g.fecha)
+    if g.monto <= 0: raise HTTPException(400, "El monto tiene que ser mayor que cero")
+
+    notas = None; de_quien = None
+    if g.ayudante:
+        if g.ayudante_id: de_quien = _empleado_o_404(db, g.ayudante_id).id
+        fijo = pago_ayudante(db)
+        # Queda escrito cuando se pagó distinto del fijo. El número de un día
+        # suelto no se discute de memoria tres semanas después, y el que lo
+        # cambió es el que está cerrando el día.
+        if fijo and g.monto != fijo:
+            pesos = lambda n: "$" + f"{n:,}".replace(",", ".")
+            notas = f"Fijo {pesos(fijo)} · se pagó {pesos(g.monto)} · lo cambió {emp.nombre}"
+    eg = models.Egreso(
+        numero=siguiente_numero_egreso(db),
+        tipo=(g.tipo or "").strip() or ("Ayudante depilación" if g.ayudante else "Insumos"),
+        concepto=(g.concepto or "").strip() or None,
+        monto=g.monto, forma_pago=g.forma_pago, notas=notas, privado=False,
+        fecha=fecha_del_servicio(f.isoformat(), fecha_hora_now_utc().replace(tzinfo=None), "un gasto"),
+        ayudante=bool(g.ayudante), empleado_id=de_quien)
+    db.add(eg); db.commit(); db.refresh(eg)
+    return {"id": eg.id, "numero": eg.numero}
+
+@app.delete("/api/sueldos/depilacion/gasto/{egreso_id}")
+def borrar_gasto_depilacion(egreso_id: int, empleado_id: int, user = Depends(usuario_actual),
+                            quien = Depends(token_sueldo), db: Session = Depends(get_db)):
+    """Saca un gasto del lunes de depilación. Un egreso se anula; una liquidación
+    no, y esa es justo la razón por la que el pago a la ayudante es un gasto y no
+    un cierre: equivocarse en el monto se arregla borrando y volviendo a cargar."""
+    permitir_sueldo(db, user, quien, empleado_id)
+    emp = _empleado_o_404(db, empleado_id)
+    e = db.get(models.Egreso, egreso_id)
+    # 404 y no 403 si es privado: un "no podés" ya le confirmaría que existe.
+    if not e or e.privado: raise HTTPException(404, "Gasto no existe")
+    _lunes_suyo(db, emp, hora_argentina(e.fecha).date().isoformat())
+    db.delete(e); db.commit(); return {"ok": True}
 
 @app.put("/api/sueldos/horas")
 def cargar_horas(h: HorasIn, user = Depends(usuario_actual),
@@ -1545,6 +2037,10 @@ def cerrar_liquidacion(datos: CerrarIn, _ = Depends(solo_dueno), db: Session = D
         raise HTTPException(400,
             f"Faltan {ciclo['sin_tiempo']} trabajo(s) sin duración cargada. "
             "Hasta que la tengan no se sabe cuántas horas hay que pagar aparte.")
+    if ciclo["sin_horas"]:
+        raise HTTPException(400,
+            f"Hay {ciclo['sin_horas']} día(s) sin horas declaradas. "
+            "Un día en cero se paga solo por comisión, y las horas de ese día se pierden.")
     if not ciclo["total"]:
         raise HTTPException(400, "Ese ciclo no tiene nada para pagar")
 
@@ -1552,16 +2048,29 @@ def cerrar_liquidacion(datos: CerrarIn, _ = Depends(solo_dueno), db: Session = D
     # Cerrar un miércoles no es cerrar la semana: es pagar lo que va. Mientras el
     # ciclo no haya terminado, el cierre es PARCIAL y lo que se trabaje después
     # sigue cayendo en el mismo ciclo, que vuelve a aparecer con el saldo. Para
-    # el caso de que la semana sí terminó antes —el sábado es feriado, se paga el
-    # viernes y se cierra— está `anticipado`, que la da por cerrada igual.
-    parcial = hoy_argentina() <= date.fromisoformat(ciclo["hasta"]) and not datos.anticipado
+    # el caso de que la semana sí terminó antes —el viernes es feriado, se paga
+    # el jueves y se cierra— está `anticipado`, que la da por cerrada igual.
+    #
+    # El día del cierre normal NO es parcial. Antes decía `<=` y el viernes es el
+    # último día del ciclo Y el día de pago, así que el cierre de todas las
+    # semanas quedaba etiquetado "pago parcial": el cartel dejaba de significar
+    # algo justo cuando aparecía siempre. Si después de cobrar se sigue
+    # trabajando ese mismo viernes, eso vuelve a aparecer como pendiente igual;
+    # el rótulo dice con qué intención se cerró, no adivina el futuro.
+    parcial = hoy_argentina() < date.fromisoformat(ciclo["hasta"]) and not datos.anticipado
+    # Un día de depilación se cierra entero o no se cierra: no hay "media
+    # jornada" que siga acumulando, porque la cuenta sale del día completo.
+    if ciclo.get("depilacion"): parcial = False
     liq = models.Liquidacion(
         empleado_id=emp.id, desde=ciclo["desde"], hasta=ciclo["hasta"],
         valor_hora=r["valor_hora"], comision_pct=r["comision_pct"],
         minutos_total=ciclo["minutos_total"], minutos_comision=ciclo["minutos_comision"],
         minutos_pagados=ciclo["minutos_pagados"],
         total_comisiones=ciclo["total_comisiones"], total_horas=ciclo["total_horas"],
-        total=ciclo["total"], notas=datos.notas, parcial=parcial)
+        total=ciclo["total"], notas=datos.notas, parcial=parcial,
+        depilacion=bool(ciclo.get("depilacion")),
+        recaudado=(ciclo["cuenta"]["recaudado"] if ciclo.get("cuenta") else None),
+        gastos=(ciclo["cuenta"]["gastos"] if ciclo.get("cuenta") else None))
     db.add(liq); db.flush()
 
     for t in trabajos:
@@ -1600,10 +2109,13 @@ def cerrar_liquidacion(datos: CerrarIn, _ = Depends(solo_dueno), db: Session = D
     if liq.total > 0:
         egreso = models.Egreso(
             numero=siguiente_numero_egreso(db), tipo=tipo_de_sueldo(db).nombre,
-            concepto=(f"Sueldo {emp.nombre} ({ciclo['desde']} a {ciclo['hasta']})"
-                      + (" · pago parcial" if parcial else "")),
+            concepto=(f"Depilación {emp.nombre} ({ciclo['desde']})" if ciclo.get("depilacion")
+                      else f"Sueldo {emp.nombre} ({ciclo['desde']} a {ciclo['hasta']})"
+                           + (" · pago parcial" if parcial else "")),
             monto=liq.total, forma_pago=datos.forma_pago,
-            notas=datos.notas, fecha=fecha_hora_now_utc(),
+            notas=datos.notas,
+            fecha=fecha_del_servicio(datos.fecha,
+                                     fecha_hora_now_utc().replace(tzinfo=None), "un sueldo"),
             # Privado siempre, y no según cómo esté marcado el tipo: esto lo
             # crea la dueña desde la pantalla de sueldos, y lo que le paga a la
             # empleada no es asunto de la empleada. Si dependiera de la marca del
@@ -1615,6 +2127,30 @@ def cerrar_liquidacion(datos: CerrarIn, _ = Depends(solo_dueno), db: Session = D
     db.commit()
     return {"id": liq.id, "total": liq.total, "parcial": parcial,
             "egreso_numero": egreso.numero if egreso else None}
+
+class ArranqueIn(BaseModel):
+    fecha: str | None = None              # None saca el corte: vuelve todo
+
+@app.put("/api/sueldos/arranque")
+def set_arranque_sueldos(datos: ArranqueIn, _ = Depends(solo_dueno), db: Session = Depends(get_db)):
+    """Mueve el borrón y cuenta nueva de los sueldos.
+
+    No borra nada: lo de antes del corte deja de aparecer como pendiente y ya.
+    Por eso equivocarse no cuesta caro —se corre el corte para atrás y vuelve
+    todo—, y por eso es preferible a borrar ciclos viejos, que sí sería para
+    siempre.
+    """
+    valor = (datos.fecha or "").strip()[:10]
+    if valor:
+        try:
+            date.fromisoformat(valor)
+        except ValueError:
+            raise HTTPException(400, "Fecha inválida (se espera AAAA-MM-DD)")
+    fila = db.query(models.Config).filter_by(clave="sueldos_arranque").first()
+    if fila: fila.valor = valor
+    else: db.add(models.Config(clave="sueldos_arranque", valor=valor))
+    db.commit()
+    return {"ok": True, "arranque": arranque_sueldos(db)}
 
 @app.post("/api/sueldos/trabajo-suelto")
 def crear_trabajo_suelto(t: TrabajoSueltoIn, user = Depends(usuario_actual),
@@ -1704,6 +2240,7 @@ def listar_liquidaciones(empleado_id: int | None = None, limite: int = 20,
              "valor_hora": l.valor_hora, "comision_pct": l.comision_pct,
              "minutos_total": l.minutos_total, "minutos_comision": l.minutos_comision,
              "minutos_pagados": l.minutos_pagados,
+             "depilacion": bool(l.depilacion), "recaudado": l.recaudado, "gastos": l.gastos,
              "total_comisiones": l.total_comisiones, "total_horas": l.total_horas,
              "total": l.total, "notas": l.notas, "parcial": bool(l.parcial),
              "egreso_numero": l.egreso.numero if l.egreso else None,
@@ -1732,6 +2269,7 @@ def detalle_liquidacion(liq_id: int, user = Depends(usuario_actual),
         "valor_hora": liq.valor_hora, "comision_pct": liq.comision_pct,
         "minutos_total": liq.minutos_total, "minutos_comision": liq.minutos_comision,
         "minutos_pagados": liq.minutos_pagados,
+        "depilacion": bool(liq.depilacion), "recaudado": liq.recaudado, "gastos": liq.gastos,
         "total_comisiones": liq.total_comisiones, "total_horas": liq.total_horas,
         "total": liq.total, "notas": liq.notas, "parcial": bool(liq.parcial),
         "egreso_numero": liq.egreso.numero if liq.egreso else None,
@@ -1750,7 +2288,7 @@ def listar_empleados(todos: bool = False, _ = Depends(usuario_actual), db: Sessi
     # tiene_pin y no el código: lo que hace falta saber es si puede entrar, y el
     # código no sale de la base ni para la dueña.
     return [{"id": e.id, "nombre": e.nombre, "activo": bool(e.activo),
-             "tiene_pin": bool(e.pin_hash)}
+             "tiene_pin": bool(e.pin_hash), "valor_hora": e.valor_hora}
             for e in q.order_by(models.Empleado.nombre)]
 
 @app.post("/api/empleados")
@@ -1784,6 +2322,13 @@ def editar_empleado(emp_id: int, cambios: EmpleadoEdit, _ = Depends(solo_dueno),
         _renombrar_en(db, models.Comprobante.peluquero, e.nombre, nombre)
         _renombrar_en(db, models.Turno.peluquero, e.nombre, nombre)
         e.nombre = nombre
+    if cambios.valor_hora is not None:
+        if cambios.valor_hora < 0:
+            e.valor_hora = None                       # vuelve al general
+        elif cambios.valor_hora > 10_000_000:
+            raise HTTPException(400, "Ese valor hora no parece un número real")
+        else:
+            e.valor_hora = cambios.valor_hora
     if cambios.activo is not None:
         e.activo = cambios.activo
     db.commit(); return {"ok": True}
@@ -1889,8 +2434,12 @@ def set_config_sueldos(datos: SueldosConfigIn, _ = Depends(solo_dueno), db: Sess
         if not 0 <= datos.comision_pct <= 100:
             raise HTTPException(400, "La comisión va de 0 a 100")
         guardar("comision_pct", datos.comision_pct)
+    if datos.pago_ayudante is not None:
+        if datos.pago_ayudante < 0: raise HTTPException(400, "El pago no puede ser negativo")
+        guardar("pago_ayudante", datos.pago_ayudante)
     db.commit()
-    return {"ok": True, "valor_hora": valor_hora(db), "comision_pct": comision_pct(db)}
+    return {"ok": True, "valor_hora": valor_hora(db), "comision_pct": comision_pct(db),
+            "pago_ayudante": pago_ayudante(db)}
 
 @app.get("/api/alias")
 def listar_alias(_ = Depends(usuario_actual), db: Session = Depends(get_db)):
@@ -2383,6 +2932,19 @@ def _pagina_comprobantes(db, comps, total, total_sin_filtros, deuda, precalculad
     return {"comprobantes": out, "total": total, "total_sin_filtros": total_sin_filtros,
             "deuda_total": deuda}
 
+@app.get("/api/comprobantes/proximo-numero")
+def proximo_numero(tipo: str = "ticket", _ = Depends(usuario_actual), db: Session = Depends(get_db)):
+    """Qué número va a llevar el próximo. Para mostrarlo ANTES de crearlo.
+
+    Va antes de /{comp_id}: FastAPI prueba las rutas en orden, y con esa primero
+    "proximo-numero" se lee como un id y revienta al convertirlo a número.
+
+    Es informativo: el número definitivo se asigna al guardar. En el local hay
+    una sola tablet, así que en los hechos coincide, pero no se guarda nada acá
+    ni se reserva el número.
+    """
+    return {"numero": siguiente_numero(db, tipo)}
+
 @app.get("/api/comprobantes/{comp_id}")
 def ver_comprobante(comp_id: int, _ = Depends(usuario_actual), db: Session = Depends(get_db)):
     comp = db.get(models.Comprobante, comp_id)
@@ -2403,7 +2965,8 @@ def ver_comprobante(comp_id: int, _ = Depends(usuario_actual), db: Session = Dep
                    for l in comp.lineas],
         "extras": [{"concepto": e.concepto, "monto": e.monto} for e in comp.extras],
         "pagos": [{"id": p.id, "fecha": p.fecha.isoformat(), "monto": p.monto, "saldado": p.saldado,
-                   "desc_aplicado": p.desc_aplicado, "forma_pago": p.forma_pago, "alias": p.alias}
+                   "desc_aplicado": p.desc_aplicado, "forma_pago": p.forma_pago, "alias": p.alias,
+                   "es_sena": p.sena_id is not None}
                   for p in db.query(models.Pago).filter(models.Pago.comprobante_id == comp.id).order_by(models.Pago.fecha)],
         **estado_comprobante(db, comp)}
 
@@ -2614,10 +3177,18 @@ def crear_egreso(e: EgresoIn, user = Depends(usuario_actual), db: Session = Depe
     # Después no se recalcula: un egreso que anotó el empleado le tiene que seguir
     # apareciendo aunque la dueña marque ese tipo como privado el mes que viene.
     privado = es_dueno(user) and _tipo_privado(db, e.tipo)
+    # Con fecha de otro día, igual que un comprobante: el gasto de un día se
+    # anota cuando se acuerdan, y el del lunes de depilación entra en el reparto
+    # de ESE lunes. Cargado hoy, la cuenta del lunes le queda alta a la empleada.
+    ahora = fecha_hora_now_utc().replace(tzinfo=None)
+    fecha = fecha_del_servicio(e.fecha, ahora, "un gasto")
+    # Mover plata de una caja a otra es de la dueña, como en el comprobante.
+    if not es_dueno(user) and hora_argentina(fecha).date() != hoy_argentina():
+        raise HTTPException(403, "Solo la dueña puede anotar un gasto de otro día")
     eg = models.Egreso(numero=siguiente_numero_egreso(db),
                        tipo=e.tipo, concepto=e.concepto, monto=e.monto,
                        forma_pago=e.forma_pago, notas=e.notas, privado=privado,
-                       fecha=fecha_hora_now_utc())
+                       fecha=fecha)
     db.add(eg); db.commit(); db.refresh(eg)
     return {"id": eg.id, "numero": eg.numero, "privado": privado}
 
@@ -2674,7 +3245,26 @@ def _rango_dia(d):
     en el día siguiente."""
     ini = datetime(d.year, d.month, d.day) + timedelta(hours=HORAS_ARG)
     return ini, ini + timedelta(days=1)
-def _sv(db, i, f): return sum(p.monto for p in db.query(models.Pago).filter(models.Pago.fecha >= i, models.Pago.fecha < f))
+def plata_que_entro(db, ini, fin):
+    """Todo lo que entró en el período: los abonos más las señas cobradas.
+
+    Los abonos que vienen de una seña NO cuentan: esa plata entró el día que se
+    cobró la seña y contarla otra vez infla la caja y el arqueo sin avisar. Está
+    en una sola función para que la caja, los reportes, el Excel y los gráficos
+    no puedan contestar distinto.
+    """
+    pagos = (db.query(models.Pago)
+               .filter(models.Pago.fecha >= ini, models.Pago.fecha < fin,
+                       models.Pago.sena_id.is_(None)).all()) if ini and fin else \
+            db.query(models.Pago).filter(models.Pago.sena_id.is_(None)).all()
+    q = db.query(models.Sena).filter(_no_privado(models.Sena.anulada))
+    if ini: q = q.filter(models.Sena.fecha >= ini)
+    if fin: q = q.filter(models.Sena.fecha < fin)
+    return pagos, q.all()
+
+def _sv(db, i, f):
+    pagos, senas = plata_que_entro(db, i, f)
+    return sum(p.monto for p in pagos) + sum(s.monto for s in senas)
 def _se(db, i, f): return sum((e.monto or 0) for e in db.query(models.Egreso).filter(models.Egreso.fecha >= i, models.Egreso.fecha < f))
 
 def _pago_detalle(p):
@@ -2691,6 +3281,109 @@ def _pago_detalle(p):
             "comprobante_id": comp.id if comp else None}
 
 
+# ---------- señas ----------
+
+def _sena_json(s, nombre=None):
+    return {"id": s.id, "numero": s.numero, "cliente_id": s.cliente_id, "cliente": nombre,
+            "fecha": hora_argentina(s.fecha).strftime("%d/%m/%Y"),
+            "hora": hora_argentina(s.fecha).strftime("%H:%M"),
+            "monto": s.monto, "forma_pago": s.forma_pago, "alias": s.alias,
+            "notas": s.notas, "usada": s.comprobante_id is not None,
+            "comprobante_id": s.comprobante_id,
+            # El número del ticket, no su id: el id no está escrito en ningún papel.
+            "comprobante_numero": (s.comprobante.numero if s.comprobante_id and s.comprobante else None),
+            "anulada": bool(s.anulada),
+            "usuario": s.usuario}
+
+def senas_libres(db, cliente_id: int):
+    """Las que todavía no se usaron. Se aplican todas juntas: si señó dos turnos,
+    las dos son plata suya y elegir cuál sería una decisión sin sentido."""
+    return (db.query(models.Sena)
+              .filter(models.Sena.cliente_id == cliente_id,
+                      models.Sena.comprobante_id.is_(None),
+                      _no_privado(models.Sena.anulada))
+              .order_by(models.Sena.fecha).all())
+
+@app.post("/api/senas")
+def crear_sena(datos: SenaIn, user = Depends(usuario_actual), db: Session = Depends(get_db)):
+    """Plata adelantada de una clienta. Entra a la caja de HOY."""
+    cli = db.get(models.Cliente, datos.cliente_id)
+    if not cli: raise HTTPException(404, "Ese cliente no existe")
+    if datos.monto <= 0: raise HTTPException(400, "El monto tiene que ser positivo")
+    s = models.Sena(numero=siguiente_numero_sena(db), cliente_id=cli.id, monto=datos.monto,
+                    forma_pago=datos.forma_pago or "Efectivo",
+                    alias=(datos.alias or "").strip() or None,
+                    notas=(datos.notas or "").strip() or None,
+                    usuario=user.get("usuario", "?"))
+    db.add(s); db.commit(); db.refresh(s)
+    return _sena_json(s, cli.nombre)
+
+@app.get("/api/senas")
+def listar_senas(cliente_id: int | None = None, solo_libres: bool = False,
+                 _ = Depends(usuario_actual), db: Session = Depends(get_db)):
+    q = db.query(models.Sena, models.Cliente.nombre).join(
+        models.Cliente, models.Cliente.id == models.Sena.cliente_id)
+    if cliente_id: q = q.filter(models.Sena.cliente_id == cliente_id)
+    if solo_libres:
+        q = q.filter(models.Sena.comprobante_id.is_(None), _no_privado(models.Sena.anulada))
+    return [_sena_json(s, n) for s, n in q.order_by(models.Sena.fecha.desc()).limit(300)]
+
+@app.get("/api/senas/{sena_id}")
+def ver_sena(sena_id: int, _ = Depends(usuario_actual), db: Session = Depends(get_db)):
+    s = db.get(models.Sena, sena_id)
+    if not s: raise HTTPException(404, "Esa seña no existe")
+    return _sena_json(s, s.cliente.nombre if s.cliente else None)
+
+@app.delete("/api/senas/{sena_id}")
+def anular_sena(sena_id: int, _ = Depends(solo_dueno), db: Session = Depends(get_db)):
+    """Se devolvió la plata. Una seña ya usada no se anula: hay que anular el
+    comprobante, que es donde quedó aplicada."""
+    s = db.get(models.Sena, sena_id)
+    if not s: raise HTTPException(404, "Esa seña no existe")
+    if s.comprobante_id:
+        raise HTTPException(400, "Esa seña ya se usó en un comprobante. Anulá el comprobante.")
+    s.anulada = True; db.commit(); return {"ok": True}
+
+@app.post("/api/comprobantes/{comp_id}/aplicar-senas")
+def aplicar_senas(comp_id: int, _ = Depends(usuario_actual), db: Session = Depends(get_db)):
+    """Usa las señas libres de la clienta como abono de este ticket.
+
+    Cada seña deja su propio abono con `sena_id`, así se puede seguir cuál plata
+    vino de dónde. El abono salda la cuenta pero no es plata del día: entró
+    cuando se cobró la seña.
+    """
+    comp = db.get(models.Comprobante, comp_id)
+    if not comp or not comp.activo: raise HTTPException(404, "Comprobante no existe")
+    if comp.tipo != "ticket": raise HTTPException(400, "Solo se cobran tickets, no presupuestos")
+    if not comp.cliente_id: raise HTTPException(400, "El comprobante no tiene cliente registrado")
+    libres = senas_libres(db, comp.cliente_id)
+    if not libres: raise HTTPException(400, "Esa clienta no tiene señas sin usar")
+
+    aplicadas, total = [], 0
+    for s in libres:
+        saldo = estado_comprobante(db, comp)["saldo"]
+        if saldo <= 0: break
+        # Una seña más grande que lo que falta se usa hasta ahí y el resto le
+        # queda a favor: partirla en dos filas es más simple que inventar un
+        # vuelto que después nadie sabe de dónde salió.
+        usa = min(s.monto, saldo)
+        if usa < s.monto:
+            sobra = models.Sena(numero=siguiente_numero_sena(db),
+                                cliente_id=s.cliente_id, fecha=s.fecha, monto=s.monto - usa,
+                                forma_pago=s.forma_pago, alias=s.alias,
+                                notas=" · ".join(filter(None, [s.notas, "resto sin usar"])),
+                                usuario=s.usuario)
+            db.add(sobra)
+            s.monto = usa
+        db.add(models.Pago(comprobante_id=comp.id, monto=usa, saldado=usa,
+                           forma_pago="Seña", desc_aplicado=0, sena_id=s.id))
+        db.flush()
+        s.comprobante_id = comp.id
+        aplicadas.append(s.id); total += usa
+    db.commit()
+    return {"ok": True, "aplicadas": len(aplicadas), "total": total,
+            "saldo": estado_comprobante(db, comp)["saldo"]}
+
 @app.get("/api/caja/dia")
 def caja_dia(fecha: str | None = None, user = Depends(usuario_actual), db: Session = Depends(get_db)):
     d = date.fromisoformat(fecha) if fecha else hoy_argentina()
@@ -2701,7 +3394,7 @@ def caja_dia(fecha: str | None = None, user = Depends(usuario_actual), db: Sessi
     if not es_dueno(user) and d != hoy_argentina():
         raise HTTPException(403, "Solo se puede ver la caja de hoy")
     ini, fin = _rango_dia(d)
-    pagos = db.query(models.Pago).filter(models.Pago.fecha >= ini, models.Pago.fecha < fin).all()
+    pagos, senas = plata_que_entro(db, ini, fin)
     q_eg = db.query(models.Egreso).filter(models.Egreso.fecha >= ini, models.Egreso.fecha < fin)
     # Los egresos privados se van de la caja del empleado ENTERA, no solo del
     # detalle: si siguieran contando en el total, el número le diría que salió
@@ -2709,18 +3402,30 @@ def caja_dia(fecha: str | None = None, user = Depends(usuario_actual), db: Sessi
     if not es_dueno(user):
         q_eg = q_eg.filter(_no_privado(models.Egreso.privado))
     egresos = q_eg.all()
-    ing = sum(p.monto for p in pagos); egr = sum((e.monto or 0) for e in egresos)
+    ing = sum(p.monto for p in pagos) + sum(s.monto for s in senas)
+    egr = sum((e.monto or 0) for e in egresos)
     por_pago = {}; por_tipo = {}
     for p in pagos: por_pago[p.forma_pago] = por_pago.get(p.forma_pago, 0) + p.monto
+    for s in senas: por_pago[s.forma_pago] = por_pago.get(s.forma_pago, 0) + s.monto
     for e in egresos: por_tipo[e.tipo] = por_tipo.get(e.tipo, 0) + (e.monto or 0)
-    efectivo_ventas = sum(p.monto for p in pagos if p.forma_pago == "Efectivo")
+    efectivo_ventas = (sum(p.monto for p in pagos if p.forma_pago == "Efectivo")
+                       + sum(s.monto for s in senas if s.forma_pago == "Efectivo"))
     efectivo_egresos = sum((e.monto or 0) for e in egresos if e.forma_pago == "Efectivo")
     fondo = get_fondo_dia(db, d)
     return {"fecha": d.isoformat(), "ingresos": ing, "egresos": egr, "neto": ing - egr,
-            "ventas": len(pagos) + len(egresos), "ingresos_por_pago": por_pago, "egresos_por_tipo": por_tipo, # Ventas = "Movimientos"
+            "ventas": len(pagos) + len(senas) + len(egresos), "ingresos_por_pago": por_pago, "egresos_por_tipo": por_tipo,
             "fondo": fondo, "efectivo_ventas": efectivo_ventas, "efectivo_egresos": efectivo_egresos,
             "efectivo_esperado": fondo + efectivo_ventas - efectivo_egresos,
-            "ventas_detalle": [_pago_detalle(p) for p in pagos],
+            # Las señas van con la MISMA forma que un pago —`total` y `ref`—, que es
+            # lo que la pantalla lee. Con nombres propios salían en $0 y sin
+            # referencia, como si alguien hubiera cobrado nada.
+            "ventas_detalle": [_pago_detalle(p) for p in pagos] + [
+                {"id": f"s{s.id}", "hora": hora_argentina(s.fecha).strftime("%H:%M"),
+                 "ref": f"Seña N-{(s.numero or 0):05d}"
+                        + (f" · {s.cliente.nombre}" if s.cliente else ""),
+                 "total": s.monto, "forma_pago": s.forma_pago, "alias": s.alias,
+                 "es_sena": True}
+                for s in senas],
             "egresos_detalle": [{"id": e.id, "numero": e.numero,
                                  "hora": hora_argentina(e.fecha).strftime("%H:%M"), "tipo": e.tipo,
                                  "concepto": e.concepto, "monto": e.monto, "forma_pago": e.forma_pago,
@@ -2771,6 +3476,28 @@ def set_stock(item_id: int, s: StockIn, user = Depends(solo_dueno), db: Session 
     item.stock_actual = nuevo; item.stock_minimo = s.stock_minimo
     db.commit(); return {"ok": True}
 
+@app.post("/api/inventario/consumo")
+def descontar_insumo(c: ConsumoIn, user = Depends(usuario_actual), db: Session = Depends(get_db)):
+    """Descuenta lo que se gastó en el local y no salió por una venta.
+
+    Lo puede cargar el empleado: corregir el conteo sigue siendo de la dueña,
+    pero anotar lo que se usó lo hace la que lo usa. Por eso el movimiento es
+    "consumo" y no "manual": en el historial hay que distinguir "usé 2 tinturas"
+    de "conté mal, eran 8".
+
+    Deja el stock en negativo a propósito, igual que una venta: abajo de cero
+    dice que el conteo está atrasado, y frenarlo en cero lo escondería.
+    """
+    item = db.get(models.Item, c.item_id)
+    if not item or not item.es_producto: raise HTTPException(404, "Producto no existe")
+    if c.cantidad < 1: raise HTTPException(400, "La cantidad tiene que ser al menos 1")
+    if c.cantidad > 10_000: raise HTTPException(400, "Esa cantidad no parece real")
+    motivo = (c.motivo or "").strip() or "Consumo del local"
+    log_stock(db, item, "consumo", -c.cantidad, motivo, user.get("usuario", "?"))
+    item.stock_actual = (item.stock_actual or 0) - c.cantidad
+    db.commit()
+    return {"ok": True, "nombre": item.nombre, "stock_actual": item.stock_actual}
+
 @app.get("/api/inventario/historial")
 def historial_stock(item_id: int | None = None, _ = Depends(solo_dueno), db: Session = Depends(get_db)):
     q = db.query(models.MovimientoStock).order_by(models.MovimientoStock.fecha.desc())
@@ -2803,15 +3530,17 @@ def _filtrar(query, col, ini, fin):
 def rep_resumen(dias: int = 30, desde: str | None = None, hasta: str | None = None,
                 _ = Depends(solo_dueno), db: Session = Depends(get_db)):
     ini, fin = _ventana(dias, desde, hasta)
-    # Ingresos = plata que entró (igual que caja) → tabla pagos
-    pagos = _filtrar(db.query(models.Pago), models.Pago.fecha, ini, fin).all()
+    # Ingresos = plata que entró (igual que caja)
+    pagos, senas = plata_que_entro(db, ini, fin)
     egresos = _filtrar(db.query(models.Egreso), models.Egreso.fecha, ini, fin).all()
-    ing = sum(p.monto for p in pagos)
+    ing = sum(p.monto for p in pagos) + sum(s.monto for s in senas)
     egr = sum((e.monto or 0) for e in egresos)
     # desglose por forma de pago (mismo formato que /api/caja/dia)
     por_pago = {}
     for p in pagos:
         por_pago[p.forma_pago] = por_pago.get(p.forma_pago, 0) + p.monto
+    for x in senas:
+        por_pago[x.forma_pago] = por_pago.get(x.forma_pago, 0) + x.monto
     # Ventas = tickets emitidos (no presupuestos, no anulados)
     q = db.query(models.Comprobante).filter(
         models.Comprobante.tipo == "ticket",
@@ -2838,10 +3567,15 @@ def rep_deuda(_ = Depends(solo_dueno), db: Session = Depends(get_db)):
     return {"deuda": total, "tickets": cuantos}
 
 def _movimientos(db, ini, fin):
-    """Ingresos (pagos) + egresos del período. Fuente ÚNICA para el registro y el Excel."""
-    pagos = _filtrar(db.query(models.Pago), models.Pago.fecha, ini, fin).all()
+    """Ingresos (pagos y señas) + egresos del período. Fuente ÚNICA para el registro y el Excel."""
+    pagos, senas = plata_que_entro(db, ini, fin)
     egresos = _filtrar(db.query(models.Egreso), models.Egreso.fecha, ini, fin).all()
     movs = []
+    for x in senas:
+        movs.append({"fecha": x.fecha, "clase": "ingreso", "comprobante": "seña",
+                     "cliente": (x.cliente.nombre if x.cliente else ""),
+                     "detalle": "Seña" + (f" — {x.notas}" if x.notas else ""),
+                     "forma_pago": x.forma_pago or "", "monto": x.monto})
     for p in pagos:
         comp = p.comprobante
         ref = "—"; cliente = ""; items = ""
@@ -2857,8 +3591,14 @@ def _movimientos(db, ini, fin):
     for e in egresos:
         det = (e.tipo or "")
         if e.concepto: det += f" — {e.concepto}"
+        # El egreso tiene su propio correlativo y hasta acá no llegaba: el registro
+        # mostraba la columna vacía y no había forma de atar un renglón del reporte
+        # con el egreso de la caja. Va con "#" y no con "N-": el "N-" es el
+        # prefijo de los tickets y en una tabla que mezcla los dos se leía como si
+        # el egreso fuera un comprobante de venta. Es el mismo "#47" de la caja.
         movs.append({"fecha": e.fecha, "clase": "egreso",
-                     "comprobante": "", "cliente": "", "detalle": det,
+                     "comprobante": f"#{e.numero}" if e.numero else "",
+                     "cliente": "", "detalle": det,
                      "forma_pago": e.forma_pago or "", "monto": e.monto or 0})
     movs.sort(key=lambda m: m["fecha"], reverse=True)
     return movs
@@ -2995,7 +3735,8 @@ def serie_caja(dias: int = 30, desde: str | None = None, hasta: str | None = Non
     ini, fin = _resolver_ventana(dias, desde, hasta, db)
     buckets, gran = _buckets(ini, fin)
 
-    pagos   = _filtrar(db.query(models.Pago),   models.Pago.fecha,   ini, fin).all()
+    pagos, senas = plata_que_entro(db, ini, fin)
+    pagos = pagos + senas          # para el gráfico, una seña es plata como cualquier otra
     egresos = _filtrar(db.query(models.Egreso), models.Egreso.fecha, ini, fin).all()
 
     def acumular(registros, monto_de):
@@ -3047,13 +3788,221 @@ def registro_movimientos(desde: str | None = None, hasta: str | None = None,
              "detalle": m["detalle"], "forma_pago": m["forma_pago"], "monto": m["monto"]}
             for m in _movimientos(db, ini, fin)[:1000]]
 
+# ---------- horarios del personal ----------
+#
+# Son dos capas distintas y conviene no mezclarlas: la DISPONIBILIDAD dice cuándo
+# está cada una, y la OCUPACIÓN —los turnos— qué está haciendo. Sin esa
+# separación, un hueco a las 15:00 en la grilla puede querer decir "está libre" o
+# "hoy no vino", que son cosas opuestas y se ven igual.
+
+def _hhmm_ok(t: str) -> bool:
+    try:
+        h, m = t.split(":")
+        return len(t) == 5 and 0 <= int(h) <= 23 and 0 <= int(m) <= 59
+    except Exception:
+        return False
+
+def _valida_tramo(desde: str, hasta: str):
+    if not _hhmm_ok(desde) or not _hhmm_ok(hasta):
+        raise HTTPException(400, "La hora va como HH:MM")
+    if desde >= hasta:
+        raise HTTPException(400, f"El tramo {desde}–{hasta} termina antes de empezar")
+
+def disponibilidad(db, empleado_id: int, fecha: str) -> dict:
+    """Cuándo está esta persona ese día.
+
+    Una regla y en un solo lugar: si hay excepciones para esa fecha mandan ellas,
+    si no el horario fijo de ese día de la semana. Una excepción sin horas es "no
+    viene" —cero tramos con `excepcion` puesto—, para que la pantalla pueda decir
+    por qué está vacío en vez de mostrar un hueco mudo.
+    """
+    exc = (db.query(models.ExcepcionHorario)
+             .filter(models.ExcepcionHorario.empleado_id == empleado_id,
+                     models.ExcepcionHorario.fecha == fecha)
+             .order_by(models.ExcepcionHorario.desde).all())
+    if exc:
+        tramos = [{"desde": e.desde, "hasta": e.hasta} for e in exc if e.desde and e.hasta]
+        return {"tramos": tramos, "excepcion": True,
+                "a_cargo": next((e.a_cargo for e in exc if e.a_cargo), None),
+                "motivo": next((e.motivo for e in exc if e.motivo), None),
+                "excepcion_ids": [e.id for e in exc]}
+    dow = date.fromisoformat(fecha).weekday()
+    fijos = (db.query(models.HorarioEmpleado)
+               .filter(models.HorarioEmpleado.empleado_id == empleado_id,
+                       models.HorarioEmpleado.dia_semana == dow)
+               .order_by(models.HorarioEmpleado.desde).all())
+    return {"tramos": [{"desde": h.desde, "hasta": h.hasta} for h in fijos],
+            "excepcion": False, "motivo": None, "a_cargo": None, "excepcion_ids": []}
+
+@app.get("/api/horarios")
+def listar_horarios(_ = Depends(usuario_actual), db: Session = Depends(get_db)):
+    """El horario fijo de todos. Lo lee cualquiera: saber a qué hora entra cada
+    una no es un dato reservado, y la agenda lo necesita para dibujar."""
+    filas = db.query(models.HorarioEmpleado).order_by(models.HorarioEmpleado.dia_semana,
+                                                      models.HorarioEmpleado.desde).all()
+    out = {}
+    for f in filas:
+        out.setdefault(str(f.empleado_id), []).append(
+            {"id": f.id, "dia_semana": f.dia_semana, "desde": f.desde, "hasta": f.hasta})
+    return out
+
+@app.put("/api/horarios/{emp_id}")
+def guardar_horario(emp_id: int, datos: HorarioIn, _ = Depends(solo_dueno), db: Session = Depends(get_db)):
+    """Reemplaza la semana entera de esa persona.
+
+    Se manda completa y se pisa todo: de a un tramo, un error en el medio deja la
+    semana partida y nadie sabe cuál mitad vale.
+    """
+    _empleado_o_404(db, emp_id)
+    for t in datos.tramos:
+        if not 0 <= t.dia_semana <= 6: raise HTTPException(400, "Día de la semana inválido")
+        _valida_tramo(t.desde, t.hasta)
+    # Dos tramos del mismo día que se pisan serían dos veces la misma hora
+    # disponible, y la grilla la dibujaría dos veces encima de sí misma.
+    por_dia = {}
+    for t in datos.tramos: por_dia.setdefault(t.dia_semana, []).append(t)
+    for _, ts in por_dia.items():
+        ts.sort(key=lambda x: x.desde)
+        for a, b in zip(ts, ts[1:]):
+            if b.desde < a.hasta:
+                raise HTTPException(400, f"Dos tramos del mismo día se pisan: {a.desde}–{a.hasta} y {b.desde}–{b.hasta}")
+    db.query(models.HorarioEmpleado).filter(models.HorarioEmpleado.empleado_id == emp_id).delete()
+    for t in datos.tramos:
+        db.add(models.HorarioEmpleado(empleado_id=emp_id, dia_semana=t.dia_semana,
+                                      desde=t.desde, hasta=t.hasta))
+    db.commit(); return {"ok": True, "tramos": len(datos.tramos)}
+
+@app.post("/api/excepciones")
+def crear_excepcion(datos: ExcepcionIn, _ = Depends(usuario_actual), db: Session = Depends(get_db)):
+    """El horario de un día puntual, que le gana al fijo.
+
+    Lo carga cualquiera: la que se cambió el turno con otra es la que sabe.
+    """
+    _empleado_o_404(db, datos.empleado_id)
+    try:
+        date.fromisoformat(datos.fecha)
+    except ValueError:
+        raise HTTPException(400, "Fecha inválida")
+    if datos.desde or datos.hasta:
+        if not (datos.desde and datos.hasta):
+            raise HTTPException(400, "Poné las dos horas, o ninguna si ese día no viene")
+        _valida_tramo(datos.desde, datos.hasta)
+    db.query(models.ExcepcionHorario).filter(
+        models.ExcepcionHorario.empleado_id == datos.empleado_id,
+        models.ExcepcionHorario.fecha == datos.fecha).delete()
+    db.add(models.ExcepcionHorario(empleado_id=datos.empleado_id, fecha=datos.fecha,
+                                   desde=datos.desde, hasta=datos.hasta,
+                                   motivo=(datos.motivo or "").strip() or None))
+    db.commit(); return {"ok": True}
+
+@app.delete("/api/excepciones/{emp_id}/{fecha}")
+def borrar_excepcion(emp_id: int, fecha: str, _ = Depends(usuario_actual), db: Session = Depends(get_db)):
+    """Saca la excepción y ese día vuelve al horario fijo."""
+    n = db.query(models.ExcepcionHorario).filter(
+        models.ExcepcionHorario.empleado_id == emp_id,
+        models.ExcepcionHorario.fecha == fecha).delete()
+    db.commit(); return {"ok": True, "borradas": n}
+
+@app.post("/api/agenda/abrir-dia")
+def abrir_dia(datos: AbrirDiaIn, _ = Depends(usuario_actual), db: Session = Depends(get_db)):
+    """Abre una fecha suelta con el mismo horario para varias: el lunes de depilación.
+
+    Deja la fecha EXACTA como se manda, en vez de ir sumando: las que se mandan
+    quedan con esas horas y a las que no se les saca la excepción, así que
+    destildar a alguien y volver a guardar la deja afuera. Sin eso, corregir a
+    quién se le puso significaría borrar a mano una por una.
+
+    No es una regla del calendario a propósito: el lunes que abren lo deciden
+    ellas, y un "cada 2º lunes" diría que trabajan un día que nadie eligió.
+    """
+    try:
+        date.fromisoformat(datos.fecha)
+    except ValueError:
+        raise HTTPException(400, "Fecha inválida")
+    _valida_tramo(datos.desde, datos.hasta)
+    ids = set(datos.empleados)
+    for eid in ids: _empleado_o_404(db, eid)
+
+    activos = [e.id for e in db.query(models.Empleado).filter(models.Empleado.activo == True)]
+    db.query(models.ExcepcionHorario).filter(
+        models.ExcepcionHorario.fecha == datos.fecha,
+        models.ExcepcionHorario.empleado_id.in_([e for e in activos if e not in ids])).delete(
+            synchronize_session=False)
+    for eid in ids:
+        db.query(models.ExcepcionHorario).filter(
+            models.ExcepcionHorario.empleado_id == eid,
+            models.ExcepcionHorario.fecha == datos.fecha).delete()
+        db.add(models.ExcepcionHorario(empleado_id=eid, fecha=datos.fecha,
+                                       desde=datos.desde, hasta=datos.hasta,
+                                       motivo=(datos.motivo or "").strip() or None,
+                                       a_cargo=(datos.a_cargo or "").strip() or None))
+    db.commit()
+    return {"ok": True, "empleados": len(ids)}
+
+@app.get("/api/agenda/dia")
+def agenda_dia(fecha: str | None = None, _ = Depends(usuario_actual), db: Session = Depends(get_db)):
+    """El día armado para la grilla por columnas: quién está, cuándo y con qué.
+
+    La ventana de horas sale del día y no de una constante: de lo más temprano
+    que alguien entra a lo más tarde que alguien sale, estirada si hay un turno
+    afuera de eso —uno a las 8 con todas entrando 9 tiene que verse—.
+    """
+    if not fecha: fecha = hoy_argentina().isoformat()
+    try:
+        date.fromisoformat(fecha)
+    except ValueError:
+        raise HTTPException(400, "Fecha inválida")
+
+    empleados = (db.query(models.Empleado).filter(models.Empleado.activo == True)
+                   .order_by(models.Empleado.nombre).all())
+    turnos = (db.query(models.Turno)
+                .filter(models.Turno.fecha == fecha, models.Turno.activo == True)
+                .order_by(models.Turno.hora).all())
+
+    filas, horas = [], []
+    for e in empleados:
+        d = disponibilidad(db, e.id, fecha)
+        filas.append({"id": e.id, "nombre": e.nombre, "tramos": d["tramos"],
+                      "excepcion": d["excepcion"], "motivo": d["motivo"],
+                      "a_cargo": d.get("a_cargo")})
+        for t in d["tramos"]: horas += [t["desde"], t["hasta"]]
+
+    def fin_de(t):
+        h, m = (int(x) for x in t.hora.split(":"))
+        total = h * 60 + m + (t.duracion_min or 30)
+        return f"{min(total // 60, 23):02d}:{total % 60:02d}"
+
+    salida_turnos = []
+    for t in turnos:
+        salida_turnos.append({"id": t.id, "hora": t.hora, "fin": fin_de(t),
+                              "duracion_min": t.duracion_min or 30,
+                              "cliente": t.cliente, "cliente_id": t.cliente_id,
+                              "servicio": t.servicio, "peluquero": t.peluquero,
+                              "notas": t.notas})
+        horas += [t.hora, fin_de(t)]
+
+    horas = [h for h in horas if _hhmm_ok(h)]
+    # Redondeado a la hora para arriba y para abajo: una grilla que arranca 8:45
+    # se lee peor que una que arranca a las 8, y no gana nada.
+    apertura = (min(horas)[:2] + ":00") if horas else "08:00"
+    cierre_crudo = max(horas) if horas else "20:00"
+    cierre = cierre_crudo if cierre_crudo.endswith(":00") else f"{min(int(cierre_crudo[:2]) + 1, 23):02d}:00"
+    if cierre <= apertura: cierre = f"{min(int(apertura[:2]) + 1, 23):02d}:00"
+
+    return {"fecha": fecha, "apertura": apertura, "cierre": cierre,
+            "empleados": filas, "turnos": salida_turnos}
+
 # ---------- agenda de turnos ----------
 
 @app.post("/api/turnos")
 def crear_turno(turno: TurnoIn, _ = Depends(usuario_actual), db: Session = Depends(get_db)):
     fecha = turno.fecha or hora_argentina(fecha_hora_now_utc()).strftime("%Y-%m-%d")
+    if not _hhmm_ok(turno.hora): raise HTTPException(400, "La hora va como HH:MM")
+    if not 5 <= turno.duracion_min <= 12 * 60:
+        raise HTTPException(400, "La duración va de 5 minutos a 12 horas")
     nuevo = models.Turno(fecha=fecha, hora=turno.hora, cliente=turno.cliente, cliente_id=turno.cliente_id,
-                         servicio=turno.servicio, peluquero=turno.peluquero, notas=turno.notas)
+                         servicio=turno.servicio, peluquero=turno.peluquero, notas=turno.notas,
+                         duracion_min=turno.duracion_min)
     db.add(nuevo)
     db.commit()
     db.refresh(nuevo)
@@ -3070,6 +4019,9 @@ def editar_turno(turno_id: int, datos: TurnoIn, _ = Depends(usuario_actual), db:
     turno.servicio = datos.servicio
     turno.peluquero = datos.peluquero
     turno.notas = datos.notas
+    if not 5 <= datos.duracion_min <= 12 * 60:
+        raise HTTPException(400, "La duración va de 5 minutos a 12 horas")
+    turno.duracion_min = datos.duracion_min
     db.commit()
     return {"ok": True}
 
@@ -3095,7 +4047,7 @@ def listar_turnos(fecha: str | None = None, desde: str | None = None, hasta: str
     turnos.sort(key=lambda t: (t.fecha, t.hora))
     return [{"id": t.id, "fecha": t.fecha, "hora": t.hora, "cliente": t.cliente, "cliente_id": t.cliente_id,
              "servicio": t.servicio, "peluquero": t.peluquero, "notas": t.notas,
-             "activo": t.activo} for t in turnos]
+             "duracion_min": t.duracion_min or 30, "activo": t.activo} for t in turnos]
 
 # ---------- notas diarias ----------
 
@@ -3218,11 +4170,13 @@ def _iso_utc(dt):
         dt = dt.replace(tzinfo=timezone.utc)
     return dt.astimezone(timezone.utc).isoformat()
 
-@app.get("/api/backup")
-def backup_completo(_ = Depends(solo_dueno), db: Session = Depends(get_db)):
-    """Descarga un JSON con TODAS las tablas para backup offline."""
-    import json as _json
+def armar_backup(db) -> dict:
+    """Todas las tablas en un dict: es el formato en el que el backup viaja.
 
+    Aparte del endpoint porque también lo arma `levantar_local.py`. Un .dump de
+    PostgreSQL solo lo abre pg_restore; este JSON lo lee cualquier PC que tenga
+    Python, que es lo único que hay en una máquina donde no se puede instalar.
+    """
     data = {
         "version": BACKUP_VERSION,
         # Informativa: la mira una persona, no el importador, así que va en hora
@@ -3263,7 +4217,8 @@ def backup_completo(_ = Depends(solo_dueno), db: Session = Depends(get_db)):
             # que estar: sin él, una base restaurada deja a todas afuera de su
             # propia pantalla de sueldos hasta que la dueña los vuelva a cargar.
             {"id": e.id, "nombre": e.nombre, "activo": e.activo,
-             "pin_salt": e.pin_salt, "pin_hash": e.pin_hash}
+             "pin_salt": e.pin_salt, "pin_hash": e.pin_hash,
+             "valor_hora": e.valor_hora}
             for e in db.query(models.Empleado).all()
         ],
         "liquidaciones": [
@@ -3271,6 +4226,7 @@ def backup_completo(_ = Depends(solo_dueno), db: Session = Depends(get_db)):
              "desde": l.desde, "hasta": l.hasta, "valor_hora": l.valor_hora,
              "comision_pct": l.comision_pct, "minutos_total": l.minutos_total,
              "minutos_comision": l.minutos_comision, "minutos_pagados": l.minutos_pagados,
+             "depilacion": bool(l.depilacion), "recaudado": l.recaudado, "gastos": l.gastos,
              "total_comisiones": l.total_comisiones, "total_horas": l.total_horas,
              "total": l.total, "notas": l.notas, "egreso_id": l.egreso_id,
              "parcial": bool(l.parcial)}
@@ -3314,13 +4270,30 @@ def backup_completo(_ = Depends(solo_dueno), db: Session = Depends(get_db)):
             {"id": a.id, "nombre": a.nombre, "activo": a.activo}
             for a in db.query(models.Alias).all()
         ],
+        "senas": [
+            {"id": x.id, "numero": x.numero, "cliente_id": x.cliente_id, "fecha": _iso_utc(x.fecha),
+             "monto": x.monto, "forma_pago": x.forma_pago, "alias": x.alias,
+             "notas": x.notas, "comprobante_id": x.comprobante_id,
+             "anulada": x.anulada, "usuario": x.usuario}
+            for x in db.query(models.Sena).all()
+        ],
         "turnos": [
             # cliente_id es el vínculo al cliente registrado; `cliente` es solo el
             # nombre suelto. Sin el id, al restaurar los turnos quedaban huérfanos.
             {"id": t.id, "fecha": t.fecha, "hora": t.hora, "cliente_id": t.cliente_id,
              "cliente": t.cliente, "servicio": t.servicio, "peluquero": t.peluquero,
-             "notas": t.notas, "activo": t.activo}
+             "notas": t.notas, "activo": t.activo, "duracion_min": t.duracion_min}
             for t in db.query(models.Turno).order_by(models.Turno.fecha, models.Turno.hora).all()
+        ],
+        "horarios_empleado": [
+            {"id": h.id, "empleado_id": h.empleado_id, "dia_semana": h.dia_semana,
+             "desde": h.desde, "hasta": h.hasta}
+            for h in db.query(models.HorarioEmpleado).all()
+        ],
+        "excepciones_horario": [
+            {"id": x.id, "empleado_id": x.empleado_id, "fecha": x.fecha,
+             "desde": x.desde, "hasta": x.hasta, "motivo": x.motivo}
+            for x in db.query(models.ExcepcionHorario).all()
         ],
         "notas_diarias": [
             {"id": n.id, "fecha": n.fecha, "texto": n.texto,
@@ -3372,12 +4345,19 @@ def backup_completo(_ = Depends(solo_dueno), db: Session = Depends(get_db)):
         "pagos": [
             {"id": p.id, "comprobante_id": p.comprobante_id, "fecha": _iso_utc(p.fecha),
              "monto": p.monto, "saldado": p.saldado, "forma_pago": p.forma_pago,
-             "alias": p.alias, "desc_aplicado": p.desc_aplicado}
+             "alias": p.alias, "desc_aplicado": p.desc_aplicado, "sena_id": p.sena_id}
             for p in db.query(models.Pago).order_by(models.Pago.fecha).all()
         ],
     }
 
-    contenido = _json.dumps(data, ensure_ascii=False, indent=2)
+    return data
+
+
+@app.get("/api/backup")
+def backup_completo(_ = Depends(solo_dueno), db: Session = Depends(get_db)):
+    """Descarga un JSON con TODAS las tablas para backup offline."""
+    import json as _json
+    contenido = _json.dumps(armar_backup(db), ensure_ascii=False, indent=2)
     buffer = io.BytesIO(contenido.encode("utf-8"))
     nombre = f"backup_pelu_{hora_argentina(fecha_hora_now_utc()).strftime('%Y%m%d_%H%M')}.json"
 

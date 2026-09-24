@@ -155,6 +155,14 @@
   .barra-sel .cuantos{ font-weight:var(--fw-bold); white-space:nowrap; }
   .barra-sel .rot{ color:var(--text-tenue); margin:0; }
   .barra-sel .pct-todos{ width:64px; text-align:right; padding:4px 6px; }
+  .barra-sel .cat-todos{ width:150px; padding:4px 6px; }
+  /* Un corte entre las dos cosas que se hacen de a varios: poner porcentaje y
+     mover de categoría. Sin él se leían como un solo formulario y "Mover"
+     parecía que iba a mover al porcentaje que estaba escrito al lado. */
+  .barra-sel .corte{ width:1px; align-self:stretch; background:var(--border-sutil); margin:0 var(--sp-1); }
+  @media (max-width:640px){ .barra-sel .corte{ display:none; } }
+  /* La categoría a la que se movió un ítem, todavía sin guardar. */
+  .item-row .tag.movido{ background:var(--acento-bg); color:var(--acento); font-weight:var(--fw-bold); }
   .barra-sel button[disabled]{ opacity:.45; cursor:default; }
   /* Con algo elegido la barra se marca: los botones de al lado dejan de ser
      decoración y pasan a poder cambiarle el porcentaje a varios ítems de una. */
@@ -280,6 +288,80 @@
   }
   .marca-privado input{ width:auto; margin:0; }
 
+  /* --- el horario fijo de la semana --- */
+  .panel-horario{
+    margin:var(--sp-2) 0 var(--sp-3);
+    padding:var(--sp-3) var(--sp-4);
+    background:var(--bg-sutil);
+    border:1px solid var(--border-sutil); border-radius:var(--r-lg);
+  }
+  /* La fila de arriba: se escribe el horario una vez y se reparte a los días
+     marcados. Va separada por un filete porque no es un día más de la lista. */
+  .de-una{
+    display:flex; align-items:center; gap:var(--sp-3); flex-wrap:wrap;
+    padding-bottom:var(--sp-3); margin-bottom:var(--sp-2);
+    border-bottom:1px solid var(--border);
+  }
+  .de-una .rot{
+    font-size:var(--fs-xs); letter-spacing:var(--tracking-eti); text-transform:uppercase;
+    color:var(--acento); font-weight:var(--fw-bold);
+  }
+  /* La casilla y su texto van juntos: con el label en bloque, la casilla queda
+     arriba y el texto abajo, y a 420 px parecen dos controles. */
+  .de-una .marca{
+    display:inline-flex; align-items:center; gap:6px; margin:0; white-space:nowrap;
+    font-size:var(--fs-sm); font-weight:var(--fw-normal); letter-spacing:normal;
+    text-transform:none; color:var(--text-suave);
+  }
+  .de-una .marca input{ width:auto; margin:0; flex:none; }
+  .de-una .tramo{ display:inline-flex; align-items:center; gap:6px; }
+  .de-una .tramo[hidden]{ display:none; }
+  .de-una input[type=time]{ width:auto; padding:5px 7px; }
+  .chips{ display:flex; gap:4px; flex-wrap:wrap; }
+  .chip-dia{
+    padding:5px 10px; border-radius:var(--r-full);
+    background:var(--bg-card); border:1px solid var(--border-sutil);
+    font-size:var(--fs-sm); color:var(--text-tenue); cursor:pointer;
+  }
+  .chip-dia.on{
+    background:var(--bronce-400); border-color:var(--bronce-500);
+    color:var(--text-sobre-oro); font-weight:var(--fw-bold);
+  }
+
+  /* El resumen de lo guardado, para que esconder los días no esconda el dato. */
+  .panel-horario .resumen{
+    margin:0; padding:var(--sp-2) 0;
+    font-size:var(--fs-md); color:var(--text-suave);
+  }
+  .panel-horario .resumen b{ color:var(--text-titulo); }
+  .panel-horario .resumen[hidden]{ display:none; }
+
+  .panel-horario .dias{ display:flex; flex-direction:column; gap:2px; }
+  .panel-horario .dias[hidden]{ display:none; }
+  .dia-horario{
+    display:flex; align-items:center; gap:var(--sp-3); flex-wrap:wrap;
+    padding:6px 0; border-bottom:1px solid var(--border-sutil);
+  }
+  /* El día que no trabaja se apaga entero: la fila sigue estando —hay que poder
+     prenderla— pero deja de competir por la atención con las que sí. */
+  .dia-horario.off{ opacity:.5; }
+  .dia-horario .marca{
+    display:inline-flex; align-items:center; gap:6px; margin:0;
+    min-width:130px; cursor:pointer;
+    font-size:var(--fs-md); color:var(--text);
+  }
+  .dia-horario .marca.corta{ min-width:0; font-size:var(--fs-sm); color:var(--text-tenue); }
+  .dia-horario .marca input{ width:auto; margin:0; }
+  .dia-horario .tramo{ display:inline-flex; align-items:center; gap:6px; }
+  .dia-horario .tramo[hidden]{ display:none; }
+  .dia-horario .tramo input{ width:auto; padding:5px 7px; }
+  .dia-horario .tramo .a{ color:var(--text-tenue); font-size:var(--fs-sm); }
+  .panel-horario .acc{ display:flex; gap:var(--sp-2); flex-wrap:wrap; margin-top:var(--sp-3); }
+  @media (max-width:640px){
+    .dia-horario{ gap:var(--sp-2); }
+    .dia-horario .marca{ min-width:100%; }
+  }
+
   @media (max-width:640px){
     .item-row, .item-row.simple, .item-row.simple.con-marca{ grid-template-columns:1fr auto; row-gap:6px; }
     /* En pantalla chica el casillero de elegir se queda con su columna propia y
@@ -303,3 +385,66 @@
   }
   .check input{ width:auto; }
   .check label{ margin:0; white-space:nowrap; }
+
+  /* ---------- Empleados: de lo general a lo particular ---------- */
+
+  /* Una línea por persona y un solo botón. Lo que se mira de un vistazo es el
+     nombre y su horario; lo raro —sin código, cobra distinto— va en chips. */
+  .emp-fila{
+    display:flex; align-items:center; gap:var(--sp-2);
+    padding:var(--sp-3) 0; border-bottom:1px solid var(--border-sutil);
+  }
+  .emp-fila:last-of-type{ border-bottom:none; }
+  .emp-fila .quien{ flex:1; min-width:0; }
+  .emp-fila .quien b{ display:block; }
+  .emp-fila .meta{ font-size:var(--fs-sm); color:var(--text-tenue); }
+  .emp-fila .marcas{ display:flex; gap:5px; flex-wrap:wrap; justify-content:flex-end; }
+  .chip-emp{
+    font-size:var(--fs-xs); letter-spacing:var(--tracking-eti); text-transform:uppercase;
+    font-weight:var(--fw-bold); padding:2px 8px; border-radius:var(--r-full);
+    background:var(--rojo-bg); color:var(--danger); white-space:nowrap;
+  }
+  .chip-emp.gris{ background:var(--bg-sutil); color:var(--text-tenue); }
+
+  /* Todo lo de una persona junto, que es lo que antes eran cinco botones. */
+  .panel-persona{
+    margin:var(--sp-2) 0 var(--sp-3); padding:var(--sp-2) var(--sp-4);
+    background:var(--bg-sutil);
+    border:1px solid var(--border-sutil); border-radius:var(--r-lg);
+  }
+  .panel-persona .linea{
+    display:flex; flex-wrap:wrap; align-items:center; gap:var(--sp-2);
+    padding:var(--sp-3) 0; border-bottom:1px solid var(--border-sutil);
+  }
+  .panel-persona .linea:last-child{ border-bottom:none; }
+  .panel-persona .et{ flex:1 1 11rem; }
+  .panel-persona .et small{ display:block; font-size:var(--fs-sm); color:var(--text-tenue); }
+  .panel-persona .dato{ font-variant-numeric:tabular-nums; color:var(--text-suave); }
+  .panel-persona .panel-edicion,
+  .panel-persona .panel-horario{ flex:1 1 100%; margin-bottom:0; }
+
+  /* ---------- la semana del local ---------- */
+  .tabla-horario{ overflow-x:auto; margin-top:var(--sp-3); }
+  .tabla-horario table{ border-collapse:collapse; width:100%; min-width:30rem;
+                        font-size:var(--fs-sm); font-variant-numeric:tabular-nums; }
+  .tabla-horario th{
+    font-size:var(--fs-xs); letter-spacing:var(--tracking-eti); text-transform:uppercase;
+    color:var(--text-tenue); font-weight:var(--fw-bold);
+    padding:var(--sp-2) 5px; text-align:center; border-bottom:1px solid var(--border);
+  }
+  .tabla-horario th.quien, .tabla-horario td.quien{ text-align:left; }
+  .tabla-horario td{
+    padding:var(--sp-2) 5px; text-align:center; white-space:nowrap;
+    border-bottom:1px solid var(--border-sutil);
+  }
+  .tabla-horario td.quien{ font-weight:var(--fw-bold); white-space:normal; }
+  .tabla-horario td span{ display:block; }
+  .tabla-horario td.libre{ color:var(--text-tenue); }
+  /* El día que no trabaja nadie es el local cerrado: se pinta la columna entera
+     porque es la lectura que más se busca al mirar la semana. */
+  .tabla-horario .cerrado{ background:var(--bg-header); }
+  .tabla-horario tbody tr{ cursor:pointer; }
+  .tabla-horario tbody tr:hover td{ background:var(--bg-sutil); }
+  .tabla-horario tbody tr:last-child td{ border-bottom:none; }
+
+  #barraHorario .de-una{ border-bottom:none; padding-bottom:0; margin-bottom:0; }

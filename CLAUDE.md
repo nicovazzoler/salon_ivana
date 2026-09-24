@@ -29,6 +29,8 @@ static/
   js/listas.js   Las cinco listas configurables (formas de pago, tipos de egreso,
                  descuentos, ajustes por ítem, alias): un solo dibujante que usan
                  Admin y el panel del lapicito de facturar
+  js/generales.js El valor hora y la comisión general: un solo dibujante que usan
+                 Admin (arriba de la lista de empleados) y Sueldos
   escpos.js      Generador del papel de la comandera (ticket.html y facturar.js)
 ```
 
@@ -39,7 +41,21 @@ python3 -m uvicorn main:app --host 127.0.0.1 --port 8000
 ```
 
 Usuarios de la base local de prueba: `dueno` / `test1234`. **Los de producción
-son otros** y no están acá.
+son otros** y no están acá. Si la base está vacía, el arranque la siembra solo.
+
+Para trabajar con una copia de producción, `levantar_local.py` tiene dos
+caminos: `--dump` restaura el `.dump` de `pg_dump` en un PostgreSQL local, y
+`--json` mete el JSON de `/api/backup` en un SQLite, que es lo único que se
+puede en una PC donde no se instala nada. Los dos dejan un usuario
+`local`/`local1234`, porque el backup trae los de producción y sus contraseñas
+no las sabe nadie. `--a-json` va del `.dump` al JSON, que es el formato que
+viaja: el `.dump` sin `pg_restore` no se abre.
+
+`simular_sueldos.py` carga un ciclo entero de trabajo para tres empleadas y
+después se juega con el valor hora y la comisión desde la app. Factura por la
+API, así los precios y las comisiones son los de un cobro de verdad; la duración
+de cada trabajo sale del precio del ítem (el más caro del ciclo, 80 minutos).
+Solo trabaja contra `127.0.0.1` y se deshace con `--borrar`.
 
 Notas del entorno de trabajo (no del proyecto):
 
@@ -100,6 +116,54 @@ privado, aunque tipee un nombre de tipo reservado: esconderle lo que él mismo
 anotó le deja el arqueo sin explicación. Y ojo con el `privado != True` a secas:
 en SQL el NULL no entra, y `restaurar_backup.py` levantando un backup viejo
 escribe NULL — por eso está `_no_privado()`.
+
+**El lunes de depilación no se paga por comisión: se reparte el día.** El local
+abre un lunes al mes solo para depilación. Lo lleva Carolina, que consigue la
+máquina, más una ayudante que a veces no es del salón. La cuenta es del DÍA, no
+de cada trabajo:
+
+    recaudado del día − egresos del día (insumos + el pago a la ayudante)
+    = resto  →  50% Carolina · 50% el salón, que pone el local
+
+Lo que la hace distinta de cualquier otro día:
+- El pago a la ayudante se anota como un egreso más, así que entra solo en la
+  resta: no hay que tratarlo aparte.
+- "Recaudado" incluye las señas cobradas días antes, porque son plata de ese
+  lunes aunque hayan entrado otro día. Sale de los PAGOS de los comprobantes con
+  fecha de ese lunes, no de la caja del lunes.
+- Los egresos **privados** no entran: el alquiler no es costo de la depilación, y
+  el detalle se lo muestra a ella. Sin ese filtro, cerrar la liquidación —que
+  crea un egreso privado con el sueldo, con fecha de hoy— le cambiaba la cuenta
+  al lunes que se estaba cerrando.
+- El ciclo es de un solo día y le toca a UNA sola persona: `empleada_del_dia()`
+  elige la que más facturó ese lunes. Si fuera "la que tenga alguna línea", la
+  ayudante que atendió algo vería el reparto entero y el número aparecería dos
+  veces.
+- El lunes le aparece aunque no tenga un ítem a comisión ni una hora cargada
+  (`lunes_depi_pendientes()`), que es lo normal en depilación. Como puede no
+  tener ningún trabajo detrás, lo que dice que ya se pagó es la liquidación
+  misma: sin ese filtro, un lunes sin trabajos volvía a aparecer pendiente
+  después de cobrarlo, siempre.
+- La empleada lo ve con su código en Sueldos —es su plata— y **cierra la dueña**,
+  como todos los ciclos.
+
+**La seña es plata de la clienta, no un pago de un ticket.** Se toma sin
+comprobante —desde la ficha o desde facturar— y entra a la caja del día en que se
+cobra. Al facturarle, se aplican todas las que tenga libres y cada una deja un
+abono con `sena_id`. **Ese abono no es plata del día**: ya entró. Por eso
+`plata_que_entro()` saltea los abonos con `sena_id` y suma las señas cobradas, y
+todo lo que cuenta plata por fecha —caja, reportes, el Excel, los gráficos— pasa
+por ahí. Contándolos dos veces, el arqueo pide más efectivo del que hay en el
+cajón y no avisa por qué. El filtro va por el id y no por el texto "Seña", que se
+puede tipear distinto.
+
+**La comisión sale de lo que la clienta terminó pagando por ESE trabajo.**
+`base_comision()` arranca del precio efectivo, le aplica el ajuste de la línea y
+después el descuento del comprobante. Lo que NO baja la base es la diferencia
+entre la lista de transferencia y la de efectivo: no es un descuento que se le
+hizo a nadie, son las dos listas de precios. Por eso se parte del efectivo y no
+del de transferencia. Lo ya cerrado no se recalcula nunca: cada liquidación
+guarda `base` y `comision` como estaban ese día.
 
 **Los extras no los toca ningún descuento.** Entran al final, después de todo.
 
@@ -202,10 +266,39 @@ cuando el que se equivocó fue el test.
 ## Idioma
 
 Todo en castellano rioplatense: los nombres de las variables y funciones, los
-comentarios, los mensajes de commit y lo que se le muestra al usuario. Los
-comentarios explican **por qué**, no qué — y en particular explican las
-decisiones raras, para que el que venga después no las "arregle" sin saber qué
-rompía. Son largos a propósito.
+comentarios, los mensajes de commit y lo que se le muestra al usuario.
+
+### Cómo se comenta
+
+**Una línea que diga qué hace esto, y después solo lo que no se deduce leyendo.**
+Un comentario largo se saltea, así que el largo hay que gastarlo donde rinde: en
+la decisión rara, la que alguien va a querer "arreglar" sin saber qué rompía.
+
+Lo que NO va en un comentario:
+- **La historia.** "Antes pasaba X y ahora pasa Y" es para el mensaje de commit,
+  que es donde se lee cuando se busca por qué cambió algo. En el código, el
+  "antes" es ruido: el que lee tiene adelante el "ahora".
+- **Repetir el código en castellano.** Si el nombre de la función ya lo dice, el
+  comentario sobra.
+- **El caso de prueba.** Los números del ejemplo con el que se encontró un bug
+  van en el commit, no arriba de la función.
+
+Un docstring de cinco párrafos casi siempre son dos frases y un commit. Si la
+explicación no entra en tres o cuatro renglones, es señal de que la función hace
+dos cosas: partirla explica más que el comentario.
+
+    # Bien
+    def ciclo_de(f):
+        """A qué semana de pago pertenece un día: de sábado a viernes.
+
+        El lunes es su propio ciclo de un día —la depilación, una vez por mes—.
+        Ojo: el ciclo ARRANCA el sábado, y con weekday() el sábado cae después
+        del viernes en el número pero antes en el ciclo; de ahí el `dow + 2`.
+        """
+
+    # Mal
+    # Antes el ciclo era de martes a sábado, pero resulta que en el local pagan
+    # el viernes lo que se hizo desde el sábado, así que ahora... (12 renglones)
 
 ## Seguridad
 
@@ -223,3 +316,8 @@ detecta quién sigue usando una y lo avisa con un cartel que no se puede cerrar.
 
 Commit en castellano explicando **por qué**, no qué (el diff ya dice qué), y
 push a `main`. El deploy en Railway es automático.
+
+Acá sí va la historia: qué pasaba antes, con qué caso se encontró el bug y qué
+números daba. Es lo que se busca cuando se pregunta "¿por qué cambió esto?", y es
+justo lo que no tiene que estar en el comentario. Un título de una línea y dos o
+tres párrafos alcanzan; si hace falta más, probablemente sean dos commits.

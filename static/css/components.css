@@ -642,6 +642,19 @@ body.con-panel{ overflow:hidden; }
   font-size:var(--fs-xs); font-weight:var(--fw-normal);
   color:var(--text-tenue);
 }
+/* "A comisión" es un atajo y no una categoría: se despega del resto con el
+   filete y una línea abajo, para que no se lea como una categoría más que
+   alguien cargó y después no encuentra en Admin. */
+.cat-pill.especial{
+  border-color:var(--acento-border);
+  background:var(--acento-bg);
+  color:var(--text-marca);
+  margin-bottom:var(--sp-2);
+}
+.cat-pill.especial:hover{ background:var(--bronce-a15); color:var(--text-marca); }
+@media (max-width:900px){
+  .cat-pill.especial{ margin-bottom:0; margin-right:var(--sp-2); }
+}
 
 /* --- grilla del catálogo --- */
 .grid-items{
@@ -700,4 +713,26 @@ body.con-panel{ overflow:hidden; }
   }
   .cat-pill .cuenta{ margin-left:4px; }
 }
+
+/* ---------- Los dos números generales del sueldo ----------
+   El editor lo dibuja generales.js y lo muestran Admin y Sueldos, así que su
+   estilo va acá y no en el de una sola pantalla: en la otra salía sin formato,
+   con los campos a lo ancho y un renglón vacío en el medio. */
+/* Los dos números que valen para todas, arriba de la lista. Van sobre fondo
+   dorado suave porque no son una fila más: tocarlos le cambia el sueldo a
+   todas las que no tengan el suyo. */
+.generales{
+  display:flex; flex-wrap:wrap; align-items:flex-end; gap:var(--sp-2) var(--sp-4);
+  background:var(--bg-header); border:1px solid var(--border-sutil);
+  border-radius:var(--r-md); padding:var(--sp-3) var(--sp-4);
+  margin-bottom:var(--sp-3);
+}
+.generales .campo{ display:flex; flex-direction:column; gap:3px; }
+.generales label{ margin:0; font-size:var(--fs-xs); letter-spacing:var(--tracking-eti);
+                  text-transform:uppercase; color:var(--acento); font-weight:var(--fw-bold); }
+.generales input{ width:6.5rem; font-variant-numeric:tabular-nums; }
+.generales .con-signo{ display:inline-flex; align-items:center; gap:4px; }
+.generales .con-signo i{ font-style:normal; color:var(--text-tenue); }
+.generales .nota{ flex:1 1 14rem; font-size:var(--fs-sm); color:var(--text-tenue); }
+
 

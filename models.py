@@ -75,6 +75,13 @@ class Egreso(Base):
     # la misma pantalla que todo lo demás, pero eso no es asunto de quien atiende:
     # ni aparece en su lista ni entra en los totales de su caja.
     privado = Column(Boolean, default=False)
+    # El egreso que es el pago a la ayudante del lunes de depilación. `ayudante`
+    # lo marca como tal —es el renglón fijo de la tarjeta del lunes, el gasto que
+    # más se olvida y el único que le baja la parte a la que lleva el día— y
+    # `empleado_id` lo ata a la persona cuando es del salón, para que el aviso le
+    # aparezca en su sueldo sin ir a buscarla por el nombre escrito.
+    ayudante = Column(Boolean, default=False)
+    empleado_id = Column(Integer, ForeignKey("empleados.id"), index=True)
 
 class FormaPago(Base):
     __tablename__ = "formas_pago"
@@ -105,6 +112,9 @@ class Empleado(Base):
     id = Column(Integer, primary_key=True)
     nombre = Column(String, unique=True, nullable=False)
     activo = Column(Boolean, default=True)
+    # Lo que cobra la hora. NULL = el general de Sueldos, y es nullable y no 0
+    # porque 0 es válido: alguien que cobra solo comisión.
+    valor_hora = Column(Integer)
     # El código con el que abre su sueldo. Guardado como hash y con sal, igual
     # que las contraseñas: la base entera se descarga en cada backup, y un código
     # en texto plano ahí es el código de todas para siempre. Sin código no puede
@@ -164,6 +174,45 @@ class Turno(Base):
     peluquero = Column(String)                            # opcional
     notas = Column(String)                                # opcional
     activo = Column(Boolean, default=True)
+    # Cuánto dura, en minutos: en la grilla por columnas el largo del bloque es
+    # lo que dice si una franja está libre.
+    duracion_min = Column(Integer, default=30)
+
+class HorarioEmpleado(Base):
+    """El horario fijo de cada quien, por día de la semana.
+
+    Una fila por tramo: la que corta al mediodía lleva dos del mismo día, y sin
+    fila ese día no trabaja.
+
+    No es lo que se PAGA: acá dice a qué hora se la espera, y en Sueldos se
+    declara lo que realmente trabajó. Un horario teórico propone, nunca liquida.
+    """
+    __tablename__ = "horarios_empleado"
+    id = Column(Integer, primary_key=True)
+    empleado_id = Column(Integer, ForeignKey("empleados.id"), nullable=False, index=True)
+    dia_semana = Column(Integer, nullable=False)     # 0=lunes … 6=domingo, como Python
+    desde = Column(String, nullable=False)           # 'HH:MM'
+    hasta = Column(String, nullable=False)           # 'HH:MM'
+    empleado = relationship("Empleado")
+
+class ExcepcionHorario(Base):
+    """El horario de un día puntual, que le gana al fijo.
+
+    `desde`/`hasta` en NULL es "ese día no viene": un dato, no un agujero. En la
+    grilla hay que poder distinguirlo de "nadie cargó nada".
+    """
+    __tablename__ = "excepciones_horario"
+    id = Column(Integer, primary_key=True)
+    empleado_id = Column(Integer, ForeignKey("empleados.id"), nullable=False, index=True)
+    fecha = Column(String, nullable=False, index=True)   # 'YYYY-MM-DD'
+    desde = Column(String)                                # NULL = no viene
+    hasta = Column(String)
+    motivo = Column(String)
+    # Quién lleva ese día, para el lunes de depilación. Se guarda en todas las
+    # filas de la fecha porque se escriben juntas al abrir el día, y así la
+    # pregunta "¿de quién es este lunes?" se contesta leyendo cualquiera.
+    a_cargo = Column(String)
+    empleado = relationship("Empleado")
 
 class NotaDiaria(Base):
     """Notas internas del día en agenda."""
@@ -260,6 +309,37 @@ class Pago(Base):
     forma_pago = Column(String)
     alias = Column(String)                       # si fue transferencia (opcional)
     desc_aplicado = Column(Integer, default=0)   # descuento en pesos de este abono (saldado - monto)
+    # Si viene de aplicar una seña, la plata ya entró el día que se cobró: este
+    # abono salda la cuenta pero no es plata del día. La caja lo saltea por el id
+    # y no por el texto de la forma, que se puede tipear distinto.
+    sena_id = Column(Integer, ForeignKey("senas.id"))
+    comprobante = relationship("Comprobante")
+
+class Sena(Base):
+    """Plata que la clienta deja adelantada, sin atarla a ningún ticket.
+
+    No es un pago de un comprobante: es un saldo a su favor. Por eso no se pierde
+    si no viene ni obliga a saber qué servicio se va a hacer —los dos problemas
+    que aparecían si la seña nacía como ticket—.
+
+    Entra a la caja del día en que se cobra. Cuando se usa, queda apuntando al
+    comprobante y ese abono NO vuelve a contar como plata del día: ya entró.
+    """
+    __tablename__ = "senas"
+    id = Column(Integer, primary_key=True)
+    # Correlativo propio, como el de los egresos: sirve para nombrarla en voz
+    # alta ("la seña 12") y para el papel que se lleva la clienta.
+    numero = Column(Integer, index=True)
+    cliente_id = Column(Integer, ForeignKey("clientes.id"), nullable=False, index=True)
+    fecha = Column(DateTime, default=fecha_hora_now_utc)
+    monto = Column(Integer, nullable=False)
+    forma_pago = Column(String)
+    alias = Column(String)
+    notas = Column(String)
+    comprobante_id = Column(Integer, ForeignKey("comprobantes.id"))   # NULL = sin usar
+    anulada = Column(Boolean, default=False)
+    usuario = Column(String)
+    cliente = relationship("Cliente")
     comprobante = relationship("Comprobante")
 
 class Descuento(Base):
@@ -313,6 +393,12 @@ class Liquidacion(Base):
     # día que se olvide la caja de ese día dice que hay más plata de la que hay.
     # Se guarda el id para no anotarlo dos veces y para poder mostrarlo después.
     egreso_id = Column(Integer, ForeignKey("egresos.id"))
+    # El lunes de depilación se reparte el día en vez de pagar comisiones, así
+    # que la foto necesita los dos números de esa cuenta: sin ellos, el historial
+    # muestra un total que no se puede explicar.
+    depilacion = Column(Boolean, default=False)
+    recaudado = Column(Integer)
+    gastos = Column(Integer)
     empleado = relationship("Empleado")
     egreso = relationship("Egreso")
 

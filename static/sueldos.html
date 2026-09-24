@@ -54,7 +54,7 @@
                    display:flex; align-items:center; gap:var(--sp-3); }
   .quien-empleada button{ font-size:var(--fs-sm); padding:4px 10px; }
 
-  /* Un ciclo: la semana de trabajo (martes a sábado) con sus días adentro. */
+  /* Un ciclo: la semana de trabajo (sábado a viernes) con sus días adentro. */
   .ciclo{ border:1px solid var(--border-sutil); border-radius:var(--r-lg);
           margin-top:var(--sp-4); overflow:hidden; }
   .ciclo-cab{ display:flex; flex-wrap:wrap; align-items:baseline; gap:var(--sp-2);
@@ -71,6 +71,46 @@
   .ciclo.en-curso .ciclo-cab h3::after{ content:" · en curso"; font-weight:var(--fw-normal);
                                         font-size:var(--fs-sm); color:var(--text-tenue); }
 
+  /* El lunes de depilación: en vez de días con horas, la cuenta del reparto. */
+  .ciclo.depi .ciclo-cab{ background:var(--bg-header); }
+  .cuenta-depi{ margin:var(--sp-3) 0; }
+  .cuenta-depi .ren{ display:flex; align-items:baseline; gap:var(--sp-2);
+                     padding:var(--sp-2) 0; border-bottom:1px solid var(--border-sutil); }
+  .cuenta-depi .ren > :last-child{ margin-left:auto; font-variant-numeric:tabular-nums;
+                                   white-space:nowrap; }
+  .cuenta-depi .ren.chico{ padding:2px 0 2px var(--sp-3); border-bottom:none;
+                           font-size:var(--fs-sm); color:var(--text-tenue); }
+  .cuenta-depi .resta{ color:var(--danger); }
+  .cuenta-depi .ren.total{ border-bottom:2px solid var(--border); }
+  .cuenta-depi .ren.total b{ font-family:var(--font-display); font-size:var(--fs-lg);
+                             font-weight:var(--fw-black); }
+  .cuenta-depi .ren.mitad{ border-bottom:none; }
+  .cuenta-depi .ren.mitad b{ font-weight:var(--fw-bold); }
+  /* El pago a la ayudante no es un gasto más: es el único que sale de un trato
+     con una persona, y el que más se olvida. Por eso el renglón está siempre,
+     aunque todavía no se cargó. */
+  .cuenta-depi .ren.chico.ayudante{ color:var(--text); }
+  .cuenta-depi .ren.chico.falta-ayudante{ color:var(--danger); }
+  .cuenta-depi .ren.chico em{ font-style:normal; }
+  .cuenta-depi .ren .btn-mini{ margin-left:6px; padding:1px 7px; }
+
+  /* Para la ayudante no hay ciclo: solo el aviso de lo que cobró ese lunes. */
+  .avisos-depi{ margin-bottom:var(--sp-3); }
+  .aviso-depi{ display:flex; align-items:center; gap:var(--sp-3);
+               padding:var(--sp-3); border:1px solid var(--border-sutil);
+               border-radius:var(--r-md); background:var(--bg-sutil); }
+  .aviso-depi + .aviso-depi{ margin-top:var(--sp-2); }
+  .aviso-depi .det{ display:block; font-size:var(--fs-sm); color:var(--text-tenue); }
+  .aviso-depi .plata{ margin-left:auto; font-family:var(--font-display);
+                      font-weight:var(--fw-black); font-variant-numeric:tabular-nums; }
+  .nota-depi{ font-size:var(--fs-sm); color:var(--text-tenue);
+              padding:var(--sp-2) 0; border-top:1px solid var(--border-sutil); }
+  /* Lo que se hizo ese día, a secas: sin horas ni "falta el tiempo", que no
+     significan nada en un día que no se paga ni por horas ni por comisión. */
+  .lista-depi > div{ display:flex; flex-wrap:wrap; align-items:baseline; gap:var(--sp-2);
+                     padding:3px 0 3px var(--sp-3); font-size:var(--fs-sm); }
+  .lista-depi .det{ margin-left:auto; color:var(--text-tenue); }
+
   /* Un día adentro del ciclo: rótulo, horas y sus trabajos debajo. */
   .dia{ padding:var(--sp-3) 0; border-bottom:1px solid var(--border-sutil); }
   .dia:last-child{ border-bottom:none; }
@@ -80,6 +120,7 @@
   .dia-horas{ display:flex; align-items:center; gap:6px; color:var(--text-tenue);
               font-size:var(--fs-sm); }
   .dia-horas .valor{ color:var(--text-titulo); font-weight:var(--fw-bold); }
+  .dia-horas .rot-horas{ color:var(--text-tenue); }
   .dia-horas.falta .valor{ color:var(--danger); }
   .dia .trabajos{ margin-top:var(--sp-2); padding-left:var(--sp-3);
                   border-left:2px solid var(--border-sutil); }
@@ -93,6 +134,9 @@
                        padding-left:var(--sp-2); padding-right:var(--sp-2); }
   .falta-tiempo{ font-size:var(--fs-xs); color:var(--danger); text-transform:uppercase;
                  letter-spacing:.04em; }
+  /* La comisión de un trabajo sin duración se muestra igual, apagada: el número
+     ya se sabe y esconderlo hacía parecer que ese trabajo no valía nada. */
+  .plata.no-cuenta{ color:var(--text-tenue); }
   .btn-mini{ font-size:var(--fs-sm); padding:3px 10px; }
   /* Marca de "esto no es una semana entera": un saldo que quedó de un pago
      parcial, o el pago parcial mismo en el historial. */
@@ -103,6 +147,18 @@
     background:var(--bg-sutil); color:var(--text-tenue); border:1px solid var(--border-sutil);
   }
   .dia-acciones{ margin-top:var(--sp-2); }
+  /* El borrón y cuenta nueva: una línea, no un formulario. Se toca una vez por
+     año y tenerlo desplegado invita a moverlo sin querer. */
+  .arranque{ display:flex; flex-wrap:wrap; align-items:center; gap:var(--sp-2);
+             margin-top:var(--sp-3); padding-top:var(--sp-3);
+             border-top:1px solid var(--border-sutil); font-size:var(--fs-sm);
+             color:var(--text-tenue); }
+  .arranque input[type=date]{ width:auto; }
+  /* Puesto, es un dato y no un control: un renglón gris al pie, sin casillero ni
+     botones a la vista. */
+  .arranque.puesto{ font-size:var(--fs-xs); }
+  .arranque .arrVer{ color:var(--text-tenue); text-decoration:underline; }
+  .arranque .arrCajon{ display:flex; align-items:center; gap:var(--sp-2); }
 
   /* La puerta de "un trabajo de hoy": siempre visible al final, tenga o no
      ciclos arriba. Con borde punteado para que se lea como un lugar donde
@@ -218,14 +274,12 @@
 
   <div class="card" data-dueno>
     <div class="card-head"><div class="titulo"><h2>⚙️ Cómo se calcula</h2>
-      <p>El valor de la hora y el porcentaje de comisión. Cambiarlos no toca lo ya pagado.</p></div></div>
-    <div class="agregar" style="margin-top:0; padding-top:0; border-top:none;">
-      <div><label for="cfgHora">Valor hora</label>
-        <input type="number" id="cfgHora" min="0" inputmode="numeric"></div>
-      <div><label for="cfgPct">Comisión %</label>
-        <input type="number" id="cfgPct" min="0" max="100" inputmode="numeric"></div>
-      <button class="b-ok" id="btnCfg">Guardar</button>
-    </div>
+      <p>El valor de la hora y el porcentaje de comisión que se usan por defecto.
+      Cambiarlos no toca lo ya pagado. Quien cobre distinto lleva el suyo en
+      <a href="/admin">Admin → Empleados</a>, y el porcentaje de un servicio en particular,
+      en el catálogo.</p></div></div>
+    <div id="cfgGenerales"></div>
+    <div id="cfgArranque"></div>
 
     <p class="muted" style="margin:var(--sp-3) 0 0;">Los empleados se cargan en
        <a href="/admin#empleados">Admin</a>, con el resto de las listas.</p>
@@ -250,14 +304,16 @@
   <!-- Lo ya pagado lo miran las dos: la dueña todos los cierres, la empleada los
        suyos (el servidor no le contesta otra cosa). -->
   <div class="card" id="cardLiquidaciones" style="display:none;">
-    <div class="card-head"><div class="titulo"><h2 id="tituloPagado">🧾 Ya pagado</h2>
-      <p id="bajadaPagado">Los cierres anteriores, con los números tal como estaban ese día.</p></div></div>
-    <div id="listaLiq"></div>
+    <div class="card-head con-datos"><div class="titulo"><h2 id="tituloPagado">🧾 Ya pagado</h2>
+      <p id="bajadaPagado">Los cierres anteriores, con los números tal como estaban ese día.</p></div>
+      <button class="b-out" id="verPagado">Ver</button></div>
+    <div id="listaLiq" style="display:none;"></div>
   </div>
 
 </div>
 
 <div id="toast" class="toast"></div>
 <script src="/static/auth.js"></script>
+<script src="/static/js/generales.js"></script>
 <script src="/static/js/sueldos.js"></script>
 </body></html>

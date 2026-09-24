@@ -46,6 +46,117 @@
   .btn-cancelar{ background:transparent; border:1px solid var(--danger); color:var(--danger); }
   .sin-turnos{ padding:var(--sp-5); text-align:center; color:var(--text-tenue); }
 
+  /* --- vista DÍA por COLUMNAS: una columna por empleada ---
+
+     El día como grilla: las horas a la izquierda y cada empleada en su columna.
+     Con cuatro o seis personas es la única forma de ver los huecos de un vistazo;
+     en una lista ordenada por hora hay que reconstruir mentalmente quién está
+     libre, que es justo lo que no se quiere hacer con una clienta esperando.
+
+     Se dibujan DOS capas encima de la misma columna: la franja clara es cuándo
+     está disponible, y los bloques adentro son los turnos. Un hueco es
+     "disponible y sin turno". Sin la capa de abajo, un espacio vacío a las 15:00
+     podría ser "está libre" o "hoy no vino", que son cosas opuestas. */
+  .vista-dia{ display:none; gap:6px; margin-bottom:var(--sp-3); }
+  .vista-dia.hay{ display:flex; }
+  .vista-dia .chip{
+    padding:6px 14px; border-radius:var(--r-full);
+    background:var(--bg-sutil); border:1px solid var(--border-sutil);
+    font-size:var(--fs-sm); color:var(--text); cursor:pointer;
+  }
+  /* Los chips de quiénes vienen el día que se abre suelto. */
+  .chips-emp{ display:flex; gap:6px; flex-wrap:wrap; }
+  .chip-emp{
+    padding:9px 15px; border-radius:var(--r-full);
+    background:var(--bg-card); border:1px solid var(--border-sutil);
+    font-size:var(--fs-md); color:var(--text-tenue); cursor:pointer;
+  }
+  .chip-emp.on{
+    background:var(--bronce-400); border-color:var(--bronce-500);
+    color:var(--text-sobre-oro); font-weight:var(--fw-bold);
+  }
+
+  .vista-dia .chip.on{
+    background:var(--bronce-400); border-color:var(--bronce-500);
+    color:var(--text-sobre-oro); font-weight:var(--fw-bold);
+  }
+
+  /* La grilla puede ser más ancha que la pantalla: scrollea ELLA, no la página. */
+  .grilla-wrap{
+    overflow-x:auto; padding:var(--sp-2) var(--sp-2) var(--sp-3);
+    background:var(--bg-card); border:1px solid var(--border-sutil);
+    border-radius:var(--r-lg); box-shadow:var(--sombra-card);
+  }
+  .grilla{ display:grid; min-width:min-content; }
+  .g-cab{
+    position:sticky; top:0; z-index:2;
+    padding:8px 6px; background:var(--bg-card);
+    border-bottom:2px solid var(--acento-border);
+    text-align:center;
+  }
+  .g-cab .nom{ font-family:var(--font-display); font-size:var(--fs-md); color:var(--text-titulo); }
+  .g-cab .est{ display:block; margin-top:2px; font-size:var(--fs-xs); color:var(--text-tenue); }
+  .g-cab .est.fuera{ color:var(--danger); }
+  .g-cab .est.cambio{ color:var(--warn); }
+  .g-cab button{
+    margin-top:4px; padding:2px 8px;
+    font-size:var(--fs-xs); background:transparent;
+    border:1px solid var(--border-sutil); color:var(--text-tenue);
+  }
+  .g-horas{ position:relative; }
+  .g-hora{
+    position:absolute; right:6px; transform:translateY(-50%);
+    font-size:var(--fs-xs); color:var(--text-tenue); font-variant-numeric:tabular-nums;
+  }
+  .g-col{
+    position:relative;
+    border-left:1px solid var(--border-sutil);
+    background:var(--bg-hundido);
+  }
+  .g-col.vacia{ opacity:.55; }
+  /* Las rayas de las horas, una sola vez y en el fondo: cuarenta divs de línea
+     para un día de once horas es mucho nodo para algo que no se toca. */
+  /* Las rayas van ENCIMA de la franja disponible y debajo de los turnos. Abajo
+     de todo quedaban tapadas por la franja, que es justo donde hacen falta:
+     adentro del horario es donde hay que poder leer a qué hora cae un hueco. */
+  .g-col .rayas{ position:absolute; inset:0; pointer-events:none; z-index:1; }
+  .g-raya{ position:absolute; left:0; right:0; border-top:1px solid var(--border-sutil); }
+  .g-raya.media{ border-top-style:dotted; opacity:.6; }
+  .g-tramo{
+    position:absolute; left:2px; right:2px; z-index:0;
+    background:var(--bg-card);
+    border:1px solid var(--border-sutil); border-radius:var(--r-sm);
+  }
+  .g-hueco{ position:absolute; left:3px; right:3px; z-index:2; cursor:pointer; border-radius:var(--r-sm); }
+  .g-hueco:hover{ background:var(--acento-bg); box-shadow:inset 0 0 0 1px var(--acento-border); }
+  .g-turno{
+    position:absolute; left:3px; right:3px; z-index:3;
+    padding:3px 6px; overflow:hidden;
+    background:var(--acento-bg);
+    border:1px solid var(--acento-border); border-left:3px solid var(--acento);
+    border-radius:var(--r-sm);
+    cursor:pointer;
+  }
+  .g-turno:hover{ background:var(--bronce-a15); }
+  .g-turno .c{ font-size:var(--fs-sm); font-weight:var(--fw-bold); color:var(--text-marca); line-height:1.2; }
+  .g-turno .s{ font-size:var(--fs-xs); color:var(--text-tenue); line-height:1.2; }
+  .g-turno .h{ font-size:10px; color:var(--text-tenue); font-variant-numeric:tabular-nums; }
+  /* Fuera del horario: el turno existe igual y hay que verlo, pero marcado, que
+     es la señal de que alguien agendó donde esa persona no estaba. */
+  .g-turno.afuera{ border-color:var(--danger); border-left-color:var(--danger); background:var(--danger-bg); }
+  .g-turno.afuera .c{ color:var(--danger); }
+  .g-vacio{
+    position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+    padding:var(--sp-3); text-align:center;
+    font-size:var(--fs-sm); color:var(--text-tenue);
+  }
+  /* La línea de AHORA, solo si el día que se está mirando es hoy. */
+  .g-ahora{ position:absolute; left:0; right:0; height:2px; background:var(--danger); z-index:1; pointer-events:none; }
+  .g-ahora::before{
+    content:""; position:absolute; left:-4px; top:-3px;
+    width:8px; height:8px; border-radius:50%; background:var(--danger);
+  }
+
   /* --- vista SEMANA: grilla de horas × días --- */
   .grid-sem{ display:grid; font-size:var(--fs-xs); border-top:2px solid var(--acento); }
   .gs-hora{ padding:2px 6px 0 0; text-align:right; font-size:var(--fs-xs); color:var(--text-tenue); }
@@ -198,6 +309,8 @@
     <div class="card" id="formCard">
       <div class="form-turno">
         <div class="campo chico"><label>Hora</label><input type="time" id="fHora" value="10:00"></div>
+        <div class="campo chico"><label>Dura (min)</label>
+          <input type="number" id="fDura" value="30" min="5" step="5" inputmode="numeric"></div>
         <div class="campo"><label>Cliente</label><input id="fCliente" list="clientesList" placeholder="Nombre"><datalist id="clientesList"></datalist></div>
         <div class="campo"><label>Servicio</label><input id="fServicio" list="serviciosList" placeholder="Corte, color..."><datalist id="serviciosList"></datalist></div>
         <div class="campo"><label>Atiende (opc) <span class="muted"></span></label><select id="fPeluquero"></select></div>
@@ -215,6 +328,13 @@
     </div>
   </div>
   
+  <div class="vista-dia" id="vistaDiaSwitch">
+    <button class="chip" data-v="columnas">Columnas</button>
+    <button class="chip" data-v="lista">Lista</button>
+    <span style="flex:1;"></span>
+    <button class="b-out" id="btnAbrirDia">Abrir este día</button>
+  </div>
+
   <div id="vista"></div>
 </div>
 
@@ -285,6 +405,7 @@ function lunesDeSemana(d){
 
 async function render(){
   $("#fechaPicker").value=fechaActual;
+  marcarSwitch();                         // el toggle Lista/Columnas es solo del día
   if(modo==="dia") return renderDia();
   if(modo==="semana") return renderSemana();
   return renderMes();
@@ -326,6 +447,317 @@ function ajustarAltoNotas(){
 }
 window.addEventListener("resize", ajustarAltoNotas);
 
+/* ---------- VISTA DÍA por COLUMNAS ----------
+
+   Todo se posiciona por MINUTOS desde la apertura, no por celdas: un turno de 45
+   o de 90 no entra en una grilla de casilleros de 30 sin mentir sobre dónde
+   empieza y dónde termina, y ahí el hueco que se ve deja de ser el hueco que hay.
+   La ventana del día (apertura y cierre) la decide el servidor mirando los
+   horarios y los turnos, así que un turno afuera de hora no desaparece. */
+/* Los nombres los escribe una persona: cliente, servicio, motivo. Van por
+   innerHTML así que hay que escaparlos, y esta pantalla no lo tenía porque hasta
+   ahora todo lo escribía con textContent. */
+const esc = t => String(t ?? "").replace(/[&<>"']/g,
+  c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+
+const PX_MIN = 1.1;                       // alto de un minuto: 11 horas ≈ 725 px
+const MIN_SLOT = 15;                      // el paso al tocar un hueco
+let VISTA_DIA = localStorage.getItem("agenda_vista_dia") || "columnas";
+
+const aMin = t => { const [h,m]=t.split(":").map(Number); return h*60+m; };
+const aHHMM = m => `${String(Math.floor(m/60)).padStart(2,"0")}:${String(m%60).padStart(2,"0")}`;
+
+document.querySelectorAll("#vistaDiaSwitch .chip").forEach(b=>{
+  b.onclick=()=>{ VISTA_DIA=b.dataset.v; localStorage.setItem("agenda_vista_dia", VISTA_DIA); renderDia(); };
+});
+function marcarSwitch(){
+  const sw=$("#vistaDiaSwitch");
+  sw.classList.toggle("hay", modo==="dia");
+  sw.querySelectorAll(".chip").forEach(b=>b.classList.toggle("on", b.dataset.v===VISTA_DIA));
+}
+
+async function renderColumnas(){
+  const d = await (await authFetch("/api/agenda/dia?fecha="+fechaActual)).json();
+  const cont = $("#vista");
+  if(!d.empleados.length){
+    cont.innerHTML = '<div class="sin-turnos">No hay empleados cargados. Se agregan en <a href="/admin">Admin</a>.</div>';
+    return;
+  }
+  const ini = aMin(d.apertura), fin = aMin(d.cierre);
+  const alto = (fin - ini) * PX_MIN;
+
+  /* Los turnos sin nadie asignado necesitan un lugar donde estar. Si no tuvieran
+     columna propia no se verían en esta vista, y un turno que no se ve es un
+     turno al que no va a ir nadie. */
+  const sinDuenio = d.turnos.filter(t => !t.peluquero);
+  const columnas = d.empleados.map(e => ({...e, suyos: d.turnos.filter(t => t.peluquero === e.nombre)}));
+  if(sinDuenio.length) columnas.push({id:null, nombre:"Sin asignar", tramos:[], excepcion:false,
+                                      motivo:null, suyos:sinDuenio});
+
+  // El día que no trabaja nadie es justo donde hace falta el botón de abrir, así
+  // que ahí se dice con todas las letras en vez de mostrar cuatro columnas mudas.
+  const nadie = d.empleados.every(e => !e.tramos.length) && !d.turnos.length;
+
+  const wrap = document.createElement("div"); wrap.className="grilla-wrap";
+  const grilla = document.createElement("div"); grilla.className="grilla";
+  grilla.style.gridTemplateColumns = `46px repeat(${columnas.length}, minmax(130px, 1fr))`;
+  wrap.appendChild(grilla);
+
+  // fila 1: los encabezados (la esquina vacía arriba de las horas)
+  grilla.appendChild(Object.assign(document.createElement("div"), {className:"g-cab"}));
+  columnas.forEach(c => grilla.appendChild(cabColumna(c)));
+
+  // fila 2: la regla de horas y una columna por persona
+  const reglas = document.createElement("div"); reglas.className="g-horas";
+  reglas.style.height = alto+"px";
+  for(let m = ini; m <= fin; m += 60){
+    const h = document.createElement("div"); h.className="g-hora";
+    h.style.top = ((m - ini) * PX_MIN) + "px"; h.textContent = aHHMM(m);
+    // El primero se apoya en el borde en vez de centrarse en él: centrado, la
+    // mitad del número queda arriba de la grilla y se lo come el encabezado.
+    if(m === ini) h.style.transform = "none";
+    if(m + 60 > fin) h.style.transform = "translateY(-100%)";
+    reglas.appendChild(h);
+  }
+  grilla.appendChild(reglas);
+  columnas.forEach(c => grilla.appendChild(dibujarColumna(c, ini, fin, alto)));
+
+  cont.innerHTML="";
+  if(nadie){
+    const av = document.createElement("div"); av.className="sin-turnos";
+    av.innerHTML = `<b>Este día no trabaja nadie.</b><br>
+      Si igual se abre —el lunes de depilación, por ejemplo— marcá quiénes vienen.`;
+    const b = document.createElement("button");
+    b.className="b-ok"; b.textContent="Abrir este día"; b.style.marginTop="var(--sp-3)";
+    b.onclick = panelAbrirDia;
+    av.appendChild(document.createElement("br")); av.appendChild(b);
+    cont.appendChild(av);
+  }
+  cont.appendChild(wrap);
+}
+
+function cabColumna(c){
+  const div = document.createElement("div"); div.className="g-cab";
+  const total = c.tramos.reduce((a,t)=>a + (aMin(t.hasta)-aMin(t.desde)), 0);
+  let est, clase="";
+  if(c.id === null)          est = `${c.suyos.length} sin dueño`;
+  else if(!c.tramos.length){ est = c.excepcion ? (c.motivo || "Hoy no viene") : "No trabaja";
+                             clase = c.excepcion ? "fuera" : ""; }
+  else { est = c.tramos.map(t=>`${t.desde}–${t.hasta}`).join(" · ");
+         if(c.excepcion) clase="cambio"; }
+  div.innerHTML = `<span class="nom">${titulo(c.nombre)}</span>
+    <span class="est ${clase}">${esc(est)}${c.tramos.length && !c.excepcion ? ` · ${Math.round(total/60*10)/10} h` : ""}</span>`;
+  if(c.id !== null){
+    const b = document.createElement("button");
+    b.textContent = c.excepcion ? "Cambiar" : "Hoy distinto";
+    b.onclick = () => panelExcepcion(c);
+    div.appendChild(b);
+  }
+  return div;
+}
+
+function dibujarColumna(c, ini, fin, alto){
+  const col = document.createElement("div");
+  col.className = "g-col" + (c.tramos.length || c.id === null ? "" : " vacia");
+  col.style.height = alto+"px";
+
+  const rayas = document.createElement("div"); rayas.className="rayas";
+  for(let m = ini; m <= fin; m += 30){
+    const r = document.createElement("div");
+    r.className = "g-raya" + (m % 60 ? " media" : "");
+    r.style.top = ((m - ini) * PX_MIN) + "px";
+    rayas.appendChild(r);
+  }
+  col.appendChild(rayas);
+
+  const ubicar = (el, desde, hasta) => {
+    const a = Math.max(desde, ini), b = Math.min(hasta, fin);
+    el.style.top = ((a - ini) * PX_MIN) + "px";
+    el.style.height = Math.max((b - a) * PX_MIN, 14) + "px";
+  };
+
+  // capa 1: dónde está disponible
+  c.tramos.forEach(t => {
+    const f = document.createElement("div"); f.className="g-tramo";
+    ubicar(f, aMin(t.desde), aMin(t.hasta));
+    col.appendChild(f);
+    // Los huecos son pedazos de la franja SIN turno encima: se tocan para
+    // agendar ahí, con la hora y la persona ya puestas.
+    let cursor = aMin(t.desde);
+    const ocupados = c.suyos.map(x=>[aMin(x.hora), aMin(x.fin)]).sort((a,b)=>a[0]-b[0]);
+    ocupados.concat([[aMin(t.hasta), aMin(t.hasta)]]).forEach(([a,b])=>{
+      if(a > cursor){
+        for(let m = cursor; m + MIN_SLOT <= a; m += MIN_SLOT){
+          const h = document.createElement("div"); h.className="g-hueco";
+          ubicar(h, m, m + MIN_SLOT);
+          h.title = `Agendar ${aHHMM(m)} con ${titulo(c.nombre)}`;
+          h.onclick = () => {
+            $("#fHora").value = aHHMM(m);
+            if(c.id !== null) $("#fPeluquero").value = c.nombre;
+            $("#fCliente").focus();
+            window.scrollTo({top:0, behavior:"smooth"});
+          };
+          col.appendChild(h);
+        }
+      }
+      cursor = Math.max(cursor, b);
+    });
+  });
+
+  // capa 2: los turnos
+  c.suyos.forEach(t => {
+    const a = aMin(t.hora), b = aMin(t.fin);
+    // "Afuera" = agendado donde esa persona no está. No se esconde ni se mueve:
+    // se marca, que es lo que hace falta para darse cuenta y arreglarlo.
+    const adentro = c.tramos.some(tr => a >= aMin(tr.desde) && b <= aMin(tr.hasta));
+    const div = document.createElement("div");
+    div.className = "g-turno" + (adentro || c.id === null ? "" : " afuera");
+    ubicar(div, a, b);
+    div.innerHTML = `<div class="c">${esc(titulo(t.cliente))}</div>
+      <div class="s">${esc(t.servicio)}</div>
+      <div class="h">${t.hora}–${t.fin}</div>`;
+    div.onclick = () => mostrarTurno(t);
+    col.appendChild(div);
+  });
+
+  if(!c.tramos.length && !c.suyos.length){
+    const v = document.createElement("div"); v.className="g-vacio";
+    v.textContent = c.excepcion ? (c.motivo || "Hoy no viene") : "No trabaja este día";
+    col.appendChild(v);
+  }
+
+
+  if(fechaActual === hoyStr()){
+    const ahora = new Date(); const m = ahora.getHours()*60 + ahora.getMinutes();
+    if(m > ini && m < fin){
+      const l = document.createElement("div"); l.className="g-ahora";
+      l.style.top = ((m - ini) * PX_MIN) + "px";
+      col.appendChild(l);
+    }
+  }
+  return col;
+}
+
+/* Abrir un día suelto: el lunes de depilación, o el feriado que igual se trabaja.
+
+   Se marca la fecha y quiénes vienen, y queda cargado para todas de una. No es
+   una regla del calendario —"cada 2º lunes"— a propósito: el lunes que abren lo
+   deciden ellas, y una regla diría que trabajan un día que nadie eligió.
+
+   Lo que se guarda es el estado exacto del día: destildar a alguien y volver a
+   guardar la saca. */
+function panelAbrirDia(){
+  document.querySelectorAll(".panel-exc").forEach(p=>p.remove());
+  const pan = document.createElement("div");
+  pan.className = "card panel-exc";
+  pan.style.cssText = "margin-bottom:var(--sp-3);";
+  pan.innerHTML = `
+    <div class="form-turno">
+      <div class="campo" style="flex:1 1 100%;"><label>Abrir este día</label>
+        <p class="muted" style="margin:0;">Para el lunes de depilación o el día suelto que se trabaja
+          fuera del horario de siempre. Lo que marques reemplaza lo que haya cargado para esta fecha.</p></div>
+      <div class="campo chico"><label>Desde</label><input type="time" class="aDesde" value="11:00"></div>
+      <div class="campo chico"><label>Hasta</label><input type="time" class="aHasta" value="17:00"></div>
+      <div class="campo"><label>Motivo (opcional)</label><input class="aMotivo" placeholder="Depilación"></div>
+      <div class="campo" style="flex:1 1 100%;"><label>Quiénes vienen</label>
+        <span class="chips-emp"></span></div>
+      <div class="campo aCargoCampo" style="flex:1 1 100%; display:none;">
+        <label>Quién lleva el día</label>
+        <select class="aCargo"></select>
+        <p class="muted" style="margin:0;">Solo para el lunes de depilación: es la que se lleva la
+          mitad del reparto. Si no se elige, se toma la que más facture ese día.</p></div>
+      <button class="b-ok aGuardar">Guardar el día</button>
+      <button class="b-out aCerrar">Cerrar</button>
+    </div>`;
+  const chips = pan.querySelector(".chips-emp");
+  authFetch("/api/agenda/dia?fecha="+fechaActual).then(r=>r.json()).then(d=>{
+    d.empleados.forEach(e=>{
+      const b = document.createElement("button");
+      b.type="button"; b.className="chip-emp" + (e.excepcion && e.tramos.length ? " on" : "");
+      b.dataset.id = e.id; b.textContent = titulo(e.nombre);
+      b.onclick = () => b.classList.toggle("on");
+      chips.appendChild(b);
+    });
+    // Si ya está abierto, el formulario arranca con las horas que tiene puestas.
+    const abierta = d.empleados.find(e=>e.excepcion && e.tramos.length);
+    if(abierta){
+      pan.querySelector(".aDesde").value = abierta.tramos[0].desde;
+      pan.querySelector(".aHasta").value = abierta.tramos[0].hasta;
+      if(abierta.motivo) pan.querySelector(".aMotivo").value = abierta.motivo;
+    }
+    // La pregunta de quién lleva el día solo tiene sentido el lunes, que es el
+    // único que se reparte. Cualquier otro día se paga por comisión y horas, y
+    // el campo sería una decisión que no cambia nada.
+    if(new Date(fechaActual + "T12:00:00").getDay() === 1){
+      pan.querySelector(".aCargoCampo").style.display = "";
+      const sel = pan.querySelector(".aCargo");
+      sel.innerHTML = `<option value="">La que más facture</option>`
+        + d.empleados.map(e => `<option>${titulo(e.nombre)}</option>`).join("");
+      const yaEsta = d.empleados.find(e => e.a_cargo);
+      if(yaEsta) sel.value = yaEsta.a_cargo;
+    }
+  });
+  $("#vista").before(pan);
+  pan.querySelector(".aCerrar").onclick = () => pan.remove();
+  pan.querySelector(".aGuardar").onclick = async () => {
+    const ids = [...chips.querySelectorAll(".chip-emp.on")].map(c => +c.dataset.id);
+    const desde = pan.querySelector(".aDesde").value, hasta = pan.querySelector(".aHasta").value;
+    if(!ids.length && !confirm("No marcaste a nadie. ¿Dejamos el día cerrado para todas?")) return;
+    const r = await authFetch("/api/agenda/abrir-dia", {method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({fecha:fechaActual, empleados:ids, desde, hasta,
+                            motivo: pan.querySelector(".aMotivo").value,
+                            a_cargo: pan.querySelector(".aCargo").value || null})});
+    if(!r.ok){ toast((await r.json().catch(()=>({}))).detail || "No se pudo"); return; }
+    pan.remove();
+    toast(ids.length ? `${ids.length} ${ids.length===1?"empleada":"empleadas"} este día` : "Día cerrado");
+    renderDia();
+  };
+}
+$("#btnAbrirDia").onclick = panelAbrirDia;
+
+/* El horario de HOY de una persona. Lo puede tocar cualquiera a propósito: la
+   que se cambió el turno con otra es la que sabe, y si tuviera que pedirlo no se
+   carga nunca. El horario FIJO, en cambio, se maneja desde Admin. */
+function panelExcepcion(c){
+  document.querySelectorAll(".panel-exc").forEach(p=>p.remove());
+  const pan = document.createElement("div");
+  pan.className = "card panel-exc";
+  pan.style.cssText = "margin-bottom:var(--sp-3);";
+  const t = c.tramos[0] || {};
+  pan.innerHTML = `
+    <div class="form-turno">
+      <div class="campo" style="flex:1 1 100%;"><label>El horario de ${esc(titulo(c.nombre))} para este día</label></div>
+      <div class="campo chico"><label>Entra</label><input type="time" class="eDesde" value="${t.desde||"08:00"}"></div>
+      <div class="campo chico"><label>Sale</label><input type="time" class="eHasta" value="${t.hasta||"20:00"}"></div>
+      <div class="campo"><label>Motivo (opcional)</label><input class="eMotivo" placeholder="Cambió con Luli, turno médico…"></div>
+      <button class="b-ok eGuardar">Guardar</button>
+      <button class="b-out eNoViene">Hoy no viene</button>
+      ${c.excepcion ? `<button class="b-out eVolver">Volver al horario de siempre</button>` : ""}
+      <button class="b-out eCerrar">Cerrar</button>
+    </div>`;
+  $("#vista").before(pan);
+  const mandar = async (cuerpo) => {
+    const r = await authFetch("/api/excepciones", {method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({empleado_id:c.id, fecha:fechaActual, ...cuerpo})});
+    if(!r.ok){ toast((await r.json().catch(()=>({}))).detail || "No se pudo"); return; }
+    pan.remove(); toast("Horario del día guardado"); renderDia();
+  };
+  pan.querySelector(".eGuardar").onclick = () => mandar({
+    desde: pan.querySelector(".eDesde").value, hasta: pan.querySelector(".eHasta").value,
+    motivo: pan.querySelector(".eMotivo").value});
+  pan.querySelector(".eNoViene").onclick = () => {
+    if(!confirm(`${titulo(c.nombre)} no viene este día. ¿Guardamos?`)) return;
+    mandar({motivo: pan.querySelector(".eMotivo").value});
+  };
+  const volver = pan.querySelector(".eVolver");
+  if(volver) volver.onclick = async () => {
+    await authFetch(`/api/excepciones/${c.id}/${fechaActual}`, {method:"DELETE"});
+    pan.remove(); toast("Vuelve al horario de siempre"); renderDia();
+  };
+  pan.querySelector(".eCerrar").onclick = () => pan.remove();
+}
+
 // ---------- VISTA DÍA ----------
 async function renderDia(){
   const dt=parseISO(fechaActual);
@@ -335,6 +767,9 @@ async function renderDia(){
   $("#rangoLabel").textContent=cap(`${pref}${dias[dt.getDay()]} ${dt.getDate()} de ${MESES[dt.getMonth()]}`);
   renderNotasDia();
   ajustarAltoNotas();
+  marcarSwitch();
+  document.querySelectorAll(".panel-exc").forEach(p=>p.remove());
+  if(VISTA_DIA === "columnas"){ await renderColumnas(); return; }
   const turnos=await (await authFetch("/api/turnos?fecha="+fechaActual)).json();
   const activos=turnos.filter(t=>t.activo), cancel=turnos.filter(t=>!t.activo);
   const cont=$("#vista");
@@ -367,6 +802,7 @@ async function renderDia(){
 
 function cargarEnForm(t){
   $("#fHora").value=t.hora; $("#fCliente").value=t.cliente; $("#fServicio").value=t.servicio;
+  $("#fDura").value=t.duracion_min || 30;
   $("#fPeluquero").value=t.peluquero||""; $("#fNotas").value=t.notas||"";
   const btn=$("#btnAgregar"); btn.textContent="Guardar cambios";
   btn.onclick=async()=>{
@@ -381,10 +817,11 @@ function formBody(){
   if(!cliente||!servicio){ toast("Completá cliente y servicio"); return null; }
   return { fecha:fechaActual, hora:$("#fHora").value, cliente,
     cliente_id:(CLIENTES.find(c=>c.nombre.toLowerCase()===cliente.toLowerCase())||{}).id||null,
-    servicio, peluquero:$("#fPeluquero").value||null, notas:$("#fNotas").value.trim()||null };
+    servicio, peluquero:$("#fPeluquero").value||null, notas:$("#fNotas").value.trim()||null,
+    duracion_min: Math.max(5, parseInt($("#fDura").value,10) || 30) };
 }
 function limpiarForm(){
-  $("#fHora").value="10:00"; $("#fCliente").value=""; $("#fServicio").value="";
+  $("#fHora").value="10:00"; $("#fDura").value=30; $("#fCliente").value=""; $("#fServicio").value="";
   $("#fPeluquero").value=""; $("#fNotas").value="";
   const btn=$("#btnAgregar"); btn.textContent="Agendar"; btn.onclick=agregarTurno;
 }

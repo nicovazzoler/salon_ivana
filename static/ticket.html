@@ -117,7 +117,7 @@ function toast(m){const t=$("#toast");t.textContent=m;t.classList.add("show");se
 /* En el ticket impreso NUNCA se usa la palabra "efectivo":
    la lista transferencia es "Lista" y la lista efectivo es "Descuento". */
 
-let COMP=null, NEGOCIO={}, CUENTA=null;
+let COMP=null, NEGOCIO={}, CUENTA=null, SENA=null;
 
 /* El aviso legal va arriba Y abajo, enmarcando todo el papel: así queda claro
    de entrada y de salida que esto no reemplaza a una factura, mire por donde
@@ -137,7 +137,14 @@ async function init(){
     NEGOCIO=cfg.negocio||{};
   }catch(e){ $("#estado").textContent="No se pudo cargar config."; return; }
 
-  if(tipoPag==="cuenta" && clienteId){
+  if(tipoPag==="sena" && id){
+    try{
+      const r=await authFetch("/api/senas/"+id);
+      if(!r.ok){ $("#estado").textContent="No se encontró la seña."; return; }
+      SENA=await r.json();
+    }catch(e){ $("#estado").textContent="No se pudo cargar la seña."; return; }
+    renderSena();
+  } else if(tipoPag==="cuenta" && clienteId){
     try{
       const r=await authFetch("/api/clientes/"+clienteId+"/cuenta");
       if(!r.ok){ $("#estado").textContent="No se encontró el cliente."; return; }
@@ -156,6 +163,22 @@ async function init(){
   }
   $("#estado").style.display="none";
   $("#papel").style.display="block";
+}
+
+/* La vista previa del recibo de seña: espejo de lo que sale por la comandera. */
+function renderSena(){
+  const s=SENA, partes=[];
+  partes.push(`<div class="tit">SEÑA</div>`);
+  partes.push(`<div class="fila"><span>Recibo <b>N-${String(s.numero||0).padStart(5,"0")}</b></span><span class="der chico">${s.fecha} ${s.hora||""}</span></div>`);
+  partes.push(`<div class="sep"></div>`);
+  partes.push(`<div class="fila"><span>Cliente</span><span class="der">${esc(s.cliente||"—")}</span></div>`);
+  if(s.notas) partes.push(`<div class="fila"><span>Concepto</span><span class="der">${esc(s.notas)}</span></div>`);
+  partes.push(`<div class="fila"><span>Forma de pago</span><span class="der">${esc(s.forma_pago||"—")}</span></div>`);
+  partes.push(`<div class="sep"></div>`);
+  partes.push(`<div class="fila total"><span>RECIBIMOS</span><span class="der">${fmt(s.monto)}</span></div>`);
+  partes.push(`<div class="sep"></div>`);
+  partes.push(`<div class="chico">Se descuenta del total cuando se cobre el servicio.</div>`);
+  $("#papel").innerHTML=partes.join("");
 }
 
 /* Precios unitarios de una línea, ya con su ajuste aplicado. */
@@ -322,7 +345,9 @@ function renderCuenta(){
 $("#btnComandera").onclick=()=>{
   if(!COMP && !CUENTA) return;
   try{
-    const bytes = CUENTA ? EscPos.deCuenta(CUENTA, NEGOCIO) : EscPos.deComprobante(COMP, NEGOCIO);
+    const bytes = SENA   ? EscPos.deSena(SENA, NEGOCIO)
+                : CUENTA ? EscPos.deCuenta(CUENTA, NEGOCIO)
+                :          EscPos.deComprobante(COMP, NEGOCIO);
     location.href = EscPos.urlRawbt(bytes);
     toast("Enviado a la comandera (RawBT)");
   }catch(e){ toast("No se pudo generar la impresión"); }
