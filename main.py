@@ -1076,6 +1076,16 @@ def config(user = Depends(usuario_actual), db: Session = Depends(get_db)):
             # cuando un ítem no tiene el suyo.
             "comision_pct": comision_pct(db),
             "pago_ayudante": pago_ayudante(db),
+            # Quiénes NO cambian cuando se toca el general. Viajan con la config
+            # y no en un pedido aparte para que el editor pueda decirlo antes de
+            # guardar: sin esto, cambiar el valor hora es apretar un botón sin
+            # saber a cuántas les llega.
+            "hora_propia": [e.nombre for e in db.query(models.Empleado).filter(
+                models.Empleado.activo == True,
+                models.Empleado.valor_hora.isnot(None)).order_by(models.Empleado.nombre)],
+            "pct_propio": db.query(models.Item).filter(
+                models.Item.activo == True,
+                models.Item.comision_pct.isnot(None)).count(),
             "tipos_privados": [t.nombre for t in db.query(models.TipoEgreso).filter(
                 models.TipoEgreso.activo == True, models.TipoEgreso.privado == True)] if es_dueno(user) else []}
 
