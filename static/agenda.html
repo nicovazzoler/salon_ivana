@@ -66,10 +66,15 @@
   .btn-cancelar{ background:transparent; border:1px solid var(--danger); color:var(--danger); }
   .sin-turnos{ padding:var(--sp-5); text-align:center; color:var(--text-tenue); }
 
-  /* La lista del día, en renglones de una línea. Cada turno era una tarjeta con
-     su marco y su relleno: cinco turnos llenaban la pantalla y lo que más había
-     era espacio en blanco. */
-  .franja{ margin-bottom:var(--sp-4); }
+  /* La lista del día: una tabla por franja, lado a lado. Cada turno era una
+     tarjeta con su marco y su relleno —cinco turnos llenaban la pantalla y lo
+     que más había era espacio en blanco—, y apiladas una debajo de la otra las
+     franjas seguían haciendo scrollear con media pantalla vacía al costado.
+     En columnas, el día entero entra de una y se compara mañana contra tarde sin
+     moverse. En el celular vuelven a apilarse, que es lo único que entra. */
+  .franjas{ display:grid; grid-template-columns:repeat(auto-fit, minmax(22rem, 1fr));
+            gap:var(--sp-4); align-items:start; }
+  .franja{ min-width:0; }
   .franja.apagada{ opacity:.55; }
   .franja-cab{ display:flex; align-items:baseline; gap:var(--sp-2);
                padding-bottom:var(--sp-2); margin-bottom:var(--sp-1);
@@ -77,9 +82,14 @@
   .franja-cab h3{ margin:0; font-size:var(--fs-sm); text-transform:uppercase;
                   letter-spacing:var(--tracking-eti); color:var(--acento); }
   .franja-cab span{ margin-left:auto; font-size:var(--fs-sm); color:var(--text-tenue); }
-  .reng{ display:grid; grid-template-columns:3.6rem minmax(0,1fr) auto auto;
-         align-items:center; gap:var(--sp-3);
+  /* En una columna angosta el renglón no entra en una línea, así que la hora y
+     el cliente van arriba y quién atiende con los botones abajo: es el orden en
+     que se lee, y no obliga a la columna a ser ancha. */
+  .reng{ display:grid; grid-template-columns:3.6rem minmax(0,1fr) auto;
+         align-items:center; gap:2px var(--sp-3);
          padding:var(--sp-2) var(--sp-1); border-bottom:1px solid var(--border-sutil); }
+  .reng .atiende{ grid-column:2; }
+  .reng .acc{ grid-column:3; grid-row:1 / span 2; align-self:center; }
   .reng:last-child{ border-bottom:none; }
   .reng .hora{ font-family:var(--font-display); font-weight:var(--fw-black);
                font-variant-numeric:tabular-nums; color:var(--acento); }
@@ -93,9 +103,8 @@
   .reng .acc em{ font-style:normal; font-size:var(--fs-xs); color:var(--danger);
                  text-transform:uppercase; letter-spacing:.04em; }
   .btn-mini{ font-size:var(--fs-sm); padding:3px 10px; }
-  @media (max-width: 640px){
-    .reng{ grid-template-columns:3.2rem minmax(0,1fr); }
-    .reng .atiende, .reng .acc{ grid-column:2; }
+  @media (max-width: 560px){
+    .reng .acc{ grid-column:2; grid-row:auto; }
   }
 
   /* --- vista DÍA por COLUMNAS: una columna por empleada ---
@@ -936,7 +945,7 @@ function pintarLista(turnos, cont){
     ["Tarde",  activos.filter(t => aMin(t.hora) >= CORTE_TARDE)],
     ["Cancelados", turnos.filter(t => !t.activo).sort(porHora)],
   ];
-  cont.innerHTML = grupos.filter(([, ts]) => ts.length).map(([rot, ts]) => `
+  cont.innerHTML = `<div class="franjas">` + grupos.filter(([, ts]) => ts.length).map(([rot, ts]) => `
     <div class="franja${rot === "Cancelados" ? " apagada" : ""}">
       <div class="franja-cab"><h3>${rot}</h3>
         <span>${ts.length} ${ts.length === 1 ? "turno" : "turnos"}</span></div>
@@ -955,7 +964,7 @@ function pintarLista(turnos, cont){
                <button class="b-out btn-mini cancelar">Cancelar</button>`
             : `<em>cancelado</em>`}</span>
         </div>`).join("")}
-    </div>`).join("");
+    </div>`).join("") + `</div>`;
 
   cont.querySelectorAll(".reng").forEach(r => {
     const t = turnos.find(x => String(x.id) === r.dataset.id);

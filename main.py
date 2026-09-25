@@ -319,6 +319,7 @@ class SueldosConfigIn(BaseModel):
     # juntos: cambiar uno sin ver el otro es como no verlos.
     valor_hora: int | None = None; comision_pct: int | None = None
     pago_ayudante: int | None = None
+    depi_a_cargo: str | None = None       # "" saca el defecto y vuelve a deducirse
 class GastoDepiIn(BaseModel):
     empleado_id: int                      # de quién es el lunes, no quién cobra
     fecha: str                            # 'YYYY-MM-DD' argentino del lunes
@@ -1084,6 +1085,7 @@ def config(user = Depends(usuario_actual), db: Session = Depends(get_db)):
             # cuando un ítem no tiene el suyo.
             "comision_pct": comision_pct(db),
             "pago_ayudante": pago_ayudante(db),
+            "depi_a_cargo": depi_por_defecto(db),
             # Quiénes NO cambian cuando se toca el general. Viajan con la config
             # y no en un pedido aparte para que el editor pueda decirlo antes de
             # guardar: sin esto, cambiar el valor hora es apretar un botón sin
@@ -1301,6 +1303,17 @@ def arranque_sueldos(db) -> str | None:
     except ValueError:
         return None
 
+def depi_por_defecto(db) -> str | None:
+    """Quién lleva el lunes de depilación cuando nadie lo eligió para ese día.
+
+    En el local siempre es la misma, así que decirlo una vez ahorra elegirlo todos
+    los meses y —lo que importa— deja de depender de que se acuerde de ponerse
+    como peluquera en los tickets. Se guarda el NOMBRE y no el id, que es con lo
+    que el comprobante guarda al peluquero y con lo que compara empleada_del_dia().
+    """
+    fila = db.query(models.Config).filter_by(clave="depi_a_cargo").first()
+    return (fila.valor or "").strip() or None if fila else None
+
 def pago_ayudante(db) -> int:
     """Lo que se le paga a la ayudante por un lunes de depilación.
 
@@ -1466,6 +1479,11 @@ def empleada_del_dia(db, f: date) -> str | None:
         models.ExcepcionHorario.fecha == f.isoformat(),
         models.ExcepcionHorario.a_cargo.isnot(None)).first()
     if elegida: return elegida[0]
+    # Y si hay una puesta por defecto en Admin, esa: en el local la depilación la
+    # lleva siempre la misma, y deducirla de quién facturó más es el último
+    # recurso, no el primero.
+    por_defecto = depi_por_defecto(db)
+    if por_defecto: return por_defecto
     ini, fin = _rango_dia(f)
     comps = db.query(models.Comprobante).filter(
         models.Comprobante.fecha >= ini, models.Comprobante.fecha < fin,
@@ -1504,6 +1522,35 @@ def lunes_depi_trabajados(db, empleado) -> list[str]:
                   if d.weekday() == 0 and es_dia_depilacion(db, d)
                   and (not arranque or d.isoformat() >= arranque))
 
+def lunes_de_depilacion(db) -> list[str]:
+    """Los lunes que el local abrió para depilación, sea de quien sea.
+
+    Hace falta aparte de lunes_depi_trabajados() desde que hay una a cargo puesta
+    por defecto: el sentido de ese defecto es que el día sea suyo AUNQUE no se
+    haya anotado como peluquera en ningún ticket, y mirando solo sus tickets ese
+    lunes no llegaba a la lista de candidatos. El reparto no le aparecía a nadie.
+
+    Se acota al corte de los sueldos, que es hasta donde algo puede estar
+    pendiente: sin eso habría que traer la fecha de todos los comprobantes de la
+    historia para quedarse con tres lunes.
+    """
+    arranque = arranque_sueldos(db)
+    fechas = {f for (f,) in db.query(models.ExcepcionHorario.fecha)
+                              .filter(models.ExcepcionHorario.desde.isnot(None)).distinct()}
+    q = db.query(models.Comprobante.fecha).filter(
+        models.Comprobante.activo == True, models.Comprobante.tipo == "ticket")
+    if arranque:
+        q = q.filter(models.Comprobante.fecha >= _rango_dia(date.fromisoformat(arranque))[0])
+    else:
+        desde = db.query(models.Config).filter_by(clave="sueldos_desde").first()
+        if desde and desde.valor:
+            q = q.filter(models.Comprobante.fecha >= datetime.fromisoformat(desde.valor))
+    fechas |= {hora_argentina(f).date().isoformat() for (f,) in q.distinct().all()}
+    return sorted(f for f in fechas
+                  if (not arranque or f >= arranque)
+                  and date.fromisoformat(f).weekday() == 0
+                  and es_dia_depilacion(db, date.fromisoformat(f)))
+
 def lunes_depi_pendientes(db, empleado) -> list[str]:
     """Los lunes de depilación suyos que todavía no se cerraron.
 
@@ -1516,7 +1563,11 @@ def lunes_depi_pendientes(db, empleado) -> list[str]:
     cerrados = {l.desde for l in db.query(models.Liquidacion).filter(
         models.Liquidacion.empleado_id == empleado.id,
         models.Liquidacion.depilacion == True).all()}
-    return [d for d in lunes_depi_trabajados(db, empleado)
+    # Los lunes que trabajó, más todos los que el local abrió: el día puede ser
+    # suyo por la elección de la agenda o por el defecto de Admin, sin que haya
+    # facturado nada a su nombre.
+    candidatos = set(lunes_depi_trabajados(db, empleado)) | set(lunes_de_depilacion(db))
+    return [d for d in sorted(candidatos)
             if d not in cerrados
             and empleada_del_dia(db, date.fromisoformat(d)) == empleado.nombre]
 
@@ -2445,9 +2496,17 @@ def set_config_sueldos(datos: SueldosConfigIn, _ = Depends(solo_dueno), db: Sess
     if datos.pago_ayudante is not None:
         if datos.pago_ayudante < 0: raise HTTPException(400, "El pago no puede ser negativo")
         guardar("pago_ayudante", datos.pago_ayudante)
+    if datos.depi_a_cargo is not None:
+        nombre = datos.depi_a_cargo.strip()
+        # Tiene que ser alguien de la lista: guardado un nombre que no existe, el
+        # lunes quedaría a cargo de nadie y el reparto no le aparecería a ninguna.
+        if nombre and not db.query(models.Empleado).filter(
+                models.Empleado.nombre == nombre, models.Empleado.activo == True).first():
+            raise HTTPException(400, "Esa empleada no está en la lista")
+        guardar("depi_a_cargo", nombre)
     db.commit()
     return {"ok": True, "valor_hora": valor_hora(db), "comision_pct": comision_pct(db),
-            "pago_ayudante": pago_ayudante(db)}
+            "pago_ayudante": pago_ayudante(db), "depi_a_cargo": depi_por_defecto(db)}
 
 @app.get("/api/alias")
 def listar_alias(_ = Depends(usuario_actual), db: Session = Depends(get_db)):

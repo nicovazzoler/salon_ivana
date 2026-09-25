@@ -5,23 +5,20 @@
    cinco listas de listas.js. Si fueran dos, el día que se agregue un número más
    una de las dos se queda sin pedirlo.
 
-   Son lo más general que hay en la app: cambiar el valor hora acá le cambia el
-   sueldo a todas las que no tengan uno propio. Lo ya cerrado no se toca, que
-   cada liquidación guarda el valor con el que se pagó.
-
    Se miran mucho más de lo que se tocan —se cambian una vez cada varios meses—,
    así que están escritos, no en casilleros. Un casillero siempre abierto arriba
    de la pantalla que se abre todos los días es un número que se puede pisar sin
    querer, y este le cambia el sueldo a todo el mundo. Para editar hay que
    pedirlo.
 
-   Abajo va el valor hora de UNA en particular. Es la excepción, tiene su propio
-   botón y su propio guardado: juntarlo con el general haría que un solo Guardar
-   escriba dos cosas distintas, y ahí ya no se sabe cuál se cambió.
+   Adentro del modo edición va el valor hora de cada una. Es donde tiene que
+   estar: la pregunta "¿esto a quién le llega?" se contesta mirando la lista, y
+   la lista solo importa en el momento de tocar el general. Cada renglón se
+   guarda solo, con su lapicito: un Guardar que escriba el general y tres
+   excepciones a la vez deja de decir qué se cambió.
 
-   Ese bloque se apaga con `porPersona: false` para Admin, donde cada empleada ya
-   tiene su renglón con su valor hora adentro: dos caminos a lo mismo en la misma
-   pantalla es una pregunta más, no una comodidad. */
+   El bloque por persona se apaga con `porPersona: false` para Admin, donde cada
+   empleada ya tiene su renglón con su valor hora adentro. */
 
 const _escGral = s => String(s ?? "").replace(/[&<>"']/g,
   c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
@@ -33,9 +30,8 @@ function panelGenerales(cont, alGuardar, opciones){
   const porPersona = !(opciones && opciones.porPersona === false);
   let cfg = {}, emps = [], editando = false;
 
-  cont.innerHTML = `<div class="generales"></div><div class="propio"></div>`;
-  const caja = cont.querySelector(".generales"), propio = cont.querySelector(".propio");
-
+  cont.innerHTML = `<div class="generales"></div>`;
+  const caja = cont.querySelector(".generales");
   cargar();
 
   async function cargar(){
@@ -43,8 +39,10 @@ function panelGenerales(cont, alGuardar, opciones){
       cfg  = await (await authFetch("/api/config")).json();
       emps = await (await authFetch("/api/empleados")).json();
     }catch(e){ return; }
-    pintar(); pintarPropio();
+    pintar();
   }
+
+  const activas = () => emps.filter(e => e.activo !== false);
 
   /* Quién queda afuera de estos números.
 
@@ -67,10 +65,17 @@ function panelGenerales(cont, alGuardar, opciones){
   }
 
   function pintar(){
+    const sel = cfg.depi_a_cargo || "";
     const campos = [
-      ["Valor hora",          "gHora", cfg.valor_hora ?? 0,    _pesos(cfg.valor_hora)],
-      ["Comisión",            "gPct",  cfg.comision_pct ?? 40, (cfg.comision_pct ?? 40) + "%"],
-      ["Ayudante depilación", "gAyu",  cfg.pago_ayudante ?? 0, _pesos(cfg.pago_ayudante)],
+      ["Valor hora",          `<input type="number" class="gHora" min="0" inputmode="numeric" value="${cfg.valor_hora ?? 0}">`,
+                              _pesos(cfg.valor_hora)],
+      ["Comisión",            `<input type="number" class="gPct" min="0" max="100" inputmode="numeric" value="${cfg.comision_pct ?? 40}">`,
+                              (cfg.comision_pct ?? 40) + "%"],
+      ["Ayudante depilación", `<input type="number" class="gAyu" min="0" inputmode="numeric" value="${cfg.pago_ayudante ?? 0}">`,
+                              _pesos(cfg.pago_ayudante)],
+      ["Depilación la lleva", `<select class="gDepi"><option value="">La que más facture</option>${
+                                activas().map(e => `<option${e.nombre === sel ? " selected" : ""}>${_escGral(e.nombre)}</option>`).join("")}</select>`,
+                              sel ? _escGral(sel) : `<span class="flojo">la que más facture</span>`],
     ];
     caja.innerHTML = `
       <div class="gral-cab">
@@ -81,15 +86,12 @@ function panelGenerales(cont, alGuardar, opciones){
           : `<button class="b-out btn-mini gEditar">Editar</button>`}
       </div>
       <div class="gral-valores">
-        ${campos.map(([rot, clase, valor, texto]) => `
-          <div class="campo">
-            <label>${rot}</label>
-            ${editando
-              ? `<input type="number" class="${clase}" min="0" inputmode="numeric" value="${valor}">`
-              : `<b class="val">${texto}</b>`}
-          </div>`).join("")}
+        ${campos.map(([rot, edit, texto]) => `
+          <div class="campo"><label>${rot}</label>
+            ${editando ? edit : `<b class="val">${texto}</b>`}</div>`).join("")}
       </div>
-      <p class="nota gQuienes">${aviso()}</p>`;
+      <p class="nota">${aviso()}</p>
+      ${editando && porPersona ? listaPropios() : ""}`;
 
     const editar = caja.querySelector(".gEditar");
     if(editar) editar.onclick = () => { editando = true; pintar(); caja.querySelector(".gHora").focus(); };
@@ -98,10 +100,11 @@ function panelGenerales(cont, alGuardar, opciones){
     const guardar = caja.querySelector(".gGuardar");
     if(guardar){
       guardar.onclick = guardarGeneral;
-      caja.querySelectorAll("input").forEach(i => i.addEventListener("keydown", ev => {
+      caja.querySelectorAll(".gral-valores input").forEach(i => i.addEventListener("keydown", ev => {
         if(ev.key === "Enter") guardar.click();
         if(ev.key === "Escape") cancelar.click();
       }));
+      engancharPropios();
     }
   }
 
@@ -109,6 +112,7 @@ function panelGenerales(cont, alGuardar, opciones){
     const v = Math.max(0, parseInt(caja.querySelector(".gHora").value, 10) || 0);
     const p = Math.max(0, parseInt(caja.querySelector(".gPct").value, 10) || 0);
     const a = Math.max(0, parseInt(caja.querySelector(".gAyu").value, 10) || 0);
+    const d = caja.querySelector(".gDepi").value;
     if(p > 100){ toast("La comisión no puede pasar de 100%"); caja.querySelector(".gPct").focus(); return; }
 
     // Se avisa solo de lo que cambió, y se dice a quién le llega y a quién no.
@@ -125,68 +129,95 @@ function panelGenerales(cont, alGuardar, opciones){
                      : "Le llega a todos los servicios: ninguno tiene un porcentaje propio."));
     if(a !== (cfg.pago_ayudante ?? 0)) cambios.push(`El pago a la ayudante pasa a ${_pesos(a)}, `
       + "que es el que va a venir puesto en el próximo lunes de depilación.");
+    if(d !== (cfg.depi_a_cargo || "")) cambios.push(d
+      ? `Los lunes de depilación pasan a ser de ${d}, salvo que al abrir un lunes se elija a otra.`
+      : "Los lunes de depilación vuelven a ser de la que más facture ese día.");
     if(!cambios.length){ editando = false; pintar(); return; }
     if(!confirm(cambios.join("\n\n") + "\n\nLo ya cerrado no cambia. ¿Guardamos?")) return;
 
     const r = await authFetch("/api/config/sueldos", {method:"PUT",
       headers:{"Content-Type":"application/json"},
-      body: JSON.stringify({valor_hora: v, comision_pct: p, pago_ayudante: a})});
+      body: JSON.stringify({valor_hora: v, comision_pct: p, pago_ayudante: a, depi_a_cargo: d})});
     if(!r.ok){ toast((await r.json().catch(()=>({}))).detail || "No se pudo"); return; }
     toast("Guardado");
     editando = false;
     await cargar();
-    if(alGuardar) alGuardar({valor_hora: v, comision_pct: p, pago_ayudante: a});
+    if(alGuardar) alGuardar(cfg);
   }
 
-  /* El valor hora de una sola. Se elige a quién y se ve lo que tiene puesto:
-     vacío es "usa el general", y por eso el casillero lo dice en el placeholder
-     en vez de mostrar el número general adentro, que se leería como propio. */
-  function pintarPropio(){
-    const activas = emps.filter(e => e.activo !== false);
-    if(!porPersona || !activas.length){ propio.innerHTML = ""; return; }
-    propio.innerHTML = `
-      <div class="generales">
-        <div class="gral-cab"><h3>Una en particular</h3></div>
-        <div class="gral-valores">
-          <div class="campo"><label>Empleada</label>
-            <select class="pQuien">${activas.map(e =>
-              `<option value="${e.id}">${_escGral(e.nombre)}</option>`).join("")}</select></div>
-          <div class="campo"><label>Valor hora</label>
-            <input type="number" class="pHora" min="0" inputmode="numeric"></div>
-          <button class="b-ok pGuardar">Guardar</button>
-        </div>
-        <p class="nota pNota"></p>
+  /* El valor hora de cada una, con el general como respaldo.
+
+     Se dice "GENERAL" con todas las letras en vez de repetir el número: lo que
+     hay que poder leer de un vistazo es cuáles siguen al de arriba y cuáles no,
+     y tres veces "$4.500" no distingue una cosa de la otra. */
+  function listaPropios(){
+    const gral = cfg.valor_hora ?? 0;
+    return `
+      <div class="propios">
+        <div class="propios-cab"><h4>Valor hora de cada una</h4>
+          <span>El general son ${_pesos(gral)}</span></div>
+        ${activas().map(e => `
+          <div class="propio-fila" data-emp="${e.id}">
+            <b>${_escGral(e.nombre)}</b>
+            <span class="vh${e.valor_hora == null ? " es-general" : ""}">${
+              e.valor_hora == null ? "GENERAL" : _pesos(e.valor_hora)}</span>
+            <button class="b-out btn-mini lapiz" title="Cambiar el valor hora de ${_escGral(e.nombre)}">✎</button>
+          </div>`).join("")}
       </div>`;
-    const sel = propio.querySelector(".pQuien"), inp = propio.querySelector(".pHora");
-    const nota = propio.querySelector(".pNota");
-    const mostrar = () => {
-      const e = activas.find(x => String(x.id) === sel.value) || {};
-      inp.value = e.valor_hora != null ? e.valor_hora : "";
-      inp.placeholder = String(cfg.valor_hora ?? 0);
-      nota.textContent = e.valor_hora != null
-        ? `${e.nombre} cobra ${_pesos(e.valor_hora)} la hora. Vaciá el casillero para que vuelva al general.`
-        : `${e.nombre} cobra el general, ${_pesos(cfg.valor_hora)}. Poné un número acá para que cobre otra cosa.`;
-    };
-    sel.onchange = mostrar; mostrar();
-    inp.addEventListener("keydown", ev => {
-      if(ev.key === "Enter") propio.querySelector(".pGuardar").click();
+  }
+
+  function engancharPropios(){
+    caja.querySelectorAll(".propio-fila").forEach(fila => {
+      const e = emps.find(x => String(x.id) === fila.dataset.emp);
+      fila.querySelector(".lapiz").onclick = () => abrirPropio(fila, e);
     });
-    propio.querySelector(".pGuardar").onclick = async () => {
-      const e = activas.find(x => String(x.id) === sel.value);
+  }
+
+  /* Un renglón por vez, editado en el lugar. Con todos abiertos, la lista deja
+     de decir cuál es el valor guardado y cuál el tipeado. */
+  function abrirPropio(fila, e){
+    caja.querySelectorAll(".editor-vh").forEach(x => x.remove());
+    caja.querySelectorAll(".propio-fila").forEach(f => f.classList.remove("editando"));
+    fila.classList.add("editando");
+    const cajita = document.createElement("div");
+    cajita.className = "editor-vh";
+    cajita.innerHTML = `
+      <input type="number" min="0" inputmode="numeric" class="vhNuevo"
+             value="${e.valor_hora == null ? "" : e.valor_hora}"
+             placeholder="${cfg.valor_hora ?? 0}">
+      <button class="b-ok btn-mini vhOk">Guardar</button>
+      ${e.valor_hora == null ? "" : `<button class="b-out btn-mini vhGral">Que use el general</button>`}
+      <button class="b-out btn-mini vhNo">Cancelar</button>
+      <span class="det">Vacío es el general, ${_pesos(cfg.valor_hora)}.</span>`;
+    fila.after(cajita);
+    const inp = cajita.querySelector(".vhNuevo");
+    inp.focus(); inp.select();
+    const cerrar = () => { cajita.remove(); fila.classList.remove("editando"); };
+    cajita.querySelector(".vhNo").onclick = cerrar;
+    const gral = cajita.querySelector(".vhGral");
+    if(gral) gral.onclick = () => mandarPropio(e, -1);
+    cajita.querySelector(".vhOk").onclick = () => {
       const texto = inp.value.trim();
       // -1 es "sacale el propio y que use el general": mandar null sería "no
       // toques este campo", que no es lo mismo.
-      const valor = texto === "" ? -1 : Math.max(0, parseInt(texto, 10) || 0);
-      if(valor === (e.valor_hora ?? -1)){ toast("No cambiaste nada"); return; }
-      if(!confirm(valor < 0
-          ? `${e.nombre} vuelve a cobrar el general, ${_pesos(cfg.valor_hora)} la hora.\n\nLo ya cerrado no cambia. ¿Guardamos?`
-          : `${e.nombre} pasa a cobrar ${_pesos(valor)} la hora, en vez del general.\n\nLo ya cerrado no cambia. ¿Guardamos?`)) return;
-      const r = await authFetch(`/api/empleados/${e.id}`, {method:"PUT",
-        headers:{"Content-Type":"application/json"}, body: JSON.stringify({valor_hora: valor})});
-      if(!r.ok){ toast((await r.json().catch(()=>({}))).detail || "No se pudo"); return; }
-      toast("Guardado");
-      await cargar();
-      if(alGuardar) alGuardar(cfg);
+      mandarPropio(e, texto === "" ? -1 : Math.max(0, parseInt(texto, 10) || 0));
     };
+    inp.addEventListener("keydown", ev => {
+      if(ev.key === "Enter") cajita.querySelector(".vhOk").click();
+      if(ev.key === "Escape") cerrar();
+    });
+  }
+
+  async function mandarPropio(e, valor){
+    if(valor === (e.valor_hora ?? -1)){ toast("No cambiaste nada"); return; }
+    if(!confirm(valor < 0
+        ? `${e.nombre} vuelve a cobrar el general, ${_pesos(cfg.valor_hora)} la hora.\n\nLo ya cerrado no cambia. ¿Guardamos?`
+        : `${e.nombre} pasa a cobrar ${_pesos(valor)} la hora, en vez del general.\n\nLo ya cerrado no cambia. ¿Guardamos?`)) return;
+    const r = await authFetch(`/api/empleados/${e.id}`, {method:"PUT",
+      headers:{"Content-Type":"application/json"}, body: JSON.stringify({valor_hora: valor})});
+    if(!r.ok){ toast((await r.json().catch(()=>({}))).detail || "No se pudo"); return; }
+    toast("Guardado");
+    await cargar();
+    if(alGuardar) alGuardar(cfg);
   }
 }
