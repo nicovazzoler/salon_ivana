@@ -735,4 +735,27 @@ body.con-panel{ overflow:hidden; }
 .generales .con-signo i{ font-style:normal; color:var(--text-tenue); }
 .generales .nota{ flex:1 1 14rem; font-size:var(--fs-sm); color:var(--text-tenue); }
 
+/* Los números generales se miran mucho más de lo que se tocan, así que están
+   escritos y no en casilleros: el bloque es una ficha, y editar se pide. */
+.generales{ flex-direction:column; align-items:stretch; gap:var(--sp-3); }
+.gral-cab{ display:flex; align-items:center; gap:var(--sp-3); }
+.gral-cab h3{ margin:0; font-size:var(--fs-sm); text-transform:uppercase;
+              letter-spacing:var(--tracking-eti); color:var(--acento); }
+.gral-cab .gral-acc, .gral-cab > button:last-child{ margin-left:auto; }
+.gral-cab .gral-acc{ display:flex; gap:var(--sp-2); }
+.gral-valores{ display:flex; flex-wrap:wrap; align-items:flex-end; gap:var(--sp-3) var(--sp-4); }
+/* Cada número con su rótulo, en columnas de ancho parejo: con el ancho del
+   contenido, "40%" y "$18.000" quedan a distancias distintas de su rótulo y el
+   renglón se lee torcido. */
+.gral-valores .campo{ display:flex; flex-direction:column; gap:3px; min-width:9rem; }
+/* El número escrito ocupa lo mismo que su casillero: al entrar y salir del modo
+   edición, el bloque no salta. */
+.gral-valores .val{ display:flex; align-items:center; min-height:2.35rem;
+                    font-family:var(--font-display); font-size:var(--fs-lg);
+                    font-weight:var(--fw-black); font-variant-numeric:tabular-nums; }
+.gral-valores input{ width:9rem; }
+.gral-valores select{ width:auto; min-width:10rem; }
+.generales .nota{ flex:none; margin:0; }
+.propio .generales{ margin-bottom:0; }
+
 

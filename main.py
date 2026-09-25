@@ -393,7 +393,15 @@ class HorarioIn(BaseModel):
 class ExcepcionIn(BaseModel):
     empleado_id: int; fecha: str
     desde: str | None = None; hasta: str | None = None   # los dos en None = no viene
+    # El segundo tramo, para el día que corta al mediodía. Son dos campos y no
+    # una lista porque dos es lo que el local hace y lo que la pantalla ofrece;
+    # con una lista habría que validar solapamientos de N tramos para un caso
+    # que no existe.
+    desde2: str | None = None; hasta2: str | None = None
     motivo: str | None = None
+    # Una ausencia dura varios días: vacaciones, una licencia. Sin esto habría
+    # que cargar el mismo día catorce veces.
+    hasta_fecha: str | None = None        # 'YYYY-MM-DD', inclusive
 class NotaIn(BaseModel):
     texto: str; fecha: str | None = None
 
@@ -3880,19 +3888,36 @@ def crear_excepcion(datos: ExcepcionIn, _ = Depends(usuario_actual), db: Session
     """
     _empleado_o_404(db, datos.empleado_id)
     try:
-        date.fromisoformat(datos.fecha)
+        uno = date.fromisoformat(datos.fecha)
+        otro = date.fromisoformat(datos.hasta_fecha) if datos.hasta_fecha else uno
     except ValueError:
         raise HTTPException(400, "Fecha inválida")
-    if datos.desde or datos.hasta:
-        if not (datos.desde and datos.hasta):
-            raise HTTPException(400, "Poné las dos horas, o ninguna si ese día no viene")
-        _valida_tramo(datos.desde, datos.hasta)
-    db.query(models.ExcepcionHorario).filter(
-        models.ExcepcionHorario.empleado_id == datos.empleado_id,
-        models.ExcepcionHorario.fecha == datos.fecha).delete()
-    db.add(models.ExcepcionHorario(empleado_id=datos.empleado_id, fecha=datos.fecha,
-                                   desde=datos.desde, hasta=datos.hasta,
-                                   motivo=(datos.motivo or "").strip() or None))
+    if otro < uno: raise HTTPException(400, "El último día va después del primero")
+    if (otro - uno).days > 180: raise HTTPException(400, "No se pueden cargar más de 180 días de una")
+    tramos = []
+    for d, h in ((datos.desde, datos.hasta), (datos.desde2, datos.hasta2)):
+        if d or h:
+            if not (d and h):
+                raise HTTPException(400, "Poné las dos horas, o ninguna si ese día no viene")
+            _valida_tramo(d, h)
+            tramos.append((d, h))
+    # Dos tramos que se pisan serían dos veces la misma hora disponible, y la
+    # grilla los dibujaría uno encima del otro. Mismo criterio que el horario fijo.
+    tramos.sort()
+    if len(tramos) == 2 and tramos[1][0] < tramos[0][1]:
+        raise HTTPException(400, "Los dos tramos se pisan")
+    # Sin tramos es "no viene": una fila con las horas en NULL, que es un dato y
+    # no un agujero. La grilla tiene que poder distinguirlo de "nadie cargó nada".
+    motivo = (datos.motivo or "").strip() or None
+    dias = [uno + timedelta(days=i) for i in range((otro - uno).days + 1)]
+    for f in dias:
+        iso = f.isoformat()
+        db.query(models.ExcepcionHorario).filter(
+            models.ExcepcionHorario.empleado_id == datos.empleado_id,
+            models.ExcepcionHorario.fecha == iso).delete()
+        for d, h in (tramos or [(None, None)]):
+            db.add(models.ExcepcionHorario(empleado_id=datos.empleado_id, fecha=iso,
+                                           desde=d, hasta=h, motivo=motivo))
     db.commit(); return {"ok": True}
 
 @app.delete("/api/excepciones/{emp_id}/{fecha}")

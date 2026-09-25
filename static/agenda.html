@@ -17,14 +17,34 @@
   .navbar .lbl::after{ content:""; flex:1; height:1px; background:var(--oro-a25); }
 
   /* --- formulario de turno --- */
-  .form-turno{ display:flex; flex-wrap:wrap; align-items:flex-end; gap:10px; }
-  .campo.chico input{ width:90px; }
+  /* Los formularios de esta pantalla —agendar, abrir el día, la ausencia, el
+     horario de una— van todos en la misma grilla: columnas de ancho parejo que
+     se acomodan solas. Con flex y `flex:1 1 130px` cada campo crecía distinto
+     según lo que tuviera adentro, y los rótulos quedaban a distancias distintas
+     unos de otros: eso era lo que se veía torcido. */
+  .form-turno{
+    display:grid; grid-template-columns:repeat(auto-fit, minmax(11rem, 1fr));
+    align-items:end; gap:var(--sp-3);
+  }
+  .form-turno .campo{ min-width:0; }
+  .form-turno .campo input, .form-turno .campo select{ width:100%; }
+  /* Lo que ocupa el renglón entero: un texto de ayuda, los chips, los botones. */
+  .form-turno .ancho, .form-turno .acciones{ grid-column:1 / -1; }
+  .form-turno .ancho > label{ display:block; margin-bottom:var(--sp-1);
+                              font-size:var(--fs-lg); color:var(--text-tenue); }
+  .form-turno .acciones{ display:flex; flex-wrap:wrap; gap:var(--sp-2); }
+  /* Una hora entra en menos, pero el ícono de reloj que le pone el navegador
+     come lugar y el "13:00" salía cortado como "01:0". */
+  .form-turno .campo.chico{ max-width:11rem; }
+  .form-turno .oculto{ display:none; }
+  .marca{ display:inline-flex; align-items:center; gap:8px; font-size:var(--fs-md);
+          color:var(--text-tenue); cursor:pointer; }
+  .marca input{ width:auto; margin:0; }
   .dia-panel{ display:flex; flex-wrap:wrap; align-items:flex-start; gap:var(--sp-3); margin-bottom:var(--sp-4); }
   .dia-panel > .card{ margin-bottom:0; }
   #formCard{ flex:1.4 1 300px; }
   #notasDia{ flex:1 1 240px; display:flex; flex-direction:column; }
   #listaNotas{ flex:1; min-height:0; overflow-y:auto; }
-  .form-turno .campo{ flex:1 1 130px; }
 
   /* --- vista DÍA --- */
   .turno-card{
@@ -45,6 +65,38 @@
   .turno-actions button{ padding:5px 10px; font-size:var(--fs-sm); }
   .btn-cancelar{ background:transparent; border:1px solid var(--danger); color:var(--danger); }
   .sin-turnos{ padding:var(--sp-5); text-align:center; color:var(--text-tenue); }
+
+  /* La lista del día, en renglones de una línea. Cada turno era una tarjeta con
+     su marco y su relleno: cinco turnos llenaban la pantalla y lo que más había
+     era espacio en blanco. */
+  .franja{ margin-bottom:var(--sp-4); }
+  .franja.apagada{ opacity:.55; }
+  .franja-cab{ display:flex; align-items:baseline; gap:var(--sp-2);
+               padding-bottom:var(--sp-2); margin-bottom:var(--sp-1);
+               border-bottom:1px solid var(--border); }
+  .franja-cab h3{ margin:0; font-size:var(--fs-sm); text-transform:uppercase;
+                  letter-spacing:var(--tracking-eti); color:var(--acento); }
+  .franja-cab span{ margin-left:auto; font-size:var(--fs-sm); color:var(--text-tenue); }
+  .reng{ display:grid; grid-template-columns:3.6rem minmax(0,1fr) auto auto;
+         align-items:center; gap:var(--sp-3);
+         padding:var(--sp-2) var(--sp-1); border-bottom:1px solid var(--border-sutil); }
+  .reng:last-child{ border-bottom:none; }
+  .reng .hora{ font-family:var(--font-display); font-weight:var(--fw-black);
+               font-variant-numeric:tabular-nums; color:var(--acento); }
+  .reng .quien{ min-width:0; }
+  .reng .quien b{ margin-right:6px; }
+  .reng .quien a{ font-size:var(--fs-xs); color:var(--acento); }
+  .reng .quien i{ font-style:normal; color:var(--text-tenue); }
+  .reng .quien small{ display:block; font-size:var(--fs-xs); color:var(--text-tenue); }
+  .reng .atiende{ font-size:var(--fs-sm); color:var(--text-tenue); white-space:nowrap; }
+  .reng .acc{ display:flex; gap:6px; }
+  .reng .acc em{ font-style:normal; font-size:var(--fs-xs); color:var(--danger);
+                 text-transform:uppercase; letter-spacing:.04em; }
+  .btn-mini{ font-size:var(--fs-sm); padding:3px 10px; }
+  @media (max-width: 640px){
+    .reng{ grid-template-columns:3.2rem minmax(0,1fr); }
+    .reng .atiende, .reng .acc{ grid-column:2; }
+  }
 
   /* --- vista DÍA por COLUMNAS: una columna por empleada ---
 
@@ -315,7 +367,7 @@
         <div class="campo"><label>Servicio</label><input id="fServicio" list="serviciosList" placeholder="Corte, color..."><datalist id="serviciosList"></datalist></div>
         <div class="campo"><label>Atiende (opc) <span class="muted"></span></label><select id="fPeluquero"></select></div>
         <div class="campo"><label>Notas (opc)<span class="muted"></span></label><input id="fNotas"></div>
-        <button id="btnAgregar">Agendar</button>
+        <span class="acciones"><button id="btnAgregar">Agendar</button></span>
       </div>
     </div>
     <!-- notas del día -->
@@ -332,6 +384,7 @@
     <button class="chip" data-v="columnas">Columnas</button>
     <button class="chip" data-v="lista">Lista</button>
     <span style="flex:1;"></span>
+    <button class="b-out" id="btnAusencia">Ausencia</button>
     <button class="b-out" id="btnAbrirDia">Abrir este día</button>
   </div>
 
@@ -355,6 +408,9 @@ function iso(d){ return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0
 function parseISO(s){ const [y,m,d]=s.split("-").map(Number); return new Date(y,m-1,d); }
 function toast(m){const t=$("#toast");t.textContent=m;t.classList.add("show");setTimeout(()=>t.classList.remove("show"),2200);}
 function cap(s){ return s.charAt(0).toUpperCase() + s.slice(1); }
+// "25/09" — lo corto, para los carteles donde el año no aporta nada.
+function fechaCorta(s){ const d = parseISO(s);
+  return String(d.getDate()).padStart(2,"0") + "/" + String(d.getMonth()+1).padStart(2,"0"); }
 
 async function init(){
   try{
@@ -653,21 +709,22 @@ function panelAbrirDia(){
   pan.style.cssText = "margin-bottom:var(--sp-3);";
   pan.innerHTML = `
     <div class="form-turno">
-      <div class="campo" style="flex:1 1 100%;"><label>Abrir este día</label>
+      <div class="ancho"><label>Abrir este día</label>
         <p class="muted" style="margin:0;">Para el lunes de depilación o el día suelto que se trabaja
           fuera del horario de siempre. Lo que marques reemplaza lo que haya cargado para esta fecha.</p></div>
       <div class="campo chico"><label>Desde</label><input type="time" class="aDesde" value="11:00"></div>
       <div class="campo chico"><label>Hasta</label><input type="time" class="aHasta" value="17:00"></div>
       <div class="campo"><label>Motivo (opcional)</label><input class="aMotivo" placeholder="Depilación"></div>
-      <div class="campo" style="flex:1 1 100%;"><label>Quiénes vienen</label>
+      <div class="ancho"><label>Quiénes vienen</label>
         <span class="chips-emp"></span></div>
-      <div class="campo aCargoCampo" style="flex:1 1 100%; display:none;">
+      <div class="ancho aCargoCampo" style="display:none;">
         <label>Quién lleva el día</label>
         <select class="aCargo"></select>
         <p class="muted" style="margin:0;">Solo para el lunes de depilación: es la que se lleva la
           mitad del reparto. Si no se elige, se toma la que más facture ese día.</p></div>
-      <button class="b-ok aGuardar">Guardar el día</button>
-      <button class="b-out aCerrar">Cerrar</button>
+      <span class="acciones">
+        <button class="b-ok aGuardar">Guardar el día</button>
+        <button class="b-out aCerrar">Cerrar</button></span>
     </div>`;
   const chips = pan.querySelector(".chips-emp");
   authFetch("/api/agenda/dia?fecha="+fechaActual).then(r=>r.json()).then(d=>{
@@ -714,7 +771,99 @@ function panelAbrirDia(){
     renderDia();
   };
 }
+/* Una ausencia: vacaciones, una licencia, un turno médico, un trámite.
+
+   Es el mismo dato que "Hoy distinto" —una excepción de horario— pero se carga
+   al revés: ahí se arranca del día y se corrige a una persona; acá se arranca de
+   la persona y se marcan los días que falta. Una licencia son dos semanas, y
+   cargarla día por día no se hace nunca.
+
+   Sin tramo es "no viene". Con tramo es el caso del turno médico: viene, pero
+   solo una parte del día. */
+const MOTIVOS = ["Vacaciones", "Licencia", "Turno médico", "Trámite", "Franco"];
+
+function panelAusencia(){
+  document.querySelectorAll(".panel-exc").forEach(p => p.remove());
+  const pan = document.createElement("div");
+  pan.className = "card panel-exc";
+  pan.style.cssText = "margin-bottom:var(--sp-3);";
+  pan.innerHTML = `
+    <div class="form-turno">
+      <div class="ancho"><label>Ausencia</label>
+        <p class="muted" style="margin:0;">Los días que alguien no viene, o que viene
+          a otra hora. Le gana al horario de siempre y se deshace día por día
+          desde “Hoy distinto”.</p></div>
+      <div class="campo"><label>Quién</label><select class="auQuien"></select></div>
+      <div class="campo chico"><label>Desde</label><input type="date" class="auDesde" value="${fechaActual}"></div>
+      <div class="campo chico"><label>Hasta</label><input type="date" class="auHasta" value="${fechaActual}"></div>
+      <div class="ancho"><label>Motivo</label>
+        <span class="chips-emp auMotivos">${MOTIVOS.map(m =>
+          `<button type="button" class="chip-emp" data-m="${m}">${m}</button>`).join("")}</span></div>
+      <div class="campo"><label>O escribilo</label><input class="auOtro" placeholder="Casamiento, mudanza…"></div>
+      <div class="ancho"><label class="marca">
+        <input type="checkbox" class="auParte"> Falta solo una parte del día</label></div>
+      <div class="campo chico auTramo oculto"><label>Entra</label><input type="time" class="auD" value="09:00"></div>
+      <div class="campo chico auTramo oculto"><label>Sale</label><input type="time" class="auH" value="13:00"></div>
+      <span class="acciones">
+        <button class="b-ok auOk">Guardar</button>
+        <button class="b-out auNo">Cerrar</button></span>
+    </div>`;
+  $("#vista").before(pan);
+  const sel = pan.querySelector(".auQuien");
+  authFetch("/api/empleados").then(r => r.json()).then(emps => {
+    sel.innerHTML = emps.map(e => `<option value="${e.id}">${esc(titulo(e.nombre))}</option>`).join("");
+  });
+  let motivo = "";
+  pan.querySelectorAll(".auMotivos .chip-emp").forEach(b => b.onclick = () => {
+    const ya = b.classList.contains("on");
+    pan.querySelectorAll(".auMotivos .chip-emp").forEach(x => x.classList.remove("on"));
+    if(!ya) b.classList.add("on");
+    motivo = ya ? "" : b.dataset.m;
+    pan.querySelector(".auOtro").value = "";
+  });
+  const parte = pan.querySelector(".auParte");
+  parte.onchange = () => pan.querySelectorAll(".auTramo")
+    .forEach(x => x.classList.toggle("oculto", !parte.checked));
+  pan.querySelector(".auNo").onclick = () => pan.remove();
+  pan.querySelector(".auOk").onclick = async () => {
+    const desde = pan.querySelector(".auDesde").value, hasta = pan.querySelector(".auHasta").value;
+    if(!desde || !hasta){ toast("Elegí los días"); return; }
+    if(hasta < desde){ toast("El último día va después del primero"); return; }
+    const razon = pan.querySelector(".auOtro").value.trim() || motivo;
+    const opt = sel.options[sel.selectedIndex];
+    const quien = opt ? opt.textContent : "";
+    const dias = Math.round((parseISO(hasta) - parseISO(desde)) / 86400000) + 1;
+    const cuando = dias === 1 ? "el " + fechaCorta(desde)
+                 : `${dias} días, del ${fechaCorta(desde)} al ${fechaCorta(hasta)}`;
+    if(!confirm(`${quien}: ${cuando}${razon ? " · " + razon : ""}.\n\n`
+      + (parte.checked
+          ? `Esos días trabaja solo de ${pan.querySelector(".auD").value} a ${pan.querySelector(".auH").value}.`
+          : "Esos días no viene.")
+      + "\n\nLe gana al horario de siempre. ¿Guardamos?")) return;
+    const r = await authFetch("/api/excepciones", {method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({empleado_id: Number(sel.value), fecha: desde, hasta_fecha: hasta,
+        motivo: razon || null,
+        ...(parte.checked ? {desde: pan.querySelector(".auD").value,
+                             hasta: pan.querySelector(".auH").value} : {})})});
+    if(!r.ok){ toast((await r.json().catch(()=>({}))).detail || "No se pudo"); return; }
+    pan.remove();
+    toast(dias === 1 ? "Ausencia cargada" : `${dias} días cargados`);
+    renderDia();
+  };
+}
+$("#btnAusencia").onclick = panelAusencia;
 $("#btnAbrirDia").onclick = panelAbrirDia;
+
+/* "Abrir este día" es para el día que el local NO abre: el lunes de depilación,
+   una vez al mes, y algún domingo suelto. De martes a sábado ya hay horario
+   cargado, y lo que se corrige ahí es el de una persona —eso es "Hoy distinto"—,
+   no el del local entero. Con el botón siempre a la vista, abrir un miércoles le
+   pisaba a todas el horario de siempre sin que nada lo pidiera. */
+function ajustarAbrirDia(){
+  const dow = parseISO(fechaActual).getDay();          // 0 domingo · 1 lunes
+  $("#btnAbrirDia").hidden = !(dow === 0 || dow === 1);
+}
 
 /* El horario de HOY de una persona. Lo puede tocar cualquiera a propósito: la
    que se cambió el turno con otra es la que sabe, y si tuviera que pedirlo no se
@@ -724,17 +873,22 @@ function panelExcepcion(c){
   const pan = document.createElement("div");
   pan.className = "card panel-exc";
   pan.style.cssText = "margin-bottom:var(--sp-3);";
-  const t = c.tramos[0] || {};
+  // Los dos tramos del día: el segundo existe solo cuando corta al mediodía.
+  const t = c.tramos[0] || {}, t2 = c.tramos[1] || {};
   pan.innerHTML = `
     <div class="form-turno">
-      <div class="campo" style="flex:1 1 100%;"><label>El horario de ${esc(titulo(c.nombre))} para este día</label></div>
-      <div class="campo chico"><label>Entra</label><input type="time" class="eDesde" value="${t.desde||"08:00"}"></div>
+      <div class="ancho"><label>El horario de ${esc(titulo(c.nombre))} para este día</label></div>
+      <div class="campo chico"><label>Entra</label><input type="time" class="eDesde" value="${t.desde||"09:00"}"></div>
       <div class="campo chico"><label>Sale</label><input type="time" class="eHasta" value="${t.hasta||"20:00"}"></div>
+      <div class="ancho"><label class="marca"><input type="checkbox" class="eDoble"${t2.desde?" checked":""}> Corta al mediodía</label></div>
+      <div class="campo chico et2${t2.desde?"":" oculto"}"><label>Vuelve</label><input type="time" class="eDesde2" value="${t2.desde||"16:00"}"></div>
+      <div class="campo chico et2${t2.desde?"":" oculto"}"><label>Sale</label><input type="time" class="eHasta2" value="${t2.hasta||"20:00"}"></div>
       <div class="campo"><label>Motivo (opcional)</label><input class="eMotivo" placeholder="Cambió con Luli, turno médico…"></div>
-      <button class="b-ok eGuardar">Guardar</button>
-      <button class="b-out eNoViene">Hoy no viene</button>
-      ${c.excepcion ? `<button class="b-out eVolver">Volver al horario de siempre</button>` : ""}
-      <button class="b-out eCerrar">Cerrar</button>
+      <span class="acciones">
+        <button class="b-ok eGuardar">Guardar</button>
+        <button class="b-out eNoViene">Hoy no viene</button>
+        ${c.excepcion ? `<button class="b-out eVolver">Volver al horario de siempre</button>` : ""}
+        <button class="b-out eCerrar">Cerrar</button></span>
     </div>`;
   $("#vista").before(pan);
   const mandar = async (cuerpo) => {
@@ -743,8 +897,13 @@ function panelExcepcion(c){
     if(!r.ok){ toast((await r.json().catch(()=>({}))).detail || "No se pudo"); return; }
     pan.remove(); toast("Horario del día guardado"); renderDia();
   };
+  const doble = pan.querySelector(".eDoble");
+  doble.onchange = () => pan.querySelectorAll(".et2")
+    .forEach(x => x.classList.toggle("oculto", !doble.checked));
   pan.querySelector(".eGuardar").onclick = () => mandar({
     desde: pan.querySelector(".eDesde").value, hasta: pan.querySelector(".eHasta").value,
+    ...(doble.checked ? {desde2: pan.querySelector(".eDesde2").value,
+                         hasta2: pan.querySelector(".eHasta2").value} : {}),
     motivo: pan.querySelector(".eMotivo").value});
   pan.querySelector(".eNoViene").onclick = () => {
     if(!confirm(`${titulo(c.nombre)} no viene este día. ¿Guardamos?`)) return;
@@ -758,6 +917,58 @@ function panelExcepcion(c){
   pan.querySelector(".eCerrar").onclick = () => pan.remove();
 }
 
+/* La lista del día, partida en mañana y tarde.
+
+   Cada turno era una tarjeta con su marco y su relleno: cinco turnos llenaban la
+   pantalla y lo que más había era espacio en blanco. Acá son renglones de una
+   línea, agrupados en las dos mitades en que el local piensa el día, y cada
+   grupo dice cuántos tiene.
+
+   Los cancelados van al final, apagados y en su propio grupo: son los que menos
+   se miran y mezclados hacían dudar de si un turno seguía en pie. */
+const CORTE_TARDE = 14 * 60;                    // las 14:00
+
+function pintarLista(turnos, cont){
+  const porHora = (a, b) => a.hora.localeCompare(b.hora);
+  const activos = turnos.filter(t => t.activo).sort(porHora);
+  const grupos = [
+    ["Mañana", activos.filter(t => aMin(t.hora) < CORTE_TARDE)],
+    ["Tarde",  activos.filter(t => aMin(t.hora) >= CORTE_TARDE)],
+    ["Cancelados", turnos.filter(t => !t.activo).sort(porHora)],
+  ];
+  cont.innerHTML = grupos.filter(([, ts]) => ts.length).map(([rot, ts]) => `
+    <div class="franja${rot === "Cancelados" ? " apagada" : ""}">
+      <div class="franja-cab"><h3>${rot}</h3>
+        <span>${ts.length} ${ts.length === 1 ? "turno" : "turnos"}</span></div>
+      ${ts.map(t => `
+        <div class="reng" data-id="${t.id}">
+          <span class="hora">${t.hora}</span>
+          <span class="quien">
+            <b>${esc(titulo(t.cliente))}</b>${t.cliente_id
+              ? `<a href="/cuenta?id=${t.cliente_id}">ver cuenta</a>` : ""}
+            <i>${esc(cap(t.servicio || ""))}</i>
+            ${t.notas ? `<small>${esc(t.notas)}</small>` : ""}
+          </span>
+          <span class="atiende">${t.peluquero ? "✂ " + esc(titulo(t.peluquero)) : ""}</span>
+          <span class="acc">${t.activo
+            ? `<button class="b-out btn-mini editar">Editar</button>
+               <button class="b-out btn-mini cancelar">Cancelar</button>`
+            : `<em>cancelado</em>`}</span>
+        </div>`).join("")}
+    </div>`).join("");
+
+  cont.querySelectorAll(".reng").forEach(r => {
+    const t = turnos.find(x => String(x.id) === r.dataset.id);
+    const ed = r.querySelector(".editar"), ca = r.querySelector(".cancelar");
+    if(ed) ed.onclick = () => cargarEnForm(t);
+    if(ca) ca.onclick = async () => {
+      if(!confirm(`¿Cancelar el turno de ${t.cliente}?`)) return;
+      await authFetch("/api/turnos/" + t.id, {method:"DELETE"});
+      toast("Turno cancelado"); renderDia();
+    };
+  });
+}
+
 // ---------- VISTA DÍA ----------
 async function renderDia(){
   const dt=parseISO(fechaActual);
@@ -768,36 +979,13 @@ async function renderDia(){
   renderNotasDia();
   ajustarAltoNotas();
   marcarSwitch();
+  ajustarAbrirDia();
   document.querySelectorAll(".panel-exc").forEach(p=>p.remove());
   if(VISTA_DIA === "columnas"){ await renderColumnas(); return; }
-  const turnos=await (await authFetch("/api/turnos?fecha="+fechaActual)).json();
-  const activos=turnos.filter(t=>t.activo), cancel=turnos.filter(t=>!t.activo);
-  const cont=$("#vista");
-  if(turnos.length===0){ cont.innerHTML='<div class="sin-turnos">No hay turnos para este día.</div>'; return; }
-  cont.innerHTML="";
-  [...activos,...cancel].forEach(t=>{
-    const div=document.createElement("div"); div.className="turno-card"+(t.activo?"":" cancelado");
-    div.innerHTML=`
-      <div class="turno-hora">${t.hora}</div>
-      <div class="turno-body">
-        <div class="turno-cliente">${titulo(t.cliente)}${t.cliente_id?` <a href="/cuenta?id=${t.cliente_id}" style="font-size:12px;color:var(--acento);margin-left:6px;"> Ver cuenta</a>`:''}</div>
-        <div class="turno-servicio cap">${t.servicio}</div>
-        ${t.peluquero?`<div class="turno-peluquero">✂ ${titulo(t.peluquero)}</div>`:''}
-        ${t.notas?`<div class="turno-notas cap">${t.notas}</div>`:''}
-        ${!t.activo?'<div style="font-size:11px;color:var(--danger);margin-top:4px;">Cancelado</div>':''}
-      </div>
-      <div class="turno-actions">
-        ${t.activo?`<button class="btn-editar">Editar</button><button class="btn-cancelar">Cancelar</button>`:''}
-      </div>`;
-    if(t.activo){
-      div.querySelector(".btn-cancelar").onclick=async()=>{
-        if(!confirm(`¿Cancelar el turno de ${t.cliente}?`))return;
-        await authFetch("/api/turnos/"+t.id,{method:"DELETE"}); toast("Turno cancelado"); renderDia();
-      };
-      div.querySelector(".btn-editar").onclick=()=>cargarEnForm(t);
-    }
-    cont.appendChild(div);
-  });
+  const turnos = await (await authFetch("/api/turnos?fecha="+fechaActual)).json();
+  const cont = $("#vista");
+  if(!turnos.length){ cont.innerHTML = '<div class="sin-turnos">No hay turnos para este día.</div>'; return; }
+  pintarLista(turnos, cont);
 }
 
 function cargarEnForm(t){
