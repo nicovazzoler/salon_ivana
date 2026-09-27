@@ -394,7 +394,6 @@
     <button class="chip" data-v="lista">Lista</button>
     <span style="flex:1;"></span>
     <button class="b-out" id="btnAusencia">Ausencia</button>
-    <button class="b-out" id="btnAbrirDia">Abrir este día</button>
   </div>
 
   <div id="vista"></div>
@@ -588,17 +587,42 @@ async function renderColumnas(){
   columnas.forEach(c => grilla.appendChild(dibujarColumna(c, ini, fin, alto)));
 
   cont.innerHTML="";
-  if(nadie){
-    const av = document.createElement("div"); av.className="sin-turnos";
-    av.innerHTML = `<b>Este día no trabaja nadie.</b><br>
-      Si igual se abre —el lunes de depilación, por ejemplo— marcá quiénes vienen.`;
-    const b = document.createElement("button");
-    b.className="b-ok"; b.textContent="Abrir este día"; b.style.marginTop="var(--sp-3)";
-    b.onclick = panelAbrirDia;
-    av.appendChild(document.createElement("br")); av.appendChild(b);
-    cont.appendChild(av);
-  }
+  const abierto = d.empleados.some(e => e.excepcion && e.tramos.length);
+  const av = bloqueAbrirDia(nadie, abierto);
+  if(av) cont.appendChild(av);
   cont.appendChild(wrap);
+}
+
+/* Abrir el día tiene UN botón, y está acá en el medio y no arriba en la barra.
+
+   Arriba era un botón más al lado de "Ausencia", del mismo tamaño y con el
+   mismo peso que algo que se usa todas las semanas; abrir el día pasa una vez
+   por mes. Acá aparece donde se ve el problema —el día vacío— y explica qué es.
+
+   Aparece igual cuando el día YA está abierto, como un renglón chico: si no, la
+   única forma de corregir quién viene o quién lo lleva sería sacar a todas
+   primero, que no se puede hacer desde ninguna pantalla. */
+function bloqueAbrirDia(nadie, abierto){
+  const dow = parseISO(fechaActual).getDay();          // 0 domingo · 1 lunes
+  if(!(dow === 0 || dow === 1)) return null;
+  const av = document.createElement("div");
+  av.className = "sin-turnos";
+  if(abierto){
+    av.innerHTML = `<span class="det">Este día está abierto fuera del horario de siempre.</span> `;
+    const b = document.createElement("button");
+    b.className = "b-out btn-mini"; b.textContent = "Cambiarlo";
+    b.onclick = panelAbrirDia;
+    av.appendChild(b);
+    return av;
+  }
+  if(!nadie) return null;
+  av.innerHTML = `<b>Este día no trabaja nadie.</b><br>
+    Si igual se abre —el lunes de depilación, por ejemplo— marcá quiénes vienen.`;
+  const b = document.createElement("button");
+  b.className = "b-ok"; b.textContent = "Abrir este día"; b.style.marginTop = "var(--sp-3)";
+  b.onclick = panelAbrirDia;
+  av.appendChild(document.createElement("br")); av.appendChild(b);
+  return av;
 }
 
 function cabColumna(c){
@@ -862,17 +886,8 @@ function panelAusencia(){
   };
 }
 $("#btnAusencia").onclick = panelAusencia;
-$("#btnAbrirDia").onclick = panelAbrirDia;
 
-/* "Abrir este día" es para el día que el local NO abre: el lunes de depilación,
-   una vez al mes, y algún domingo suelto. De martes a sábado ya hay horario
-   cargado, y lo que se corrige ahí es el de una persona —eso es "Hoy distinto"—,
-   no el del local entero. Con el botón siempre a la vista, abrir un miércoles le
-   pisaba a todas el horario de siempre sin que nada lo pidiera. */
-function ajustarAbrirDia(){
-  const dow = parseISO(fechaActual).getDay();          // 0 domingo · 1 lunes
-  $("#btnAbrirDia").hidden = !(dow === 0 || dow === 1);
-}
+
 
 /* El horario de HOY de una persona. Lo puede tocar cualquiera a propósito: la
    que se cambió el turno con otra es la que sabe, y si tuviera que pedirlo no se
@@ -988,13 +1003,19 @@ async function renderDia(){
   renderNotasDia();
   ajustarAltoNotas();
   marcarSwitch();
-  ajustarAbrirDia();
   document.querySelectorAll(".panel-exc").forEach(p=>p.remove());
   if(VISTA_DIA === "columnas"){ await renderColumnas(); return; }
   const turnos = await (await authFetch("/api/turnos?fecha="+fechaActual)).json();
   const cont = $("#vista");
-  if(!turnos.length){ cont.innerHTML = '<div class="sin-turnos">No hay turnos para este día.</div>'; return; }
-  pintarLista(turnos, cont);
+  if(!turnos.length) cont.innerHTML = '<div class="sin-turnos">No hay turnos para este día.</div>';
+  else pintarLista(turnos, cont);
+  // El botón de abrir vive en la vista, no en la barra, así que la lista tiene
+  // que ofrecerlo igual: si no, un domingo habría que pasarse a Columnas para
+  // poder abrir el día.
+  const d = await (await authFetch("/api/agenda/dia?fecha="+fechaActual)).json();
+  const nadie = d.empleados.every(e => !e.tramos.length) && !d.turnos.length;
+  const av = bloqueAbrirDia(nadie, d.empleados.some(e => e.excepcion && e.tramos.length));
+  if(av) cont.appendChild(av);
 }
 
 function cargarEnForm(t){
