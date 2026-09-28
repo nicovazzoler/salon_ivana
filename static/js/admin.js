@@ -941,10 +941,12 @@ async function cargarEmpleados(){
   cont.innerHTML = "";
 
   const gral = document.createElement("div");
+  // Sin el bloque de "una en particular": acá cada empleada ya tiene su renglón,
+  // y su valor hora se cambia desde ahí.
   panelGenerales(gral, c => {
     VALOR_HORA_GENERAL = c.valor_hora;
     cargarEmpleados();
-  });
+  }, {porPersona: false});
   cont.appendChild(gral);
 
   emps.forEach(e => {
@@ -1012,7 +1014,7 @@ function chip(texto, clase){
 
 /* "Mar a sáb · 10 a 13 · 16 a 20", o el día suelto si no es un bloque seguido.
    Es lo que reemplaza al valor hora en el renglón: el horario se mira mucho más
-   seguido que lo que cobra la hora, que casi siempre es el general. */
+   seguido que el valor hora, que casi siempre es el general. */
 function resumenHorario(empId){
   const tramos = HORARIOS[String(empId)] || [];
   if(!tramos.length) return "sin horario cargado";
@@ -1051,7 +1053,7 @@ function panelPersona(e){
       <span class="dato">${e.tiene_pin ? "puesto" : `<span class="chip-emp">no tiene</span>`}</span>
       <button class="b-out">${e.tiene_pin ? "Cambiar" : "Poner código"}</button></div>
     <div class="linea" data-tipo="vh">
-      <span class="et">Lo que cobra la hora<small>Vacío quiere decir el general</small></span>
+      <span class="et">Valor hora</span>
       <span class="dato">${vh}</span>
       <button class="b-out">Cambiar</button></div>
     <div class="linea" data-tipo="horario">
@@ -1102,7 +1104,7 @@ const escHtml = s => String(s ?? "").replace(/[&<>"']/g,
 function panelEmpleado(e, tipo){
   const esPin = tipo === "pin", esVh = tipo === "vh";
   const rotulo = esPin ? "Código nuevo (4 a 8 números)"
-               : esVh ? "Lo que cobra la hora" : "Nombre";
+               : esVh ? "Valor hora" : "Nombre";
   const pan = document.createElement("div");
   pan.className = "panel-edicion";
   pan.innerHTML = `

@@ -280,15 +280,15 @@ async function cargarPanelDueno(){
    mover. El "cambiar" queda para el único momento en que hace falta de verdad,
    que es cuando se acaba de poner y se le erró a la fecha.
 
-   Sin corte se ve entero, con la fecha propuesta en el SÁBADO —donde arranca la
+   Sin corte se ve entero, con la fecha propuesta en el SÁBADO: donde arranca la
    semana de pago; puesto un miércoles, la semana en curso aparece cortada por la
-   mitad— y diciendo de antemano cuántos ciclos y cuánta plata dejan de verse. */
+   mitad. Qué se lleva se dice en el cartel de confirmación, que es donde hay que
+   leerlo; dicho también en la pantalla, era un renglón de números que estaba
+   siempre y servía una vez en la vida. */
 function pintarArranque(actual, resumenes){
   const cont = $("#cfgArranque");
   if(!cont) return;
   const sab = sabadoDeLaSemana(hoyArg());
-  const viejos = resumenes.flatMap(r => r.ciclos.filter(c => c.desde < sab));
-  const plata = viejos.reduce((a, c) => a + c.total, 0);
 
   const controles = `
       <input type="date" class="arrFecha" value="${actual || sab}" max="${hoyArg()}">
@@ -304,10 +304,6 @@ function pintarArranque(actual, resumenes){
     : `<div class="arranque">
          <span>Los sueldos cuentan desde siempre: aparece todo lo que quedó sin pagar.</span>
          ${controles}
-         ${viejos.length ? `<span class="nota" style="flex:1 1 100%;">Con el corte en el sábado
-           ${fechaCorta(sab)} dejan de aparecer ${viejos.length}
-           ${viejos.length === 1 ? "ciclo" : "ciclos"} anteriores, por ${fmt(plata)}. La semana que
-           arranca ese sábado queda entera.</span>` : ""}
        </div>`;
 
   const ver = cont.querySelector(".arrVer");

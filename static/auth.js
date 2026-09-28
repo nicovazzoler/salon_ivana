@@ -63,16 +63,48 @@ function pintarNav(){
     html+=`<a href="${l.href}"${esActual?' class="actual"':''}>${l.txt}</a>`;
   }
   html+=`<a href="#" onclick="logout();return false;">Salir</a>`;
-  // la marca se agrega después, cuando el nav ya está en el DOM
+  /* En el celular los diez links no entran en una fila: se parten en tres y le
+     comen media pantalla a todas las pantallas, tapando además lo que quedó
+     arriba al scrollear. Acá van adentro de un cajón que abre el botón de las
+     tres rayas; de tablet para arriba el cajón es la fila de siempre y el botón
+     no existe. */
+  html=`<div class="links">${html}</div>`;
   /* Interruptor, no botón: se ven los dos destinos a la vez y la perilla marca
      en cuál estás. role="switch" para que un lector de pantalla lo anuncie como
-     lo que es. */
+     lo que es. Queda afuera del cajón: se usa seguido y ocupa nada. */
   html+=`<button type="button" class="sw-tema" id="btnTema" role="switch" aria-label="Modo oscuro">`
       + `<span class="pista">${ICONO_SOL}${ICONO_LUNA}<span class="perilla"></span></span></button>`;
+  html+=`<button type="button" class="hamb" id="btnMenu" aria-label="Menú"`
+      + ` aria-expanded="false">☰</button>`;
   nav.innerHTML=html;
+  engancharHamburguesa(nav);
   pintarBotonTema();
   marcarBorradorEnMenu();
   avisarPasswordDeFabrica();
+}
+
+/* El cajón del menú en pantallas chicas.
+
+   Se cierra al tocar afuera y con Escape, y NO al tocar un link: el link navega
+   y la página se vuelve a dibujar con el cajón cerrado de fábrica. Cerrarlo a
+   mano antes de navegar solo hace que la pantalla parpadee. */
+function engancharHamburguesa(nav){
+  const boton = nav.querySelector(".hamb");
+  if(!boton) return;
+  const cerrar = () => {
+    nav.classList.remove("abierto");
+    boton.setAttribute("aria-expanded", "false");
+  };
+  boton.onclick = ev => {
+    ev.stopPropagation();
+    const abrir = !nav.classList.contains("abierto");
+    nav.classList.toggle("abierto", abrir);
+    boton.setAttribute("aria-expanded", String(abrir));
+  };
+  document.addEventListener("click", ev => {
+    if(nav.classList.contains("abierto") && !nav.contains(ev.target)) cerrar();
+  });
+  document.addEventListener("keydown", ev => { if(ev.key === "Escape") cerrar(); });
 }
 
 /* Aviso de contraseña sin cambiar.
