@@ -1542,9 +1542,14 @@ def lunes_de_depilacion(db) -> list[str]:
     if arranque:
         q = q.filter(models.Comprobante.fecha >= _rango_dia(date.fromisoformat(arranque))[0])
     else:
+        # El corte de arranque mira la fecha del SERVICIO y el otro mira cuándo se
+        # ANOTÓ: son dos preguntas distintas y cada una tiene su campo. Mezclarlas
+        # dejaba afuera al lunes de la semana pasada anotado hoy, y con él al
+        # reparto entero cuando la que lo lleva no facturó nada a su nombre.
         desde = db.query(models.Config).filter_by(clave="sueldos_desde").first()
         if desde and desde.valor:
-            q = q.filter(models.Comprobante.fecha >= datetime.fromisoformat(desde.valor))
+            anotado = func.coalesce(models.Comprobante.cargado, models.Comprobante.fecha)
+            q = q.filter(anotado >= datetime.fromisoformat(desde.valor))
     fechas |= {hora_argentina(f).date().isoformat() for (f,) in q.distinct().all()}
     return sorted(f for f in fechas
                   if (not arranque or f >= arranque)
