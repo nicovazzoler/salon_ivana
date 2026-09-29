@@ -442,7 +442,10 @@ function pintar(){
     <div class="kpi">
       <span class="lbl">Horas</span>
       <span class="val">${fmt(D.total_horas)}</span>
-      <span class="nota">${hhmm(D.minutos_total)} declaradas · ${fmt(D.valor_hora)} la hora</span>
+      <span class="nota">${hhmm(D.minutos_total)} declaradas · ${fmt(D.valor_hora)} la hora${
+        // De quién es ese número: el suyo o el de todas. Sin decirlo, el día que
+        // alguien cobra distinto no hay forma de saber si el total salió bien.
+        D.valor_hora_propio ? " (el suyo)" : " (el general)"}</span>
     </div>` + (depis.length ? `
     <div class="kpi">
       <span class="lbl">Depilación</span>
@@ -679,6 +682,14 @@ function abrirFormDia(boton){
     const minutos = (parseInt(caja.querySelector(".nvHoras").value,10)||0)*60
                   + (parseInt(caja.querySelector(".nvMin").value,10)||0);
     if(!fecha){ toast("Elegí el día"); return; }
+    // El casillero tiene min y max, pero eso solo limita el calendarito: tipeada
+    // a mano, la fecha pasa igual. Y el día se guardaba de verdad, solo que en
+    // OTRO ciclo, así que acá no aparecía nada y parecía que no había pasado.
+    if(fecha < boton.dataset.desde || fecha > boton.dataset.hasta){
+      toast(`Ese día no es de este ciclo: va del ${fechaCorta(boton.dataset.desde)} `
+          + `al ${fechaCorta(boton.dataset.hasta)}`);
+      return;
+    }
     if(minutos <= 0){ toast("Poné cuántas horas"); return; }
     await mandar("/api/sueldos/horas", "PUT", {empleado_id: EMP, fecha, minutos});
   };

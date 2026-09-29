@@ -1821,7 +1821,12 @@ def resumen_pendiente(db, empleado) -> dict:
 
     return {
         "empleado": {"id": empleado.id, "nombre": empleado.nombre},
-        "valor_hora": vh, "comision_pct": pct,
+        "valor_hora": vh,
+        # Si ese valor hora es el suyo o el general. La pantalla lo dice al lado
+        # del número: sin eso, el día que alguien cobra distinto no hay forma de
+        # saber con cuál se armó el total que se está mirando.
+        "valor_hora_propio": getattr(empleado, "valor_hora", None) is not None,
+        "comision_pct": pct,
         "ciclos": salida,
         "avisos_depilacion": avisos_depilacion(db, empleado, ajenos),
         "total": sum(c["total"] for c in salida),
