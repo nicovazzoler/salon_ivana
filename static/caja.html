@@ -16,7 +16,22 @@
   th:first-child,
   td:first-child{ text-align:left; }
   .nums{ grid-template-columns:repeat(4, 1fr); }
-  .celda-input[readonly]{ border-color:transparent; background:transparent; cursor:default; }
+  /* El tipo y el concepto se muestran como TEXTO y solo se vuelven casilleros al
+     tocar el lapicito. Adentro de un input el texto no crece con la columna: un
+     concepto largo —"Sueldo Cristina (2026-09-26 a 2026-10-02)"— salía cortado a
+     la mitad, y encima el casillero ocupaba su ancho fijo aunque el egreso
+     dijera dos palabras. */
+  /* Las columnas de texto se leen de izquierda a derecha; solo el monto se
+     alinea a la derecha, que es donde se compara una cifra con la de arriba.
+     Con todo a la derecha, el tipo y el concepto quedaban pegados al monto y
+     separados del resto por un agujero. */
+  .t-egresos th:nth-child(-n+4), .t-egresos td:nth-child(-n+4){ text-align:left; }
+  .col-tipo{ white-space:nowrap; }
+  /* El concepto se queda con lo que sobra y parte en dos renglones si hace
+     falta: es lo único de la fila que puede ser largo. */
+  .col-conc{ width:99%; white-space:normal; word-break:break-word; }
+  .col-tipo .celda-input{ width:10rem; }
+  .col-conc .celda-input{ width:100%; }
   .mini{ padding:6px 9px; font-size:var(--fs-sm); border-radius:7px; }
   .sub-titulo{ display:block; margin-top:14px; color:var(--text-titulo); }
   /* Egreso que el empleado no ve. Solo aparece en la caja de la dueña: el
@@ -96,6 +111,11 @@
 <script>
 requireLogin(); pintarNav(); ajustarPorRol();
 const $=s=>document.querySelector(s);
+/* El tipo y el concepto los escribe una persona y van por innerHTML, así que
+   hay que escaparlos. Antes entraban crudos adentro de un value="…": un
+   concepto con una comilla partía el atributo y rompía la fila. */
+const esc = t => String(t ?? "").replace(/[&<>"']/g,
+  c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 if(getRol()!=="dueno"){ const fe=document.getElementById("fondoEdit"); if(fe) fe.style.display="none"; }
 const money=n=>"$"+(n||0).toLocaleString("es-AR");
 function toast(m){const t=$("#toast");t.textContent=m;t.classList.add("show");setTimeout(()=>t.classList.remove("show"),2200);}
@@ -146,7 +166,7 @@ async function cargarDia(){
     html += '</tbody></table>';
   }
   if(d.egresos_detalle && d.egresos_detalle.length){
-    html += '<b class="sub-titulo">Egresos del día</b><table style="margin-top:6px;"><thead><tr><th>N°</th><th>Hora</th><th>Tipo</th><th>Concepto</th><th>Monto</th><th></th></tr></thead><tbody>';
+    html += '<b class="sub-titulo">Egresos del día</b><table class="t-egresos" style="margin-top:6px;"><thead><tr><th>N°</th><th>Hora</th><th>Tipo</th><th>Concepto</th><th>Monto</th><th></th></tr></thead><tbody>';
     d.egresos_detalle.forEach(e=>{
       // El empleado directamente no recibe los privados; la dueña los ve marcados,
       // para saber cuál de los egresos del día no está en la caja del otro.
@@ -154,8 +174,10 @@ async function cargarDia(){
       html+=`<tr data-tipo="${e.tipo||''}" data-conc="${e.concepto||''}" data-monto="${e.monto}">
         <td class="num-egreso">${e.numero ? "#"+e.numero : "—"}</td>
         <td>${e.hora}${marca}</td>
-        <td><input id="ec_tipo_${e.id}" value="${e.tipo||''}" class="celda-input" readonly></td>
-        <td><input id="ec_conc_${e.id}" value="${e.concepto||''}" class="celda-input" readonly></td>
+        <td class="col-tipo"><span id="ec_tipotxt_${e.id}">${esc(e.tipo||'—')}</span>
+           <input id="ec_tipo_${e.id}" value="${esc(e.tipo||'')}" class="celda-input" style="display:none;"></td>
+        <td class="col-conc"><span id="ec_conctxt_${e.id}">${esc(e.concepto||'—')}</span>
+           <input id="ec_conc_${e.id}" value="${esc(e.concepto||'')}" class="celda-input" style="display:none;"></td>
         <td><span id="ec_montotxt_${e.id}">${money(e.monto)}</span>
            <input id="ec_monto_${e.id}" type="number" value="${e.monto}" class="celda-input" style="max-width:80px;display:none;"></td>
         <td style="white-space:nowrap;">
@@ -214,9 +236,10 @@ async function anularEgresoCaja(id){
 }
 
 function editarEgresoCaja(id){
-  ["ec_tipo_","ec_conc_"].forEach(p => { $("#"+p+id).removeAttribute("readonly"); });
-  $("#ec_montotxt_"+id).style.display = "none";        
-  $("#ec_monto_"+id).style.display    = "inline-block";
+  ["tipo","conc","monto"].forEach(c => {
+    $("#ec_"+c+"txt_"+id).style.display = "none";
+    $("#ec_"+c+"_"+id).style.display    = "inline-block";
+  });
   $("#ec_edit_"+id).style.display   = "none";
   $("#ec_save_"+id).style.display   = "inline-block";
   $("#ec_cancel_"+id).style.display = "inline-block";
@@ -228,9 +251,10 @@ function cancelarEgresoCaja(id){
   $("#ec_tipo_"+id).value  = tr.dataset.tipo;
   $("#ec_conc_"+id).value  = tr.dataset.conc;
   $("#ec_monto_"+id).value = tr.dataset.monto;
-  ["ec_tipo_","ec_conc_"].forEach(p => { $("#"+p+id).setAttribute("readonly",""); });
-  $("#ec_monto_"+id).style.display    = "none";        
-  $("#ec_montotxt_"+id).style.display = "inline";     
+  ["tipo","conc","monto"].forEach(c => {
+    $("#ec_"+c+"_"+id).style.display    = "none";
+    $("#ec_"+c+"txt_"+id).style.display = "inline";
+  });
   $("#ec_edit_"+id).style.display   = "inline-block";
   $("#ec_save_"+id).style.display   = "none";
   $("#ec_cancel_"+id).style.display = "none";
