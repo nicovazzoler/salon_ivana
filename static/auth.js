@@ -38,6 +38,9 @@ function pintarNav(){
   // Un solo lugar donde se definen los links del menú. Cambiás acá y se actualiza en todas las páginas.
   const links=[
     {href:"/",           txt:"Facturar"},
+    // Depilación es facturar con todo lo que no se usa sacado. Va al lado porque
+    // es la misma cosa: un cobro, por el mismo camino y con el mismo comprobante.
+    {href:"/depilacion", txt:"Depilación"},
     // Caja va pegada a Facturar porque es el otro lado del mismo movimiento: se
     // cobra y se mira cuánto entró, muchas veces seguidas en el mismo rato.
     {href:"/caja",       txt:"Caja"},

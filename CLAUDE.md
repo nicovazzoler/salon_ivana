@@ -31,6 +31,8 @@ static/
                  Admin y el panel del lapicito de facturar
   js/generales.js El valor hora y la comisión general: un solo dibujante que usan
                  Admin (arriba de la lista de empleados) y Sueldos
+  js/senas.js    Tomar una seña y listarlas: un solo dibujante que usan la ficha
+                 del cliente y la pantalla de depilación
   escpos.js      Generador del papel de la comandera (ticket.html y facturar.js)
 ```
 
@@ -50,6 +52,9 @@ puede en una PC donde no se instala nada. Los dos dejan un usuario
 `local`/`local1234`, porque el backup trae los de producción y sus contraseñas
 no las sabe nadie. `--a-json` va del `.dump` al JSON, que es el formato que
 viaja: el `.dump` sin `pg_restore` no se abre.
+
+`cargar_depilacion.py` carga la lista de precios de depilación sin pasar por la
+app, desde un archivo con la lista impresa. Ver más abajo, en las reglas.
 
 `simular_sueldos.py` carga un ciclo entero de trabajo para tres empleadas y
 después se juega con el valor hora y la comisión desde la app. Factura por la
@@ -117,35 +122,60 @@ anotó le deja el arqueo sin explicación. Y ojo con el `privado != True` a seca
 en SQL el NULL no entra, y `restaurar_backup.py` levantando un backup viejo
 escribe NULL — por eso está `_no_privado()`.
 
-**El lunes de depilación no se paga por comisión: se reparte el día.** El local
-abre un lunes al mes solo para depilación. Lo lleva Carolina, que consigue la
-máquina, más una ayudante que a veces no es del salón. La cuenta es del DÍA, no
-de cada trabajo:
+**La depilación no se paga por comisión: se reparte el día.** El local abre un
+día al mes solo para depilación —lunes o martes, lo deciden ellas—. Lo lleva
+Carolina, que consigue la máquina, más una ayudante que a veces no es del salón:
 
-    recaudado del día − egresos del día (insumos + el pago a la ayudante)
+    trabajos de depilación del día, en efectivo
+    − egresos del día (máquina + insumos + el pago a la ayudante)
     = resto  →  50% Carolina · 50% el salón, que pone el local
 
-Lo que la hace distinta de cualquier otro día:
-- El pago a la ayudante se anota como un egreso más, así que entra solo en la
-  resta: no hay que tratarlo aparte.
-- "Recaudado" incluye las señas cobradas días antes, porque son plata de ese
-  lunes aunque hayan entrado otro día. Sale de los PAGOS de los comprobantes con
-  fecha de ese lunes, no de la caja del lunes.
+Lo que hay que respetar:
+- **Un día es de depilación si se facturó depilación**, no si es lunes. La marca
+  está en el ítem (`es_depilacion`) y no en el nombre de la categoría, que se
+  renombra desde Admin: la cuenta de la plata no puede depender de un texto.
+  También cuenta como día de depilación el que se abrió eligiendo quién lo lleva.
+- **La base son las LÍNEAS de depilación, no el día entero.** Un día que además
+  tuvo peluquería no se reparte por eso, y esa peluquería se paga por comisión
+  como cualquier otro día. Por lo mismo, la comisión se excluye por LÍNEA.
+- En **efectivo**, que es la lista con la que se pagan las comisiones. La
+  diferencia con la de transferencia no es un descuento que se le hizo a nadie.
+  El mismo número en transferencia viaja al lado, para cruzarlo con el papel.
+- Se reparte lo **facturado**, no lo cobrado: lo que se reparte es el trabajo
+  hecho. Lo que falta cobrar se dice aparte y a la vista.
+- La máquina y el pago a la ayudante son egresos como cualquier otro, así que
+  entran solos en la resta. Los dos tienen un monto fijo en Admin y su marca
+  propia en el egreso (`maquina`, `ayudante`): por el texto del tipo no, que
+  renombrarlo haría que la pantalla ofrezca cargarlos de nuevo.
 - Los egresos **privados** no entran: el alquiler no es costo de la depilación, y
   el detalle se lo muestra a ella. Sin ese filtro, cerrar la liquidación —que
   crea un egreso privado con el sueldo, con fecha de hoy— le cambiaba la cuenta
-  al lunes que se estaba cerrando.
+  al día que se estaba cerrando.
 - El ciclo es de un solo día y le toca a UNA sola persona: `empleada_del_dia()`
-  elige la que más facturó ese lunes. Si fuera "la que tenga alguna línea", la
+  mira la elegida al abrir el día, después la puesta por defecto en Admin, y
+  recién al final la que más facturó. Si fuera "la que tenga alguna línea", la
   ayudante que atendió algo vería el reparto entero y el número aparecería dos
   veces.
-- El lunes le aparece aunque no tenga un ítem a comisión ni una hora cargada
-  (`lunes_depi_pendientes()`), que es lo normal en depilación. Como puede no
-  tener ningún trabajo detrás, lo que dice que ya se pagó es la liquidación
-  misma: sin ese filtro, un lunes sin trabajos volvía a aparecer pendiente
-  después de cobrarlo, siempre.
+- **Las horas de ese día no se pagan aparte**: las paga el reparto. Lo mismo las
+  del día que alguien trabajó de ayudante, que ya cobró por el día entero. Sus
+  comisiones de lo que no fue depilación sí se pagan: antes se iba el día entero
+  del ciclo y se las llevaba puestas, y andaba porque el día de depilación era un
+  lunes en el que no se hacía otra cosa.
+- El día le aparece aunque no tenga un ítem a comisión ni una hora cargada
+  (`dias_depi_pendientes()`), que es lo normal en depilación. Como puede no tener
+  ningún trabajo detrás, lo que dice que ya se pagó es la liquidación misma: sin
+  ese filtro, un día sin trabajos volvía a aparecer pendiente después de
+  cobrarlo, siempre.
 - La empleada lo ve con su código en Sueldos —es su plata— y **cierra la dueña**,
   como todos los ciclos.
+
+**La lista de precios de depilación se carga con un script.** `cargar_depilacion.py`
+escribe directo contra `DATABASE_URL`, sin login, desde un archivo con la lista
+tal como está impresa: la zona y su precio de TRANSFERENCIA. De ahí saca el de
+efectivo —la lista impresa tiene 10% de descuento— y controla que
+`calcular_transfer()` de ese efectivo devuelva exactamente el precio impreso; si
+alguno no cierra, no escribe nada. Veinte zonas tipeadas a mano en la tablet es
+media hora y un número mal puesto se le cobra a alguien.
 
 **La seña es plata de la clienta, no un pago de un ticket.** Se toma sin
 comprobante —desde la ficha o desde facturar— y entra a la caja del día en que se
@@ -156,6 +186,13 @@ todo lo que cuenta plata por fecha —caja, reportes, el Excel, los gráficos—
 por ahí. Contándolos dos veces, el arqueo pide más efectivo del que hay en el
 cajón y no avisa por qué. El filtro va por el id y no por el texto "Seña", que se
 puede tipear distinto.
+
+Y una seña en **efectivo** salda más de lo que trajo, igual que cualquier pago en
+efectivo: el comprobante está anclado a la lista de transferencia y la diferencia
+entre listas es el descuento (`sena_saldado()`, monto ÷ 0,9). Si el comprobante
+ya se está preciando en efectivo no se toca, que el descuento ya está adentro del
+total. Sin eso, señar $10.000 en efectivo y pagar el resto por transferencia
+salía $1.111 más caro que pagar todo junto en efectivo.
 
 **La comisión sale de lo que la clienta terminó pagando por ESE trabajo.**
 `base_comision()` arranca del precio efectivo, le aplica el ajuste de la línea y
@@ -291,7 +328,6 @@ dos cosas: partirla explica más que el comentario.
     def ciclo_de(f):
         """A qué semana de pago pertenece un día: de sábado a viernes.
 
-        El lunes es su propio ciclo de un día —la depilación, una vez por mes—.
         Ojo: el ciclo ARRANCA el sábado, y con weekday() el sábado cae después
         del viernes en el número pero antes en el ciclo; de ahí el `dow + 2`.
         """

@@ -29,6 +29,12 @@ class Item(Base):
     # flequillo diez minutos, y con un solo porcentaje para todo la única forma
     # de emparejarlo era no marcar la mitad de los ítems.
     comision_pct = Column(Integer)
+    # Trabajo de depilación. El día que se hace depilación no se paga por
+    # comisión: se reparte lo que dejaron ESAS líneas, así que hay que poder
+    # reconocerlas una por una. Va en el ítem y no en el nombre de la categoría
+    # porque la categoría se renombra desde Admin y la cuenta de la plata no
+    # puede depender de un texto que alguien puede escribir distinto.
+    es_depilacion = Column(Boolean, default=False)
     stock_actual = Column(Integer, default=0)   # solo aplica a productos
     stock_minimo = Column(Integer, default=0)
     activo = Column(Boolean, default=True)
@@ -81,6 +87,11 @@ class Egreso(Base):
     # `empleado_id` lo ata a la persona cuando es del salón, para que el aviso le
     # aparezca en su sueldo sin ir a buscarla por el nombre escrito.
     ayudante = Column(Boolean, default=False)
+    # El egreso que es el alquiler de la máquina de depilar. Misma idea que
+    # `ayudante`: es el otro renglón fijo de la tarjeta del día, y marcarlo por
+    # el texto del tipo haría que renombrarlo lo multiplique —la pantalla
+    # ofrecería cargarlo de nuevo y el reparto saldría con la máquina dos veces—.
+    maquina = Column(Boolean, default=False)
     empleado_id = Column(Integer, ForeignKey("empleados.id"), index=True)
 
 class FormaPago(Base):
@@ -393,9 +404,11 @@ class Liquidacion(Base):
     # día que se olvide la caja de ese día dice que hay más plata de la que hay.
     # Se guarda el id para no anotarlo dos veces y para poder mostrarlo después.
     egreso_id = Column(Integer, ForeignKey("egresos.id"))
-    # El lunes de depilación se reparte el día en vez de pagar comisiones, así
-    # que la foto necesita los dos números de esa cuenta: sin ellos, el historial
-    # muestra un total que no se puede explicar.
+    # El día de depilación se reparte el día en vez de pagar comisiones, así que
+    # la foto necesita los dos números de esa cuenta: sin ellos, el historial
+    # muestra un total que no se puede explicar. `recaudado` es lo que ese día
+    # facturó de depilación en efectivo, que es la base del reparto; se llama así
+    # desde cuando el reparto era de lo cobrado.
     depilacion = Column(Boolean, default=False)
     recaudado = Column(Integer)
     gastos = Column(Integer)

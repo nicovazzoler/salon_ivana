@@ -73,6 +73,8 @@ function panelGenerales(cont, alGuardar, opciones){
                               (cfg.comision_pct ?? 40) + "%"],
       ["Ayudante depilación", `<input type="number" class="gAyu" min="0" inputmode="numeric" value="${cfg.pago_ayudante ?? 0}">`,
                               _pesos(cfg.pago_ayudante)],
+      ["Máquina de depilar",  `<input type="number" class="gMaq" min="0" inputmode="numeric" value="${cfg.costo_maquina ?? 0}">`,
+                              _pesos(cfg.costo_maquina)],
       ["Depilación la lleva", `<select class="gDepi"><option value="">La que más facture</option>${
                                 activas().map(e => `<option${e.nombre === sel ? " selected" : ""}>${_escGral(e.nombre)}</option>`).join("")}</select>`,
                               sel ? _escGral(sel) : `<span class="flojo">la que más facture</span>`],
@@ -112,6 +114,7 @@ function panelGenerales(cont, alGuardar, opciones){
     const v = Math.max(0, parseInt(caja.querySelector(".gHora").value, 10) || 0);
     const p = Math.max(0, parseInt(caja.querySelector(".gPct").value, 10) || 0);
     const a = Math.max(0, parseInt(caja.querySelector(".gAyu").value, 10) || 0);
+    const m = Math.max(0, parseInt(caja.querySelector(".gMaq").value, 10) || 0);
     const d = caja.querySelector(".gDepi").value;
     if(p > 100){ toast("La comisión no puede pasar de 100%"); caja.querySelector(".gPct").focus(); return; }
 
@@ -128,16 +131,19 @@ function panelGenerales(cont, alGuardar, opciones){
                        + `${cfg.pct_propio === 1 ? "tiene" : "tienen"} el suyo.`
                      : "Le llega a todos los servicios: ninguno tiene un porcentaje propio."));
     if(a !== (cfg.pago_ayudante ?? 0)) cambios.push(`El pago a la ayudante pasa a ${_pesos(a)}, `
-      + "que es el que va a venir puesto en el próximo lunes de depilación.");
+      + "que es el que va a venir puesto en el próximo día de depilación.");
+    if(m !== (cfg.costo_maquina ?? 0)) cambios.push(`La máquina pasa a ${_pesos(m)} por día, `
+      + "que es el que va a venir puesto en el próximo día de depilación.");
     if(d !== (cfg.depi_a_cargo || "")) cambios.push(d
-      ? `Los lunes de depilación pasan a ser de ${d}, salvo que al abrir un lunes se elija a otra.`
-      : "Los lunes de depilación vuelven a ser de la que más facture ese día.");
+      ? `Los días de depilación pasan a ser de ${d}, salvo que al abrir el día se elija a otra.`
+      : "Los días de depilación vuelven a ser de la que más facture ese día.");
     if(!cambios.length){ editando = false; pintar(); return; }
     if(!confirm(cambios.join("\n\n") + "\n\nLo ya cerrado no cambia. ¿Guardamos?")) return;
 
     const r = await authFetch("/api/config/sueldos", {method:"PUT",
       headers:{"Content-Type":"application/json"},
-      body: JSON.stringify({valor_hora: v, comision_pct: p, pago_ayudante: a, depi_a_cargo: d})});
+      body: JSON.stringify({valor_hora: v, comision_pct: p, pago_ayudante: a,
+                            costo_maquina: m, depi_a_cargo: d})});
     if(!r.ok){ toast((await r.json().catch(()=>({}))).detail || "No se pudo"); return; }
     toast("Guardado");
     editando = false;

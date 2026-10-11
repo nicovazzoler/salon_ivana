@@ -7,7 +7,7 @@ from pydantic import BaseModel
 from datetime import datetime, date, timedelta, timezone
 from openpyxl import Workbook
 import os
-import re, bisect, io, time, hmac
+import re, bisect, io, time, hmac, math
 
 from database import get_db, engine, Base
 import models
@@ -146,6 +146,10 @@ def migrar():
         with engine.begin() as con:
             con.execute(text("ALTER TABLE items ADD COLUMN es_comision BOOLEAN DEFAULT FALSE"))
             con.execute(text("UPDATE items SET es_comision = FALSE WHERE es_comision IS NULL"))
+    if "es_depilacion" not in icols:
+        with engine.begin() as con:
+            con.execute(text("ALTER TABLE items ADD COLUMN es_depilacion BOOLEAN DEFAULT FALSE"))
+            con.execute(text("UPDATE items SET es_depilacion = FALSE WHERE es_depilacion IS NULL"))
     if "numero" not in ecols:
         with engine.begin() as con:
             con.execute(text("ALTER TABLE egresos ADD COLUMN numero INTEGER"))
@@ -164,11 +168,12 @@ def migrar():
             # todavía), pero igual quedan a la vista: esconder de golpe egresos
             # viejos le cambiaría la caja de días ya cerrados a quien la mire.
             con.execute(text("UPDATE egresos SET privado = FALSE WHERE privado IS NULL"))
-    # El pago a la ayudante del lunes de depilación. Sin UPDATE que las ponga en
+    # El pago a la ayudante del día de depilación. Sin UPDATE que las ponga en
     # FALSE a propósito: acá el NULL de los egresos viejos significa lo mismo que
     # el FALSE —no son el pago a nadie— y el filtro pregunta por `== True`, que
     # los deja afuera igual.
-    for col, tipo in (("ayudante", "BOOLEAN"), ("empleado_id", "INTEGER")):
+    for col, tipo in (("ayudante", "BOOLEAN"), ("empleado_id", "INTEGER"),
+                      ("maquina", "BOOLEAN")):
         if col not in ecols:
             with engine.begin() as con:
                 con.execute(text(f"ALTER TABLE egresos ADD COLUMN {col} {tipo}"))
@@ -251,9 +256,11 @@ class ClienteEdit(BaseModel):
 class ItemIn(BaseModel):
     categoria: str; nombre: str; precio: int; es_producto: bool = False
     es_comision: bool = False; comision_pct: int | None = None
+    es_depilacion: bool = False
 class ItemEdit(BaseModel):
     categoria: str | None = None; nombre: str | None = None; precio: int | None = None; activo: bool | None = None
     es_comision: bool | None = None; es_producto: bool | None = None
+    es_depilacion: bool | None = None
     # None = no lo toques; -1 = sacale el propio y que use el general. Hace falta
     # el centinela porque None ya significa "este campo no vino".
     comision_pct: int | None = None
@@ -319,14 +326,16 @@ class SueldosConfigIn(BaseModel):
     # juntos: cambiar uno sin ver el otro es como no verlos.
     valor_hora: int | None = None; comision_pct: int | None = None
     pago_ayudante: int | None = None
+    costo_maquina: int | None = None
     depi_a_cargo: str | None = None       # "" saca el defecto y vuelve a deducirse
 class GastoDepiIn(BaseModel):
-    empleado_id: int                      # de quién es el lunes, no quién cobra
-    fecha: str                            # 'YYYY-MM-DD' argentino del lunes
+    empleado_id: int                      # de quién es el día, no quién cobra
+    fecha: str                            # 'YYYY-MM-DD' argentino del día
     monto: int
     tipo: str | None = None; concepto: str | None = None; forma_pago: str | None = None
     ayudante: bool = False
     ayudante_id: int | None = None        # si la ayudante es del salón
+    maquina: bool = False                 # el alquiler de la máquina de ese día
 class HorasIn(BaseModel):
     empleado_id: int; fecha: str; minutos: int
 class MinutosTrabajoIn(BaseModel):
@@ -659,6 +668,15 @@ def _no_privado(col):
     """
     return or_(col == False, col.is_(None))
 
+def _no_depi(col):
+    """Condición SQL para "esto NO es depilación", con el mismo cuidado del NULL.
+
+    Los ítems cargados antes de que existiera la columna la tienen en NULL, y con
+    `col != True` a secas ninguno de ellos entra: todo el catálogo viejo dejaría
+    de pagar comisión de un día para el otro.
+    """
+    return or_(col == False, col.is_(None))
+
 """Buscar sin depender de los acentos.
 
    El nombre se guarda como se escribe —"Núñez", "María"— pero se busca como se
@@ -698,7 +716,6 @@ def _busca(col, texto: str):
 
 def calcular_transfer(precio_efectivo: int) -> int:
     """Precio de transferencia = efectivo x 1.1111, redondeado PARA ARRIBA a múltiplo de 100."""
-    import math
     bruto = precio_efectivo * 1.1111
     return math.ceil(bruto / 100) * 100
 
@@ -1048,6 +1065,7 @@ def items(categoria: str, _ = Depends(usuario_actual), db: Session = Depends(get
     return [{"id": i.id, "nombre": i.nombre, "precio": i.precio, "categoria": i.categoria,
              "precio_transfer": i.precio_transfer,
              "es_producto": i.es_producto, "es_comision": bool(i.es_comision),
+             "es_depilacion": bool(i.es_depilacion),
              "comision_pct": i.comision_pct} for i in q]
 
 @app.get("/api/items/all")
@@ -1055,6 +1073,7 @@ def items_all(_ = Depends(usuario_actual), db: Session = Depends(get_db)):
     q = db.query(models.Item).filter(models.Item.activo == True).order_by(models.Item.nombre)
     return [{"id": i.id, "nombre": i.nombre, "precio": i.precio, "categoria": i.categoria, "precio_transfer": i.precio_transfer,
              "es_producto": i.es_producto, "es_comision": bool(i.es_comision),
+             "es_depilacion": bool(i.es_depilacion),
              "comision_pct": i.comision_pct} for i in q]
 
 @app.get("/api/catalogo")
@@ -1067,7 +1086,8 @@ def catalogo(_ = Depends(usuario_actual), db: Session = Depends(get_db)):
     # categoría estén. No cambia ningún precio: es otra forma de encontrarlos.
     return [{"id": i.id, "nombre": i.nombre, "precio": i.precio, "precio_transfer": i.precio_transfer,
              "categoria": i.categoria, "es_producto": i.es_producto,
-             "es_comision": bool(i.es_comision)} for i in q]
+             "es_comision": bool(i.es_comision),
+             "es_depilacion": bool(i.es_depilacion)} for i in q]
 
 @app.get("/api/config")
 def config(user = Depends(usuario_actual), db: Session = Depends(get_db)):
@@ -1085,6 +1105,7 @@ def config(user = Depends(usuario_actual), db: Session = Depends(get_db)):
             # cuando un ítem no tiene el suyo.
             "comision_pct": comision_pct(db),
             "pago_ayudante": pago_ayudante(db),
+            "costo_maquina": costo_maquina(db),
             "depi_a_cargo": depi_por_defecto(db),
             # Quiénes NO cambian cuando se toca el general. Viajan con la config
             # y no en un pedido aparte para que el editor pueda decirlo antes de
@@ -1304,7 +1325,7 @@ def arranque_sueldos(db) -> str | None:
         return None
 
 def depi_por_defecto(db) -> str | None:
-    """Quién lleva el lunes de depilación cuando nadie lo eligió para ese día.
+    """Quién lleva el día de depilación cuando nadie lo eligió para ese día.
 
     En el local siempre es la misma, así que decirlo una vez ahorra elegirlo todos
     los meses y —lo que importa— deja de depender de que se acuerde de ponerse
@@ -1315,13 +1336,23 @@ def depi_por_defecto(db) -> str | None:
     return (fila.valor or "").strip() or None if fila else None
 
 def pago_ayudante(db) -> int:
-    """Lo que se le paga a la ayudante por un lunes de depilación.
+    """Lo que se le paga a la ayudante por un día de depilación.
 
     Es un número fijo y no un porcentaje: la ayudante cobra por el día, no por lo
-    que se facture. Lo pone la dueña y viene puesto en la tarjeta del lunes; ahí
+    que se facture. Lo pone la dueña y viene puesto en la tarjeta del día; ahí
     se puede cambiar para ese día suelto, y el cambio queda escrito en el egreso.
     """
     return _cfg_int(db, "pago_ayudante", 0)
+
+def costo_maquina(db) -> int:
+    """Lo que cuesta la máquina de depilar por día.
+
+    La máquina no es del local: la consigue la que lleva el día y se paga por
+    jornada, así que es un costo del día y entra en la resta antes del reparto.
+    Fijo y editable por día, igual que el pago a la ayudante: el que se olvida de
+    cargarlo se reparte plata que no quedó.
+    """
+    return _cfg_int(db, "costo_maquina", 0)
 
 def vh_de(empleado, general: int) -> int:
     """Lo que cobra la hora esta persona.
@@ -1398,6 +1429,12 @@ def lineas_a_comision_pendientes(db, empleado):
                    models.Comprobante.tipo == "ticket",
                    models.Comprobante.peluquero == empleado.nombre,
                    models.Item.es_comision == True,
+                   # La depilación no se paga por comisión: lo que dejaron esas
+                   # líneas se reparte mitad y mitad, así que pagarlas además por
+                   # comisión sería pagar el mismo trabajo dos veces. Se filtra la
+                   # LÍNEA y no el día: un día con depilación a la mañana y
+                   # peluquería a la tarde paga la peluquería como cualquier otro.
+                   _no_depi(models.Item.es_depilacion),
                    models.ComprobanteLinea.id.notin_(ya)))
     if desde and desde.valor:
         # El corte mira CUÁNDO SE ANOTÓ, no la fecha del servicio. Si mirara la
@@ -1412,19 +1449,7 @@ def lineas_a_comision_pendientes(db, empleado):
     arranque = arranque_sueldos(db)
     if arranque:
         q = q.filter(models.Comprobante.fecha >= _rango_dia(date.fromisoformat(arranque))[0])
-    filas = q.order_by(models.Comprobante.fecha).all()
-    # El lunes de depilación no paga comisión a NADIE: el día se reparte entero,
-    # así que lo que se atendió ese lunes ya está adentro del reparto. Sin esto,
-    # la ayudante cobraba su monto del día y además la comisión de lo que atendió,
-    # y el salón pagaba el mismo trabajo dos veces.
-    #
-    # Se filtra en Python y no en SQL porque "es día de depilación" no es una
-    # fecha: es haber abierto ese lunes o haber facturado algo, y esa pregunta ya
-    # vive en es_dia_depilacion(). Son los lunes distintos que aparezcan, no una
-    # consulta por línea.
-    lunes = {d for d in {hora_argentina(c.fecha).date() for _, c, _ in filas} if d.weekday() == 0}
-    depis = {d for d in lunes if es_dia_depilacion(db, d)}
-    return [f for f in filas if hora_argentina(f[1].fecha).date() not in depis]
+    return q.order_by(models.Comprobante.fecha).all()
 
 def ciclo_de(f: date) -> tuple[date, date]:
     """A qué semana de pago pertenece un día: de sábado a viernes.
@@ -1432,37 +1457,52 @@ def ciclo_de(f: date) -> tuple[date, date]:
     Es la unidad con la que se paga, no una ventana para filtrar: un ciclo sin
     cerrar sigue apareciendo entero al lado del nuevo.
 
-    El lunes es su propio ciclo de un día —la depilación, una vez por mes—, y el
-    domingo se lo lleva el sábado que acaba de arrancar. Ojo con el `dow + 2`: el
-    ciclo ARRANCA el sábado, que con weekday() cae después del viernes en el
+    El domingo se lo lleva el sábado que acaba de arrancar. Ojo con el `dow + 2`:
+    el ciclo ARRANCA el sábado, que con weekday() cae después del viernes en el
     número pero antes en el ciclo.
+
+    El día de depilación es su propio ciclo de un día, pero eso no se decide acá:
+    depende de lo que se facturó, no de la fecha. Lo aparta resumen_pendiente().
     """
     dow = f.weekday()                                  # 0=lunes … 5=sábado, 6=domingo
-    if dow == 0: return f, f                           # el lunes, suelto
     if dow == 5: return f, f + timedelta(days=6)       # sábado: arranca la semana
     if dow == 6: return f - timedelta(days=1), f + timedelta(days=5)   # domingo: sigue al sábado
     ini = f - timedelta(days=dow + 2)                  # martes..viernes → el sábado anterior
     return ini, ini + timedelta(days=6)                # y su viernes
 
-def es_dia_depilacion(db, f: date) -> bool:
-    """Si ese lunes el local abrió para depilación.
-
-    Dos señales, las dos válidas: que alguien lo haya marcado con "Abrir este
-    día", o que simplemente haya movimiento. La segunda existe para el lunes que
-    se trabajó y nadie se acordó de marcarlo: el número tiene que estar igual.
-    """
-    if f.weekday() != 0: return False
+def lineas_depilacion(db, f: date):
+    """Las líneas de depilación facturadas ese día, cada una con su comprobante."""
     ini, fin = _rango_dia(f)
-    hay_horario = db.query(models.ExcepcionHorario).filter(
+    return (db.query(models.ComprobanteLinea, models.Comprobante)
+              .join(models.Comprobante,
+                    models.ComprobanteLinea.comprobante_id == models.Comprobante.id)
+              .join(models.Item, models.ComprobanteLinea.item_id == models.Item.id)
+              .filter(models.Comprobante.fecha >= ini, models.Comprobante.fecha < fin,
+                      models.Comprobante.activo == True,
+                      models.Comprobante.tipo == "ticket",
+                      models.Item.es_depilacion == True)
+              .all())
+
+def es_dia_depilacion(db, f: date) -> bool:
+    """Si ese día se hizo depilación.
+
+    Dos señales, las dos válidas: que se haya facturado al menos un ítem de
+    depilación, o que al abrir el día se haya elegido quién lo lleva.
+
+    Ojo que esto NO es "el lunes". Lo era cuando el local abría un lunes al mes
+    solo para esto, pero puede caer lunes o martes, y en un día cualquiera
+    también se puede depilar: lo que hace al día de depilación es el trabajo, no
+    el almanaque. Y por eso la señal es la línea facturada y no "hubo
+    movimiento": con el almanaque afuera, "hubo movimiento" sería todos los días.
+    """
+    marcado = db.query(models.ExcepcionHorario).filter(
         models.ExcepcionHorario.fecha == f.isoformat(),
-        models.ExcepcionHorario.desde.isnot(None)).first()
-    if hay_horario: return True
-    return db.query(models.Comprobante).filter(
-        models.Comprobante.fecha >= ini, models.Comprobante.fecha < fin,
-        models.Comprobante.activo == True).first() is not None
+        models.ExcepcionHorario.a_cargo.isnot(None)).first()
+    if marcado: return True
+    return bool(lineas_depilacion(db, f))
 
 def empleada_del_dia(db, f: date) -> str | None:
-    """De quién es el lunes de depilación: la que más facturó ese día.
+    """De quién es el día de depilación: la que más facturó ese día.
 
     Tiene que dar UNA sola: el reparto es entero, así que si se lo mostrara a
     todas las que atendieron algo, el mismo número aparecería dos veces. La
@@ -1472,7 +1512,7 @@ def empleada_del_dia(db, f: date) -> str | None:
     día no cambia porque una clienta pague la semana que viene.
     """
     # Si al abrir el día se eligió quién lo lleva, manda eso. Deducirlo de quién
-    # facturó más alcanza para el lunes que nadie marcó, pero el día que la que
+    # facturó más alcanza para el día que nadie marcó, pero el día que la que
     # lo lleva se olvide de ponerse como peluquera en los tickets, el reparto se
     # lo lleva la que la ayudó y nadie entiende por qué.
     elegida = db.query(models.ExcepcionHorario.a_cargo).filter(
@@ -1500,14 +1540,14 @@ def empleada_del_dia(db, f: date) -> str | None:
     # igual, no volverse "de cualquiera".
     return max(por_nombre, key=lambda n: (por_nombre[n], n))
 
-def lunes_depi_trabajados(db, empleado) -> list[str]:
-    """Los lunes de depilación en los que esta empleada atendió algo.
+def dias_depi_trabajados(db, empleado) -> list[str]:
+    """Los días de depilación en los que esta empleada atendió algo.
 
     Son suyos o no —eso lo decide empleada_del_dia—, pero en los dos casos la
     pantalla tiene algo que decir: o el reparto, o el aviso de que ese día no va
     por comisión. Sale de los tickets a su nombre y no de las líneas a comisión,
-    porque las de un día de depilación se filtran antes: buscándolas ahí, el
-    lunes de la ayudante desaparecía de su pantalla sin dejar rastro.
+    porque las de depilación se filtran antes: buscándolas ahí, el día de la
+    ayudante desaparecía de su pantalla sin dejar rastro.
     """
     desde = db.query(models.Config).filter_by(clave="sueldos_desde").first()
     q = db.query(models.Comprobante.fecha).filter(
@@ -1517,26 +1557,26 @@ def lunes_depi_trabajados(db, empleado) -> list[str]:
         anotado = func.coalesce(models.Comprobante.cargado, models.Comprobante.fecha)
         q = q.filter(anotado >= datetime.fromisoformat(desde.valor))
     arranque = arranque_sueldos(db)
-    lunes = {hora_argentina(f).date() for (f,) in q.all()}
-    return sorted(d.isoformat() for d in lunes
-                  if d.weekday() == 0 and es_dia_depilacion(db, d)
+    dias = {hora_argentina(f).date() for (f,) in q.all()}
+    return sorted(d.isoformat() for d in dias
+                  if es_dia_depilacion(db, d)
                   and (not arranque or d.isoformat() >= arranque))
 
-def lunes_de_depilacion(db) -> list[str]:
-    """Los lunes que el local abrió para depilación, sea de quien sea.
+def dias_de_depilacion(db) -> list[str]:
+    """Los días en que se hizo depilación, sean de quien sean.
 
-    Hace falta aparte de lunes_depi_trabajados() desde que hay una a cargo puesta
+    Hace falta aparte de dias_depi_trabajados() desde que hay una a cargo puesta
     por defecto: el sentido de ese defecto es que el día sea suyo AUNQUE no se
     haya anotado como peluquera en ningún ticket, y mirando solo sus tickets ese
-    lunes no llegaba a la lista de candidatos. El reparto no le aparecía a nadie.
+    día no llegaba a la lista de candidatos. El reparto no le aparecía a nadie.
 
     Se acota al corte de los sueldos, que es hasta donde algo puede estar
     pendiente: sin eso habría que traer la fecha de todos los comprobantes de la
-    historia para quedarse con tres lunes.
+    historia para quedarse con tres días.
     """
     arranque = arranque_sueldos(db)
     fechas = {f for (f,) in db.query(models.ExcepcionHorario.fecha)
-                              .filter(models.ExcepcionHorario.desde.isnot(None)).distinct()}
+                              .filter(models.ExcepcionHorario.a_cargo.isnot(None)).distinct()}
     q = db.query(models.Comprobante.fecha).filter(
         models.Comprobante.activo == True, models.Comprobante.tipo == "ticket")
     if arranque:
@@ -1544,7 +1584,7 @@ def lunes_de_depilacion(db) -> list[str]:
     else:
         # El corte de arranque mira la fecha del SERVICIO y el otro mira cuándo se
         # ANOTÓ: son dos preguntas distintas y cada una tiene su campo. Mezclarlas
-        # dejaba afuera al lunes de la semana pasada anotado hoy, y con él al
+        # dejaba afuera al día de la semana pasada anotado hoy, y con él al
         # reparto entero cuando la que lo lleva no facturó nada a su nombre.
         desde = db.query(models.Config).filter_by(clave="sueldos_desde").first()
         if desde and desde.valor:
@@ -1553,11 +1593,10 @@ def lunes_de_depilacion(db) -> list[str]:
     fechas |= {hora_argentina(f).date().isoformat() for (f,) in q.distinct().all()}
     return sorted(f for f in fechas
                   if (not arranque or f >= arranque)
-                  and date.fromisoformat(f).weekday() == 0
                   and es_dia_depilacion(db, date.fromisoformat(f)))
 
-def lunes_depi_pendientes(db, empleado) -> list[str]:
-    """Los lunes de depilación suyos que todavía no se cerraron.
+def dias_depi_pendientes(db, empleado) -> list[str]:
+    """Los días de depilación suyos que todavía no se cerraron.
 
     El día le corresponde aunque no tenga ni un ítem a comisión ni una hora
     cargada, que es lo normal en depilación: el reparto sale del día entero.
@@ -1568,35 +1607,53 @@ def lunes_depi_pendientes(db, empleado) -> list[str]:
     cerrados = {l.desde for l in db.query(models.Liquidacion).filter(
         models.Liquidacion.empleado_id == empleado.id,
         models.Liquidacion.depilacion == True).all()}
-    # Los lunes que trabajó, más todos los que el local abrió: el día puede ser
+    # Los días que trabajó, más todos los que hubo depilación: el día puede ser
     # suyo por la elección de la agenda o por el defecto de Admin, sin que haya
     # facturado nada a su nombre.
-    candidatos = set(lunes_depi_trabajados(db, empleado)) | set(lunes_de_depilacion(db))
+    candidatos = set(dias_depi_trabajados(db, empleado)) | set(dias_de_depilacion(db))
     return [d for d in sorted(candidatos)
             if d not in cerrados
             and empleada_del_dia(db, date.fromisoformat(d)) == empleado.nombre]
 
-def cuenta_depilacion(db, f: date) -> dict:
-    """El reparto del día de depilación: recaudado − gastos, mitad y mitad.
+def base_lista(linea, comp=None) -> int:
+    """Lo mismo que base_comision() pero en la lista de transferencia.
 
-    Recaudado son los PAGOS de los comprobantes de ese día, no la caja del día:
-    una seña cobrada el jueves es plata de este lunes aunque haya entrado antes.
+    El reparto de la depilación se hace en efectivo, pero la dueña mira todo lo
+    demás con los precios del papel: tener los dos al lado es la única forma de
+    que el número de la tarjeta se pueda cruzar con el del comprobante.
+    """
+    unidad = precio_con_ajuste(linea.precio_unit or 0, linea.ajuste_pct, linea.ajuste_monto)
+    base = unidad * (linea.cantidad or 1)
+    pct = (comp.descuento_pct or 0) if comp is not None else 0
+    return base - round(base * pct / 100) if pct else base
+
+def cuenta_depilacion(db, f: date) -> dict:
+    """El reparto del día de depilación: lo facturado en efectivo − gastos, mitad y mitad.
+
+    La base son las LÍNEAS de depilación de ese día, no el día entero. Así un día
+    que además tuvo peluquería no se reparte por eso, y lo de peluquería se sigue
+    pagando por comisión como cualquier otro día.
+
+    En efectivo, que es la misma lista con la que se pagan las comisiones: la
+    diferencia con la de transferencia no es un descuento que se le hizo a nadie,
+    son las dos listas de precios del local. El mismo número en transferencia va
+    al lado, para poder cruzarlo con el comprobante.
+
+    Va por lo FACTURADO y no por lo cobrado: lo que se reparte es el trabajo
+    hecho. Lo que todavía no entró se dice aparte y a la vista, porque esa plata
+    no está en el cajón todavía.
     """
     ini, fin = _rango_dia(f)
-    comps = db.query(models.Comprobante).filter(
-        models.Comprobante.fecha >= ini, models.Comprobante.fecha < fin,
-        models.Comprobante.activo == True, models.Comprobante.tipo == "ticket").all()
-    ids = [c.id for c in comps]
-    pagos = (db.query(models.Pago).filter(models.Pago.comprobante_id.in_(ids)).all()
-             if ids else [])
-    recaudado = sum(p.monto for p in pagos)
-    # Lo que se atendió ese lunes pero todavía no se cobró. No es parte del
-    # reparto —el reparto es de la plata que entró— pero hay que decirlo: si no,
-    # una parte en cero parece que el día no dio nada cuando lo que falta es
-    # cobrar. Cuando la clienta pague, el abono cae en el comprobante de ese
-    # lunes y el reparto sube solo.
+    filas = lineas_depilacion(db, f)
+    base = sum(base_comision(l, c) for l, c in filas)
+    base_transfer = sum(base_lista(l, c) for l, c in filas)
+
+    # Lo que falta cobrar de los tickets que tienen depilación. No baja el
+    # reparto —el reparto es del trabajo hecho— pero hay que decirlo: es plata
+    # que la empleada ya cobró y el local todavía no.
+    comps = list({c.id: c for _, c in filas}.values())
     por_comp = pagos_por_comprobante(db, comps)
-    deuda = sum(max(estado_comprobante(db, c, por_comp)["saldo"], 0) for c in comps)
+    falta_cobrar = sum(max(estado_comprobante(db, c, por_comp)["saldo"], 0) for c in comps)
 
     # Los privados —alquiler, sueldos— no son costo del día: bajarle la parte a
     # la empleada con el alquiler del local no es el trato, y además el detalle
@@ -1606,26 +1663,28 @@ def cuenta_depilacion(db, f: date) -> dict:
         _no_privado(models.Egreso.privado)).all()
     gastos = sum(e.monto or 0 for e in egresos)
 
-    resto = recaudado - gastos
+    resto = base - gastos
     # La mitad impar le queda al salón: repartir un peso de más a cada lado no
     # cierra, y el salón es el que puede absorberlo sin que a nadie le falte.
     parte = resto // 2 if resto > 0 else 0
     return {
         "fecha": f.isoformat(),
-        "recaudado": recaudado, "gastos": gastos, "resto": resto, "deuda": deuda,
+        "base": base, "base_transfer": base_transfer,
+        "gastos": gastos, "resto": resto, "falta_cobrar": falta_cobrar,
         "parte_empleada": parte, "parte_salon": resto - parte,
-        "comprobantes": len(comps), "pagos": len(pagos),
-        # Lo que viene puesto en el renglón de la ayudante. Viaja con la cuenta y
-        # no se lee aparte para que la pantalla no tenga que preguntar dos veces.
-        "pago_ayudante": pago_ayudante(db),
+        "trabajos": len(filas), "comprobantes": len(comps),
+        # Lo que viene puesto en los renglones fijos de la tarjeta. Viajan con la
+        # cuenta y no se leen aparte para que la pantalla no pregunte dos veces.
+        "pago_ayudante": pago_ayudante(db), "costo_maquina": costo_maquina(db),
         "egresos_detalle": [{"id": e.id, "numero": e.numero, "tipo": e.tipo,
                              "concepto": e.concepto, "monto": e.monto or 0,
-                             "ayudante": bool(e.ayudante), "empleado_id": e.empleado_id,
+                             "ayudante": bool(e.ayudante), "maquina": bool(e.maquina),
+                             "empleado_id": e.empleado_id,
                              "notas": e.notas} for e in egresos],
     }
 
 def avisos_depilacion(db, empleado, dias_ajenos) -> list[dict]:
-    """Los lunes de depilación en los que trabajó pero que no son su reparto.
+    """Los días de depilación en los que trabajó pero que no son su reparto.
 
     Para la ayudante NO hay ciclo y no hay nada que cerrar: la plata le salió de
     la caja el día que se le pagó, como cualquier otro gasto del local. Esto es el
@@ -1735,25 +1794,21 @@ def resumen_pendiente(db, empleado) -> dict:
         if f not in dias:
             dias[f] = {"id": None, "fecha": f, "minutos": 0, "sugerido": True, "trabajos": []}
         dias[f]["trabajos"].append(t)
-    # El lunes de depilación entra aunque esté vacío: el reparto es del día, no
-    # de los trabajos, y la depilación casi nunca se factura con ítems a comisión.
-    depis = set(lunes_depi_pendientes(db, empleado))
+    # El día de depilación entra aunque esté vacío: el reparto es del día, no de
+    # los trabajos, y la depilación nunca se factura con ítems a comisión.
+    depis = set(dias_depi_pendientes(db, empleado))
     for f in depis:
         dias.setdefault(f, {"id": None, "fecha": f, "minutos": 0, "sugerido": True, "trabajos": []})
-    # Un lunes de depilación que NO es suyo no le arma ciclo a nadie. El día se
-    # reparte entre la que lo llevó y el salón, y la ayudante cobra su monto como
-    # gasto de ese día: si además se le pagaran las horas que cargó, el mismo día
-    # se pagaría dos veces. Sale del ciclo y se le avisa aparte, que esconderlo
-    # sin decir nada se lee como que se perdió.
-    ajenos = {f for f in dias if f not in depis
-              and date.fromisoformat(f).weekday() == 0
-              and es_dia_depilacion(db, date.fromisoformat(f))}
-    for f in ajenos: dias.pop(f)
-    # Y los lunes en los que atendió sin que le quedara nada pendiente, que son
-    # la mayoría: sus líneas ya se filtraron por ser de un día de depilación, así
-    # que el día no llegó hasta acá. Sin esto, la ayudante ve la pantalla igual
-    # que un día que no trabajó.
-    ajenos = sorted(ajenos | (set(lunes_depi_trabajados(db, empleado)) - depis))
+    # Los días en los que cobró como ayudante. Ese día ya le pagaron el día
+    # entero, así que las horas que cargue no se pagan aparte: se pagarían dos
+    # veces, una en el egreso del día y otra en su ciclo.
+    de_ayudante = {hora_argentina(f).date().isoformat()
+                   for (f,) in db.query(models.Egreso.fecha).filter(
+                       models.Egreso.ayudante == True,
+                       models.Egreso.empleado_id == empleado.id).all()}
+    # Los días de depilación en los que atendió y que no son su reparto. Se le
+    # avisan aparte: esconderlos sin decir nada se lee como que se perdieron.
+    ajenos = sorted(set(dias_depi_trabajados(db, empleado)) - depis)
     # Días cuyas horas YA se pagaron en un cierre anterior. El día puede volver a
     # aparecer —una comisión nueva con fecha de esa semana— y su casillero de
     # horas está vacío, pero ahí no falta nada: esas horas ya se cobraron y el
@@ -1764,12 +1819,25 @@ def resumen_pendiente(db, empleado) -> dict:
         models.HoraTrabajada.liquidacion_id.isnot(None)).distinct()}
     for f, d in dias.items():
         d["horas_pagadas"] = f in ya_pagadas and not d["minutos"]
+        # Las horas de su día de depilación las paga el reparto, y las del día que
+        # trabajó de ayudante, el monto que cobró ese día. Lo que SÍ se le paga es
+        # la comisión de lo que no fue depilación, que antes se perdía con el día:
+        # el día entero se iba del ciclo, y andaba solo porque el día de
+        # depilación era un lunes en el que no se hacía otra cosa.
+        d["horas_aparte"] = f in depis or f in de_ayudante
         d["trabajos"].sort(key=lambda t: (t["numero"] or 0, t["id"] or 0))
 
     # --- y los días se agrupan en ciclos ---
     ciclos = {}
     for f, d in dias.items():
-        desde, hasta = ciclo_de(date.fromisoformat(f))
+        if f in depis:
+            # El día de depilación es su propio ciclo de un día: se reparte lo que
+            # dejó ESE día, así que no puede entrar en la suma de una semana que
+            # se paga por comisión. Lo decide lo facturado y no la fecha —puede
+            # caer lunes o martes—, y por eso se aparta acá y no en ciclo_de().
+            desde = hasta = date.fromisoformat(f)
+        else:
+            desde, hasta = ciclo_de(date.fromisoformat(f))
         clave = desde.isoformat()
         c = ciclos.setdefault(clave, {"desde": clave, "hasta": hasta.isoformat(), "dias": []})
         c["dias"].append(d)
@@ -1778,7 +1846,7 @@ def resumen_pendiente(db, empleado) -> dict:
     for clave in sorted(ciclos):
         c = ciclos[clave]
         c["dias"].sort(key=lambda d: d["fecha"])
-        min_total = sum(d["minutos"] for d in c["dias"])
+        min_total = sum(d["minutos"] for d in c["dias"] if not d["horas_aparte"])
         listos = [t for d in c["dias"] for t in d["trabajos"] if t["minutos"] > 0]
         faltan = [t for d in c["dias"] for t in d["trabajos"] if not t["minutos"]]
         min_com = sum(t["minutos"] for t in listos)
@@ -1793,10 +1861,17 @@ def resumen_pendiente(db, empleado) -> dict:
         pagado_antes = (db.query(func.coalesce(func.sum(models.Liquidacion.total), 0))
                           .filter(models.Liquidacion.empleado_id == empleado.id,
                                   models.Liquidacion.desde == c["desde"]).scalar() or 0)
-        # El lunes de depilación no se paga por comisión: se reparte el día. El
+        # El día de depilación no se paga por comisión: se reparte el día. El
         # ciclo se marca y el total sale del reparto, no de las comisiones.
         depi = c["desde"] in depis
         cuenta = cuenta_depilacion(db, date.fromisoformat(c["desde"])) if depi else None
+        if depi:
+            # El reparto paga el día entero, así que las horas no se pagan aparte
+            # y la duración de cada trabajo no cambia ninguna cuenta: las
+            # comisiones de lo que NO fue depilación se pagan igual, con minutos
+            # cargados o sin ellos.
+            total_com += sum(t["comision"] for t in faltan)
+            faltan = []
 
         c.update({
             "depilacion": depi, "cuenta": cuenta,
@@ -1804,18 +1879,16 @@ def resumen_pendiente(db, empleado) -> dict:
             "minutos_total": min_total, "minutos_comision": min_com,
             "minutos_pagados": min_pagados,
             "total_comisiones": total_com, "total_horas": total_horas,
-            "total": cuenta["parte_empleada"] if depi else total_com + total_horas,
+            "total": (cuenta["parte_empleada"] + total_com) if depi else total_com + total_horas,
             # Un día sin horas declaradas frena el cierre igual que un trabajo sin
             # duración. Las horas son lo único que pone la empleada, y un día en
             # cero se paga como si no hubiera venido: solo las comisiones, sin las
             # horas que ese día se trabajaron aparte. Antes el cierre lo dejaba
             # pasar y la diferencia no se veía en ningún lado.
-            "sin_horas": 0 if depi else sum(1 for d in c["dias"]
-                                            if not d["minutos"] and not d["horas_pagadas"]),
-            # Un trabajo sin duración frena el cierre de una semana normal, pero
-            # en depilación no entra en la cuenta: el reparto sale del día.
-            "sin_tiempo": 0 if depi else len(faltan),
-            "en_espera": 0 if depi else sum(t["comision"] for t in faltan),
+            "sin_horas": sum(1 for d in c["dias"] if not d["minutos"]
+                             and not d["horas_pagadas"] and not d["horas_aparte"]),
+            "sin_tiempo": len(faltan),
+            "en_espera": sum(t["comision"] for t in faltan),
         })
         salida.append(c)
 
@@ -1923,8 +1996,8 @@ def sueldo_pendiente(empleado_id: int, user = Depends(usuario_actual),
     permitir_sueldo(db, user, quien, empleado_id)
     return resumen_pendiente(db, _empleado_o_404(db, empleado_id))
 
-def _lunes_suyo(db, empleado, iso: str) -> date:
-    """El lunes de depilación de esa empleada, o un error.
+def _dia_suyo(db, empleado, iso: str) -> date:
+    """El día de depilación de esa empleada, o un error.
 
     Todo lo que se toca de un día de depilación pasa por acá: cargar un gasto de
     un día que no es suyo sería bajarle la parte a otra, y un día ya cerrado
@@ -1946,44 +2019,46 @@ def _lunes_suyo(db, empleado, iso: str) -> date:
 @app.post("/api/sueldos/depilacion/gasto")
 def gasto_depilacion(g: GastoDepiIn, user = Depends(usuario_actual),
                      quien = Depends(token_sueldo), db: Session = Depends(get_db)):
-    """Un gasto del lunes de depilación, cargado desde la pantalla de sueldos.
+    """Un gasto del día de depilación, cargado desde la pantalla de sueldos.
 
     Lo carga la que lleva el día, que en Caja no entra: son los costos de SU día
     y son los únicos que le bajan la parte, así que si tuviera que pedirlos, el
     reparto sale mal el día que la dueña no esté. Nunca es privado —un gasto que
     baja el reparto tiene que estar a la vista de la que lo cobra— y la fecha es
-    la del lunes, no la de hoy: cargado con fecha de hoy, la cuenta de ese lunes
+    la del día, no la de hoy: cargado con fecha de hoy, la cuenta de ese día
     le queda alta.
     """
     permitir_sueldo(db, user, quien, g.empleado_id)
     emp = _empleado_o_404(db, g.empleado_id)
-    f = _lunes_suyo(db, emp, g.fecha)
+    f = _dia_suyo(db, emp, g.fecha)
     if g.monto <= 0: raise HTTPException(400, "El monto tiene que ser mayor que cero")
 
     notas = None; de_quien = None
-    if g.ayudante:
-        if g.ayudante_id: de_quien = _empleado_o_404(db, g.ayudante_id).id
-        fijo = pago_ayudante(db)
-        # Queda escrito cuando se pagó distinto del fijo. El número de un día
-        # suelto no se discute de memoria tres semanas después, y el que lo
-        # cambió es el que está cerrando el día.
-        if fijo and g.monto != fijo:
-            pesos = lambda n: "$" + f"{n:,}".replace(",", ".")
-            notas = f"Fijo {pesos(fijo)} · se pagó {pesos(g.monto)} · lo cambió {emp.nombre}"
+    # Queda escrito cuando un renglón fijo se pagó distinto. El número de un día
+    # suelto no se discute de memoria tres semanas después, y el que lo cambió es
+    # el que está cerrando el día.
+    fijo = pago_ayudante(db) if g.ayudante else (costo_maquina(db) if g.maquina else 0)
+    if fijo and g.monto != fijo:
+        pesos = lambda n: "$" + f"{n:,}".replace(",", ".")
+        notas = f"Fijo {pesos(fijo)} · se pagó {pesos(g.monto)} · lo cambió {emp.nombre}"
+    if g.ayudante and g.ayudante_id:
+        de_quien = _empleado_o_404(db, g.ayudante_id).id
+    por_defecto = ("Ayudante depilación" if g.ayudante
+                   else "Máquina depilación" if g.maquina else "Insumos")
     eg = models.Egreso(
         numero=siguiente_numero_egreso(db),
-        tipo=(g.tipo or "").strip() or ("Ayudante depilación" if g.ayudante else "Insumos"),
+        tipo=(g.tipo or "").strip() or por_defecto,
         concepto=(g.concepto or "").strip() or None,
         monto=g.monto, forma_pago=g.forma_pago, notas=notas, privado=False,
         fecha=fecha_del_servicio(f.isoformat(), fecha_hora_now_utc().replace(tzinfo=None), "un gasto"),
-        ayudante=bool(g.ayudante), empleado_id=de_quien)
+        ayudante=bool(g.ayudante), maquina=bool(g.maquina), empleado_id=de_quien)
     db.add(eg); db.commit(); db.refresh(eg)
     return {"id": eg.id, "numero": eg.numero}
 
 @app.delete("/api/sueldos/depilacion/gasto/{egreso_id}")
 def borrar_gasto_depilacion(egreso_id: int, empleado_id: int, user = Depends(usuario_actual),
                             quien = Depends(token_sueldo), db: Session = Depends(get_db)):
-    """Saca un gasto del lunes de depilación. Un egreso se anula; una liquidación
+    """Saca un gasto del día de depilación. Un egreso se anula; una liquidación
     no, y esa es justo la razón por la que el pago a la ayudante es un gasto y no
     un cierre: equivocarse en el monto se arregla borrando y volviendo a cargar."""
     permitir_sueldo(db, user, quien, empleado_id)
@@ -1991,7 +2066,7 @@ def borrar_gasto_depilacion(egreso_id: int, empleado_id: int, user = Depends(usu
     e = db.get(models.Egreso, egreso_id)
     # 404 y no 403 si es privado: un "no podés" ya le confirmaría que existe.
     if not e or e.privado: raise HTTPException(404, "Gasto no existe")
-    _lunes_suyo(db, emp, hora_argentina(e.fecha).date().isoformat())
+    _dia_suyo(db, emp, hora_argentina(e.fecha).date().isoformat())
     db.delete(e); db.commit(); return {"ok": True}
 
 @app.put("/api/sueldos/horas")
@@ -2138,7 +2213,7 @@ def cerrar_liquidacion(datos: CerrarIn, _ = Depends(solo_dueno), db: Session = D
         total_comisiones=ciclo["total_comisiones"], total_horas=ciclo["total_horas"],
         total=ciclo["total"], notas=datos.notas, parcial=parcial,
         depilacion=bool(ciclo.get("depilacion")),
-        recaudado=(ciclo["cuenta"]["recaudado"] if ciclo.get("cuenta") else None),
+        recaudado=(ciclo["cuenta"]["base"] if ciclo.get("cuenta") else None),
         gastos=(ciclo["cuenta"]["gastos"] if ciclo.get("cuenta") else None))
     db.add(liq); db.flush()
 
@@ -2506,17 +2581,21 @@ def set_config_sueldos(datos: SueldosConfigIn, _ = Depends(solo_dueno), db: Sess
     if datos.pago_ayudante is not None:
         if datos.pago_ayudante < 0: raise HTTPException(400, "El pago no puede ser negativo")
         guardar("pago_ayudante", datos.pago_ayudante)
+    if datos.costo_maquina is not None:
+        if datos.costo_maquina < 0: raise HTTPException(400, "El costo no puede ser negativo")
+        guardar("costo_maquina", datos.costo_maquina)
     if datos.depi_a_cargo is not None:
         nombre = datos.depi_a_cargo.strip()
         # Tiene que ser alguien de la lista: guardado un nombre que no existe, el
-        # lunes quedaría a cargo de nadie y el reparto no le aparecería a ninguna.
+        # día quedaría a cargo de nadie y el reparto no le aparecería a ninguna.
         if nombre and not db.query(models.Empleado).filter(
                 models.Empleado.nombre == nombre, models.Empleado.activo == True).first():
             raise HTTPException(400, "Esa empleada no está en la lista")
         guardar("depi_a_cargo", nombre)
     db.commit()
     return {"ok": True, "valor_hora": valor_hora(db), "comision_pct": comision_pct(db),
-            "pago_ayudante": pago_ayudante(db), "depi_a_cargo": depi_por_defecto(db)}
+            "pago_ayudante": pago_ayudante(db), "costo_maquina": costo_maquina(db),
+            "depi_a_cargo": depi_por_defecto(db)}
 
 @app.get("/api/alias")
 def listar_alias(_ = Depends(usuario_actual), db: Session = Depends(get_db)):
@@ -2715,6 +2794,7 @@ def crear_item(item: ItemIn, _ = Depends(usuario_actual), db: Session = Depends(
     nuevo = models.Item(categoria=item.categoria.strip(), nombre=item.nombre.strip(),
                         precio=item.precio, precio_transfer=calcular_transfer(item.precio),
                         es_producto=item.es_producto, es_comision=item.es_comision,
+                        es_depilacion=item.es_depilacion,
                         comision_pct=item.comision_pct)
     db.add(nuevo); db.commit(); db.refresh(nuevo); return {"id": nuevo.id}
 
@@ -2733,6 +2813,10 @@ def editar_item(item_id: int, cambios: ItemEdit, _ = Depends(usuario_actual), db
     # desaparecer una comisión que la empleada ya se ganó. Se cambia sabiendo eso,
     # y por eso el aviso está en la pantalla.
     if cambios.es_comision is not None: item.es_comision = cambios.es_comision
+    # Marcar un ítem como depilación lo saca de las comisiones y lo mete en el
+    # reparto del día. Desmarcarlo es lo contrario, y en los dos casos cambia lo
+    # que está pendiente: lo ya cerrado no, que guarda su propia foto.
+    if cambios.es_depilacion is not None: item.es_depilacion = cambios.es_depilacion
     # Se puede corregir después de creado. Es una casilla que se tilda al pasar y
     # hasta ahora no había forma de destildarla: un servicio marcado producto
     # descuenta stock en cada venta, y quedaba descontando para siempre. No toca
@@ -3255,8 +3339,8 @@ def crear_egreso(e: EgresoIn, user = Depends(usuario_actual), db: Session = Depe
     # apareciendo aunque la dueña marque ese tipo como privado el mes que viene.
     privado = es_dueno(user) and _tipo_privado(db, e.tipo)
     # Con fecha de otro día, igual que un comprobante: el gasto de un día se
-    # anota cuando se acuerdan, y el del lunes de depilación entra en el reparto
-    # de ESE lunes. Cargado hoy, la cuenta del lunes le queda alta a la empleada.
+    # anota cuando se acuerdan, y el del día de depilación entra en el reparto de
+    # ESE día. Cargado hoy, la cuenta de ese día le queda alta a la empleada.
     ahora = fecha_hora_now_utc().replace(tzinfo=None)
     fecha = fecha_del_servicio(e.fecha, ahora, "un gasto")
     # Mover plata de una caja a otra es de la dueña, como en el comprobante.
@@ -3421,6 +3505,28 @@ def anular_sena(sena_id: int, _ = Depends(solo_dueno), db: Session = Depends(get
         raise HTTPException(400, "Esa seña ya se usó en un comprobante. Anulá el comprobante.")
     s.anulada = True; db.commit(); return {"ok": True}
 
+def sena_saldado(sena, comp, saldo: int) -> tuple[int, int]:
+    """De una seña: cuánta se usa y cuánto de la cuenta salda.
+
+    Una seña en efectivo salda MÁS de lo que trajo, igual que cualquier pago en
+    efectivo: la cuenta está anclada a la lista de transferencia y la diferencia
+    entre las dos listas es el descuento. Si el comprobante ya se está preciando
+    en efectivo el descuento ya está adentro del total, así que la seña salda su
+    monto y nada más: sumárselo de nuevo sería dárselo dos veces.
+
+    La cuenta es la misma que la de un pago en efectivo desde la cuenta de la
+    clienta: monto ÷ 0,9 para arriba a múltiplo de 100.
+
+    Y una seña más grande que lo que falta se usa hasta ahí, que el resto le queda
+    a favor en otra fila: más simple que inventar un vuelto que después nadie sabe
+    de dónde salió.
+    """
+    con_desc = (sena.forma_pago or "") == "Efectivo" and comp.forma_pago != "efectivo"
+    bruto = math.ceil((sena.monto / 0.9) / 100) * 100 if con_desc else sena.monto
+    if bruto <= saldo:
+        return sena.monto, bruto
+    return min(sena.monto, round(saldo * 0.9) if con_desc else saldo), saldo
+
 @app.post("/api/comprobantes/{comp_id}/aplicar-senas")
 def aplicar_senas(comp_id: int, _ = Depends(usuario_actual), db: Session = Depends(get_db)):
     """Usa las señas libres de la clienta como abono de este ticket.
@@ -3440,10 +3546,7 @@ def aplicar_senas(comp_id: int, _ = Depends(usuario_actual), db: Session = Depen
     for s in libres:
         saldo = estado_comprobante(db, comp)["saldo"]
         if saldo <= 0: break
-        # Una seña más grande que lo que falta se usa hasta ahí y el resto le
-        # queda a favor: partirla en dos filas es más simple que inventar un
-        # vuelto que después nadie sabe de dónde salió.
-        usa = min(s.monto, saldo)
+        usa, saldado = sena_saldado(s, comp, saldo)
         if usa < s.monto:
             sobra = models.Sena(numero=siguiente_numero_sena(db),
                                 cliente_id=s.cliente_id, fecha=s.fecha, monto=s.monto - usa,
@@ -3452,8 +3555,8 @@ def aplicar_senas(comp_id: int, _ = Depends(usuario_actual), db: Session = Depen
                                 usuario=s.usuario)
             db.add(sobra)
             s.monto = usa
-        db.add(models.Pago(comprobante_id=comp.id, monto=usa, saldado=usa,
-                           forma_pago="Seña", desc_aplicado=0, sena_id=s.id))
+        db.add(models.Pago(comprobante_id=comp.id, monto=usa, saldado=saldado,
+                           forma_pago="Seña", desc_aplicado=saldado - usa, sena_id=s.id))
         db.flush()
         s.comprobante_id = comp.id
         aplicadas.append(s.id); total += usa
@@ -3999,15 +4102,15 @@ def borrar_excepcion(emp_id: int, fecha: str, _ = Depends(usuario_actual), db: S
 
 @app.post("/api/agenda/abrir-dia")
 def abrir_dia(datos: AbrirDiaIn, _ = Depends(usuario_actual), db: Session = Depends(get_db)):
-    """Abre una fecha suelta con el mismo horario para varias: el lunes de depilación.
+    """Abre una fecha suelta con el mismo horario para varias: el día de depilación.
 
     Deja la fecha EXACTA como se manda, en vez de ir sumando: las que se mandan
     quedan con esas horas y a las que no se les saca la excepción, así que
     destildar a alguien y volver a guardar la deja afuera. Sin eso, corregir a
     quién se le puso significaría borrar a mano una por una.
 
-    No es una regla del calendario a propósito: el lunes que abren lo deciden
-    ellas, y un "cada 2º lunes" diría que trabajan un día que nadie eligió.
+    No es una regla del calendario a propósito: el día que abren lo deciden ellas,
+    y un "cada 2º lunes" diría que trabajan un día que nadie eligió.
     """
     try:
         date.fromisoformat(datos.fecha)
@@ -4284,6 +4387,7 @@ def armar_backup(db) -> dict:
              # valor de catálogo, pero este puede haberse editado a mano.
              "precio_transfer": i.precio_transfer,
              "es_producto": i.es_producto, "es_comision": bool(i.es_comision),
+             "es_depilacion": bool(i.es_depilacion),
              "comision_pct": i.comision_pct,
              "stock_actual": i.stock_actual,
              "stock_minimo": i.stock_minimo, "activo": i.activo}
@@ -4303,7 +4407,12 @@ def armar_backup(db) -> dict:
         "egresos": [
             {"id": e.id, "numero": e.numero, "fecha": _iso_utc(e.fecha), "tipo": e.tipo,
              "concepto": e.concepto, "monto": e.monto,
-             "forma_pago": e.forma_pago, "notas": e.notas, "privado": bool(e.privado)}
+             "forma_pago": e.forma_pago, "notas": e.notas, "privado": bool(e.privado),
+             # Las marcas del día de depilación. Sin ellas, una base restaurada
+             # vuelve a ofrecer cargar la máquina y el pago a la ayudante de un
+             # día ya cerrado, y las horas de la ayudante se pagarían dos veces.
+             "ayudante": bool(e.ayudante), "maquina": bool(e.maquina),
+             "empleado_id": e.empleado_id}
             for e in db.query(models.Egreso).order_by(models.Egreso.fecha).all()
         ],
         "empleados": [
@@ -4470,6 +4579,8 @@ if os.path.isdir("static"):
     def pagina_facturar(): return FileResponse("static/facturar.html")
     @app.get("/agenda")
     def p_agenda(): return FileResponse("static/agenda.html")
+    @app.get("/depilacion")
+    def p_depilacion(): return FileResponse("static/depilacion.html")
     @app.get("/admin")
     def p_admin(): return FileResponse("static/admin.html")
     @app.get("/caja")

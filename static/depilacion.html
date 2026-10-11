@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="es"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#f2ece0"><title>Depilación — Ivana Salón</title>
+<link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/static/css/app.css">
+<script src="/static/tema.js"></script>
+<style>
+  /* La pantalla de depilación es la de facturar con todo lo que no se usa
+     sacado: zonas, la seña que ya dejó y cobrar. Nada de descuentos, ajustes por
+     línea, presupuestos ni productos: el día de depilación se atiende con una
+     mano sola y lo que sobra en la pantalla es tiempo. */
+  .wrap{ max-width:1100px; }
+  .tablero{ display:grid; gap:var(--sp-4); grid-template-columns:minmax(0,1fr) minmax(320px,.8fr); align-items:start; }
+  @media (max-width:860px){ .tablero{ grid-template-columns:1fr; } }
+
+  /* ----- la clienta ----- */
+  .quien{ display:flex; flex-wrap:wrap; gap:var(--sp-3); align-items:flex-end; }
+  .quien .campo{ display:flex; flex-direction:column; gap:3px; }
+  .quien .campo label{ margin:0; }
+  .quien .cli{ flex:1 1 240px; min-width:0; position:relative; }
+  .cli-drop{ position:absolute; z-index:20; left:0; right:0; top:100%; display:none;
+             background:var(--bg-card); border:1px solid var(--border); border-radius:var(--r-md);
+             box-shadow:var(--sombra-flote); max-height:260px; overflow:auto; }
+  .cli-opt{ padding:var(--sp-2) var(--sp-3); cursor:pointer; }
+  .cli-opt:hover{ background:var(--bg-header); }
+  .cli-opt .det{ display:block; font-size:var(--fs-sm); color:var(--text-tenue); }
+
+  /* ----- las señas que ya dejó -----
+     Arriba y a la vista: una seña que aparece después de cobrar es plata que hay
+     que devolver en el mostrador. */
+  .senas{ margin-top:var(--sp-3); padding:var(--sp-3); border-radius:var(--r-md);
+          background:var(--verde-bg); border:1px solid var(--verde-borde); }
+  .senas[hidden]{ display:none; }
+  .senas b{ font-family:var(--font-display); font-size:var(--fs-lg); }
+  .senas .fila{ display:flex; gap:var(--sp-2); align-items:baseline; font-size:var(--fs-sm);
+                color:var(--text-tenue); }
+  .senas .fila span:last-child{ margin-left:auto; }
+
+  /* ----- las zonas ----- */
+  .grupo{ margin-bottom:var(--sp-4); }
+  .grupo h3{ margin:0 0 var(--sp-2); font-size:var(--fs-base); color:var(--text-tenue);
+             text-transform:uppercase; letter-spacing:.04em; }
+  .zonas{ display:grid; gap:var(--sp-2); grid-template-columns:repeat(auto-fill, minmax(170px,1fr)); }
+  .zona{ display:flex; flex-direction:column; gap:2px; text-align:left; padding:var(--sp-2) var(--sp-3);
+         border:1px solid var(--border); border-radius:var(--r-md); background:var(--bg-card);
+         cursor:pointer; font:inherit; color:var(--text); }
+  .zona:hover{ border-color:var(--acento); }
+  .zona b{ font-weight:var(--fw-bold); }
+  .zona span{ font-size:var(--fs-sm); color:var(--text-tenue); font-variant-numeric:tabular-nums; }
+  .zona.puesta{ border-color:var(--acento); background:var(--bg-header); }
+
+  /* ----- el ticket ----- */
+  .ticket{ position:sticky; top:var(--sp-3); }
+  .lineas{ margin:var(--sp-3) 0; }
+  .lin{ display:flex; gap:var(--sp-2); align-items:baseline; padding:var(--sp-2) 0;
+        border-bottom:1px solid var(--border-sutil); }
+  .lin .plata{ margin-left:auto; font-variant-numeric:tabular-nums; white-space:nowrap; }
+  .lin .btn-mini{ padding:1px 7px; }
+  .vacio{ color:var(--text-tenue); margin:var(--sp-3) 0; }
+  .totales .ren{ display:flex; gap:var(--sp-2); align-items:baseline; padding:var(--sp-2) 0; }
+  .totales .ren > :last-child{ margin-left:auto; font-variant-numeric:tabular-nums; }
+  .totales .ren.grande{ border-top:2px solid var(--border); }
+  .totales .ren.grande b{ font-family:var(--font-display); font-size:var(--fs-xl);
+                          font-weight:var(--fw-black); }
+  .totales .ren.flojo{ font-size:var(--fs-sm); color:var(--text-tenue); }
+  .formas{ display:flex; gap:var(--sp-2); margin:var(--sp-3) 0; }
+  .formas button{ flex:1; }
+  .formas button.on{ background:var(--acento); color:var(--acento-texto); border-color:var(--acento); }
+  .acc-cobrar{ display:flex; flex-direction:column; gap:var(--sp-2); }
+  .hecho{ margin-top:var(--sp-3); padding:var(--sp-3); border-radius:var(--r-md);
+          background:var(--verde-bg); border:1px solid var(--verde-borde); }
+  .hecho[hidden]{ display:none; }
+  .hecho .det{ display:block; font-size:var(--fs-sm); color:var(--text-tenue); margin:2px 0 var(--sp-2); }
+</style>
+</head><body>
+<header>
+  <span>🪒 Depilación</span>
+  <nav class="menu"></nav>
+</header>
+
+<div class="wrap">
+  <div class="card-head">
+    <h2>Depilación</h2>
+    <p>Las zonas, la seña que la clienta ya dejó y el cobro, en una pantalla.
+       Se factura por el mismo lugar que Facturar, así que el comprobante, la caja
+       y el reparto del día salen de lo mismo.</p>
+  </div>
+
+  <div class="tablero">
+    <div>
+      <div class="card">
+        <div class="quien">
+          <div class="campo cli">
+            <label for="cliente">Clienta</label>
+            <input id="cliente" autocomplete="off" placeholder="Buscar o escribir el nombre">
+            <div class="cli-drop" id="cliDrop"></div>
+          </div>
+          <div class="campo"><label for="atiende">Atiende</label>
+            <select id="atiende"></select></div>
+          <button class="b-out" id="btnSena">Tomar una seña</button>
+        </div>
+        <div id="panelSena"></div>
+        <div class="senas" id="senas" hidden></div>
+      </div>
+
+      <div class="card" style="margin-top:var(--sp-4);">
+        <div id="catalogo"><p class="muted">Cargando las zonas…</p></div>
+      </div>
+    </div>
+
+    <div class="card ticket">
+      <h3 style="margin:0;">Lo que se hizo</h3>
+      <div class="lineas" id="lineas"><p class="vacio">Todavía no hay zonas elegidas.</p></div>
+      <div class="totales" id="totales"></div>
+      <div class="formas" id="formas">
+        <button class="b-out on" data-forma="efectivo">Efectivo</button>
+        <button class="b-out" data-forma="transfer">Transferencia</button>
+      </div>
+      <div class="acc-cobrar">
+        <button class="b-ok" id="btnCobrar" disabled>Cobrar</button>
+        <button class="b-out" id="btnVaciar" disabled>Vaciar</button>
+      </div>
+      <div class="hecho" id="hecho" hidden></div>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="/static/auth.js"></script>
+<script src="/static/js/senas.js"></script>
+<script>
+requireLogin();
+pintarNav();
+
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"']/g,
+  c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const fmt = n => "$" + (n || 0).toLocaleString("es-AR");
+function toast(m){const t=$("#toast");t.textContent=m;t.classList.add("show");setTimeout(()=>t.classList.remove("show"),2200);}
+
+let ZONAS = [], TICKET = [], CLI = null, SENAS = [], FORMA = "efectivo";
+
+/* Lo que está a medio cargar se guarda en el aparato.
+
+   No es por las recargas: es porque el recibo de la seña es una navegación —el
+   papel sale por RawBT, que es otra app— y tomar una seña en el medio de un
+   ticket se lleva la pantalla puesta. Volviendo, las zonas siguen ahí. */
+const BORRADOR = "depi_borrador";
+function guardarBorrador(){
+  try{
+    if(TICKET.length) localStorage.setItem(BORRADOR, JSON.stringify({TICKET, CLI, FORMA}));
+    else localStorage.removeItem(BORRADOR);
+  }catch(e){}
+}
+async function restaurarBorrador(){
+  let b;
+  try{ b = JSON.parse(localStorage.getItem(BORRADOR) || "null"); }catch(e){ return; }
+  if(!b || !b.TICKET || !b.TICKET.length) return;
+  TICKET = b.TICKET; CLI = b.CLI || null; FORMA = b.FORMA || "efectivo";
+  document.querySelectorAll("#formas button").forEach(x =>
+    x.classList.toggle("on", x.dataset.forma === FORMA));
+  if(CLI){ $("#cliente").value = CLI.nombre; await mostrarSenas(); }
+  pintar();
+}
+
+async function cargar(){
+  const cat = await (await authFetch("/api/catalogo")).json();
+  ZONAS = cat.filter(i => i.es_depilacion);
+  const cfg = await (await authFetch("/api/config")).json();
+  const emps = await (await authFetch("/api/empleados")).json();
+  const quien = cfg.depi_a_cargo || "";
+  // Viene puesta la que lleva la depilación: es la que atiende casi siempre, y
+  // el desplegable en blanco termina en tickets sin nombre.
+  $("#atiende").innerHTML = `<option value="">—</option>` + emps.filter(e => e.activo !== false)
+    .map(e => `<option${e.nombre === quien ? " selected" : ""}>${esc(e.nombre)}</option>`).join("");
+  pintarCatalogo();
+  await restaurarBorrador();
+}
+
+function pintarCatalogo(){
+  const cont = $("#catalogo");
+  if(!ZONAS.length){
+    cont.innerHTML = `<p class="muted">No hay zonas de depilación en el catálogo.
+      Se marcan en Admin con "Es depilación", o se cargan de una con el script de la lista de precios.</p>`;
+    return;
+  }
+  const porCat = {};
+  ZONAS.forEach(z => (porCat[z.categoria] = porCat[z.categoria] || []).push(z));
+  cont.innerHTML = Object.keys(porCat).map(c => `
+    <div class="grupo"><h3>${esc(c)}</h3>
+      <div class="zonas">${porCat[c].map(z => `
+        <button class="zona${TICKET.some(l => l.id === z.id) ? " puesta" : ""}" data-id="${z.id}">
+          <b>${esc(z.nombre)}</b>
+          <span>${fmt(z.precio)} efvo · ${fmt(z.precio_transfer)} transf</span>
+        </button>`).join("")}</div>
+    </div>`).join("");
+  cont.querySelectorAll(".zona").forEach(b => {
+    b.onclick = () => agregar(Number(b.dataset.id));
+  });
+}
+
+function agregar(id){
+  const z = ZONAS.find(x => x.id === id);
+  if(!z) return;
+  const ya = TICKET.find(l => l.id === id);
+  if(ya) ya.cantidad++;
+  else TICKET.push({id, nombre: z.nombre, precio: z.precio,
+                    transfer: z.precio_transfer, cantidad: 1});
+  pintar();
+}
+
+function pintar(){
+  const cont = $("#lineas");
+  cont.innerHTML = TICKET.length
+    ? TICKET.map((l, i) => `<div class="lin">
+        <span>${esc(l.nombre)}${l.cantidad > 1 ? ` ×${l.cantidad}` : ""}</span>
+        <span class="plata">${fmt((FORMA === "efectivo" ? l.precio : l.transfer) * l.cantidad)}
+          <button class="b-out btn-mini" data-i="${i}" title="Sacar">✕</button></span>
+      </div>`).join("")
+    : `<p class="vacio">Todavía no hay zonas elegidas.</p>`;
+  cont.querySelectorAll("button[data-i]").forEach(b => {
+    b.onclick = () => { TICKET.splice(Number(b.dataset.i), 1); pintar(); };
+  });
+
+  const efvo = TICKET.reduce((a, l) => a + l.precio * l.cantidad, 0);
+  const trans = TICKET.reduce((a, l) => a + l.transfer * l.cantidad, 0);
+  const senado = SENAS.reduce((a, s) => a + s.monto, 0);
+  const total = FORMA === "efectivo" ? efvo : trans;
+  // Lo que la seña tapa de esta cuenta. En efectivo tapa su monto; en
+  // transferencia, una seña en efectivo tapa más, porque la cuenta está en la
+  // otra lista. Es la misma cuenta que hace el backend al aplicarla: acá solo se
+  // muestra, para que lo que se le dice coincida con lo que se le cobra.
+  const tapa = Math.min(total, SENAS.reduce((a, s) => a
+    + (FORMA === "efectivo" || s.forma_pago !== "Efectivo"
+       ? s.monto : Math.ceil((s.monto / 0.9) / 100) * 100), 0));
+  $("#totales").innerHTML = TICKET.length ? `
+    <div class="ren"><span>${FORMA === "efectivo" ? "En efectivo" : "En transferencia"}</span><b>${fmt(total)}</b></div>
+    <div class="ren flojo"><span>${FORMA === "efectivo" ? "Si pagara por transferencia" : "Si pagara en efectivo"}</span>
+      <span>${fmt(FORMA === "efectivo" ? trans : efvo)}</span></div>
+    ${senado ? `<div class="ren"><span>Tiene de seña</span><b>−${fmt(tapa)}</b></div>` : ""}
+    <div class="ren grande"><span>${senado ? "Falta cobrar" : "Total"}</span><b>${fmt(Math.max(total - tapa, 0))}</b></div>` : "";
+
+  $("#btnCobrar").disabled = !TICKET.length;
+  $("#btnVaciar").disabled = !TICKET.length;
+  guardarBorrador();
+  document.querySelectorAll(".zona").forEach(b => {
+    b.classList.toggle("puesta", TICKET.some(l => l.id === Number(b.dataset.id)));
+  });
+}
+
+/* ---------- la clienta ---------- */
+let timer;
+$("#cliente").addEventListener("input", () => {
+  CLI = null; mostrarSenas();
+  const q = $("#cliente").value.trim();
+  clearTimeout(timer);
+  if(!q){ $("#cliDrop").style.display = "none"; return; }
+  timer = setTimeout(async () => {
+    const res = await (await authFetch("/api/clientes?q=" + encodeURIComponent(q))).json();
+    if(!res.length){ $("#cliDrop").style.display = "none"; return; }
+    $("#cliDrop").innerHTML = res.slice(0, 8).map(c => `
+      <div class="cli-opt" data-id="${c.id}" data-nom="${esc(c.nombre)}">
+        <b>${esc(c.nombre)}</b>
+        <span class="det">#${c.id}${c.telefono ? " · " + esc(c.telefono) : ""}</span>
+      </div>`).join("");
+    $("#cliDrop").style.display = "block";
+  }, 200);
+});
+$("#cliDrop").addEventListener("click", async e => {
+  const o = e.target.closest(".cli-opt"); if(!o) return;
+  CLI = {id: Number(o.dataset.id), nombre: o.dataset.nom};
+  $("#cliente").value = CLI.nombre;
+  $("#cliDrop").style.display = "none";
+  await mostrarSenas();
+});
+document.addEventListener("click", e => {
+  if(!$("#cliente").contains(e.target) && !$("#cliDrop").contains(e.target))
+    $("#cliDrop").style.display = "none";
+});
+
+async function mostrarSenas(){
+  SENAS = CLI ? await senasLibres(CLI.id) : [];
+  const caja = $("#senas");
+  caja.hidden = !SENAS.length;
+  if(SENAS.length){
+    const total = SENAS.reduce((a, s) => a + s.monto, 0);
+    caja.innerHTML = `<b>${esc(CLI.nombre)} tiene ${fmt(total)} de seña</b>
+      ${SENAS.map(s => `<div class="fila">
+        <span>${fmt(s.monto)} · ${esc(s.forma_pago || "")}${s.notas ? " · " + esc(s.notas) : ""}</span>
+        <span>${s.fecha}</span></div>`).join("")}
+      <div class="fila"><span>Se aplica sola al cobrar.</span></div>`;
+  }
+  pintar();
+}
+
+$("#btnSena").onclick = async () => {
+  if(!CLI){ toast("Elegí la clienta de la lista: la seña es plata suya"); $("#cliente").focus(); return; }
+  $("#panelSena").innerHTML = "";
+  $("#panelSena").appendChild(panelSena(CLI.id, CLI.nombre, () => mostrarSenas()));
+};
+
+document.querySelectorAll("#formas button").forEach(b => {
+  b.onclick = () => {
+    FORMA = b.dataset.forma;
+    document.querySelectorAll("#formas button").forEach(x => x.classList.toggle("on", x === b));
+    pintar();
+  };
+});
+
+$("#btnVaciar").onclick = () => { TICKET = []; pintar(); };
+
+/* Cobrar es el mismo camino que Facturar: se crea el comprobante, se aplican las
+   señas y recién después se paga lo que falta. En ese orden, porque la seña baja
+   el saldo: cobrando primero, la plata que ya dejó le queda a favor para siempre.
+
+   Nada de la cuenta se hace acá: el total, el descuento en efectivo y lo que
+   tapa la seña los calcula el backend. Lo de esta pantalla es lo que se le
+   muestra, y sale de pedirle el comprobante después de cada paso. */
+$("#btnCobrar").onclick = async () => {
+  const nombre = $("#cliente").value.trim();
+  if(!nombre){ toast("Falta el nombre de la clienta"); $("#cliente").focus(); return; }
+  if(!TICKET.length) return;
+  const b = $("#btnCobrar");
+  b.disabled = true;
+
+  const total = TICKET.reduce((a, l) => a + (FORMA === "efectivo" ? l.precio : l.transfer) * l.cantidad, 0);
+  if(!confirm(`${nombre}\n${TICKET.length} ${TICKET.length === 1 ? "zona" : "zonas"} · `
+            + `${fmt(total)} en ${FORMA === "efectivo" ? "efectivo" : "transferencia"}`
+            + `${SENAS.length ? "\n\nSe le aplican las señas que tiene a favor." : ""}`
+            + `\n\n¿Lo cobramos?`)){ b.disabled = false; return; }
+
+  const cuerpo = {tipo: "ticket", cliente_id: CLI ? CLI.id : null,
+                  cliente_nombre: CLI ? null : nombre,
+                  peluquero: $("#atiende").value || null,
+                  forma_pago: FORMA, descuento_pct: 0, mostrar_motivo: false,
+                  lineas: TICKET.map(l => ({item_id: l.id, nombre: l.nombre, cantidad: l.cantidad})),
+                  extras: []};
+  const r = await authFetch("/api/comprobantes", {method:"POST",
+    headers:{"Content-Type":"application/json"}, body: JSON.stringify(cuerpo)});
+  if(!r.ok){ toast((await r.json().catch(()=>({}))).detail || "No se pudo crear"); b.disabled = false; return; }
+  const d = await r.json();
+
+  if(CLI && SENAS.length)
+    await authFetch(`/api/comprobantes/${d.id}/aplicar-senas`, {method:"POST"});
+
+  const c = await (await authFetch("/api/comprobantes/" + d.id)).json();
+  let aviso = "";
+  if(c.saldo > 0){
+    const rp = await authFetch(`/api/comprobantes/${d.id}/pagos`, {method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({monto: c.saldo, saldado: c.saldo,
+                            forma_pago: FORMA === "efectivo" ? "Efectivo" : "Transferencia",
+                            alias: null, del_servicio: true})});
+    if(!rp.ok) aviso = "Se creó el comprobante pero el cobro falló: cobralo desde la cuenta de la clienta.";
+  }
+  const fin = await (await authFetch("/api/comprobantes/" + d.id)).json();
+  const num = "N-" + String(d.numero).padStart(5, "0");
+  const sena = fin.pagos.filter(p => p.es_sena);
+  $("#hecho").hidden = false;
+  $("#hecho").innerHTML = `<b>${num} cobrado</b>
+    <span class="det">${fmt(fin.total_final)} de cuenta${
+      sena.length ? ` · seña ${fmt(sena.reduce((a,p)=>a+p.monto,0))}`
+                  + (sena.some(p => p.desc_aplicado) ? ` (saldó ${fmt(sena.reduce((a,p)=>a+(p.saldado||p.monto),0))} por ser en efectivo)` : "")
+                  : ""}${fin.saldo > 0 ? ` · queda debiendo ${fmt(fin.saldo)}` : ""}</span>
+    <a class="b-out" href="/ticket?id=${d.id}">🖨️ Imprimir</a>
+    ${aviso ? `<p class="nota">${aviso}</p>` : ""}`;
+  toast(fin.saldo > 0 ? `${num} con saldo pendiente` : `${num} cobrado ✓`);
+  TICKET = []; CLI = null; SENAS = [];
+  $("#cliente").value = ""; $("#senas").hidden = true; $("#panelSena").innerHTML = "";
+  pintar();
+};
+
+cargar();
+</script>
+</body></html>
