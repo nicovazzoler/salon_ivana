@@ -1,0 +1,27 @@
+# La lista de precios de depilación, tal como está impresa en el local.
+# Los precios son los de TRANSFERENCIA; el de efectivo sale solo (10% menos).
+# Se carga con:  python3 cargar_depilacion.py depilacion_precios.txt
+
+[DEPILACION MUJERES]
+1 zona     10000
+2 zonas    14000
+3 zonas    16000
+4 zonas    18000
+5 zonas    20000
+6 zonas    22000
+7 zonas    24000
+8 zonas    26000
+9 zonas    28000
+10 zonas   30000
+
+[DEPILACION MASCULINO]
+1 zona     13000
+2 zonas    16000
+3 zonas    18000
+4 zonas    20000
+5 zonas    23000
+6 zonas    25000
+7 zonas    27000
+8 zonas    29000
+9 zonas    32000
+10 zonas   35000

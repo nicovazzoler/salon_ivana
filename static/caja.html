@@ -75,7 +75,8 @@
       <div data-empleado><label>Fecha</label><div class="fecha-hoy" id="fechaHoy"></div></div>
     </div>
     <div class="nums">
-      <div class="num ing"><div class="lbl">Ingresos</div><div class="val money" id="ing">$0</div></div>
+      <div class="num ing"><div class="lbl">Ingresos</div><div class="val money" id="ing">$0</div>
+        <div class="lbl" id="ingDepi" hidden></div></div>
       <div class="num egr"><div class="lbl">Egresos</div><div class="val money" id="egr">$0</div></div>
       <div class="num net"><div class="lbl">Neto</div><div class="val money" id="net">$0</div></div>
       <div class="num"><div class="lbl">Movimientos</div><div class="val" id="cant">0</div></div>
@@ -146,6 +147,13 @@ async function cargarDia(){
   const d=await r.json();
   mostrarFecha(d.fecha);
   $("#ing").textContent=money(d.ingresos);
+  /* Cuánto de lo que entró es depilación. La plata está en el cajón igual que
+     cualquier otra, así que cuenta en el total y en el arqueo: sacarla dejaría
+     el arqueo pidiendo menos efectivo del que hay. Se dice, nada más; el día de
+     depilación se cierra aparte, en su pantalla. */
+  const dep = d.ingresos_depilacion || 0;
+  $("#ingDepi").hidden = !dep;
+  if(dep) $("#ingDepi").textContent = `de eso, ${money(dep)} de depilación`;
   $("#egr").textContent=money(d.egresos);
   $("#net").textContent=money(d.neto);
   $("#cant").textContent=d.ventas;
@@ -160,7 +168,7 @@ async function cargarDia(){
     html += '<b class="sub-titulo">Cobros del día</b><table style="margin-top:6px;"><thead><tr><th>Hora</th><th>Servicio</th><th>Pago</th><th>Monto</th><th></th></tr></thead><tbody>';
     d.ventas_detalle.forEach(v=>{
       const al=v.alias?` (${v.alias})`:"";
-      html+=`<tr><td>${v.hora}</td><td>${v.ref||'—'}</td><td>${v.forma_pago}${al}</td><td class="money">${money(v.total)}</td>
+      html+=`<tr><td>${v.hora}</td><td>${v.ref||'—'}${v.depilacion?' <span class="tag">depilación</span>':''}</td><td>${v.forma_pago}${al}</td><td class="money">${money(v.total)}</td>
              <td><button class="mini b-del" onclick="anularPagoCaja(${v.id})">Anular</button></td></tr>`;
     });
     html += '</tbody></table>';

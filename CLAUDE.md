@@ -33,6 +33,8 @@ static/
                  Admin (arriba de la lista de empleados) y Sueldos
   js/senas.js    Tomar una seña y listarlas: un solo dibujante que usan la ficha
                  del cliente y la pantalla de depilación
+  depilacion.html Depilación entera: cobrar, el cierre del día con su reparto y
+                 su propio historial. No se mezcla con peluquería
   escpos.js      Generador del papel de la comandera (ticket.html y facturar.js)
 ```
 
@@ -53,8 +55,8 @@ puede en una PC donde no se instala nada. Los dos dejan un usuario
 no las sabe nadie. `--a-json` va del `.dump` al JSON, que es el formato que
 viaja: el `.dump` sin `pg_restore` no se abre.
 
-`cargar_depilacion.py` carga la lista de precios de depilación sin pasar por la
-app, desde un archivo con la lista impresa. Ver más abajo, en las reglas.
+`cargar_depilacion.py depilacion_precios.txt` carga la lista de precios de
+depilación sin pasar por la app. Ver más abajo, en las reglas.
 
 `simular_sueldos.py` carga un ciclo entero de trabajo para tres empleadas y
 después se juega con el valor hora y la comisión desde la app. Factura por la
@@ -122,9 +124,26 @@ anotó le deja el arqueo sin explicación. Y ojo con el `privado != True` a seca
 en SQL el NULL no entra, y `restaurar_backup.py` levantando un backup viejo
 escribe NULL — por eso está `_no_privado()`.
 
-**La depilación no se paga por comisión: se reparte el día.** El local abre un
-día al mes solo para depilación —lunes o martes, lo deciden ellas—. Lo lleva
-Carolina, que consigue la máquina, más una ayudante que a veces no es del salón:
+**La depilación es otro negocio, no otra categoría.** Tiene su pantalla, su
+facturación, su historial y su cierre del día, y nada de eso se mezcla con
+peluquería: Sueldos es exclusivamente peluquería. Lo que las ata es el ítem
+marcado `es_depilacion`, y de ahí sale todo lo demás:
+
+- El catálogo se parte en dos: `/api/catalogo?de=pelu` (el default, sin
+  depilación) lo usa Facturar, `?de=depi` la pantalla de depilación y `?de=todo`
+  la agenda, que anota turnos de cualquier cosa.
+- Un comprobante nace marcado `depilacion` cuando TODAS sus líneas lo son, y el
+  historial se parte con el mismo `de=`. Se guarda en el comprobante y no se
+  deduce de las líneas: de esa marca cuelga cada lista paginada, y preguntarlo
+  con un join por fila es la diferencia entre que el historial abra o no.
+- **La plata SÍ está en la caja del local.** La clienta paga en el mostrador y el
+  efectivo queda en el cajón, así que sacarla de la caja dejaría el arqueo
+  pidiendo menos plata de la que hay. Caja la cuenta y la marca; el resumen
+  propio del día vive en la pantalla de depilación.
+
+**Y no se paga por comisión: se reparte el día.** El local abre un día al mes
+solo para depilación —lunes o martes, lo deciden ellas—. Lo lleva Carolina, que
+consigue la máquina, más una ayudante que a veces no es del salón:
 
     trabajos de depilación del día, en efectivo
     − egresos del día (máquina + insumos + el pago a la ayudante)
@@ -144,9 +163,11 @@ Lo que hay que respetar:
 - Se reparte lo **facturado**, no lo cobrado: lo que se reparte es el trabajo
   hecho. Lo que falta cobrar se dice aparte y a la vista.
 - La máquina y el pago a la ayudante son egresos como cualquier otro, así que
-  entran solos en la resta. Los dos tienen un monto fijo en Admin y su marca
-  propia en el egreso (`maquina`, `ayudante`): por el texto del tipo no, que
-  renombrarlo haría que la pantalla ofrezca cargarlos de nuevo.
+  entran solos en la resta. Los dos tienen su marca propia en el egreso
+  (`maquina`, `ayudante`) y no se reconocen por el texto del tipo, que
+  renombrarlo haría que la pantalla ofrezca cargarlos de nuevo y el día se
+  reparta con la máquina dos veces. El pago a la ayudante tiene monto fijo; la
+  máquina **no**: se alquila por jornada y un día de pocas horas sale menos.
 - Los egresos **privados** no entran: el alquiler no es costo de la depilación, y
   el detalle se lo muestra a ella. Sin ese filtro, cerrar la liquidación —que
   crea un egreso privado con el sueldo, con fecha de hoy— le cambiaba la cuenta
@@ -161,21 +182,23 @@ Lo que hay que respetar:
   comisiones de lo que no fue depilación sí se pagan: antes se iba el día entero
   del ciclo y se las llevaba puestas, y andaba porque el día de depilación era un
   lunes en el que no se hacía otra cosa.
-- El día le aparece aunque no tenga un ítem a comisión ni una hora cargada
-  (`dias_depi_pendientes()`), que es lo normal en depilación. Como puede no tener
-  ningún trabajo detrás, lo que dice que ya se pagó es la liquidación misma: sin
-  ese filtro, un día sin trabajos volvía a aparecer pendiente después de
-  cobrarlo, siempre.
-- La empleada lo ve con su código en Sueldos —es su plata— y **cierra la dueña**,
-  como todos los ciclos.
+- El día se mira y se cierra en la solapa "El día" de la pantalla de depilación.
+  Cobrar lo hace cualquiera; **ver el reparto pide el código**, como un sueldo:
+  es plata de una persona y en el local hay una sola tablet. **Cierra la dueña**,
+  como todos los cierres, y la liquidación guarda la foto (`recaudado` es lo
+  facturado en efectivo, `gastos` lo que se restó).
+- Un día que fue SOLO depilación no aparece en Sueldos: no tiene comisiones ni
+  horas que pagar. El que además tuvo peluquería sí, con la peluquería adentro.
 
-**La lista de precios de depilación se carga con un script.** `cargar_depilacion.py`
-escribe directo contra `DATABASE_URL`, sin login, desde un archivo con la lista
-tal como está impresa: la zona y su precio de TRANSFERENCIA. De ahí saca el de
-efectivo —la lista impresa tiene 10% de descuento— y controla que
-`calcular_transfer()` de ese efectivo devuelva exactamente el precio impreso; si
-alguno no cierra, no escribe nada. Veinte zonas tipeadas a mano en la tablet es
-media hora y un número mal puesto se le cobra a alguien.
+**La lista de precios de depilación se carga con un script.** No se cobra por
+zona sino por CANTIDAD de zonas —"3 zonas", "5 zonas"— y son dos listas, mujeres
+y masculino. Está en `depilacion_precios.txt` tal como está impresa en el local,
+con los precios de TRANSFERENCIA, y la carga `cargar_depilacion.py`, que escribe
+directo contra `DATABASE_URL` sin pasar por la app. De la lista impresa saca el
+precio de efectivo —10% menos— y controla que `calcular_transfer()` de ese
+efectivo devuelva exactamente el precio impreso; si alguno no cierra, no escribe
+nada. Veinte renglones tipeados a mano en la tablet son media hora, y un número
+mal puesto se le cobra a alguien.
 
 **La seña es plata de la clienta, no un pago de un ticket.** Se toma sin
 comprobante —desde la ficha o desde facturar— y entra a la caja del día en que se

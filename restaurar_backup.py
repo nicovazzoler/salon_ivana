@@ -105,7 +105,7 @@ ANIDADAS = [
 
 CAMPOS_COMPROBANTE = ["id", "tipo", "numero", "cliente_id", "cliente_nombre", "peluquero",
                       "total_lista", "extra_dificultad", "descuento_pct", "descuento_nombre",
-                      "forma_pago", "mostrar_motivo", "activo"]
+                      "forma_pago", "mostrar_motivo", "depilacion", "activo"]
 
 
 def _filas(datos, clave, campos, campos_fecha, version):

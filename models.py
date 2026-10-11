@@ -270,6 +270,12 @@ class Comprobante(Base):
     forma_pago = Column(String)                      # snapshot de la forma de pago
     mostrar_motivo = Column(Boolean, default=False)  # si se imprime el motivo
     convertido_de = Column(Integer, ForeignKey("comprobantes.id"))  # si vino de un presupuesto
+    # Comprobante de depilación: todas sus líneas son de depilación. Se guarda en
+    # el comprobante y no se deduce de las líneas cada vez porque de esto cuelga
+    # TODO lo que separa una cosa de la otra —el historial, el resumen del día,
+    # el reparto— y preguntarlo con un join por cada fila de una lista paginada
+    # es la diferencia entre que el historial abra o no abra.
+    depilacion = Column(Boolean, default=False)
     activo = Column(Boolean, default=True)
     cliente = relationship("Cliente")
     lineas = relationship("ComprobanteLinea", back_populates="comprobante", cascade="all, delete-orphan")
