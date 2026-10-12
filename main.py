@@ -1766,18 +1766,35 @@ def resumen_pendiente(db, empleado) -> dict:
     horas = q_horas.order_by(models.HoraTrabajada.fecha).all()
 
     # --- se arma un día por fecha, con sus trabajos adentro ---
-    # Un día en el que hizo un trabajo es un día que trabajó: aparece solo, con
-    # las horas en cero esperando que las complete. Si hubiera que agregarlos a
-    # mano, tendría que acordarse de qué días vino, y el día que se olvide de uno
-    # se le paga de menos sin que nada avise.
     dias = {h.fecha: {"id": h.id, "fecha": h.fecha, "minutos": h.minutos or 0,
-                      "sugerido": False, "trabajos": []} for h in horas}
+                      "trabajos": []} for h in horas}
     for t in trabajos:
         f = t["fecha"]
         if not f: continue
         if f not in dias:
-            dias[f] = {"id": None, "fecha": f, "minutos": 0, "sugerido": True, "trabajos": []}
+            dias[f] = {"id": None, "fecha": f, "minutos": 0, "trabajos": []}
         dias[f]["trabajos"].append(t)
+
+    # Y el ciclo se completa con TODOS sus días, hasta hoy.
+    #
+    # Antes existían solo los días con movimiento, y un día que trabajó sin que
+    # quedara ningún ticket a su nombre no tenía dónde declararse: no aparecía, y
+    # agregarlo era de la dueña. De los que faltan no se acuerda nadie.
+    #
+    # Hasta hoy y no la semana entera: los días que todavía no pasaron no se
+    # declaran, y un casillero de horas en un día que no existe es plata.
+    hoy = hoy_argentina()
+    # El ciclo en curso está siempre, aunque no haya pasado nada: es la pantalla
+    # donde la empleada carga sus horas, y vacía no se podría ni empezar.
+    arranques = {ciclo_de(date.fromisoformat(f))[0] for f in dias} | {ciclo_de(hoy)[0]}
+    for desde in arranques:
+        _, hasta = ciclo_de(desde)
+        f = desde
+        while f <= min(hasta, hoy):
+            iso = f.isoformat()
+            if iso not in dias and not (arranque and iso < arranque):
+                dias[iso] = {"id": None, "fecha": iso, "minutos": 0, "trabajos": []}
+            f += timedelta(days=1)
     # Sueldos es de peluquería y nada más: la depilación se cobra, se mira y se
     # cierra en su propia pantalla. Acá la depilación aparece de una sola forma,
     # y es sacando horas: el día que le tocó el reparto, y el día que cobró como
@@ -1790,11 +1807,10 @@ def resumen_pendiente(db, empleado) -> dict:
                    for (f,) in db.query(models.Egreso.fecha).filter(
                        models.Egreso.ayudante == True,
                        models.Egreso.empleado_id == empleado.id).all()}
-    # Un día que fue SOLO depilación no tiene nada que hacer en Sueldos: ni
-    # comisiones ni horas que pagar. Se va entero. El que además tuvo peluquería
-    # se queda, con la peluquería adentro: esa comisión es suya igual.
-    for f in [f for f in (suyos | de_ayudante) if f in dias and not dias[f]["trabajos"]]:
-        dias.pop(f)
+    # Un día de depilación suyo no paga ni comisiones ni horas: lo paga el
+    # reparto. Se queda a la vista igual, marcado, porque ahora están todos los
+    # días del ciclo y uno en blanco se lee como "no vine": ahí cargaría las
+    # horas de un día que ya cobró entero.
     # Días cuyas horas YA se pagaron en un cierre anterior. El día puede volver a
     # aparecer —una comisión nueva con fecha de esa semana— y su casillero de
     # horas está vacío, pero ahí no falta nada: esas horas ya se cobraron y el
@@ -1806,6 +1822,11 @@ def resumen_pendiente(db, empleado) -> dict:
     for f, d in dias.items():
         d["horas_pagadas"] = f in ya_pagadas and not d["minutos"]
         d["horas_aparte"] = f in suyos or f in de_ayudante
+        # Horas declaradas en un día sin ningún trabajo detrás. No está mal
+        # —se puede venir a ordenar el local y no facturar nada— pero es lo
+        # único que nadie puede verificar contra un comprobante, así que va
+        # marcado para que la dueña lo vea antes de pagarlo.
+        d["sin_respaldo"] = bool(d["minutos"]) and not d["trabajos"] and not d["horas_aparte"]
         d["trabajos"].sort(key=lambda t: (t["numero"] or 0, t["id"] or 0))
 
     # --- y los días se agrupan en ciclos ---
@@ -1841,13 +1862,18 @@ def resumen_pendiente(db, empleado) -> dict:
             "minutos_pagados": min_pagados,
             "total_comisiones": total_com, "total_horas": total_horas,
             "total": total_com + total_horas,
-            # Un día sin horas declaradas frena el cierre igual que un trabajo sin
-            # duración. Las horas son lo único que pone la empleada, y un día en
-            # cero se paga como si no hubiera venido: solo las comisiones, sin las
-            # horas que ese día se trabajaron aparte. Antes el cierre lo dejaba
-            # pasar y la diferencia no se veía en ningún lado.
-            "sin_horas": sum(1 for d in c["dias"] if not d["minutos"]
+            # Frena el cierre un día CON trabajos y sin horas: ese día vino
+            # seguro, y en cero se paga solo la comisión, sin las horas que
+            # trabajó aparte. Un día vacío es un día que no vino y no frena
+            # nada: ahora están todos los días de la semana, y pidiendo horas
+            # en todos no se podría cerrar nunca.
+            "sin_horas": sum(1 for d in c["dias"] if not d["minutos"] and d["trabajos"]
                              and not d["horas_pagadas"] and not d["horas_aparte"]),
+            "sin_respaldo": sum(1 for d in c["dias"] if d["sin_respaldo"]),
+            # El ciclo en curso aparece aunque no haya pasado nada, para que
+            # tenga dónde cargar las horas. Quien cuenta "semanas sin pagar"
+            # tiene que poder saltear ese, o la dueña ve a todas debiendo.
+            "vacio": not any(d["trabajos"] or d["minutos"] for d in c["dias"]),
             "sin_tiempo": len(faltan),
             "en_espera": sum(t["comision"] for t in faltan),
         })
@@ -1868,6 +1894,8 @@ def resumen_pendiente(db, empleado) -> dict:
         "minutos_total": sum(c["minutos_total"] for c in salida),
         "sin_tiempo": sum(c["sin_tiempo"] for c in salida),
         "sin_horas": sum(c["sin_horas"] for c in salida),
+        "sin_respaldo": sum(c["sin_respaldo"] for c in salida),
+        "hoy": hoy.isoformat(),
         "en_espera": sum(c["en_espera"] for c in salida),
         "arranque": arranque_sueldos(db),
     }
@@ -2257,30 +2285,17 @@ def cargar_horas(h: HorasIn, user = Depends(usuario_actual),
             raise HTTPException(400,
                 f"Las horas de ese día ya se pagaron en el cierre del {pagado[0]}. "
                 "La comisión de un trabajo nuevo sí se paga; las horas no se cargan de nuevo.")
-    # La empleada completa las horas de los días que YA están —los que aparecen
-    # solos porque ese día hizo algo—; agregar un día de la nada es de la dueña.
-    # Un día sin ningún trabajo detrás no se puede verificar contra nada, y son
-    # horas que se pagan: que las agregue la que paga.
-    if not fila and not es_dueno(user):
-        emp = db.get(models.Empleado, h.empleado_id)
-        try:
-            ini, fin = _rango_dia(date.fromisoformat(h.fecha))
-        except ValueError:
-            raise HTTPException(400, "Fecha inválida")
-        # Dos formas de que ese día exista: un trabajo cargado a mano, o un
-        # ticket a su nombre. El segundo caso es el común, y todavía no tiene
-        # fila propia si nadie le puso los minutos.
-        hubo = (db.query(models.TrabajoComision)
-                  .filter(models.TrabajoComision.empleado_id == h.empleado_id,
-                          models.TrabajoComision.fecha == h.fecha).first()
-                or db.query(models.Comprobante)
-                    .filter(models.Comprobante.activo == True,
-                            models.Comprobante.tipo == "ticket",
-                            models.Comprobante.peluquero == emp.nombre,
-                            models.Comprobante.fecha >= ini,
-                            models.Comprobante.fecha < fin).first())
-        if not hubo:
-            raise HTTPException(403, "Ese día no tiene ningún trabajo tuyo. Pediselo a la dueña.")
+    # Un día que todavía no pasó no se declara. Es el único límite que queda:
+    # las horas de cualquier día ya vivido las carga ella, tenga o no un ticket
+    # detrás. Un día sin ningún trabajo sale marcado en la pantalla de la dueña,
+    # que es la que paga; el candado estaba antes de eso y dejaba sin declarar el
+    # día que vino y no facturó nada.
+    try:
+        cuando = date.fromisoformat(h.fecha)
+    except ValueError:
+        raise HTTPException(400, "Fecha inválida")
+    if cuando > hoy_argentina():
+        raise HTTPException(400, "Ese día todavía no pasó")
     if h.minutos == 0:
         if fila: db.delete(fila)
     elif fila:

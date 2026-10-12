@@ -32,8 +32,6 @@
   .fila-dato .que b{ display:block; }
   .fila-dato .det{ font-size:var(--fs-sm); color:var(--text-tenue); }
   .fila-dato .plata{ font-variant-numeric:tabular-nums; white-space:nowrap; text-align:right; min-width:72px; }
-  /* Un día que apareció solo, todavía sin horas cargadas: se ve que falta. */
-  .fila-dato.sugerido .que b{ color:var(--text-tenue); }
 
   .mins{ display:flex; align-items:center; gap:4px; white-space:nowrap; }
   .mins input{ width:56px; text-align:right; }
@@ -117,6 +115,14 @@
   /* Un día adentro del ciclo: rótulo, horas y sus trabajos debajo. */
   .dia{ padding:var(--sp-3) 0; border-bottom:1px solid var(--border-sutil); }
   .dia:last-child{ border-bottom:none; }
+  /* Un día en el que no pasó nada: está porque la semana tiene siete, no porque
+     haya algo que mirar. Un renglón y apagado. */
+  .dia.vacio-dia{ padding:var(--sp-2) 0; }
+  .dia.vacio-dia .dia-cab b{ font-weight:var(--fw-normal); color:var(--text-tenue); }
+  .dia.vacio-dia .acciones-dia{ margin-left:auto; }
+  /* Hoy es el día que se viene a cargar: se encuentra sin leer la columna. */
+  .dia.hoy > .dia-cab b{ color:var(--acento); }
+  .dia-resumen{ margin-top:2px; font-size:var(--fs-sm); color:var(--text-tenue); }
   .dia-cab{ display:flex; flex-wrap:wrap; align-items:center; gap:var(--sp-2); }
   .dia-cab b{ min-width:110px; }
   .dia-cab .plata{ margin-left:auto; font-variant-numeric:tabular-nums; white-space:nowrap; }
@@ -162,19 +168,6 @@
   .arranque.puesto{ font-size:var(--fs-xs); }
   .arranque .arrVer{ color:var(--text-tenue); text-decoration:underline; }
   .arranque .arrCajon{ display:flex; align-items:center; gap:var(--sp-2); }
-
-  /* La puerta de "un trabajo de hoy": siempre visible al final, tenga o no
-     ciclos arriba. Con borde punteado para que se lea como un lugar donde
-     agregar y no como un renglón más de lo que ya se debe. */
-  .hoy-suelto{
-    display:flex; flex-wrap:wrap; align-items:center; gap:var(--sp-3);
-    margin-top:var(--sp-4); padding:var(--sp-3) var(--sp-4);
-    border:1px dashed var(--border); border-radius:var(--r-lg);
-  }
-  .hoy-suelto b{ display:block; }
-  .hoy-suelto .det{ font-size:var(--fs-sm); color:var(--text-tenue); }
-  .hoy-suelto button{ margin-left:auto; }
-  .hoy-suelto .form-trabajo{ flex:1 1 100%; margin-top:0; border-top:none; padding-top:0; }
 
   .sub-h{ margin:var(--sp-4) 0 var(--sp-2); font-size:var(--fs-base);
           font-weight:var(--fw-bold); text-transform:uppercase; letter-spacing:.04em;
