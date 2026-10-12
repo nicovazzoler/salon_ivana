@@ -47,7 +47,8 @@ def _a_utc_naive(iso, version):
 # carga en dos pasadas, más abajo.
 ORDEN = [
     ("items", models.Item, ["id", "categoria", "nombre", "precio", "precio_transfer",
-                            "es_producto", "es_comision", "comision_pct", "stock_actual",
+                            "es_producto", "es_comision", "es_depilacion", "comision_pct",
+                            "stock_actual",
                             "stock_minimo", "activo"], []),
     ("clientes", models.Cliente, ["id", "nombre", "telefono", "alias", "notas",
                                   "direccion", "dni", "activo"], ["creado"]),
@@ -64,7 +65,8 @@ ORDEN = [
     ("ajustes_item", models.AjusteItem, ["id", "nombre", "porcentaje", "monto", "activo"], []),
     ("notas_diarias", models.NotaDiaria, ["id", "fecha", "texto", "activo"], ["creada"]),
     ("egresos", models.Egreso, ["id", "numero", "tipo", "concepto", "monto",
-                                "forma_pago", "notas", "privado"], ["fecha"]),
+                                "forma_pago", "notas", "privado",
+                                "ayudante", "maquina", "empleado_id"], ["fecha"]),
     ("turnos", models.Turno, ["id", "fecha", "hora", "cliente_id", "cliente",
                               "servicio", "peluquero", "notas", "activo",
                               "duracion_min"], []),
@@ -103,7 +105,7 @@ ANIDADAS = [
 
 CAMPOS_COMPROBANTE = ["id", "tipo", "numero", "cliente_id", "cliente_nombre", "peluquero",
                       "total_lista", "extra_dificultad", "descuento_pct", "descuento_nombre",
-                      "forma_pago", "mostrar_motivo", "activo"]
+                      "forma_pago", "mostrar_motivo", "depilacion", "activo"]
 
 
 def _filas(datos, clave, campos, campos_fecha, version):

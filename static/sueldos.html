@@ -71,7 +71,7 @@
   .ciclo.en-curso .ciclo-cab h3::after{ content:" · en curso"; font-weight:var(--fw-normal);
                                         font-size:var(--fs-sm); color:var(--text-tenue); }
 
-  /* El lunes de depilación: en vez de días con horas, la cuenta del reparto. */
+  /* El día de depilación: en vez de días con horas, la cuenta del reparto. */
   .ciclo.depi .ciclo-cab{ background:var(--bg-header); }
   .cuenta-depi{ margin:var(--sp-3) 0; }
   .cuenta-depi .ren{ display:flex; align-items:baseline; gap:var(--sp-2);
@@ -86,15 +86,18 @@
                              font-weight:var(--fw-black); }
   .cuenta-depi .ren.mitad{ border-bottom:none; }
   .cuenta-depi .ren.mitad b{ font-weight:var(--fw-bold); }
-  /* El pago a la ayudante no es un gasto más: es el único que sale de un trato
-     con una persona, y el que más se olvida. Por eso el renglón está siempre,
-     aunque todavía no se cargó. */
+  /* La máquina y el pago a la ayudante no son gastos más: son fijos del día y
+     los dos que más se olvidan, y faltando reparten plata que no quedó. Por eso
+     el renglón está siempre, aunque todavía no se haya cargado. */
   .cuenta-depi .ren.chico.ayudante{ color:var(--text); }
-  .cuenta-depi .ren.chico.falta-ayudante{ color:var(--danger); }
+  .cuenta-depi .ren.chico.falta-fijo{ color:var(--danger); }
+  /* El mismo número en transferencia, para cruzarlo con el comprobante: es un
+     dato al costado de la cuenta, no un renglón que sume o reste. */
+  .cuenta-depi .ren.chico.transfer{ font-style:italic; }
   .cuenta-depi .ren.chico em{ font-style:normal; }
   .cuenta-depi .ren .btn-mini{ margin-left:6px; padding:1px 7px; }
 
-  /* Para la ayudante no hay ciclo: solo el aviso de lo que cobró ese lunes. */
+  /* Para la ayudante no hay ciclo: solo el aviso de lo que cobró ese día. */
   .avisos-depi{ margin-bottom:var(--sp-3); }
   .aviso-depi{ display:flex; align-items:center; gap:var(--sp-3);
                padding:var(--sp-3); border:1px solid var(--border-sutil);

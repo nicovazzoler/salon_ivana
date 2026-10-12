@@ -76,9 +76,13 @@ def hoy_argentina() -> date:
 
 
 def ciclo_de(f: date) -> tuple[date, date]:
-    """El mismo corte que usa la app: de sábado a viernes, y el lunes suelto."""
+    """El mismo corte que usa la app: de sábado a viernes.
+
+    El día de depilación es su propio ciclo de un día, pero eso no sale del
+    almanaque: lo decide haber facturado depilación. Acá no hace falta, porque
+    la simulación no factura depilación.
+    """
     dow = f.weekday()
-    if dow == 0: return f, f
     if dow == 5: return f, f + timedelta(days=6)
     if dow == 6: return f - timedelta(days=1), f + timedelta(days=5)
     ini = f - timedelta(days=dow + 2)
@@ -117,8 +121,6 @@ def cargar(api, cuantas, cual_ciclo, semilla):
     rnd = random.Random(semilla)
     hoy = hoy_argentina()
     desde, hasta = ciclo_de(hoy if cual_ciclo == "actual" else hoy - timedelta(days=7))
-    if cual_ciclo != "actual" and desde == hasta:        # cayó en un lunes suelto
-        desde, hasta = ciclo_de(desde - timedelta(days=1))
 
     empleadas = [e for e in api.pedir("/api/empleados") if e.get("activo", True)][:cuantas]
     if len(empleadas) < cuantas:
@@ -129,10 +131,8 @@ def cargar(api, cuantas, cual_ciclo, semilla):
         sys.exit("No hay ningún ítem marcado a comisión. Marcá alguno en Admin → catálogo.")
 
     dias = [desde + timedelta(days=i) for i in range(7) if desde + timedelta(days=i) <= hoy]
-    # Cada una trabaja los días que tiene cargados en su horario. Facturarle un
-    # día que el local no abre ensucia la prueba de dos formas: le suma trabajo
-    # que no existe, y si cae en lunes la app lo toma como día de depilación y
-    # le arma un reparto arriba de las comisiones.
+    # Cada una trabaja los días que tiene cargados en su horario: facturarle un
+    # día que el local no abre le suma trabajo que no existe.
     horarios = api.pedir("/api/horarios") or {}
     def trabaja(emp, dia):
         suyos = {t["dia_semana"] for t in horarios.get(str(emp["id"]), [])}

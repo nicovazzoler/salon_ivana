@@ -18,7 +18,12 @@
    excepciones a la vez deja de decir qué se cambió.
 
    El bloque por persona se apaga con `porPersona: false` para Admin, donde cada
-   empleada ya tiene su renglón con su valor hora adentro. */
+   empleada ya tiene su renglón con su valor hora adentro.
+
+   Con `soloDepi: true` dibuja los dos números de la depilación en vez de los del
+   sueldo. Es el mismo dibujante porque es la misma tarjeta —escrita, con su
+   botón de Editar— y porque los dos escriben en la misma config; lo que cambia
+   es dónde se mira cada cosa: el sueldo en Sueldos y la depilación en la suya. */
 
 const _escGral = s => String(s ?? "").replace(/[&<>"']/g,
   c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
@@ -27,7 +32,8 @@ const _pesos = n => "$" + (n || 0).toLocaleString("es-AR");
 /* `alGuardar` recibe la config nueva, para que cada pantalla refresque lo suyo
    sin que este archivo sepa qué tiene que redibujar. */
 function panelGenerales(cont, alGuardar, opciones){
-  const porPersona = !(opciones && opciones.porPersona === false);
+  const soloDepi = !!(opciones && opciones.soloDepi);
+  const porPersona = !soloDepi && !(opciones && opciones.porPersona === false);
   let cfg = {}, emps = [], editando = false;
 
   cont.innerHTML = `<div class="generales"></div>`;
@@ -66,20 +72,21 @@ function panelGenerales(cont, alGuardar, opciones){
 
   function pintar(){
     const sel = cfg.depi_a_cargo || "";
-    const campos = [
+    const campos = soloDepi ? [
+      ["Pago a la ayudante",  `<input type="number" class="gAyu" min="0" inputmode="numeric" value="${cfg.pago_ayudante ?? 0}">`,
+                              _pesos(cfg.pago_ayudante)],
+      ["El día lo lleva",     `<select class="gDepi"><option value="">La que más facture</option>${
+                                activas().map(e => `<option${e.nombre === sel ? " selected" : ""}>${_escGral(e.nombre)}</option>`).join("")}</select>`,
+                              sel ? _escGral(sel) : `<span class="flojo">la que más facture</span>`],
+    ] : [
       ["Valor hora",          `<input type="number" class="gHora" min="0" inputmode="numeric" value="${cfg.valor_hora ?? 0}">`,
                               _pesos(cfg.valor_hora)],
       ["Comisión",            `<input type="number" class="gPct" min="0" max="100" inputmode="numeric" value="${cfg.comision_pct ?? 40}">`,
                               (cfg.comision_pct ?? 40) + "%"],
-      ["Ayudante depilación", `<input type="number" class="gAyu" min="0" inputmode="numeric" value="${cfg.pago_ayudante ?? 0}">`,
-                              _pesos(cfg.pago_ayudante)],
-      ["Depilación la lleva", `<select class="gDepi"><option value="">La que más facture</option>${
-                                activas().map(e => `<option${e.nombre === sel ? " selected" : ""}>${_escGral(e.nombre)}</option>`).join("")}</select>`,
-                              sel ? _escGral(sel) : `<span class="flojo">la que más facture</span>`],
     ];
     caja.innerHTML = `
       <div class="gral-cab">
-        <h3>Para todas</h3>
+        <h3>${soloDepi ? "Los números del día" : "Para todas"}</h3>
         ${editando
           ? `<span class="gral-acc"><button class="b-ok gGuardar">Guardar</button>
              <button class="b-out gCancelar">Cancelar</button></span>`
@@ -90,11 +97,14 @@ function panelGenerales(cont, alGuardar, opciones){
           <div class="campo"><label>${rot}</label>
             ${editando ? edit : `<b class="val">${texto}</b>`}</div>`).join("")}
       </div>
-      <p class="nota">${aviso()}</p>
+      <p class="nota">${soloDepi ? avisoDepi() : aviso()}</p>
       ${editando && porPersona ? listaPropios() : ""}`;
 
     const editar = caja.querySelector(".gEditar");
-    if(editar) editar.onclick = () => { editando = true; pintar(); caja.querySelector(".gHora").focus(); };
+    if(editar) editar.onclick = () => {
+      editando = true; pintar();
+      caja.querySelector(soloDepi ? ".gAyu" : ".gHora").focus();
+    };
     const cancelar = caja.querySelector(".gCancelar");
     if(cancelar) cancelar.onclick = () => { editando = false; pintar(); };
     const guardar = caja.querySelector(".gGuardar");
@@ -108,36 +118,49 @@ function panelGenerales(cont, alGuardar, opciones){
     }
   }
 
+  function avisoDepi(){
+    return "El pago a la ayudante viene puesto al cargar el gasto del día y se puede "
+         + "cambiar ahí. La máquina no tiene número fijo: se alquila por jornada.";
+  }
+
   async function guardarGeneral(){
-    const v = Math.max(0, parseInt(caja.querySelector(".gHora").value, 10) || 0);
-    const p = Math.max(0, parseInt(caja.querySelector(".gPct").value, 10) || 0);
-    const a = Math.max(0, parseInt(caja.querySelector(".gAyu").value, 10) || 0);
-    const d = caja.querySelector(".gDepi").value;
-    if(p > 100){ toast("La comisión no puede pasar de 100%"); caja.querySelector(".gPct").focus(); return; }
+    const leer = (q, tope) => {
+      const el = caja.querySelector(q);
+      return el ? Math.max(0, Math.min(tope ?? 1e12, parseInt(el.value, 10) || 0)) : null;
+    };
+    const v = leer(".gHora"), p = leer(".gPct"), a = leer(".gAyu");
+    const selDepi = caja.querySelector(".gDepi");
+    const d = selDepi ? selDepi.value : null;
+    if(p !== null && p > 100){ toast("La comisión no puede pasar de 100%"); caja.querySelector(".gPct").focus(); return; }
 
     // Se avisa solo de lo que cambió, y se dice a quién le llega y a quién no.
     // Las dos cosas: "no le cambia a nadie más" tranquiliza tanto como
     // "les cambia a todas" frena.
     const propias = cfg.hora_propia || [];
     const cambios = [];
-    if(v !== (cfg.valor_hora ?? 0)) cambios.push(`El valor hora pasa a ${_pesos(v)}. ` + (
+    if(v !== null && v !== (cfg.valor_hora ?? 0)) cambios.push(`El valor hora pasa a ${_pesos(v)}. ` + (
       propias.length ? `Le llega a todas menos a ${propias.join(", ")}, que cobran la suya.`
                      : "Le llega a todas: ninguna tiene una hora propia."));
-    if(p !== (cfg.comision_pct ?? 40)) cambios.push(`La comisión pasa a ${p}%. ` + (
+    if(p !== null && p !== (cfg.comision_pct ?? 40)) cambios.push(`La comisión pasa a ${p}%. ` + (
       cfg.pct_propio ? `Le llega a todos los servicios menos a ${cfg.pct_propio} que `
                        + `${cfg.pct_propio === 1 ? "tiene" : "tienen"} el suyo.`
                      : "Le llega a todos los servicios: ninguno tiene un porcentaje propio."));
-    if(a !== (cfg.pago_ayudante ?? 0)) cambios.push(`El pago a la ayudante pasa a ${_pesos(a)}, `
-      + "que es el que va a venir puesto en el próximo lunes de depilación.");
-    if(d !== (cfg.depi_a_cargo || "")) cambios.push(d
-      ? `Los lunes de depilación pasan a ser de ${d}, salvo que al abrir un lunes se elija a otra.`
-      : "Los lunes de depilación vuelven a ser de la que más facture ese día.");
+    if(a !== null && a !== (cfg.pago_ayudante ?? 0)) cambios.push(`El pago a la ayudante pasa a ${_pesos(a)}, `
+      + "que es el que va a venir puesto en el próximo día de depilación.");
+    if(d !== null && d !== (cfg.depi_a_cargo || "")) cambios.push(d
+      ? `Los días de depilación pasan a ser de ${d}, salvo que al abrir el día se elija a otra.`
+      : "Los días de depilación vuelven a ser de la que más facture ese día.");
     if(!cambios.length){ editando = false; pintar(); return; }
     if(!confirm(cambios.join("\n\n") + "\n\nLo ya cerrado no cambia. ¿Guardamos?")) return;
 
     const r = await authFetch("/api/config/sueldos", {method:"PUT",
       headers:{"Content-Type":"application/json"},
-      body: JSON.stringify({valor_hora: v, comision_pct: p, pago_ayudante: a, depi_a_cargo: d})});
+      // Solo lo que esta tarjeta edita. Mandar el resto en null no es "no lo
+      // toques" para el backend de todos los campos, y mandarlo en cero le
+      // borraría a la otra tarjeta lo suyo.
+      body: JSON.stringify(Object.fromEntries(Object.entries(
+        {valor_hora: v, comision_pct: p, pago_ayudante: a, depi_a_cargo: d})
+        .filter(([, x]) => x !== null)))});
     if(!r.ok){ toast((await r.json().catch(()=>({}))).detail || "No se pudo"); return; }
     toast("Guardado");
     editando = false;

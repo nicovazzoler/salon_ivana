@@ -152,6 +152,7 @@ function renderItems(items, mostrarCat){
     if(mostrarCat) marcas.push(`<span class="cat-mini">${esc(it.categoria)}</span>`);
     if(it.es_producto) marcas.push(`<span class="tag">prod</span>`);
     if(it.es_comision) marcas.push(`<span class="tag">comisión</span>`);
+    if(it.es_depilacion) marcas.push(`<span class="tag">depilación</span>`);
     b.innerHTML = `<span class="n">${esc(it.nombre)}</span>
       <span class="precios">
         <span class="p-tr">${fmt(it.precio)}</span>
@@ -560,6 +561,10 @@ function fichaItem(it){
         <span class="tilde">✓</span> Va a comisión
         <span class="sub">se le paga a quien lo haga</span>
       </button>
+      <button type="button" class="marca f-depi">
+        <span class="tilde">✓</span> Es depilación
+        <span class="sub">entra en el reparto del día, no en comisiones</span>
+      </button>
       <div class="campo pct" hidden><label>Su porcentaje</label>
         <div class="con-signo"><input class="f-pct" type="number" min="0" max="100" inputmode="numeric"
              placeholder="general (${COMISION_GENERAL}%)"><span>%</span></div></div>
@@ -581,12 +586,20 @@ function fichaItem(it){
   const marcar = (b, on) => b.classList.toggle("on", !!on);
   marcar($$(".f-prod"), it && it.es_producto);
   marcar($$(".f-com"),  it && it.es_comision);
+  marcar($$(".f-depi"), it && it.es_depilacion);
   if(it && it.comision_pct != null) $$(".f-pct").value = it.comision_pct;
 
   const verPct = () => { $$(".pct").hidden = !$$(".f-com").classList.contains("on"); };
   verPct();
   $$(".f-prod").onclick = () => $$(".f-prod").classList.toggle("on");
   $$(".f-com").onclick  = () => { $$(".f-com").classList.toggle("on"); verPct(); };
+  // Las dos marcas se excluyen: la depilación se reparte por día y no se paga
+  // por comisión, así que un ítem con las dos puestas se pagaría dos veces.
+  $$(".f-depi").onclick = () => {
+    const on = !$$(".f-depi").classList.contains("on");
+    marcar($$(".f-depi"), on);
+    if(on){ marcar($$(".f-com"), false); verPct(); }
+  };
 
   const cerrar = () => { pan.remove(); document.querySelectorAll(".btn-item.abierto").forEach(b=>b.classList.remove("abierto")); };
   $$(".cerrar").onclick = cerrar;
@@ -605,6 +618,7 @@ function fichaItem(it){
     const cuerpo = {nombre, precio, categoria,
                     es_producto: $$(".f-prod").classList.contains("on"),
                     es_comision: $$(".f-com").classList.contains("on"),
+                    es_depilacion: $$(".f-depi").classList.contains("on"),
                     // -1 es "sacale el propio y que use el general": mandar null
                     // sería "no toques este campo", que no es lo mismo.
                     comision_pct: pctTexto ? pct : -1};
