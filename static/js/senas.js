@@ -124,8 +124,21 @@ function panelSena(clienteId, nombre, alGuardar){
     const v = valor();
     if(v <= 0){ toast("Poné de cuánto es la seña"); pan.querySelector(".sMonto").focus(); return; }
     if(eligeCliente && !elegido){
-      toast("Elegí la clienta de la lista: la seña es plata suya");
-      pan.querySelector(".sNombre").focus(); return;
+      // Tipeó un nombre y no lo eligió de la lista: si existe tal cual es esa,
+      // y si no se pregunta antes de crearla. Una seña a nombre de una clienta
+      // escrita apenas distinto no se le aplica nunca.
+      const nom = pan.querySelector(".sNombre").value.trim();
+      if(!nom){ toast("Decí de quién es la seña"); pan.querySelector(".sNombre").focus(); return; }
+      const res = await (await authFetch("/api/clientes?q=" + encodeURIComponent(nom))).json();
+      const igual = res.find(c => c.nombre.toLowerCase() === nom.toLowerCase());
+      if(igual){ elegido = igual.id; }
+      else {
+        if(!confirm(`"${nom}" no está en la lista de clientas.\n\n¿La creamos?`)) return;
+        const rc = await authFetch("/api/clientes", {method:"POST",
+          headers:{"Content-Type":"application/json"}, body: JSON.stringify({nombre: nom})});
+        if(!rc.ok){ toast((await rc.json().catch(()=>({}))).detail || "No se pudo crear"); return; }
+        elegido = (await rc.json()).id;
+      }
     }
     // Se guarda lo que ENTRÓ, no el valor: de eso depende el arqueo. Lo que
     // vale contra una factura lo calcula el backend al aplicarla.

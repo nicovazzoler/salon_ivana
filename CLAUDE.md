@@ -198,7 +198,15 @@ Lo que hay que respetar:
   privado **solo si lo cerró la dueña**: uno que cargó el empleado y no puede
   ver le deja el arqueo pidiendo plata que no está.
 - La liquidación guarda la foto: `recaudado` es lo facturado en efectivo y
-  `gastos` lo que se restó.
+  `gastos` lo que se restó. **Un día se puede cerrar más de una vez**: la cuenta
+  sigue viva, así que lo que se facture después de cerrar sube el reparto y esa
+  diferencia se cobra con otro cierre. Con un cierre único, esa plata no se
+  podía pagar por ninguna pantalla. Lo que no se toca después de un cierre son
+  los gastos: moverlos cambiaría una cuenta ya liquidada.
+- El monto de un gasto se corrige desde la pantalla, con las reglas del DÍA —que
+  sea suyo y que no esté cerrado— y no con las de Caja, donde el empleado solo
+  puede tocar lo de hoy: el día se cierra al otro día y para entonces ya no
+  podría corregir nada.
 - Un día que fue SOLO depilación no aparece en Sueldos: no tiene comisiones ni
   horas que pagar. El que además tuvo peluquería sí, con la peluquería adentro.
 
@@ -239,12 +247,25 @@ por ahí. Contándolos dos veces, el arqueo pide más efectivo del que hay en el
 cajón y no avisa por qué. El filtro va por el id y no por el texto "Seña", que se
 puede tipear distinto.
 
-Y una seña en **efectivo** salda más de lo que trajo, igual que cualquier pago en
-efectivo: el comprobante está anclado a la lista de transferencia y la diferencia
-entre listas es el descuento (`sena_saldado()`, monto ÷ 0,9). Si el comprobante
-ya se está preciando en efectivo no se toca, que el descuento ya está adentro del
-total. Sin eso, señar $10.000 en efectivo y pagar el resto por transferencia
-salía $1.111 más caro que pagar todo junto en efectivo.
+**Cuánto tapa una seña depende de en qué lista está escrita cada cosa**
+(`sena_saldado()`). El 10% es de la plata que entra en EFECTIVO, no del trabajo,
+y la seña entró antes:
+
+| La seña fue en | La cuenta está en | Tapa |
+|---|---|---|
+| Efectivo | Transferencia | monto ÷ 0,9 — esos pesos valen más contra una cuenta sin el descuento adentro |
+| Transferencia | Efectivo | monto × 0,9 — la cuenta ya viene con el 10% sacado y esa plata entró sin descuento |
+| La misma | | el monto, tal cual |
+
+Las dos puntas se rompieron alguna vez. Sin la primera, señar $10.000 en
+efectivo y pagar el resto por transferencia salía $1.111 más caro que pagar todo
+junto en efectivo. Sin la segunda, una seña de $5.000 por transferencia sobre un
+trabajo de $20.000 pagado en efectivo le regalaba el 10% de la seña: entraban
+$18.000 cuando correspondían $18.500.
+
+La pantalla muestra la cuenta entera en transferencia —subtotal, la seña que ya
+dejó, y recién al final el 10%— y saca el descuento restando, no multiplicando:
+así el total que se le dice a la clienta es exactamente el que cobra el backend.
 
 **La comisión sale de lo que la clienta terminó pagando por ESE trabajo.**
 `base_comision()` arranca del precio efectivo, le aplica el ajuste de la línea y
