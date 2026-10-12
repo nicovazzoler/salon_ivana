@@ -162,12 +162,19 @@ Lo que hay que respetar:
   El mismo número en transferencia viaja al lado, para cruzarlo con el papel.
 - Se reparte lo **facturado**, no lo cobrado: lo que se reparte es el trabajo
   hecho. Lo que falta cobrar se dice aparte y a la vista.
-- La máquina y el pago a la ayudante son egresos como cualquier otro, así que
-  entran solos en la resta. Los dos tienen su marca propia en el egreso
-  (`maquina`, `ayudante`) y no se reconocen por el texto del tipo, que
-  renombrarlo haría que la pantalla ofrezca cargarlos de nuevo y el día se
-  reparta con la máquina dos veces. El pago a la ayudante tiene monto fijo; la
-  máquina **no**: se alquila por jornada y un día de pocas horas sale menos.
+- **Solo restan los gastos DE la depilación**, los que se cargan desde su
+  pantalla y quedan marcados con `depilacion` en el egreso. No los egresos del
+  día: uno de peluquería del mismo día le bajaría la mitad a quien lleva la
+  depilación. Aparecen en Caja como cualquier egreso —la plata sale del cajón—
+  pero marcados.
+- La máquina y el pago a la ayudante tienen además su marca propia (`maquina`,
+  `ayudante`) y no se reconocen por el texto del tipo, que renombrarlo haría que
+  la pantalla ofrezca cargarlos de nuevo y el día se reparta con la máquina dos
+  veces. El pago a la ayudante tiene monto fijo; la máquina **no**: se alquila
+  por jornada y un día de pocas horas sale menos.
+- Un gasto de depilación también dice que ese día hubo depilación: la máquina se
+  paga antes de atender a la primera, y pedir que el día ya fuera de depilación
+  para poder cargarla no dejaba cargar nada nunca.
 - Los egresos **privados** no entran: el alquiler no es costo de la depilación, y
   el detalle se lo muestra a ella. Sin ese filtro, cerrar la liquidación —que
   crea un egreso privado con el sueldo, con fecha de hoy— le cambiaba la cuenta
@@ -190,7 +197,13 @@ Lo que hay que respetar:
 - Un día que fue SOLO depilación no aparece en Sueldos: no tiene comisiones ni
   horas que pagar. El que además tuvo peluquería sí, con la peluquería adentro.
 
-**La lista de precios de depilación se carga con un script.** No se cobra por
+**La lista de precios de depilación se siembra sola.** `sembrar_depilacion()`
+corre al arrancar y la carga si la base no tiene ninguna zona, con marca en
+`config` para que sea UNA sola vez: en producción no hay consola —se deploya
+haciendo push— y sin esto la lista habría que tipearla en la tablet. Corriendo
+cada vez, le pisaría a la dueña los precios que haya corregido desde Admin.
+
+**Y se puede cargar o corregir con un script.** No se cobra por
 zona sino por CANTIDAD de zonas —"3 zonas", "5 zonas"— y son dos listas, mujeres
 y masculino. Está en `depilacion_precios.txt` tal como está impresa en el local,
 con los precios de TRANSFERENCIA, y la carga `cargar_depilacion.py`, que escribe

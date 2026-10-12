@@ -178,7 +178,8 @@ async function cargarDia(){
     d.egresos_detalle.forEach(e=>{
       // El empleado directamente no recibe los privados; la dueña los ve marcados,
       // para saber cuál de los egresos del día no está en la caja del otro.
-      const marca = e.privado ? ' <span class="tag-privado" title="El empleado no ve este egreso">privado</span>' : '';
+      const marca = (e.privado ? ' <span class="tag-privado" title="El empleado no ve este egreso">privado</span>' : '')
+                  + (e.depilacion ? ' <span class="tag">depilación</span>' : '');
       html+=`<tr data-tipo="${e.tipo||''}" data-conc="${e.concepto||''}" data-monto="${e.monto}">
         <td class="num-egreso">${e.numero ? "#"+e.numero : "—"}</td>
         <td>${e.hora}${marca}</td>

@@ -92,6 +92,10 @@ class Egreso(Base):
     # el texto del tipo haría que renombrarlo lo multiplique —la pantalla
     # ofrecería cargarlo de nuevo y el reparto saldría con la máquina dos veces—.
     maquina = Column(Boolean, default=False)
+    # Gasto de la depilación: solo estos entran en la resta del reparto. Antes
+    # entraba cualquier egreso no privado del día, y un gasto de peluquería de
+    # ese mismo día le bajaba la mitad a quien lleva la depilación.
+    depilacion = Column(Boolean, default=False)
     empleado_id = Column(Integer, ForeignKey("empleados.id"), index=True)
 
 class FormaPago(Base):

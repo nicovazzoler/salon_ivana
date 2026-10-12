@@ -181,6 +181,15 @@ def migrar():
         if col not in ecols:
             with engine.begin() as con:
                 con.execute(text(f"ALTER TABLE egresos ADD COLUMN {col} {tipo}"))
+    if "depilacion" not in ecols:
+        with engine.begin() as con:
+            con.execute(text("ALTER TABLE egresos ADD COLUMN depilacion BOOLEAN DEFAULT FALSE"))
+            # Los que ya estaban cargados como pago a la ayudante o alquiler de
+            # la máquina son de depilación por definición. Va acá y no con una
+            # marca en config porque la condición ya es la marca: si la columna
+            # existía, esto no corre.
+            con.execute(text("UPDATE egresos SET depilacion = TRUE "
+                             "WHERE ayudante = TRUE OR maquina = TRUE"))
     if insp.has_table("excepciones_horario"):
         excols = [c["name"] for c in insp.get_columns("excepciones_horario")]
         if "a_cargo" not in excols:
@@ -207,6 +216,44 @@ try:
     _seed()
 except Exception as _e:
     print('Aviso: no se pudo sembrar al iniciar:', _e)
+
+MARCA_DEPI = "sembro_depilacion"
+
+def sembrar_depilacion():
+    """Carga la lista de precios de depilación la primera vez que arranca con ella.
+
+    El script existe para cargarla a mano, pero en producción no hay consola: se
+    deploya haciendo push y listo. Sin esto, la pantalla de depilación arranca
+    vacía y la lista habría que tipearla en la tablet.
+
+    Con marca en config para que corra UNA sola vez: si no, cada reinicio le
+    pisaría a la dueña los precios que haya corregido desde Admin. Por eso
+    tampoco toca nada si ya hay zonas cargadas.
+    """
+    from sqlalchemy.orm import Session as _S
+    from cargar_depilacion import leer_lista, efectivo_de   # un solo lector de la lista
+    ruta = os.path.join(os.path.dirname(os.path.abspath(__file__)), "depilacion_precios.txt")
+    if not os.path.exists(ruta): return
+    with _S(engine) as db:
+        if db.query(models.Config).filter_by(clave=MARCA_DEPI).first(): return
+        ya = db.query(models.Item).filter(models.Item.es_depilacion == True).count()
+        nuevas = 0
+        if not ya:
+            for categoria, nombre, transfer in leer_lista(ruta):
+                efectivo = efectivo_de(transfer)
+                if not efectivo: continue       # ese precio no cierra: mejor ninguno que uno mal
+                db.add(models.Item(categoria=categoria, nombre=nombre, precio=efectivo,
+                                   precio_transfer=transfer, es_producto=False,
+                                   es_comision=False, es_depilacion=True, activo=True))
+                nuevas += 1
+        db.add(models.Config(clave=MARCA_DEPI, valor=str(nuevas)))
+        db.commit()
+        if nuevas: print(f"Lista de depilación sembrada: {nuevas} renglones.")
+
+try:
+    sembrar_depilacion()
+except Exception as _e:
+    print('Aviso: no se pudo sembrar la depilación:', _e)
 
 app = FastAPI(title="Pelu App")
 
@@ -1486,8 +1533,10 @@ def lineas_depilacion(db, f: date):
 def es_dia_depilacion(db, f: date) -> bool:
     """Si ese día se hizo depilación.
 
-    Dos señales, las dos válidas: que se haya facturado al menos un ítem de
-    depilación, o que al abrir el día se haya elegido quién lo lleva.
+    Tres señales, las tres válidas: que se haya facturado al menos un ítem de
+    depilación, que se haya cargado un gasto de depilación —la máquina se paga
+    antes de atender a la primera— o que al abrir el día se haya elegido quién
+    lo lleva.
 
     Ojo que esto NO es "el lunes". Lo era cuando el local abría un lunes al mes
     solo para esto, pero puede caer lunes o martes, y en un día cualquiera
@@ -1499,7 +1548,11 @@ def es_dia_depilacion(db, f: date) -> bool:
         models.ExcepcionHorario.fecha == f.isoformat(),
         models.ExcepcionHorario.a_cargo.isnot(None)).first()
     if marcado: return True
-    return bool(lineas_depilacion(db, f))
+    if lineas_depilacion(db, f): return True
+    ini, fin = _rango_dia(f)
+    return db.query(models.Egreso.id).filter(
+        models.Egreso.fecha >= ini, models.Egreso.fecha < fin,
+        models.Egreso.depilacion == True).first() is not None
 
 def empleada_del_dia(db, f: date) -> str | None:
     """De quién es el día de depilación: la que más facturó ese día.
@@ -1559,6 +1612,10 @@ def dias_de_depilacion(db, dias_atras: int = 180) -> list[str]:
                    models.Comprobante.depilacion == True,
                    models.Comprobante.fecha >= _rango_dia(corte)[0]))
     fechas |= {hora_argentina(f).date().isoformat() for (f,) in q.distinct().all()}
+    g = (db.query(models.Egreso.fecha)
+           .filter(models.Egreso.depilacion == True,
+                   models.Egreso.fecha >= _rango_dia(corte)[0]))
+    fechas |= {hora_argentina(f).date().isoformat() for (f,) in g.distinct().all()}
     return sorted(fechas)
 
 def base_lista(linea, comp=None) -> int:
@@ -1601,11 +1658,12 @@ def cuenta_depilacion(db, f: date) -> dict:
     por_comp = pagos_por_comprobante(db, comps)
     falta_cobrar = sum(max(estado_comprobante(db, c, por_comp)["saldo"], 0) for c in comps)
 
-    # Los privados —alquiler, sueldos— no son costo del día: bajarle la parte a
-    # la empleada con el alquiler del local no es el trato, y además el detalle
-    # se lo muestra a ella, que no tiene que ver esos números.
+    # Solo los gastos DE LA DEPILACIÓN, los que se cargan desde su pantalla. No
+    # los egresos del día: un gasto de peluquería del mismo día le bajaría la
+    # mitad a quien lleva la depilación, y el alquiler del local ni hablar.
     egresos = db.query(models.Egreso).filter(
         models.Egreso.fecha >= ini, models.Egreso.fecha < fin,
+        models.Egreso.depilacion == True,
         _no_privado(models.Egreso.privado)).all()
     gastos = sum(e.monto or 0 for e in egresos)
 
@@ -1906,7 +1964,10 @@ def _dia_suyo(db, empleado, iso: str) -> date:
         f = date.fromisoformat(iso[:10])
     except ValueError:
         raise HTTPException(400, "Fecha inválida")
-    if not es_dia_depilacion(db, f) or empleada_del_dia(db, f) != empleado.nombre:
+    # No se pide que el día YA sea de depilación: el primer movimiento suele ser
+    # justamente el gasto de la máquina, antes de facturarle a la primera. Lo que
+    # se pide es que el día sea suyo, que es lo que decide de quién es la plata.
+    if empleada_del_dia(db, f) != empleado.nombre:
         raise HTTPException(403, "Ese día no es tuyo")
     ya = db.query(models.Liquidacion).filter(
         models.Liquidacion.empleado_id == empleado.id,
@@ -1950,6 +2011,7 @@ def gasto_depilacion(g: GastoDepiIn, user = Depends(usuario_actual),
         concepto=(g.concepto or "").strip() or None,
         monto=g.monto, forma_pago=g.forma_pago, notas=notas, privado=False,
         fecha=fecha_del_servicio(f.isoformat(), fecha_hora_now_utc().replace(tzinfo=None), "un gasto"),
+        depilacion=True,
         ayudante=bool(g.ayudante), maquina=bool(g.maquina), empleado_id=de_quien)
     db.add(eg); db.commit(); db.refresh(eg)
     return {"id": eg.id, "numero": eg.numero}
@@ -1963,8 +2025,10 @@ def borrar_gasto_depilacion(egreso_id: int, empleado_id: int, user = Depends(usu
     permitir_sueldo(db, user, quien, empleado_id)
     emp = _empleado_o_404(db, empleado_id)
     e = db.get(models.Egreso, egreso_id)
-    # 404 y no 403 si es privado: un "no podés" ya le confirmaría que existe.
-    if not e or e.privado: raise HTTPException(404, "Gasto no existe")
+    # 404 y no 403 si no es de depilación: un "no podés" ya le confirmaría que
+    # existe. Desde acá se borran los gastos de la depilación y nada más; los
+    # del local se tocan en Caja, que es de la dueña.
+    if not e or e.privado or not e.depilacion: raise HTTPException(404, "Gasto no existe")
     _dia_suyo(db, emp, hora_argentina(e.fecha).date().isoformat())
     db.delete(e); db.commit(); return {"ok": True}
 
@@ -3673,7 +3737,7 @@ def caja_dia(fecha: str | None = None, user = Depends(usuario_actual), db: Sessi
             "egresos_detalle": [{"id": e.id, "numero": e.numero,
                                  "hora": hora_argentina(e.fecha).strftime("%H:%M"), "tipo": e.tipo,
                                  "concepto": e.concepto, "monto": e.monto, "forma_pago": e.forma_pago,
-                                 "privado": bool(e.privado)}
+                                 "privado": bool(e.privado), "depilacion": bool(e.depilacion)}
                                 for e in egresos]}
 
 @app.get("/api/caja/diario")
