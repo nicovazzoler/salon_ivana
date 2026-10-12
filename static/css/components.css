@@ -813,3 +813,20 @@ body.con-panel{ overflow:hidden; }
 .panel-sena .campo input, .panel-sena .campo select{ width:100%; }
 .panel-sena .montos{ display:flex; flex-wrap:wrap; gap:var(--sp-2); margin-top:var(--sp-4); }
 .panel-sena .acc{ display:flex; gap:var(--sp-2); margin-top:var(--sp-4); flex-wrap:wrap; }
+
+
+/* ----- El corte de los sueldos -----
+
+   Vive acá y no en la pantalla porque el dibujante es uno solo (generales.js) y
+   lo usan Admin y Sueldos. Es una línea y no un formulario: se toca una vez por
+   año y desplegado invita a moverlo sin querer. */
+.arranque{ display:flex; flex-wrap:wrap; align-items:center; gap:var(--sp-2);
+           margin-top:var(--sp-3); padding-top:var(--sp-3);
+           border-top:1px solid var(--border-sutil); font-size:var(--fs-sm);
+           color:var(--text-tenue); }
+.arranque input[type=date]{ width:auto; }
+/* Puesto, es un dato y no un control: un renglón gris al pie, sin casillero ni
+   botones a la vista. */
+.arranque.puesto{ font-size:var(--fs-xs); }
+.arranque .arrVer{ color:var(--text-tenue); text-decoration:underline; }
+.arranque .arrCajon{ display:flex; align-items:center; gap:var(--sp-2); }

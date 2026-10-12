@@ -244,3 +244,101 @@ function panelGenerales(cont, alGuardar, opciones){
     if(alGuardar) alGuardar(cfg);
   }
 }
+
+/* El borrón y cuenta nueva de los sueldos, con el mismo criterio que los dos
+   números de arriba: un solo dibujante para Admin y para Sueldos.
+
+   Lo de antes del corte se pagó a mano, por fuera de la app, y no tiene que
+   volver a aparecer como pendiente. NO borra nada: los trabajos y las horas
+   siguen guardados, así que correr el corte para atrás los devuelve enteros.
+   Por eso es esto y no un botón de borrar ciclos viejos, que sí sería para
+   siempre y con la plata de otro.
+
+   Y es UNO para todo el local, no por empleada: lo dice el renglón y lo dice el
+   cartel de confirmación, que nombra a quiénes deja afuera. El cartel lo arma
+   el backend, que es el que sabe lo que cada una tiene pendiente: contándolo en
+   la pantalla salía el número de la empleada que estaba abierta.
+
+   Se pone UNA vez en la vida del local, así que puesto se achica a un renglón
+   gris: un casillero de fecha y dos botones arriba de la pantalla que se mira
+   todos los días es algo que se mueve sin querer. */
+function panelCorteSueldos(cont, alGuardar){
+  if(!cont) return;
+  cargar();
+
+  async function cargar(){
+    let cfg = {};
+    try{ cfg = await (await authFetch("/api/config")).json(); }catch(e){ return; }
+    pintar(cfg.sueldos_arranque || null);
+  }
+
+  // Argentina es UTC−3: sin restar las tres horas, después de las 21 el corte
+  // viene propuesto con el día de mañana.
+  const hoyIso = () => new Date(Date.now() - 3*3600*1000).toISOString().slice(0, 10);
+  // El sábado con el que arranca la semana de pago: es donde tiene sentido
+  // cortar, porque el ciclo va de sábado a viernes.
+  function sabadoDeEstaSemana(){
+    const d = new Date(hoyIso() + "T12:00:00");
+    d.setDate(d.getDate() - ((d.getDay() + 1) % 7));
+    return d.toISOString().slice(0, 10);
+  }
+  const corto = f => f ? f.slice(8,10) + "/" + f.slice(5,7) : "";
+
+  function pintar(actual){
+    const controles = `
+      <input type="date" class="arrFecha" value="${actual || sabadoDeEstaSemana()}" max="${hoyIso()}">
+      <button class="b-out btn-mini arrOk">${actual ? "Mover el corte" : "Poner el corte"}</button>
+      ${actual ? `<button class="b-out btn-mini arrNo">Quitarlo</button>` : ""}`;
+    cont.innerHTML = actual
+      ? `<div class="arranque puesto">
+           <span>Los sueldos de <b>todas</b> cuentan desde el <b>${corto(actual)}</b>.</span>
+           <a href="#" class="arrVer">cambiar</a>
+           <span class="arrCajon" style="display:none;">${controles}</span>
+         </div>`
+      : `<div class="arranque">
+           <span>Los sueldos cuentan desde siempre: aparece todo lo que quedó sin pagar.
+                 El corte vale para <b>todas</b> las empleadas.</span>
+           ${controles}
+         </div>`;
+
+    const ver = cont.querySelector(".arrVer");
+    if(ver) ver.onclick = e => {
+      e.preventDefault();
+      cont.querySelector(".arrCajon").style.display = "";
+      ver.remove();
+    };
+    cont.querySelector(".arrOk").onclick = async () => {
+      const f = cont.querySelector(".arrFecha").value;
+      if(!f){ toast("Elegí desde qué día"); return; }
+      let afuera = {ciclos: 0, total: 0, detalle: []};
+      try{
+        afuera = await (await authFetch("/api/sueldos/arranque?fecha=" + f)).json();
+      }catch(e){ /* sin el detalle igual se puede poner: el cartel dice menos */ }
+      const lista = (afuera.detalle || []).map(d =>
+        `· ${d.nombre}: ${d.ciclos} ${d.ciclos === 1 ? "ciclo" : "ciclos"}, ${_pesos(d.total)}`).join("\n");
+      if(!confirm(`Los sueldos de TODAS van a contar desde el ${corto(f)}.\n\n`
+        + (afuera.ciclos
+            ? `Dejan de aparecer ${afuera.ciclos} ${afuera.ciclos === 1 ? "ciclo" : "ciclos"} `
+              + `de ${afuera.empleadas} ${afuera.empleadas === 1 ? "empleada" : "empleadas"}, `
+              + `por ${_pesos(afuera.total)}:\n${lista}\n\n`
+            : "No deja afuera ningún ciclo pendiente.\n\n")
+        + "No se borra nada: si te equivocás, corrés el corte para atrás y vuelve todo.")) return;
+      await guardar(f, "Corte puesto ✓");
+    };
+    const quitar = cont.querySelector(".arrNo");
+    if(quitar) quitar.onclick = async () => {
+      if(!confirm("Van a volver a aparecer todos los ciclos anteriores al corte, "
+                + "de todas las empleadas. ¿Seguimos?")) return;
+      await guardar(null, "Corte quitado ✓");
+    };
+  }
+
+  async function guardar(fecha, aviso){
+    const r = await authFetch("/api/sueldos/arranque", {method:"PUT",
+      headers:{"Content-Type":"application/json"}, body: JSON.stringify({fecha})});
+    if(!r.ok){ toast((await r.json().catch(()=>({}))).detail || "No se pudo guardar"); return; }
+    toast(aviso);
+    await cargar();
+    if(alGuardar) alGuardar();
+  }
+}

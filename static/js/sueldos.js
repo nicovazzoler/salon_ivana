@@ -68,8 +68,8 @@ const VOS = {
   debe:   DUENO ? "Se le debe" : "Se te debe",
   quien:  DUENO ? "Empleada" : "Quién sos",
   sinNada: DUENO ? "No tiene nada pendiente" : "No tenés nada pendiente",
-  comoAparece: DUENO ? "Los días aparecen solos cuando se cobra un ticket a su nombre con un ítem a comisión."
-                     : "Los días aparecen solos cuando se cobra un ticket a tu nombre con un ítem a comisión.",
+  comoAparece: DUENO ? "Los trabajos aparecen solos cuando se cobra un ticket a su nombre con un ítem a comisión."
+                     : "Los trabajos aparecen solos cuando se cobra un ticket a tu nombre con un ítem a comisión.",
 };
 
 /* Las horas se muestran como las dice la gente ("8 h 30"), nunca en decimales:
@@ -108,17 +108,6 @@ function rangoLargo(desde, hasta){
     ? `${Number(d1)} al ${Number(d2)} de ${MESES[Number(mA)-1]}`
     : `${Number(d1)} de ${MESES[Number(mA)-1]} al ${Number(d2)} de ${MESES[Number(mB)-1]}`;
 }
-/* El sábado con el que arranca la semana de pago de un día.
-
-   Lo mismo que ciclo_de() en el backend, pero siempre el sábado de la semana: el
-   día de depilación es su propio ciclo de un día allá, y acá lo que se busca es
-   dónde empieza la semana, que es donde tiene sentido poner el corte. */
-function sabadoDeLaSemana(iso){
-  const d = new Date(iso + "T12:00:00");
-  d.setDate(d.getDate() - ((d.getDay() + 1) % 7));
-  return d.toISOString().slice(0, 10);
-}
-
 const DIAS = ["Domingo","Lunes","Martes","Miércoles","Jueves","Viernes","Sábado"];
 function diaDe(iso){
   if(!iso) return "";
@@ -143,8 +132,9 @@ async function arranque(){
     $("#bajadaDetalle").textContent = "Lo que se le debe, ciclo por ciclo. Cada semana se cierra por separado.";
     $("#rotuloQuien").textContent = VOS.quien;
   } else {
-    $("#tituloDetalle").textContent = "👛 Tu sueldo";
-    $("#bajadaDetalle").textContent = "Poné cuánto duró cada trabajo y las horas de cada día. El total se actualiza solo.";
+    $("#tituloDetalle").textContent = "👛 Tu semana";
+    $("#bajadaDetalle").textContent = "Están todos los días: poné las horas que hiciste y cuánto duró cada trabajo. "
+      + "El que no quedó en ningún ticket lo agregás vos. El total se actualiza solo.";
   }
   // Ordenados por nombre: el desplegable se usa buscando uno puntual, y el orden
   // en que los devuelve la base no le dice nada al que busca.
@@ -230,8 +220,11 @@ async function cargarPanelDueno(){
   // meses y ya cobró todo no tiene por qué seguir en la lista de todos los días.
   PENDIENTE = Object.fromEntries(todos.map(r => [r.empleado.id, r.total]));
   const conCodigo = Object.fromEntries(EMPLEADOS.map(e => [e.id, e.tiene_pin !== false]));
-  const resumenes = todos.filter(r => (r.activo || r.total > 0 || r.ciclos.length)
-                                   && (conCodigo[r.empleado.id] || r.total > 0 || r.ciclos.length));
+  // "Tiene algo" no es "tiene ciclos": el ciclo en curso existe siempre, aunque
+  // esté en blanco, porque es donde la empleada carga sus horas.
+  const conAlgo = r => r.ciclos.filter(c => !c.vacio).length;
+  const resumenes = todos.filter(r => (r.activo || r.total > 0 || conAlgo(r))
+                                   && (conCodigo[r.empleado.id] || r.total > 0 || conAlgo(r)));
   /* El general sale de config y NO del resumen de la primera de la lista.
      Cuando cada una podía tener el suyo, `resumenes[0].valor_hora` pasó a ser el
      de esa persona: el casillero de abajo edita el general, y con eso adentro,
@@ -239,7 +232,7 @@ async function cargarPanelDueno(){
   const gral = await pedir("/api/config").then(r=>r.json()).catch(()=>({}));
   const distintas = resumenes.filter(r => r.valor_hora !== (gral.valor_hora ?? 0)).length;
   const total = resumenes.reduce((a,r)=>a+r.total, 0);
-  const ciclosViejos = resumenes.reduce((a,r)=>a + Math.max(r.ciclos.length - 1, 0), 0);
+  const ciclosViejos = resumenes.reduce((a,r)=>a + Math.max(conAlgo(r) - 1, 0), 0);
   $("#kpisDueno").innerHTML = `
     <div class="kpi"><span class="lbl">Total a pagar</span><span class="val">${fmt(total)}</span></div>
     <div class="kpi"><span class="lbl">Valor hora</span><span class="val">${fmt(gral.valor_hora ?? 0)}</span>${
@@ -250,7 +243,7 @@ async function cargarPanelDueno(){
       <div>
         <b>${esc(r.empleado.nombre)}${r.activo ? "" : " · de baja"}</b>
         <span class="det">${r.valor_hora !== (gral.valor_hora ?? 0) ? `${fmt(r.valor_hora)} la hora · ` : ""}${
-          r.ciclos.length ? `${r.ciclos.length} ${r.ciclos.length===1?"ciclo":"ciclos"} · ${hhmm(r.minutos_total)}` : "sin nada pendiente"}${
+          conAlgo(r) ? `${conAlgo(r)} ${conAlgo(r)===1?"ciclo":"ciclos"} · ${hhmm(r.minutos_total)}` : "sin nada pendiente"}${
           r.sin_tiempo ? ` · <span style="color:var(--danger);">${r.sin_tiempo===1 ? "falta 1 duración" : `faltan ${r.sin_tiempo} duraciones`}</span>` : ""}${
           r.sin_horas ? ` · <span style="color:var(--danger);">${r.sin_horas===1 ? "falta 1 día sin horas" : `faltan ${r.sin_horas} días sin horas`}</span>` : ""}</span>
       </div>
@@ -272,74 +265,9 @@ async function cargarPanelDueno(){
   // El mismo editor que usa Admin arriba de la lista de empleados: los dos
   // números son uno solo y no pueden dibujarse en dos lados distintos.
   panelGenerales($("#cfgGenerales"), () => cargarPanelDueno());
-  pintarArranque(resumenes[0] ? resumenes[0].arranque : null, resumenes);
+  panelCorteSueldos($("#cfgArranque"), () => cargarPanelDueno());
 
   pintarLiquidaciones();
-}
-
-/* El borrón y cuenta nueva.
-
-   Lo de antes del corte se pagó a mano, por fuera de la app, y no tiene que
-   volver a aparecer como pendiente. NO borra nada: los trabajos y las horas
-   siguen guardados, así que correr el corte para atrás los devuelve enteros.
-   Por eso es esto y no un botón de borrar ciclos viejos, que sí sería para
-   siempre y con la plata de otro.
-
-   Se pone UNA vez en la vida del local, así que puesto se achica a un renglón
-   gris: un casillero de fecha y dos botones arriba de la pantalla que se mira
-   todos los días son una invitación a mover sin querer algo que nadie quiso
-   mover. El "cambiar" queda para el único momento en que hace falta de verdad,
-   que es cuando se acaba de poner y se le erró a la fecha.
-
-   Sin corte se ve entero, con la fecha propuesta en el SÁBADO: donde arranca la
-   semana de pago; puesto un miércoles, la semana en curso aparece cortada por la
-   mitad. Qué se lleva se dice en el cartel de confirmación, que es donde hay que
-   leerlo; dicho también en la pantalla, era un renglón de números que estaba
-   siempre y servía una vez en la vida. */
-function pintarArranque(actual, resumenes){
-  const cont = $("#cfgArranque");
-  if(!cont) return;
-  const sab = sabadoDeLaSemana(hoyArg());
-
-  const controles = `
-      <input type="date" class="arrFecha" value="${actual || sab}" max="${hoyArg()}">
-      <button class="b-out btn-mini arrOk">${actual ? "Mover el corte" : "Poner el corte"}</button>
-      ${actual ? `<button class="b-out btn-mini arrNo">Quitarlo</button>` : ""}`;
-
-  cont.innerHTML = actual
-    ? `<div class="arranque puesto">
-         <span>Los sueldos cuentan desde el <b>${fechaCorta(actual)}</b>.</span>
-         <a href="#" class="arrVer">cambiar</a>
-         <span class="arrCajon" style="display:none;">${controles}</span>
-       </div>`
-    : `<div class="arranque">
-         <span>Los sueldos cuentan desde siempre: aparece todo lo que quedó sin pagar.</span>
-         ${controles}
-       </div>`;
-
-  const ver = cont.querySelector(".arrVer");
-  if(ver) ver.onclick = e => {
-    e.preventDefault();
-    cont.querySelector(".arrCajon").style.display = "";
-    ver.remove();
-  };
-  cont.querySelector(".arrOk").onclick = async () => {
-    const f = cont.querySelector(".arrFecha").value;
-    if(!f){ toast("Elegí desde qué día"); return; }
-    const van = resumenes.flatMap(r => r.ciclos.filter(c => c.desde < f));
-    if(!confirm(`Los sueldos van a contar desde el ${fechaCorta(f)}.\n\n`
-      + (van.length
-          ? `Dejan de aparecer ${van.length} ${van.length===1?"ciclo":"ciclos"} anteriores, `
-            + `por ${fmt(van.reduce((a,c)=>a+c.total,0))}.\n\n`
-          : "")
-      + "No se borra nada: si te equivocás, corrés el corte para atrás y vuelve todo.")) return;
-    if(await mandar("/api/sueldos/arranque", "PUT", {fecha: f})) toast("Corte puesto ✓");
-  };
-  const quitar = cont.querySelector(".arrNo");
-  if(quitar) quitar.onclick = async () => {
-    if(!confirm("Van a volver a aparecer todos los ciclos anteriores al corte. ¿Seguimos?")) return;
-    if(await mandar("/api/sueldos/arranque", "PUT", {fecha: null})) toast("Corte quitado ✓");
-  };
 }
 
 /* Lo ya pagado, agrupado por ciclo. Un ciclo cerrado es una semana del local:
@@ -435,13 +363,15 @@ async function cargar(){
 }
 
 function pintar(){
+  // El ciclo en curso está siempre, vacío o no: no cuenta como semana sin pagar.
+  const pendientes = D.ciclos.filter(c => !c.vacio).length;
   const espera = D.en_espera
     ? `<span class="nota">faltan ${D.sin_tiempo} sin duración: ${fmt(D.en_espera)} sin contar</span>` : "";
   $("#totales").innerHTML = `
     <div class="kpi destacado">
       <span class="lbl">${VOS.debe}</span>
       <span class="val">${fmt(D.total)}</span>
-      <span class="nota">${D.ciclos.length} ${D.ciclos.length===1?"ciclo":"ciclos"} sin pagar</span>
+      <span class="nota">${pendientes} ${pendientes===1?"ciclo":"ciclos"} sin pagar</span>
     </div>
     <div class="kpi">
       <span class="lbl">Comisiones</span>
@@ -461,34 +391,16 @@ function pintar(){
      <span class="val">${fmt(D.en_espera)}</span>
      <span class="nota">${D.sin_tiempo} ${D.sin_tiempo===1?"trabajo":"trabajos"} esperando que se cargue cuánto duró</span></div>`);
 
-  $("#cuerpo").innerHTML = (D.ciclos.length
-    ? D.ciclos.map(dibujarCiclo).join("")
-    : `<div class="vacio"><b>${VOS.sinNada}</b>${VOS.comoAparece}</div>`) + bloqueHoy();
-  enganchar();
-}
-
-/* Siempre hay una puerta para cargar un trabajo de HOY.
-
-   Los días aparecen solos cuando hay un ticket, pero un trabajo que no quedó en
-   ningún comprobante no crea nada: sin esto, el día que no hubo ni un ticket
-   —o el día que todavía no se facturó nada— la pantalla no ofrecía ningún lugar
-   donde anotarlo. Y es justo el caso en el que hace falta: si hubiera
-   comprobante, no habría que cargarlo a mano.
-
-   Va al final y para las dos, la empleada y la dueña: la que lo hizo es la que
-   sabe que lo hizo. */
-function bloqueHoy(){
+  // El ciclo en curso primero: es el que se está llenando y a lo que se entra.
+  // Las semanas viejas sin pagar van abajo, que son la excepción.
   const hoy = hoyArg();
-  const yaEsta = D.ciclos.some(c => c.dias.some(d => d.fecha === hoy));
-  return `<div class="hoy-suelto">
-    <div>
-      <b>¿Hiciste un trabajo hoy que no quedó en ningún ticket?</b>
-      <span class="det">${yaEsta
-        ? "Se agrega al día de hoy, que ya está más arriba."
-        : "Se agrega solo, con el día de hoy, y arranca el ciclo si hace falta."}</span>
-    </div>
-    <button class="b-out agregar-trabajo" data-fecha="${hoy}">+ Trabajo sin comprobante</button>
-  </div>`;
+  const orden = [...D.ciclos].sort((a, b) =>
+    (hoy >= b.desde && hoy <= b.hasta) - (hoy >= a.desde && hoy <= a.hasta)
+    || a.desde.localeCompare(b.desde));
+  $("#cuerpo").innerHTML = orden.length
+    ? orden.map(dibujarCiclo).join("")
+    : `<div class="vacio"><b>${VOS.sinNada}</b>${VOS.comoAparece}</div>`;
+  enganchar();
 }
 
 /* Un ciclo es la semana del local: de sábado a viernes, que es cuando se paga.
@@ -508,35 +420,68 @@ function dibujarCiclo(c){
     </div>
     <div class="ciclo-cuerpo">
       ${c.dias.map(d => dibujarDia(d, c)).join("")}
-      ${DUENO ? filaAgregarDia(c) : ""}
-      ${DUENO ? filaCerrar(c, listo) : ""}
+      ${DUENO && !c.vacio ? filaCerrar(c, listo) : ""}
     </div>
   </div>`;
 }
 
-/* El día es el renglón que la empleada mira: cuántas horas hizo y qué trabajos
-   entraron. Las horas se muestran escritas y se editan con el lapicito: con el
-   casillero siempre abierto, un número tipeado sin querer es plata. */
+/* El día, que es donde la empleada se gestiona: pone sus horas y mira lo que
+   hizo. Están TODOS los días del ciclo hasta hoy, así que uno en blanco quiere
+   decir "no vine" y no "falta cargarlo": el que vino y no facturó nada tiene
+   dónde declararse sin pedirle nada a nadie.
+
+   Las horas se muestran escritas y se editan con el lapicito: con el casillero
+   siempre abierto, un número tipeado sin querer es plata. */
 function dibujarDia(d, c){
   // Un día cuyas horas ya se pagaron en un cierre anterior vuelve a aparecer si
   // se le agrega una comisión con esa fecha. No le falta nada, así que no se
   // pide ni se ofrece el casillero: cargarlas sería pagarlas dos veces, y el
   // servidor las rebota igual.
-  const falta = !d.minutos && !d.horas_pagadas && !d.horas_aparte;
-  return `<div class="dia" data-fecha="${d.fecha}">
+  const falta = !d.minutos && d.trabajos.length && !d.horas_pagadas && !d.horas_aparte;
+  const vacio = !d.minutos && !d.trabajos.length && !d.horas_aparte;
+  const esHoy = d.fecha === hoyArg();
+  const minTrabajos = d.trabajos.reduce((a, t) => a + (t.minutos || 0), 0);
+  const comisiones = d.trabajos.reduce((a, t) => a + (t.minutos ? t.comision : 0), 0);
+  const horasBoton = d.horas_pagadas || d.horas_aparte ? ""
+    : `<button class="b-out btn-mini editar-horas" data-fecha="${d.fecha}"
+               data-min="${d.minutos}">${d.minutos ? "✎" : "Poner horas"}</button>`;
+  const horas = `<span class="dia-horas${falta ? " falta" : ""}">
+      <span class="rot-horas">Horas trabajadas:</span>
+      <span class="valor">${d.horas_aparte ? "las paga el día de depilación"
+        : d.horas_pagadas ? "ya cobradas"
+        : d.minutos ? hhmm(d.minutos)
+        // Hoy todavía no terminó: en blanco no quiere decir que no vino.
+        : vacio ? (esHoy ? "todavía sin cargar" : "no viniste") : "sin horas"}</span>
+      ${horasBoton}
+    </span>`;
+  const botonTrabajo = `<button class="b-out btn-mini agregar-trabajo"
+      data-fecha="${d.fecha}">+ Trabajo sin comprobante</button>`;
+  // Un día en el que no pasó nada entra en un renglón: son siete por semana y
+  // desplegados enteros tapan los que sí tienen algo.
+  if(vacio) return `<div class="dia vacio-dia${esHoy ? " hoy" : ""}" data-fecha="${d.fecha}">
     <div class="dia-cab">
-      <b>${diaDe(d.fecha)} ${fechaCorta(d.fecha)}</b>
-      <span class="dia-horas${falta ? " falta" : ""}">
-        <span class="rot-horas">Horas trabajadas:</span>
-        <span class="valor">${d.horas_aparte ? "las paga el día" : d.horas_pagadas ? "ya cobradas" : (falta ? "sin horas" : hhmm(d.minutos))}</span>
-        ${d.horas_pagadas || d.horas_aparte ? "" : `<button class="b-out btn-mini editar-horas" data-fecha="${d.fecha}" data-min="${d.minutos}">${falta ? "Poner horas" : "✎"}</button>`}
-      </span>
-      <span class="plata">${d.horas_aparte ? "—" : fmt(Math.round(Math.max(d.minutos - d.trabajos.reduce((a,t)=>a+(t.minutos||0),0), 0) * D.valor_hora / 60))}</span>
+      <b>${diaDe(d.fecha)} ${fechaCorta(d.fecha)}${esHoy ? " · hoy" : ""}</b>
+      ${horas}
+      <span class="acciones-dia">${botonTrabajo}</span>
+    </div>
+  </div>`;
+
+  return `<div class="dia${esHoy ? " hoy" : ""}" data-fecha="${d.fecha}">
+    <div class="dia-cab">
+      <b>${diaDe(d.fecha)} ${fechaCorta(d.fecha)}${esHoy ? " · hoy" : ""}</b>
+      ${horas}
+      <span class="plata">${d.horas_aparte ? "—"
+        : fmt(Math.round(Math.max(d.minutos - minTrabajos, 0) * D.valor_hora / 60))}</span>
+    </div>
+    <div class="dia-resumen">
+      ${d.trabajos.length
+        ? `${d.trabajos.length} ${d.trabajos.length === 1 ? "trabajo" : "trabajos"}
+           · ${hhmm(minTrabajos)} · ${fmt(comisiones)} de comisión`
+        : "Ningún trabajo cargado en este día."}
+      ${DUENO && d.sin_respaldo ? `<span class="sin-comp">sin trabajos</span>` : ""}
     </div>
     ${d.trabajos.length ? `<div class="trabajos">${d.trabajos.map(dibujarTrabajo).join("")}</div>` : ""}
-    <div class="dia-acciones">
-      <button class="b-out btn-mini agregar-trabajo" data-fecha="${d.fecha}">+ Trabajo sin comprobante</button>
-    </div>
+    <div class="dia-acciones">${botonTrabajo}</div>
   </div>`;
 }
 
@@ -567,52 +512,6 @@ function dibujarTrabajo(t){
   </div>`;
 }
 
-/* Agregar un día a mano es de la dueña: un día sin ningún trabajo detrás no se
-   puede verificar contra nada, y son horas que se pagan. Los días con trabajo
-   aparecen solos. */
-function filaAgregarDia(c){
-  // Detrás de un botón: es la excepción —los días con trabajo aparecen solos— y
-  // abierto son tres casilleros vacíos abajo de cada ciclo, en la pantalla que se
-  // mira todos los días para ver un total.
-  return `<div class="dia-acciones">
-    <button class="b-out btn-mini abrir-dia" data-desde="${c.desde}" data-hasta="${c.hasta}">+ Agregar un día</button>
-  </div>`;
-}
-
-function abrirFormDia(boton){
-  document.querySelectorAll(".form-dia").forEach(x => x.remove());
-  const caja = document.createElement("div");
-  caja.className = "agregar form-dia";
-  caja.innerHTML = `
-    <div><label>Día del ciclo</label>
-      <input type="date" class="nvFecha" min="${boton.dataset.desde}" max="${boton.dataset.hasta}" value="${boton.dataset.desde}"></div>
-    <div style="flex:0 0 90px;"><label>Horas</label>
-      <input type="number" class="nvHoras" min="0" max="24" inputmode="numeric" placeholder="8"></div>
-    <div style="flex:0 0 90px;"><label>Min</label>
-      <input type="number" class="nvMin" min="0" max="59" step="5" inputmode="numeric" placeholder="0"></div>
-    <button class="b-ok btn-dia">Agregar día</button>
-    <button class="b-out dNo">Cancelar</button>`;
-  boton.after(caja);
-  caja.querySelector(".dNo").onclick = () => caja.remove();
-  caja.querySelector(".btn-dia").onclick = async () => {
-    const fecha = caja.querySelector(".nvFecha").value;
-    const minutos = (parseInt(caja.querySelector(".nvHoras").value,10)||0)*60
-                  + (parseInt(caja.querySelector(".nvMin").value,10)||0);
-    if(!fecha){ toast("Elegí el día"); return; }
-    // El casillero tiene min y max, pero eso solo limita el calendarito: tipeada
-    // a mano, la fecha pasa igual. Y el día se guardaba de verdad, solo que en
-    // OTRO ciclo, así que acá no aparecía nada y parecía que no había pasado.
-    if(fecha < boton.dataset.desde || fecha > boton.dataset.hasta){
-      toast(`Ese día no es de este ciclo: va del ${fechaCorta(boton.dataset.desde)} `
-          + `al ${fechaCorta(boton.dataset.hasta)}`);
-      return;
-    }
-    if(minutos <= 0){ toast("Poné cuántas horas"); return; }
-    await mandar("/api/sueldos/horas", "PUT", {empleado_id: EMP, fecha, minutos});
-  };
-  caja.querySelector(".nvHoras").focus();
-}
-
 /* Cerrar antes de que termine la semana NO es cerrar la semana.
 
    El viernes es el final del ciclo y el día de pago. Si se paga un miércoles, lo
@@ -632,6 +531,13 @@ function filaCerrar(c, listo){
     : c.sin_horas
     ? `<div class="aviso">⚠️ ${c.sin_horas} ${c.sin_horas===1?"día":"días"} sin horas declaradas. Un día en cero se paga solo por comisión y las horas de ese día se pierden, así que este ciclo no se puede cerrar.</div>`
     : (termino ? "" : `<div class="aviso">Esta semana no terminó todavía. Lo que se pague ahora es lo que va hasta hoy: lo que trabaje después vuelve a aparecer en este mismo ciclo.</div>`);
+  // Horas declaradas en un día sin ningún trabajo detrás. Avisa, no frena: se
+  // puede venir a ordenar el local y no facturar nada. Es lo único de este
+  // ciclo que no se puede cruzar contra un comprobante, y quien paga lo mira
+  // antes de pagar.
+  const respaldo = c.sin_respaldo
+    ? `<div class="aviso">${c.sin_respaldo} ${c.sin_respaldo===1?"día tiene horas":"días tienen horas"} y ningún trabajo detrás. Se pagan igual; están marcados más arriba.</div>`
+    : "";
   return `<div class="cierre">
     <div style="display:flex;align-items:center;gap:var(--sp-2);">
       <label style="margin:0;">Se paga con</label>
@@ -647,6 +553,7 @@ function filaCerrar(c, listo){
     ${termino ? "" : `<button class="b-out btn-cerrar anticipado" ${listo ? "" : "disabled"}
         title="La semana terminó antes: viernes feriado, por ejemplo">Cerrar la semana igual</button>`}
     ${aviso}
+    ${respaldo}
   </div>`;
 }
 
@@ -707,9 +614,6 @@ function enganchar(){
     };
   });
   // lo de la dueña
-  document.querySelectorAll(".abrir-dia").forEach(b => {
-    b.onclick = () => abrirFormDia(b);
-  });
   document.querySelectorAll(".btn-cerrar").forEach(b => {
     b.onclick = async () => {
       const caja = b.closest(".cierre");

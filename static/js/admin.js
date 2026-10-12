@@ -963,6 +963,13 @@ async function cargarEmpleados(){
   }, {porPersona: false});
   cont.appendChild(gral);
 
+  // El corte de los sueldos, abajo de los dos números con los que se liquida:
+  // es uno solo para todo el local y se toca desde donde se configura, no desde
+  // la pantalla de una empleada, que hacía pensar que valía solo para ella.
+  const corte = document.createElement("div");
+  panelCorteSueldos(corte, () => cargarEmpleados());
+  cont.appendChild(corte);
+
   // Los dos números de la depilación, acá y no en su pantalla: son
   // configuración del local, se tocan una vez cada varios meses y en "El día"
   // eran una tarjeta más abajo de la cuenta que se mira todos los días.
