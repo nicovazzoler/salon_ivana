@@ -247,12 +247,25 @@ por ahí. Contándolos dos veces, el arqueo pide más efectivo del que hay en el
 cajón y no avisa por qué. El filtro va por el id y no por el texto "Seña", que se
 puede tipear distinto.
 
-Y una seña en **efectivo** salda más de lo que trajo, igual que cualquier pago en
-efectivo: el comprobante está anclado a la lista de transferencia y la diferencia
-entre listas es el descuento (`sena_saldado()`, monto ÷ 0,9). Si el comprobante
-ya se está preciando en efectivo no se toca, que el descuento ya está adentro del
-total. Sin eso, señar $10.000 en efectivo y pagar el resto por transferencia
-salía $1.111 más caro que pagar todo junto en efectivo.
+**Cuánto tapa una seña depende de en qué lista está escrita cada cosa**
+(`sena_saldado()`). El 10% es de la plata que entra en EFECTIVO, no del trabajo,
+y la seña entró antes:
+
+| La seña fue en | La cuenta está en | Tapa |
+|---|---|---|
+| Efectivo | Transferencia | monto ÷ 0,9 — esos pesos valen más contra una cuenta sin el descuento adentro |
+| Transferencia | Efectivo | monto × 0,9 — la cuenta ya viene con el 10% sacado y esa plata entró sin descuento |
+| La misma | | el monto, tal cual |
+
+Las dos puntas se rompieron alguna vez. Sin la primera, señar $10.000 en
+efectivo y pagar el resto por transferencia salía $1.111 más caro que pagar todo
+junto en efectivo. Sin la segunda, una seña de $5.000 por transferencia sobre un
+trabajo de $20.000 pagado en efectivo le regalaba el 10% de la seña: entraban
+$18.000 cuando correspondían $18.500.
+
+La pantalla muestra la cuenta entera en transferencia —subtotal, la seña que ya
+dejó, y recién al final el 10%— y saca el descuento restando, no multiplicando:
+así el total que se le dice a la clienta es exactamente el que cobra el backend.
 
 **La comisión sale de lo que la clienta terminó pagando por ESE trabajo.**
 `base_comision()` arranca del precio efectivo, le aplica el ajuste de la línea y

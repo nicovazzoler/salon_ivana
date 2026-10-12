@@ -3683,24 +3683,31 @@ def anular_sena(sena_id: int, _ = Depends(usuario_actual), db: Session = Depends
 def sena_saldado(sena, comp, saldo: int) -> tuple[int, int]:
     """De una seña: cuánta se usa y cuánto de la cuenta salda.
 
-    Una seña en efectivo salda MÁS de lo que trajo, igual que cualquier pago en
-    efectivo: la cuenta está anclada a la lista de transferencia y la diferencia
-    entre las dos listas es el descuento. Si el comprobante ya se está preciando
-    en efectivo el descuento ya está adentro del total, así que la seña salda su
-    monto y nada más: sumárselo de nuevo sería dárselo dos veces.
+    El 10% es de la plata que entra en EFECTIVO, no del trabajo, y la seña entró
+    antes: lo que tapa depende de en qué lista está escrita cada cosa.
 
-    La cuenta es la misma que la de un pago en efectivo desde la cuenta de la
-    clienta: monto ÷ 0,9 para arriba a múltiplo de 100.
+      - seña en efectivo y cuenta en transferencia → tapa monto ÷ 0,9: esos
+        pesos valen más contra una cuenta que no tiene el descuento adentro;
+      - seña por transferencia y cuenta en efectivo → tapa monto × 0,9: la
+        cuenta ya viene con el 10% sacado y esa plata entró sin descuento, así
+        que descontársela otra vez es regalarle el 10% de la seña;
+      - las dos en la misma lista → el monto, tal cual.
 
     Y una seña más grande que lo que falta se usa hasta ahí, que el resto le queda
     a favor en otra fila: más simple que inventar un vuelto que después nadie sabe
     de dónde salió.
     """
-    con_desc = (sena.forma_pago or "") == "Efectivo" and comp.forma_pago != "efectivo"
-    bruto = math.ceil((sena.monto / 0.9) / 100) * 100 if con_desc else sena.monto
+    en_efectivo = (sena.forma_pago or "") == "Efectivo"
+    cuenta_en_efectivo = comp.forma_pago == "efectivo"
+    if en_efectivo == cuenta_en_efectivo:
+        factor, bruto = 1, sena.monto
+    elif en_efectivo:
+        factor, bruto = 1 / 0.9, math.ceil((sena.monto / 0.9) / 100) * 100
+    else:
+        factor, bruto = 0.9, round(sena.monto * 0.9)
     if bruto <= saldo:
         return sena.monto, bruto
-    return min(sena.monto, round(saldo * 0.9) if con_desc else saldo), saldo
+    return min(sena.monto, round(saldo / factor)), saldo
 
 @app.post("/api/comprobantes/{comp_id}/aplicar-senas")
 def aplicar_senas(comp_id: int, _ = Depends(usuario_actual), db: Session = Depends(get_db)):

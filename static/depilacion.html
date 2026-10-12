@@ -71,9 +71,14 @@
 
   /* ----- el ticket ----- */
   .ticket{ position:sticky; top:var(--sp-3); }
-  .lineas{ margin:var(--sp-3) 0; }
+  /* Los ítems van en su propio recuadro: es la parte que se toca y tiene que
+     leerse como un bloque, separada de la cuenta de abajo. */
+  .lineas{ margin:var(--sp-3) 0; padding:var(--sp-2) var(--sp-3);
+           border:1px solid var(--border); border-radius:var(--r-md); }
   .lin{ display:flex; gap:var(--sp-2); align-items:baseline; padding:var(--sp-2) 0;
         border-bottom:1px solid var(--border-sutil); }
+  .lin:last-child{ border-bottom:none; }
+  .lin .ef{ font-size:var(--fs-xs); color:var(--text-tenue); }
   .lin .plata{ margin-left:auto; font-variant-numeric:tabular-nums; white-space:nowrap; }
   .lin .btn-mini{ padding:1px 7px; }
   .vacio{ color:var(--text-tenue); margin:var(--sp-3) 0; }
@@ -190,6 +195,10 @@
 
     <div class="card ticket">
       <h3 style="margin:0 0 var(--sp-3);">Facturar</h3>
+      <div class="formas" id="formas">
+        <button class="b-out" data-forma="efectivo">Efectivo</button>
+        <button class="b-out" data-forma="transfer">Transferencia</button>
+      </div>
       <div class="quien">
         <div class="campo cli">
           <label for="cliente">Clienta</label>
@@ -198,10 +207,6 @@
         </div>
         <div class="campo"><label for="atiende">Atiende</label>
           <select id="atiende"></select></div>
-      </div>
-      <div class="formas" id="formas">
-        <button class="b-out" data-forma="efectivo">Efectivo</button>
-        <button class="b-out" data-forma="transfer">Transferencia</button>
       </div>
       <div class="lineas" id="lineas"><p class="vacio">Todavía no hay zonas elegidas.</p></div>
       <div class="totales" id="totales"></div>
@@ -307,16 +312,14 @@ function agregar(id){
   pintar();
 }
 
-/* Lo que una seña tapa de esta cuenta.
+/* Cuánto tapa una seña de una cuenta, en cada una de las dos listas.
 
-   La misma cuenta que hace el backend al aplicarla (sena_saldado): una seña en
-   efectivo tapa más que su monto cuando la cuenta está en la lista de
-   transferencia. Acá solo se muestra, pero tiene que dar igual: lo que se le
-   dice a la clienta es lo que se le va a cobrar. */
-function tapaSena(s){
-  return (FORMA === "efectivo" || s.forma_pago !== "Efectivo")
-    ? s.monto : Math.ceil((s.monto / 0.9) / 100) * 100;
-}
+   Tiene que dar igual que sena_saldado() en el backend: lo que la pantalla le
+   dice a la clienta es lo que se le va a cobrar. El 10% es de la plata que
+   entra en efectivo, así que una seña cambia de valor según en qué lista esté
+   escrita la cuenta. */
+const enEfectivoSena = s => (s.forma_pago || "") === "Efectivo"
+  ? s.monto : Math.round(s.monto * 0.9);
 
 function pintar(){
   const cont = $("#lineas");
@@ -324,6 +327,7 @@ function pintar(){
     ? TICKET.map((l, i) => `<div class="lin">
         <span>${esc(l.nombre)}${l.cantidad > 1 ? ` ×${l.cantidad}` : ""}</span>
         <span class="plata">${fmt(l.transfer * l.cantidad)}
+          <span class="ef">efvo ${fmt(l.precio * l.cantidad)}</span>
           <button class="b-out btn-mini" data-i="${i}" title="Sacar">✕</button></span>
       </div>`).join("")
     : `<p class="vacio">Todavía no hay zonas elegidas.</p>`;
@@ -331,34 +335,65 @@ function pintar(){
     b.onclick = () => { TICKET.splice(Number(b.dataset.i), 1); pintar(); };
   });
 
-  const efvo  = TICKET.reduce((a, l) => a + l.precio * l.cantidad, 0);
+  /* La cuenta se lee de arriba a abajo y toda en la lista de transferencia, que
+     es a la que se ancla el comprobante: subtotal, la seña que ya dejó, y recién
+     al final el 10% de pagar en efectivo. Puesto al revés —la seña ya
+     descontada— el renglón de la seña mostraba un número más chico del que la
+     clienta tiene a favor y no había forma de explicarlo en el mostrador.
+
+     El descuento sale de restar, no de multiplicar por 0,9: así el total de
+     acá es exactamente el que va a cobrar el backend. */
   const trans = TICKET.reduce((a, l) => a + l.transfer * l.cantidad, 0);
-  const hayFormaYa = FORMA !== null;
-  const total = FORMA === "efectivo" ? efvo : trans;
-  const tapa = Math.min(total, SENAS.reduce((a, s) => a + tapaSena(s), 0));
+  const efvo  = TICKET.reduce((a, l) => a + l.precio * l.cantidad, 0);
+  const enEfvo = FORMA === "efectivo";
+  const tapaT = Math.min(trans, SENAS.reduce((a, s) => a + valorSena(s), 0));   // la seña, en transfer
+  const tapaE = Math.min(efvo, SENAS.reduce((a, s) => a + enEfectivoSena(s), 0)); // y en efectivo
+  const restoT = Math.max(trans - tapaT, 0);
+  const total = enEfvo ? Math.max(efvo - tapaE, 0) : restoT;
+  const desc = restoT - total;
+  const pct = restoT ? Math.round(desc / restoT * 1000) / 10 : 0;
   const botonSena = `<button class="b-out btn-mini" id="masSena"
-      title="Tomar una seña que la clienta dejó y no quedó cargada">+ seña no cargada</button>`;
-  $("#totales").innerHTML = TICKET.length ? `
-    <div class="ren total"><span>Total</span><b>${fmt(trans)}</b></div>
-    <div class="ren flojo"><span>En efectivo</span><span>${fmt(efvo)}</span></div>
-    ${SENAS.length ? `<div class="ren"><span>Tiene de seña ${botonSena}</span>
-        <b>${hayFormaYa ? "−" + fmt(tapa) : fmt(SENAS.reduce((a, s) => a + s.monto, 0))}</b></div>` : ""}
-    ${hayFormaYa
-      ? `<div class="ren grande"><span>${SENAS.length ? "Falta cobrar" : "A cobrar"}
-           <em class="det">en ${FORMA === "efectivo" ? "efectivo" : "transferencia"}</em></span>
-         <b>${fmt(Math.max(total - tapa, 0))}</b></div>`
-      : `<div class="falta-forma">Elegí arriba cómo paga para ver lo que hay que cobrar.</div>`}` : "";
+      title="Tomar una seña que la clienta dejó y no quedó cargada">+ seña</button>`;
+
+  const ren = (rot, monto, clase) =>
+    `<div class="ren${clase ? " " + clase : ""}"><span>${rot}</span><b>${monto}</b></div>`;
+  let filas = "";
+  // Con transferencia y sin seña no hay nada que explicar: va el total y listo.
+  if(SENAS.length || enEfvo) filas += ren("Subtotal", fmt(trans));
+  if(SENAS.length) filas += ren(`Seña ${botonSena}`, "−" + fmt(tapaT));
+  if(SENAS.length && enEfvo) filas += ren("Subtotal", fmt(restoT));
+  if(enEfvo) filas += ren(`Desc. efectivo ${pct}%`, "−" + fmt(desc), "chico");
+  filas += FORMA
+    ? ren("Total", fmt(total), "grande")
+    : `<div class="falta-forma">Elegí arriba cómo paga para ver el total.</div>`;
+  $("#totales").innerHTML = TICKET.length ? filas : "";
   const mas = $("#masSena");
   if(mas) mas.onclick = abrirPanelSena;
 
   // Sin forma de pago no se cobra: es lo que decide con qué lista se cobra y,
   // con una puesta de entrada, el día que se cobre distinto nadie la cambia.
-  $("#btnCobrar").disabled = !TICKET.length || !hayFormaYa;
+  $("#btnCobrar").disabled = !TICKET.length || !FORMA;
   $("#btnVaciar").disabled = !TICKET.length;
   guardarBorrador();
   document.querySelectorAll(".zona").forEach(b => {
     b.classList.toggle("puesta", TICKET.some(l => l.id === Number(b.dataset.id)));
   });
+}
+
+/* La clienta que se tipeó y no se eligió de la lista.
+
+   Igual que en Facturar: si el nombre existe tal cual, es esa; si no, se
+   pregunta antes de crearla. Sin esto, la seña quedaba a nombre de una clienta
+   nueva escrita apenas distinto y no se le aplicaba nunca. */
+async function resolverCliente(nombre){
+  const res = await (await authFetch("/api/clientes?q=" + encodeURIComponent(nombre))).json();
+  const igual = res.find(c => c.nombre.toLowerCase() === nombre.toLowerCase());
+  if(igual) return {id: igual.id, nombre: igual.nombre};
+  if(!confirm(`"${nombre}" no está en la lista de clientas.\n\n¿La creamos?`)) return null;
+  const r = await authFetch("/api/clientes", {method:"POST",
+    headers:{"Content-Type":"application/json"}, body: JSON.stringify({nombre})});
+  if(!r.ok){ toast((await r.json().catch(()=>({}))).detail || "No se pudo crear"); return null; }
+  return {id: (await r.json()).id, nombre};
 }
 
 /* ---------- la clienta ---------- */
@@ -476,14 +511,20 @@ $("#btnCobrar").onclick = async () => {
   b.disabled = true;
 
   if(!FORMA){ toast("Elegí cómo paga"); b.disabled = false; return; }
+  // La clienta tiene que existir: de ella salen las señas y la cuenta corriente.
+  if(!CLI || CLI.nombre.toLowerCase() !== nombre.toLowerCase()){
+    CLI = await resolverCliente(nombre);
+    if(!CLI){ b.disabled = false; return; }
+    $("#cliente").value = CLI.nombre;
+    await mostrarSenas();
+  }
   const total = TICKET.reduce((a, l) => a + (FORMA === "efectivo" ? l.precio : l.transfer) * l.cantidad, 0);
   if(!confirm(`${nombre}\n${TICKET.length} ${TICKET.length === 1 ? "zona" : "zonas"} · `
             + `${fmt(total)} en ${FORMA === "efectivo" ? "efectivo" : "transferencia"}`
             + `${SENAS.length ? "\n\nSe le aplican las señas que tiene a favor." : ""}`
             + `\n\n¿Lo cobramos?`)){ b.disabled = false; return; }
 
-  const cuerpo = {tipo: "ticket", cliente_id: CLI ? CLI.id : null,
-                  cliente_nombre: CLI ? null : nombre,
+  const cuerpo = {tipo: "ticket", cliente_id: CLI.id, cliente_nombre: null,
                   peluquero: $("#atiende").value || null,
                   forma_pago: FORMA, descuento_pct: 0, mostrar_motivo: false,
                   lineas: TICKET.map(l => ({item_id: l.id, nombre: l.nombre, cantidad: l.cantidad})),
