@@ -267,6 +267,14 @@ La pantalla muestra la cuenta entera en transferencia —subtotal, la seña que 
 dejó, y recién al final el 10%— y saca el descuento restando, no multiplicando:
 así el total que se le dice a la clienta es exactamente el que cobra el backend.
 
+**Y lo que se MUESTRA de una seña es siempre el valor de la lista de
+transferencia**, no la plata que entró al cajón: es el número que se le dijo al
+tomarla y el que después tapa. Vale para el cartel de "tiene $X de seña" de
+Facturar y de Depilación, para la lista de las libres y para la ficha de la
+clienta, que al lado aclara lo que entró. Sale de `valorSena()` en `senas.js`,
+uno solo para las tres pantallas. Con el número del cajón, una seña de $5.000
+pagada en efectivo avisaba $4.500: menos de lo que esa seña iba a tapar.
+
 **La comisión sale de lo que la clienta terminó pagando por ESE trabajo.**
 `base_comision()` arranca del precio efectivo, le aplica el ajuste de la línea y
 después el descuento del comprobante. Lo que NO baja la base es la diferencia

@@ -11,6 +11,18 @@ const _escSena = s => String(s ?? "").replace(/[&<>"']/g,
   c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const _plataSena = n => "$" + (n || 0).toLocaleString("es-AR");
 
+/* Cuánto vale una seña contra cada una de las dos listas.
+
+   Lo guardado es la plata que ENTRÓ, que en efectivo es el 10% menos. Lo que la
+   clienta tiene a favor es el otro número —el que se le dijo, el de la lista de
+   transferencia— y es el que va en los carteles y en las listas. Tiene que dar
+   igual que sena_saldado() en el backend: lo que la pantalla le dice es lo que
+   se le va a cobrar. */
+const valorSena = s => (s.forma_pago || "") === "Efectivo"
+  ? Math.ceil((s.monto / 0.9) / 100) * 100 : s.monto;
+const valorSenaEfectivo = s => (s.forma_pago || "") === "Efectivo"
+  ? s.monto : Math.round(s.monto * 0.9);
+
 let _FORMAS_SENA = null;
 async function formasParaSena(){
   if(!_FORMAS_SENA){
@@ -175,8 +187,9 @@ function pintarSenas(cont, senas, alAnular){
     fila.className = "sena-fila" + (s.usada ? " usada" : "") + (s.anulada ? " anulada" : "");
     fila.innerHTML = `
       <div>
-        <b>${_plataSena(s.monto)}</b>
+        <b>${_plataSena(valorSena(s))}</b>
         <span class="det">N-${String(s.numero || 0).padStart(5,"0")} · ${s.fecha} · ${_escSena(s.forma_pago || "")}${
+          valorSena(s) !== s.monto ? ` (entraron ${_plataSena(s.monto)})` : ""}${
           s.notas ? " · " + _escSena(s.notas) : ""}</span>
       </div>
       <span class="estado">${s.anulada ? "devuelta"

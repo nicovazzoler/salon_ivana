@@ -33,7 +33,9 @@
   /* ----- las señas que ya dejó -----
      Arriba y a la vista: una seña que aparece después de cobrar es plata que hay
      que devolver en el mostrador. */
-  .cab-senas{ display:flex; align-items:center; gap:var(--sp-3); margin-bottom:var(--sp-3); }
+  .cab-senas{ display:flex; align-items:center; gap:var(--sp-3);
+              padding-bottom:var(--sp-2); margin-bottom:var(--sp-2);
+              border-bottom:1px solid var(--border-sutil); }
   .cab-senas h3{ margin:0; }
   .cab-senas button{ margin-left:auto; }
   .tiene{ margin-bottom:var(--sp-3); padding:var(--sp-2) var(--sp-3); border-radius:var(--r-md);
@@ -53,7 +55,9 @@
 
   /* ----- las zonas ----- */
   .grupo{ margin-bottom:var(--sp-4); }
-  .grupo h3{ margin:0 0 var(--sp-2); font-size:var(--fs-base); color:var(--text-tenue);
+  .grupo h3{ margin:0 0 var(--sp-2); padding-bottom:4px;
+             border-bottom:1px solid var(--border-sutil);
+             font-size:var(--fs-base); color:var(--text-tenue);
              text-transform:uppercase; letter-spacing:.04em; }
   .zonas{ display:grid; gap:var(--sp-2); grid-template-columns:repeat(auto-fill, minmax(170px,1fr)); }
   .zona{ display:flex; flex-direction:column; gap:2px; text-align:left; padding:var(--sp-2) var(--sp-3);
@@ -69,30 +73,63 @@
   .zona .p-ef{ font-size:var(--fs-xs); color:var(--text-tenue); font-variant-numeric:tabular-nums; }
   .zona.puesta{ border-color:var(--acento); background:var(--bg-header); }
 
-  /* ----- el ticket ----- */
+  /* ----- el ticket -----
+     Cuatro pasos, uno abajo del otro: con qué paga, a quién se le hace, qué se
+     hizo y cuánto da. Cada uno cerrado con su línea; de corrido se leían como
+     un bloque solo y había que buscar dónde terminaba uno y empezaba el otro. */
   .ticket{ position:sticky; top:var(--sp-3); }
-  /* Los ítems van en su propio recuadro: es la parte que se toca y tiene que
-     leerse como un bloque, separada de la cuenta de abajo. */
-  .lineas{ margin:var(--sp-3) 0; padding:var(--sp-2) var(--sp-3);
-           border:1px solid var(--border); border-radius:var(--r-md); }
-  .lin{ display:flex; gap:var(--sp-2); align-items:baseline; padding:var(--sp-2) 0;
+  /* Cada tarjeta arranca con su título cerrado por una línea: son cinco fichas
+     una abajo de la otra y sin el filete se leían todas de corrido. */
+  .card > h3{ margin:0 0 var(--sp-3); padding-bottom:var(--sp-2);
+              border-bottom:1px solid var(--border-sutil); }
+  .formas, .quien{ padding-bottom:var(--sp-3); margin-bottom:var(--sp-3);
+                   border-bottom:1px solid var(--border-sutil); }
+  /* Los ítems en su propio recuadro, igual que el bloque de cobro de Facturar:
+     es la parte que se toca y se lee aparte de la cuenta de abajo. */
+  .lineas{ margin:0 0 var(--sp-3); padding:var(--sp-2) var(--sp-3) var(--sp-3);
+           border:1px solid var(--border-sutil); border-radius:var(--r-md);
+           background:var(--bg-sutil); }
+  /* La línea de un ítem, con las medidas de la de Facturar (facturar.css): el
+     nombre con su precio arriba y la tira de controles abajo. Son dos CSS
+     porque `.linea` ya quiere decir otra cosa en Admin y en Reportes; si se
+     toca una, tocar la otra. */
+  .lin{ display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:baseline;
+        gap:2px var(--sp-3); padding:var(--sp-3) 0;
         border-bottom:1px solid var(--border-sutil); }
   .lin:last-child{ border-bottom:none; }
+  .lin .n{ font-family:var(--font-display); font-size:var(--fs-lg);
+           color:var(--text-titulo); line-height:1.3; overflow-wrap:anywhere; }
+  .lin .plata{ text-align:right; white-space:nowrap; font-variant-numeric:tabular-nums; }
   .lin .ef{ font-size:var(--fs-xs); color:var(--text-tenue); }
-  .lin .plata{ margin-left:auto; font-variant-numeric:tabular-nums; white-space:nowrap; }
-  .lin .btn-mini{ padding:1px 7px; }
+  .lin .controles{ grid-column:1 / -1; display:flex; align-items:center; gap:6px;
+                   margin-top:8px; }
+  .lin .qty{ display:flex; align-items:center; gap:6px; margin-left:auto;
+             font-variant-numeric:tabular-nums; }
+  .lin .qty button{ padding:4px 9px; background:var(--bg-input);
+                    border:1px solid var(--border); color:var(--text); }
+  .lin .quitar{ padding:6px 9px; background:transparent;
+                border:1px solid var(--border); color:var(--danger); }
   .vacio{ color:var(--text-tenue); margin:var(--sp-3) 0; }
-  .totales .ren{ display:flex; gap:var(--sp-2); align-items:baseline; padding:var(--sp-2) 0; }
+
+  /* La cuenta: cada renglón con su línea, que son cuentas encadenadas —subtotal,
+     seña, subtotal otra vez— y no una lista de números sueltos. */
+  .totales .ren{ display:flex; gap:var(--sp-2); align-items:baseline;
+                 padding:var(--sp-2) 0; border-bottom:1px solid var(--border-sutil); }
   .totales .ren > :last-child{ margin-left:auto; font-variant-numeric:tabular-nums; }
-  .totales .ren.total b{ font-family:var(--font-display); font-size:var(--fs-xl);
-                         font-weight:var(--fw-black); color:var(--text-marca); }
-  .totales .ren.grande{ border-top:2px solid var(--border); }
-  .totales .ren.grande b{ font-family:var(--font-display); font-size:var(--fs-xl);
-                          font-weight:var(--fw-black); }
-  .totales .ren.flojo{ font-size:var(--fs-sm); color:var(--text-tenue); }
+  .totales .ren.sub b{ font-weight:var(--fw-bold); color:var(--text-titulo); }
+  /* La seña es plata a favor y el descuento es plata que se resta: cada uno con
+     el color con el que ya se lee en el resto de la app. */
+  .totales .ren.sena b{ color:var(--success); }
+  .totales .ren.desc{ color:var(--warn); }
+  /* El total, como el de Facturar: el rótulo y el número del mismo cuerpo y el
+     número en dorado, que en estas pantallas el dorado quiere decir plata. */
+  .totales .ren.grande{ border-top:2px solid var(--border); border-bottom:none;
+                        font-family:var(--font-display); font-size:var(--fs-xl);
+                        color:var(--text-titulo); }
+  .totales .ren.grande b{ font-weight:var(--fw-black); color:var(--text-marca); }
   .totales .ren .btn-mini{ margin-left:var(--sp-2); padding:1px 7px; }
   .totales .falta-forma{ color:var(--text-tenue); font-size:var(--fs-sm); padding:var(--sp-2) 0; }
-  .formas{ display:flex; gap:var(--sp-2); margin:var(--sp-3) 0; }
+  .formas{ display:flex; gap:var(--sp-2); }
   .formas button{ flex:1; }
   .formas button.on{ background:var(--bronce-400); color:var(--text-sobre-oro);
                      border-color:var(--bronce-500); font-weight:var(--fw-bold); }
@@ -129,8 +166,11 @@
   .cuenta .ren.chico.falta-fijo{ color:var(--danger); }
   .cuenta .ren.chico.transfer{ font-style:italic; }
   .cuenta .resta{ color:var(--danger); }
+  /* El número del que sale el reparto, en dorado: en estas pantallas el dorado
+     quiere decir plata, igual que el total de un cobro. */
   .cuenta .ren.total{ border-bottom:2px solid var(--border); }
-  .cuenta .ren.total b{ font-family:var(--font-display); font-size:var(--fs-lg); font-weight:var(--fw-black); }
+  .cuenta .ren.total b{ font-family:var(--font-display); font-size:var(--fs-lg);
+                        font-weight:var(--fw-black); color:var(--text-marca); }
   .cuenta .ren.mitad{ border-bottom:none; }
   .cuenta .ren.mitad b{ font-weight:var(--fw-bold); }
   .cuenta .ren .btn-mini{ margin-left:6px; padding:1px 7px; }
@@ -194,7 +234,7 @@
     </div>
 
     <div class="card ticket">
-      <h3 style="margin:0 0 var(--sp-3);">Facturar</h3>
+      <h3>Facturar</h3>
       <div class="formas" id="formas">
         <button class="b-out" data-forma="efectivo">Efectivo</button>
         <button class="b-out" data-forma="transfer">Transferencia</button>
@@ -312,27 +352,36 @@ function agregar(id){
   pintar();
 }
 
-/* Cuánto tapa una seña de una cuenta, en cada una de las dos listas.
-
-   Tiene que dar igual que sena_saldado() en el backend: lo que la pantalla le
-   dice a la clienta es lo que se le va a cobrar. El 10% es de la plata que
-   entra en efectivo, así que una seña cambia de valor según en qué lista esté
-   escrita la cuenta. */
-const enEfectivoSena = s => (s.forma_pago || "") === "Efectivo"
-  ? s.monto : Math.round(s.monto * 0.9);
-
 function pintar(){
   const cont = $("#lineas");
   cont.innerHTML = TICKET.length
     ? TICKET.map((l, i) => `<div class="lin">
-        <span>${esc(l.nombre)}${l.cantidad > 1 ? ` ×${l.cantidad}` : ""}</span>
+        <span class="n">${esc(l.nombre)}</span>
         <span class="plata">${fmt(l.transfer * l.cantidad)}
-          <span class="ef">efvo ${fmt(l.precio * l.cantidad)}</span>
-          <button class="b-out btn-mini" data-i="${i}" title="Sacar">✕</button></span>
+          <span class="ef">(c/desc ${fmt(l.precio * l.cantidad)})</span></span>
+        <div class="controles">
+          <div class="qty">
+            <button data-menos="${i}" title="Una menos">−</button>
+            <span>${l.cantidad}</span>
+            <button data-mas="${i}" title="Una más">+</button>
+          </div>
+          <button class="quitar" data-i="${i}" title="Sacar">×</button>
+        </div>
       </div>`).join("")
     : `<p class="vacio">Todavía no hay zonas elegidas.</p>`;
   cont.querySelectorAll("button[data-i]").forEach(b => {
     b.onclick = () => { TICKET.splice(Number(b.dataset.i), 1); pintar(); };
+  });
+  cont.querySelectorAll("button[data-mas]").forEach(b => {
+    b.onclick = () => { TICKET[Number(b.dataset.mas)].cantidad++; pintar(); };
+  });
+  // Llegar a cero es sacar la línea: dejarla en 0 es un renglón que no cobra nada.
+  cont.querySelectorAll("button[data-menos]").forEach(b => {
+    b.onclick = () => {
+      const l = TICKET[Number(b.dataset.menos)];
+      if(--l.cantidad < 1) TICKET.splice(Number(b.dataset.menos), 1);
+      pintar();
+    };
   });
 
   /* La cuenta se lee de arriba a abajo y toda en la lista de transferencia, que
@@ -347,7 +396,7 @@ function pintar(){
   const efvo  = TICKET.reduce((a, l) => a + l.precio * l.cantidad, 0);
   const enEfvo = FORMA === "efectivo";
   const tapaT = Math.min(trans, SENAS.reduce((a, s) => a + valorSena(s), 0));   // la seña, en transfer
-  const tapaE = Math.min(efvo, SENAS.reduce((a, s) => a + enEfectivoSena(s), 0)); // y en efectivo
+  const tapaE = Math.min(efvo, SENAS.reduce((a, s) => a + valorSenaEfectivo(s), 0)); // y en efectivo
   const restoT = Math.max(trans - tapaT, 0);
   const total = enEfvo ? Math.max(efvo - tapaE, 0) : restoT;
   const desc = restoT - total;
@@ -359,10 +408,10 @@ function pintar(){
     `<div class="ren${clase ? " " + clase : ""}"><span>${rot}</span><b>${monto}</b></div>`;
   let filas = "";
   // Con transferencia y sin seña no hay nada que explicar: va el total y listo.
-  if(SENAS.length || enEfvo) filas += ren("Subtotal", fmt(trans));
-  if(SENAS.length) filas += ren(`Seña ${botonSena}`, "−" + fmt(tapaT));
-  if(SENAS.length && enEfvo) filas += ren("Subtotal", fmt(restoT));
-  if(enEfvo) filas += ren(`Desc. efectivo ${pct}%`, "−" + fmt(desc), "chico");
+  if(SENAS.length || enEfvo) filas += ren("Subtotal", fmt(trans), "sub");
+  if(SENAS.length) filas += ren(`Seña ${botonSena}`, "−" + fmt(tapaT), "sena");
+  if(SENAS.length && enEfvo) filas += ren("Subtotal", fmt(restoT), "sub");
+  if(enEfvo) filas += ren(`Desc. efectivo ${pct}%`, "−" + fmt(desc), "desc");
   filas += FORMA
     ? ren("Total", fmt(total), "grande")
     : `<div class="falta-forma">Elegí arriba cómo paga para ver el total.</div>`;
@@ -434,14 +483,6 @@ document.addEventListener("click", e => {
    se veía hasta que alguien la buscaba cliente por cliente. */
 let TODAS_SENAS = [];
 
-/* De cuánto es la seña, en los precios de la lista.
-
-   Lo guardado es la plata que entró, que en efectivo es el 10% menos. Lo que la
-   clienta tiene a favor es el otro número —el que se le dijo— y es el que esta
-   lista tiene que mostrar: es la misma cuenta que hace el backend al aplicarla. */
-const valorSena = s => (s.forma_pago || "") === "Efectivo"
-  ? Math.ceil((s.monto / 0.9) / 100) * 100 : s.monto;
-
 async function mostrarSenas(avisar){
   try{ TODAS_SENAS = await (await authFetch("/api/senas?solo_libres=true")).json(); }
   catch(e){ TODAS_SENAS = []; }
@@ -449,7 +490,7 @@ async function mostrarSenas(avisar){
   // El aviso salta al elegir a la clienta: una seña que aparece DESPUÉS de
   // cobrar es plata que hay que devolver en el mostrador.
   if(avisar && SENAS.length)
-    toast(`${CLI.nombre} tiene ${fmt(SENAS.reduce((a, s) => a + s.monto, 0))} de seña`);
+    toast(`${CLI.nombre} tiene ${fmt(SENAS.reduce((a, s) => a + valorSena(s), 0))} de seña`);
 
   const caja = $("#senas");
   caja.innerHTML = !TODAS_SENAS.length
@@ -644,7 +685,7 @@ function pintarDia(){
     </div>
 
     <div class="card" style="margin-top:var(--sp-4);">
-      <h3 style="margin:0 0 var(--sp-3);">Gastos del día</h3>
+      <h3>Gastos del día</h3>
       <div class="cuenta">
         ${maquinas.map(e => gasto(e, "Máquina")).join("")}
         ${maquinas.length ? "" : falta("maquina", "Máquina")}
@@ -661,7 +702,7 @@ function pintarDia(){
     </div>
 
     <div class="card" style="margin-top:var(--sp-4);">
-      <h3 style="margin:0 0 var(--sp-2);">El reparto</h3>
+      <h3>El reparto</h3>
       <div class="cuenta">
         <div class="ren"><span>Total ingresado
             <em class="det">lo que facturó el día, como se cobró</em></span><b>${fmt(d.facturado)}</b></div>
@@ -680,7 +721,7 @@ function pintarDia(){
     </div>
 
     <div class="card" style="margin-top:var(--sp-4);">
-      <h3 style="margin:0 0 var(--sp-2);">Lo que entró</h3>
+      <h3>Lo que entró</h3>
       ${cobrado.length ? `<div class="cuenta">${cobrado.map(f => `
         <div class="ren"><span>${esc(f)}</span><b>${fmt(d.cobrado[f])}</b></div>`).join("")}
         ${q.falta_cobrar > 0 ? `<div class="ren chico"><span>Falta cobrar</span><span class="deuda">${fmt(q.falta_cobrar)}</span></div>` : ""}
@@ -698,7 +739,7 @@ function pintarDia(){
 
     ${d.pendiente > 0 ? `
     <div class="card" style="margin-top:var(--sp-4);">
-      <h3 style="margin:0 0 var(--sp-2);">${pagado ? "Pagar la diferencia" : "Cerrar el día"}</h3>
+      <h3>${pagado ? "Pagar la diferencia" : "Cerrar el día"}</h3>
       ${pagado ? `<p class="nota" style="margin-top:0;">El día se cerró con ${fmt(pagado)} y
         después se facturó más, así que quedó esta diferencia.</p>` : ""}
       <div class="dia-cab">
@@ -871,7 +912,7 @@ async function verHistorial(){
     <div id="hLista"><p class="muted">Cargando…</p></div>
   </div>
   <div class="card" style="margin-top:var(--sp-4);">
-    <h3 style="margin:0 0 var(--sp-2);">Los días</h3>
+    <h3>Los días</h3>
     <div id="hDias"><p class="muted">Cargando…</p></div></div>`;
   $("#hVer").onclick = cargarHistorial;
   cargarHistorial();

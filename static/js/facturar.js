@@ -1069,7 +1069,11 @@ let SENAS_CLIENTA = [];
 async function mirarSenas(){
   const caja = $("#avisoSena");
   SENAS_CLIENTA = clienteIdSel ? await senasLibres(clienteIdSel) : [];
-  const total = SENAS_CLIENTA.reduce((a, s) => a + s.monto, 0);
+  // Lo que tiene a favor, en la lista de transferencia: es la lista a la que se
+  // ancla el comprobante y el número que se le dijo al tomarla. Con lo que
+  // entró al cajón, una seña en efectivo de $5.000 avisaba $4.500 y el cartel
+  // decía menos de lo que la seña después tapaba.
+  const total = SENAS_CLIENTA.reduce((a, s) => a + valorSena(s), 0);
   caja.style.display = total ? "flex" : "none";
   if(total) caja.innerHTML = `<b>Tiene ${fmt(total)} de seña</b>
     <span>al cobrar se pregunta si ${SENAS_CLIENTA.length === 1 ? "se usa" : "se usan"}</span>`;
