@@ -29,8 +29,9 @@ static/
   js/listas.js   Las cinco listas configurables (formas de pago, tipos de egreso,
                  descuentos, ajustes por ítem, alias): un solo dibujante que usan
                  Admin y el panel del lapicito de facturar
-  js/generales.js El valor hora y la comisión general: un solo dibujante que usan
-                 Admin (arriba de la lista de empleados) y Sueldos
+  js/generales.js El valor hora, la comisión general y el corte de los sueldos:
+                 un solo dibujante que usan Admin (arriba de la lista de
+                 empleados) y Sueldos. El CSS, en components.css
   js/senas.js    Tomar una seña y listarlas. El formulario se usa en depilación,
                  que es donde se toman; la ficha del cliente solo las lista. El
                  CSS vive en components.css: estando en una sola pantalla, en la
@@ -229,8 +230,23 @@ que no se puede cruzar contra un comprobante, y el control va donde importa, que
 es antes de pagar. No frena el cierre: se puede venir a ordenar el local.
 
 Y lo que frena el cierre es **un día CON trabajos y sin horas**, no cualquier día
-sin horas: con los siete días a la vista, esa regla no cerraría nunca. Un día
-vacío es un día que no vino. Un trabajo sin duración sigue frenando igual.
+sin horas: con los días de la semana a la vista, esa regla no cerraría nunca. Un
+día vacío es un día que no vino. Un trabajo sin duración sigue frenando igual.
+
+**Los días que el local no abre no se dibujan**: `DIAS_CERRADO` en
+`config_extra.py` (domingo y lunes, que el lunes es de depilación). Dos
+renglones fijos diciendo "no viniste" son ruido en la pantalla que se mira todos
+los días. Un día cerrado en el que pasó algo —el lunes de depilación con
+peluquería adentro, un trabajo cargado a mano— **aparece igual**: lo que no se
+agrega es el día en blanco, y esconder un día con plata adentro sería perderla.
+
+**El corte de los sueldos es UNO para todo el local**, no uno por empleada: el
+borón y cuenta nueva de lo que se pagó a mano antes de la app. Se dibuja con
+`panelCorteSueldos()` en `generales.js` —el mismo dibujante para Admin y para
+Sueldos— y lo que deja afuera lo contesta el backend
+(`GET /api/sueldos/arranque?fecha=`), que es el que sabe lo que cada una tiene
+pendiente: contándolo en la pantalla, el cartel decía los ciclos de la empleada
+que estaba abierta y parecía que el corte valía solo para ella.
 
 **La lista de precios de depilación se siembra sola.** `sembrar_depilacion()`
 corre al arrancar y la carga si la base no tiene ninguna zona, con marca en

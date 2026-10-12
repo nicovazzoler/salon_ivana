@@ -11,7 +11,7 @@ import re, bisect, io, time, hmac, math
 
 from database import get_db, engine, Base
 import models
-from config_extra import TIPOS_EGRESO, NEGOCIO
+from config_extra import TIPOS_EGRESO, NEGOCIO, DIAS_CERRADO
 import auth
 
 Base.metadata.create_all(engine)
@@ -1167,6 +1167,10 @@ def config(user = Depends(usuario_actual), db: Session = Depends(get_db)):
             "comision_pct": comision_pct(db),
             "pago_ayudante": pago_ayudante(db),
             "depi_a_cargo": depi_por_defecto(db),
+            # Desde qué día cuentan los sueldos. Viaja con la config y no con el
+            # resumen de una empleada: es uno solo para todas, y así la pantalla
+            # lo puede mostrar aunque justo nadie tenga nada pendiente.
+            "sueldos_arranque": arranque_sueldos(db),
             # Quiénes NO cambian cuando se toca el general. Viajan con la config
             # y no en un pedido aparte para que el editor pueda decirlo antes de
             # guardar: sin esto, cambiar el valor hora es apretar un botón sin
@@ -1783,6 +1787,12 @@ def resumen_pendiente(db, empleado) -> dict:
     #
     # Hasta hoy y no la semana entera: los días que todavía no pasaron no se
     # declaran, y un casillero de horas en un día que no existe es plata.
+    #
+    # Y los días que el local no abre no se dibujan vacíos (DIAS_CERRADO): dos
+    # renglónes fijos diciendo "no viniste" son ruido en la pantalla que se mira
+    # todos los días. Si en uno de esos días pasó algo —el lunes de depilación,
+    # un trabajo cargado a mano— el día ya está arriba y no se toca: lo que no se
+    # agrega es el día en blanco.
     hoy = hoy_argentina()
     # El ciclo en curso está siempre, aunque no haya pasado nada: es la pantalla
     # donde la empleada carga sus horas, y vacía no se podría ni empezar.
@@ -1792,7 +1802,8 @@ def resumen_pendiente(db, empleado) -> dict:
         f = desde
         while f <= min(hasta, hoy):
             iso = f.isoformat()
-            if iso not in dias and not (arranque and iso < arranque):
+            if (iso not in dias and f.weekday() not in DIAS_CERRADO
+                    and not (arranque and iso < arranque)):
                 dias[iso] = {"id": None, "fecha": iso, "minutos": 0, "trabajos": []}
             f += timedelta(days=1)
     # Sueldos es de peluquería y nada más: la depilación se cobra, se mira y se
@@ -2440,6 +2451,28 @@ def cerrar_liquidacion(datos: CerrarIn, _ = Depends(solo_dueno), db: Session = D
 
 class ArranqueIn(BaseModel):
     fecha: str | None = None              # None saca el corte: vuelve todo
+
+@app.get("/api/sueldos/arranque")
+def que_deja_afuera(fecha: str, _ = Depends(solo_dueno), db: Session = Depends(get_db)):
+    """Qué dejaría de aparecer si el corte se pusiera en esa fecha.
+
+    Contesta el backend y no la pantalla porque el corte vale para TODAS, y la
+    pantalla tiene cargado el resumen de una sola: contando ahí, el cartel decía
+    "dejan de aparecer 2 ciclos" cuando dejaban de aparecer los de todo el local.
+    """
+    try:
+        date.fromisoformat(fecha)
+    except ValueError:
+        raise HTTPException(400, "Fecha inválida (se espera AAAA-MM-DD)")
+    detalle, ciclos, total = [], 0, 0
+    for emp in db.query(models.Empleado).order_by(models.Empleado.nombre).all():
+        viejos = [c for c in resumen_pendiente(db, emp)["ciclos"]
+                  if c["desde"] < fecha and not c["vacio"]]
+        if not viejos: continue
+        suyo = sum(c["total"] for c in viejos)
+        detalle.append({"nombre": emp.nombre, "ciclos": len(viejos), "total": suyo})
+        ciclos += len(viejos); total += suyo
+    return {"ciclos": ciclos, "total": total, "empleadas": len(detalle), "detalle": detalle}
 
 @app.put("/api/sueldos/arranque")
 def set_arranque_sueldos(datos: ArranqueIn, _ = Depends(solo_dueno), db: Session = Depends(get_db)):

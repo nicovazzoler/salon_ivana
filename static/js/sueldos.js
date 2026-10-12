@@ -108,17 +108,6 @@ function rangoLargo(desde, hasta){
     ? `${Number(d1)} al ${Number(d2)} de ${MESES[Number(mA)-1]}`
     : `${Number(d1)} de ${MESES[Number(mA)-1]} al ${Number(d2)} de ${MESES[Number(mB)-1]}`;
 }
-/* El sábado con el que arranca la semana de pago de un día.
-
-   Lo mismo que ciclo_de() en el backend, pero siempre el sábado de la semana: el
-   día de depilación es su propio ciclo de un día allá, y acá lo que se busca es
-   dónde empieza la semana, que es donde tiene sentido poner el corte. */
-function sabadoDeLaSemana(iso){
-  const d = new Date(iso + "T12:00:00");
-  d.setDate(d.getDate() - ((d.getDay() + 1) % 7));
-  return d.toISOString().slice(0, 10);
-}
-
 const DIAS = ["Domingo","Lunes","Martes","Miércoles","Jueves","Viernes","Sábado"];
 function diaDe(iso){
   if(!iso) return "";
@@ -276,74 +265,9 @@ async function cargarPanelDueno(){
   // El mismo editor que usa Admin arriba de la lista de empleados: los dos
   // números son uno solo y no pueden dibujarse en dos lados distintos.
   panelGenerales($("#cfgGenerales"), () => cargarPanelDueno());
-  pintarArranque(resumenes[0] ? resumenes[0].arranque : null, resumenes);
+  panelCorteSueldos($("#cfgArranque"), () => cargarPanelDueno());
 
   pintarLiquidaciones();
-}
-
-/* El borrón y cuenta nueva.
-
-   Lo de antes del corte se pagó a mano, por fuera de la app, y no tiene que
-   volver a aparecer como pendiente. NO borra nada: los trabajos y las horas
-   siguen guardados, así que correr el corte para atrás los devuelve enteros.
-   Por eso es esto y no un botón de borrar ciclos viejos, que sí sería para
-   siempre y con la plata de otro.
-
-   Se pone UNA vez en la vida del local, así que puesto se achica a un renglón
-   gris: un casillero de fecha y dos botones arriba de la pantalla que se mira
-   todos los días son una invitación a mover sin querer algo que nadie quiso
-   mover. El "cambiar" queda para el único momento en que hace falta de verdad,
-   que es cuando se acaba de poner y se le erró a la fecha.
-
-   Sin corte se ve entero, con la fecha propuesta en el SÁBADO: donde arranca la
-   semana de pago; puesto un miércoles, la semana en curso aparece cortada por la
-   mitad. Qué se lleva se dice en el cartel de confirmación, que es donde hay que
-   leerlo; dicho también en la pantalla, era un renglón de números que estaba
-   siempre y servía una vez en la vida. */
-function pintarArranque(actual, resumenes){
-  const cont = $("#cfgArranque");
-  if(!cont) return;
-  const sab = sabadoDeLaSemana(hoyArg());
-
-  const controles = `
-      <input type="date" class="arrFecha" value="${actual || sab}" max="${hoyArg()}">
-      <button class="b-out btn-mini arrOk">${actual ? "Mover el corte" : "Poner el corte"}</button>
-      ${actual ? `<button class="b-out btn-mini arrNo">Quitarlo</button>` : ""}`;
-
-  cont.innerHTML = actual
-    ? `<div class="arranque puesto">
-         <span>Los sueldos cuentan desde el <b>${fechaCorta(actual)}</b>.</span>
-         <a href="#" class="arrVer">cambiar</a>
-         <span class="arrCajon" style="display:none;">${controles}</span>
-       </div>`
-    : `<div class="arranque">
-         <span>Los sueldos cuentan desde siempre: aparece todo lo que quedó sin pagar.</span>
-         ${controles}
-       </div>`;
-
-  const ver = cont.querySelector(".arrVer");
-  if(ver) ver.onclick = e => {
-    e.preventDefault();
-    cont.querySelector(".arrCajon").style.display = "";
-    ver.remove();
-  };
-  cont.querySelector(".arrOk").onclick = async () => {
-    const f = cont.querySelector(".arrFecha").value;
-    if(!f){ toast("Elegí desde qué día"); return; }
-    const van = resumenes.flatMap(r => r.ciclos.filter(c => c.desde < f));
-    if(!confirm(`Los sueldos van a contar desde el ${fechaCorta(f)}.\n\n`
-      + (van.length
-          ? `Dejan de aparecer ${van.length} ${van.length===1?"ciclo":"ciclos"} anteriores, `
-            + `por ${fmt(van.reduce((a,c)=>a+c.total,0))}.\n\n`
-          : "")
-      + "No se borra nada: si te equivocás, corrés el corte para atrás y vuelve todo.")) return;
-    if(await mandar("/api/sueldos/arranque", "PUT", {fecha: f})) toast("Corte puesto ✓");
-  };
-  const quitar = cont.querySelector(".arrNo");
-  if(quitar) quitar.onclick = async () => {
-    if(!confirm("Van a volver a aparecer todos los ciclos anteriores al corte. ¿Seguimos?")) return;
-    if(await mandar("/api/sueldos/arranque", "PUT", {fecha: null})) toast("Corte quitado ✓");
-  };
 }
 
 /* Lo ya pagado, agrupado por ciclo. Un ciclo cerrado es una semana del local:
