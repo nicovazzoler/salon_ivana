@@ -31,8 +31,10 @@ static/
                  Admin y el panel del lapicito de facturar
   js/generales.js El valor hora y la comisión general: un solo dibujante que usan
                  Admin (arriba de la lista de empleados) y Sueldos
-  js/senas.js    Tomar una seña y listarlas: un solo dibujante que usan la ficha
-                 del cliente y la pantalla de depilación
+  js/senas.js    Tomar una seña y listarlas. El formulario se usa en depilación,
+                 que es donde se toman; la ficha del cliente solo las lista. El
+                 CSS vive en components.css: estando en una sola pantalla, en la
+                 otra salía sin estilo
   depilacion.html Depilación entera: cobrar, el cierre del día con su reparto y
                  su propio historial. No se mezcla con peluquería
   escpos.js      Generador del papel de la comandera (ticket.html y facturar.js)
@@ -214,8 +216,10 @@ nada. Veinte renglones tipeados a mano en la tablet son media hora, y un número
 mal puesto se le cobra a alguien.
 
 **La seña es plata de la clienta, no un pago de un ticket.** Se toma sin
-comprobante —desde la ficha o desde facturar— y entra a la caja del día en que se
-cobra. Al facturarle, se aplican todas las que tenga libres y cada una deja un
+comprobante —desde la pantalla de depilación, que es donde se señan los
+trabajos— y entra a la caja del día en que se cobra. El monto que se carga es el
+monto, se pague como se pague: cuánto tapa de una factura se calcula al
+facturar. Al facturarle, se aplican todas las que tenga libres y cada una deja un
 abono con `sena_id`. **Ese abono no es plata del día**: ya entró. Por eso
 `plata_que_entro()` saltea los abonos con `sena_id` y suma las señas cobradas, y
 todo lo que cuenta plata por fecha —caja, reportes, el Excel, los gráficos— pasa

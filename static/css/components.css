@@ -784,3 +784,32 @@ body.con-panel{ overflow:hidden; }
 .editor-vh .det{ font-size:var(--fs-sm); color:var(--text-tenue); }
 
 
+
+/* ----- Tomar una seña -----
+
+   Vive acá y no en la pantalla que lo usa porque el formulario es uno solo,
+   igual que el dibujante de senas.js. Cuando el CSS estaba en una sola de las
+   dos pantallas, en la otra salía sin estilo: los rótulos pegados al casillero
+   y todo amontonado. */
+.panel-sena{
+  margin:var(--sp-3) 0; padding:var(--sp-4);
+  background:var(--bg-sutil); border:1px solid var(--acento-border);
+  border-radius:var(--r-lg);
+}
+.panel-sena .cab{ margin-bottom:var(--sp-4); }
+.panel-sena .cab b{ font-family:var(--font-display); font-size:var(--fs-lg);
+                    color:var(--text-titulo); }
+.panel-sena .cab .det{ display:block; margin-top:4px;
+                       font-size:var(--fs-sm); color:var(--text-tenue); }
+.panel-sena .campos{ display:flex; flex-wrap:wrap; gap:var(--sp-4); }
+.panel-sena .campo{ display:flex; flex-direction:column; gap:6px; flex:1 1 150px; }
+.panel-sena .campo.ancho{ flex:2 1 220px; }
+/* El rótulo arriba del casillero, en el dorado de la marca y separado: pegado y
+   en gris se leía como parte de lo tipeado. */
+.panel-sena .campo label{
+  margin:0; font-size:var(--fs-sm); font-weight:var(--fw-bold);
+  text-transform:uppercase; letter-spacing:var(--tracking-eti); color:var(--acento);
+}
+.panel-sena .campo input, .panel-sena .campo select{ width:100%; }
+.panel-sena .montos{ display:flex; flex-wrap:wrap; gap:var(--sp-2); margin-top:var(--sp-4); }
+.panel-sena .acc{ display:flex; gap:var(--sp-2); margin-top:var(--sp-4); flex-wrap:wrap; }

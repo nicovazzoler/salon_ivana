@@ -29,13 +29,21 @@
   /* ----- las señas que ya dejó -----
      Arriba y a la vista: una seña que aparece después de cobrar es plata que hay
      que devolver en el mostrador. */
-  .senas{ margin-top:var(--sp-3); padding:var(--sp-3); border-radius:var(--r-md);
-          background:var(--verde-bg); border:1px solid var(--verde-borde); }
-  .senas[hidden]{ display:none; }
-  .senas b{ font-family:var(--font-display); font-size:var(--fs-lg); }
-  .senas .fila{ display:flex; gap:var(--sp-2); align-items:baseline; font-size:var(--fs-sm);
-                color:var(--text-tenue); }
-  .senas .fila span:last-child{ margin-left:auto; }
+  .cab-senas{ display:flex; align-items:center; gap:var(--sp-3); margin-bottom:var(--sp-3); }
+  .cab-senas h3{ margin:0; }
+  .cab-senas button{ margin-left:auto; }
+  .tiene{ margin-bottom:var(--sp-3); padding:var(--sp-2) var(--sp-3); border-radius:var(--r-md);
+          background:var(--verde-bg); border:1px solid var(--verde-borde);
+          font-family:var(--font-display); font-size:var(--fs-lg); }
+  /* Se señan todos los trabajos y se acumulan: la lista no puede empujar las
+     zonas fuera de la pantalla. */
+  .lista-senas{ max-height:11rem; overflow-y:auto; }
+  .sena{ display:flex; align-items:center; gap:var(--sp-2);
+         padding:var(--sp-2) 0; border-bottom:1px solid var(--border-sutil); }
+  .sena:last-child{ border-bottom:none; }
+  .sena b{ font-variant-numeric:tabular-nums; }
+  .sena .det{ font-size:var(--fs-sm); color:var(--text-tenue); }
+  .sena .cuando{ margin-left:auto; font-size:var(--fs-sm); color:var(--text-tenue); }
 
   /* ----- las zonas ----- */
   .grupo{ margin-bottom:var(--sp-4); }
@@ -47,7 +55,12 @@
          cursor:pointer; font:inherit; color:var(--text); }
   .zona:hover{ border-color:var(--acento); }
   .zona b{ font-weight:var(--fw-bold); }
-  .zona span{ font-size:var(--fs-sm); color:var(--text-tenue); font-variant-numeric:tabular-nums; }
+  /* Los dos precios como en Facturar: manda el de transferencia, que es al que
+     se ancla el comprobante, y el de efectivo va de apoyo. Si fuera al revés,
+     el número grande no sería el del papel. */
+  .zona .p-tr{ font-size:var(--fs-lg); font-weight:var(--fw-bold); color:var(--text-marca);
+               font-variant-numeric:tabular-nums; }
+  .zona .p-ef{ font-size:var(--fs-xs); color:var(--text-tenue); font-variant-numeric:tabular-nums; }
   .zona.puesta{ border-color:var(--acento); background:var(--bg-header); }
 
   /* ----- el ticket ----- */
@@ -60,10 +73,14 @@
   .vacio{ color:var(--text-tenue); margin:var(--sp-3) 0; }
   .totales .ren{ display:flex; gap:var(--sp-2); align-items:baseline; padding:var(--sp-2) 0; }
   .totales .ren > :last-child{ margin-left:auto; font-variant-numeric:tabular-nums; }
+  .totales .ren.total b{ font-family:var(--font-display); font-size:var(--fs-xl);
+                         font-weight:var(--fw-black); color:var(--text-marca); }
   .totales .ren.grande{ border-top:2px solid var(--border); }
   .totales .ren.grande b{ font-family:var(--font-display); font-size:var(--fs-xl);
                           font-weight:var(--fw-black); }
   .totales .ren.flojo{ font-size:var(--fs-sm); color:var(--text-tenue); }
+  .totales .ren .btn-mini{ margin-left:var(--sp-2); padding:1px 7px; }
+  .totales .falta-forma{ color:var(--text-tenue); font-size:var(--fs-sm); padding:var(--sp-2) 0; }
   .formas{ display:flex; gap:var(--sp-2); margin:var(--sp-3) 0; }
   .formas button{ flex:1; }
   .formas button.on{ background:var(--bronce-400); color:var(--text-sobre-oro);
@@ -115,6 +132,18 @@
   .tabla-chica td{ padding:var(--sp-2); border-top:1px solid var(--border-sutil); }
   .tabla-chica td.num{ text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; }
   .deuda{ color:var(--danger); }
+
+  /* El formulario de un gasto, igual que el de Sueldos: rótulo arriba, todo en
+     una fila y los casilleros sin pisarse. */
+  .agregar{ display:flex; flex-wrap:wrap; gap:var(--sp-3); align-items:flex-end;
+            margin-top:var(--sp-3); padding-top:var(--sp-3);
+            border-top:1px solid var(--border-sutil); }
+  .agregar > div{ display:flex; flex-direction:column; min-width:110px; }
+  .agregar label{ margin:0 0 4px; font-size:var(--fs-sm); font-weight:var(--fw-bold);
+                  text-transform:uppercase; letter-spacing:var(--tracking-eti); color:var(--acento); }
+  .agregar select, .agregar input{ width:100%; max-width:100%; }
+  .agregar .ancho{ flex:2 1 220px; }
+  .agregar .nota{ flex:1 1 100%; margin:0; }
 </style>
 </head><body>
 <header>
@@ -148,10 +177,16 @@
           </div>
           <div class="campo"><label for="atiende">Atiende</label>
             <select id="atiende"></select></div>
-          <button class="b-out" id="btnSena">Tomar una seña</button>
+        </div>
+      </div>
+
+      <div class="card senas-card" style="margin-top:var(--sp-4);">
+        <div class="cab-senas">
+          <h3>Señas</h3>
+          <button class="b-out btn-mini" id="btnSena">+ Agregar seña</button>
         </div>
         <div id="panelSena"></div>
-        <div class="senas" id="senas" hidden></div>
+        <div id="senas"></div>
       </div>
 
       <div class="card" style="margin-top:var(--sp-4);">
@@ -160,13 +195,13 @@
     </div>
 
     <div class="card ticket">
-      <h3 style="margin:0;">Lo que se hizo</h3>
-      <div class="lineas" id="lineas"><p class="vacio">Todavía no hay zonas elegidas.</p></div>
-      <div class="totales" id="totales"></div>
+      <h3 style="margin:0 0 var(--sp-3);">Facturar</h3>
       <div class="formas" id="formas">
-        <button class="b-out on" data-forma="efectivo">Efectivo</button>
+        <button class="b-out" data-forma="efectivo">Efectivo</button>
         <button class="b-out" data-forma="transfer">Transferencia</button>
       </div>
+      <div class="lineas" id="lineas"><p class="vacio">Todavía no hay zonas elegidas.</p></div>
+      <div class="totales" id="totales"></div>
       <div class="acc-cobrar">
         <button class="b-ok" id="btnCobrar" disabled>Cobrar</button>
         <button class="b-out" id="btnVaciar" disabled>Vaciar</button>
@@ -195,7 +230,7 @@ const esc = s => String(s ?? "").replace(/[&<>"']/g,
 const fmt = n => "$" + (n || 0).toLocaleString("es-AR");
 function toast(m){const t=$("#toast");t.textContent=m;t.classList.add("show");setTimeout(()=>t.classList.remove("show"),2200);}
 
-let ZONAS = [], TICKET = [], CLI = null, SENAS = [], FORMA = "efectivo";
+let ZONAS = [], TICKET = [], CLI = null, SENAS = [], FORMA = null;
 
 /* Lo que está a medio cargar se guarda en el aparato.
 
@@ -213,7 +248,7 @@ async function restaurarBorrador(){
   let b;
   try{ b = JSON.parse(localStorage.getItem(BORRADOR) || "null"); }catch(e){ return; }
   if(!b || !b.TICKET || !b.TICKET.length) return;
-  TICKET = b.TICKET; CLI = b.CLI || null; FORMA = b.FORMA || "efectivo";
+  TICKET = b.TICKET; CLI = b.CLI || null; FORMA = b.FORMA || null;
   document.querySelectorAll("#formas button").forEach(x =>
     x.classList.toggle("on", x.dataset.forma === FORMA));
   if(CLI){ $("#cliente").value = CLI.nombre; await mostrarSenas(); }
@@ -230,6 +265,7 @@ async function cargar(){
   $("#atiende").innerHTML = `<option value="">—</option>` + emps.filter(e => e.activo !== false)
     .map(e => `<option${e.nombre === quien ? " selected" : ""}>${esc(e.nombre)}</option>`).join("");
   pintarCatalogo();
+  await mostrarSenas();      // el cartelito de "elegí la clienta" desde el arranque
   await restaurarBorrador();
 }
 
@@ -240,14 +276,18 @@ function pintarCatalogo(){
       Se marcan en Admin con "Es depilación", o se cargan de una con el script de la lista de precios.</p>`;
     return;
   }
+  // Por precio y no por nombre: el catálogo ordena alfabéticamente y así "10
+  // zonas" cae entre "1 zona" y "2 zonas", justo donde se toca de apurado.
   const porCat = {};
-  ZONAS.forEach(z => (porCat[z.categoria] = porCat[z.categoria] || []).push(z));
+  [...ZONAS].sort((a, b) => a.precio_transfer - b.precio_transfer)
+            .forEach(z => (porCat[z.categoria] = porCat[z.categoria] || []).push(z));
   cont.innerHTML = Object.keys(porCat).map(c => `
     <div class="grupo"><h3>${esc(c)}</h3>
       <div class="zonas">${porCat[c].map(z => `
         <button class="zona${TICKET.some(l => l.id === z.id) ? " puesta" : ""}" data-id="${z.id}">
           <b>${esc(z.nombre)}</b>
-          <span>${fmt(z.precio)} efvo · ${fmt(z.precio_transfer)} transf</span>
+          <span class="p-tr">${fmt(z.precio_transfer)}</span>
+          <span class="p-ef">c/desc ${fmt(z.precio)}</span>
         </button>`).join("")}</div>
     </div>`).join("");
   cont.querySelectorAll(".zona").forEach(b => {
@@ -265,12 +305,23 @@ function agregar(id){
   pintar();
 }
 
+/* Lo que una seña tapa de esta cuenta.
+
+   La misma cuenta que hace el backend al aplicarla (sena_saldado): una seña en
+   efectivo tapa más que su monto cuando la cuenta está en la lista de
+   transferencia. Acá solo se muestra, pero tiene que dar igual: lo que se le
+   dice a la clienta es lo que se le va a cobrar. */
+function tapaSena(s){
+  return (FORMA === "efectivo" || s.forma_pago !== "Efectivo")
+    ? s.monto : Math.ceil((s.monto / 0.9) / 100) * 100;
+}
+
 function pintar(){
   const cont = $("#lineas");
   cont.innerHTML = TICKET.length
     ? TICKET.map((l, i) => `<div class="lin">
         <span>${esc(l.nombre)}${l.cantidad > 1 ? ` ×${l.cantidad}` : ""}</span>
-        <span class="plata">${fmt((FORMA === "efectivo" ? l.precio : l.transfer) * l.cantidad)}
+        <span class="plata">${fmt(l.transfer * l.cantidad)}
           <button class="b-out btn-mini" data-i="${i}" title="Sacar">✕</button></span>
       </div>`).join("")
     : `<p class="vacio">Todavía no hay zonas elegidas.</p>`;
@@ -278,25 +329,29 @@ function pintar(){
     b.onclick = () => { TICKET.splice(Number(b.dataset.i), 1); pintar(); };
   });
 
-  const efvo = TICKET.reduce((a, l) => a + l.precio * l.cantidad, 0);
+  const efvo  = TICKET.reduce((a, l) => a + l.precio * l.cantidad, 0);
   const trans = TICKET.reduce((a, l) => a + l.transfer * l.cantidad, 0);
-  const senado = SENAS.reduce((a, s) => a + s.monto, 0);
+  const hayFormaYa = FORMA !== null;
   const total = FORMA === "efectivo" ? efvo : trans;
-  // Lo que la seña tapa de esta cuenta. En efectivo tapa su monto; en
-  // transferencia, una seña en efectivo tapa más, porque la cuenta está en la
-  // otra lista. Es la misma cuenta que hace el backend al aplicarla: acá solo se
-  // muestra, para que lo que se le dice coincida con lo que se le cobra.
-  const tapa = Math.min(total, SENAS.reduce((a, s) => a
-    + (FORMA === "efectivo" || s.forma_pago !== "Efectivo"
-       ? s.monto : Math.ceil((s.monto / 0.9) / 100) * 100), 0));
+  const tapa = Math.min(total, SENAS.reduce((a, s) => a + tapaSena(s), 0));
+  const botonSena = `<button class="b-out btn-mini" id="masSena"
+      title="Tomar una seña que la clienta dejó y no quedó cargada">+ seña no cargada</button>`;
   $("#totales").innerHTML = TICKET.length ? `
-    <div class="ren"><span>${FORMA === "efectivo" ? "En efectivo" : "En transferencia"}</span><b>${fmt(total)}</b></div>
-    <div class="ren flojo"><span>${FORMA === "efectivo" ? "Si pagara por transferencia" : "Si pagara en efectivo"}</span>
-      <span>${fmt(FORMA === "efectivo" ? trans : efvo)}</span></div>
-    ${senado ? `<div class="ren"><span>Tiene de seña</span><b>−${fmt(tapa)}</b></div>` : ""}
-    <div class="ren grande"><span>${senado ? "Falta cobrar" : "Total"}</span><b>${fmt(Math.max(total - tapa, 0))}</b></div>` : "";
+    <div class="ren total"><span>Total</span><b>${fmt(trans)}</b></div>
+    <div class="ren flojo"><span>En efectivo</span><span>${fmt(efvo)}</span></div>
+    ${SENAS.length ? `<div class="ren"><span>Tiene de seña ${botonSena}</span>
+        <b>${hayFormaYa ? "−" + fmt(tapa) : fmt(SENAS.reduce((a, s) => a + s.monto, 0))}</b></div>` : ""}
+    ${hayFormaYa
+      ? `<div class="ren grande"><span>${SENAS.length ? "Falta cobrar" : "A cobrar"}
+           <em class="det">en ${FORMA === "efectivo" ? "efectivo" : "transferencia"}</em></span>
+         <b>${fmt(Math.max(total - tapa, 0))}</b></div>`
+      : `<div class="falta-forma">Elegí arriba cómo paga para ver lo que hay que cobrar.</div>`}` : "";
+  const mas = $("#masSena");
+  if(mas) mas.onclick = abrirPanelSena;
 
-  $("#btnCobrar").disabled = !TICKET.length;
+  // Sin forma de pago no se cobra: es lo que decide con qué lista se cobra y,
+  // con una puesta de entrada, el día que se cobre distinto nadie la cambia.
+  $("#btnCobrar").disabled = !TICKET.length || !hayFormaYa;
   $("#btnVaciar").disabled = !TICKET.length;
   guardarBorrador();
   document.querySelectorAll(".zona").forEach(b => {
@@ -327,53 +382,53 @@ $("#cliDrop").addEventListener("click", async e => {
   CLI = {id: Number(o.dataset.id), nombre: o.dataset.nom};
   $("#cliente").value = CLI.nombre;
   $("#cliDrop").style.display = "none";
-  await mostrarSenas();
+  await mostrarSenas(true);
 });
 document.addEventListener("click", e => {
   if(!$("#cliente").contains(e.target) && !$("#cliDrop").contains(e.target))
     $("#cliDrop").style.display = "none";
 });
 
-async function mostrarSenas(){
+async function mostrarSenas(avisar){
   SENAS = CLI ? await senasLibres(CLI.id) : [];
   const caja = $("#senas");
-  caja.hidden = !SENAS.length;
-  if(SENAS.length){
+  if(!CLI){
+    caja.innerHTML = `<p class="muted">Elegí la clienta y acá aparecen las señas que tenga a favor.</p>`;
+  } else if(!SENAS.length){
+    caja.innerHTML = `<p class="muted">${esc(CLI.nombre)} no tiene ninguna seña a favor.</p>`;
+  } else {
     const total = SENAS.reduce((a, s) => a + s.monto, 0);
-    caja.innerHTML = `<b>${esc(CLI.nombre)} tiene ${SENAS.length} ${
-        SENAS.length === 1 ? "seña" : "señas"} · ${fmt(total)}</b>
-      <div class="lista">${SENAS.map(s => `<div class="fila">
-        <span>${fmt(s.monto)} · ${esc(s.forma_pago || "")}${s.notas ? " · " + esc(s.notas) : ""}</span>
-        <span>${s.fecha}</span></div>`).join("")}</div>
-      <div class="fila"><span>Se aplican solas al cobrar.</span></div>`;
+    // El aviso salta al elegir a la clienta: una seña que aparece DESPUÉS de
+    // cobrar es plata que hay que devolver en el mostrador.
+    if(avisar) toast(`${CLI.nombre} tiene ${fmt(total)} de seña`);
+    caja.innerHTML = `
+      <div class="tiene">Tiene ${fmt(total)} a favor · se aplica solo al cobrar</div>
+      <div class="lista-senas">${SENAS.map(s => `<div class="sena">
+        <b>${fmt(s.monto)}</b>
+        <span class="det">${esc(s.forma_pago || "")} · N-${String(s.numero || 0).padStart(5,"0")}</span>
+        <span class="cuando">${esc(s.fecha || "")}</span>
+        ${DUENO ? `<button class="b-out btn-mini borrar-sena" data-id="${s.id}"
+            title="Se le devolvió la plata">✕</button>` : ""}
+      </div>`).join("")}</div>`;
+    caja.querySelectorAll(".borrar-sena").forEach(b => {
+      b.onclick = async () => {
+        if(!confirm("¿Se le devolvió esta seña?\n\nSale de las que tiene a favor y queda anotada como devuelta.")) return;
+        const r = await authFetch("/api/senas/" + b.dataset.id, {method:"DELETE"});
+        if(!r.ok){ toast((await r.json().catch(()=>({}))).detail || "No se pudo"); return; }
+        toast("Seña devuelta");
+        mostrarSenas();
+      };
+    });
   }
   pintar();
 }
 
-/* Las señas de depilación son siempre las mismas tres, y en efectivo salen 10%
-   menos: $5.000 de cuenta se cobran $4.500. Los botones evitan hacer esa cuenta
-   a mano, que es donde se cobra de más o de menos. */
-const SENAS_TIPICAS = [5000, 10000, 15000];
-$("#btnSena").onclick = async () => {
+function abrirPanelSena(){
   if(!CLI){ toast("Elegí la clienta de la lista: la seña es plata suya"); $("#cliente").focus(); return; }
   $("#panelSena").innerHTML = "";
-  const pan = panelSena(CLI.id, CLI.nombre, () => mostrarSenas());
-  const montos = document.createElement("div");
-  montos.className = "montos";
-  montos.innerHTML = SENAS_TIPICAS.map(m => `
-      <button type="button" class="b-out btn-mini monto" data-m="${m}">${fmt(m)}</button>`).join("")
-    + `<span class="det">En efectivo se cobra el 10% menos y tapa el monto entero:
-        ${SENAS_TIPICAS.map(m => `${fmt(m)} → ${fmt(m * 0.9)}`).join(" · ")}.</span>`;
-  pan.querySelector(".campos").after(montos);
-  montos.querySelectorAll(".monto").forEach(b => {
-    b.onclick = () => {
-      const m = Number(b.dataset.m);
-      const efvo = pan.querySelector(".sForma").value === "Efectivo";
-      pan.querySelector(".sMonto").value = efvo ? Math.round(m * 0.9) : m;
-    };
-  });
-  $("#panelSena").appendChild(pan);
-};
+  $("#panelSena").appendChild(panelSena(CLI.id, CLI.nombre, () => mostrarSenas()));
+}
+$("#btnSena").onclick = abrirPanelSena;
 
 document.querySelectorAll("#formas button").forEach(b => {
   b.onclick = () => {
@@ -399,6 +454,7 @@ $("#btnCobrar").onclick = async () => {
   const b = $("#btnCobrar");
   b.disabled = true;
 
+  if(!FORMA){ toast("Elegí cómo paga"); b.disabled = false; return; }
   const total = TICKET.reduce((a, l) => a + (FORMA === "efectivo" ? l.precio : l.transfer) * l.cantidad, 0);
   if(!confirm(`${nombre}\n${TICKET.length} ${TICKET.length === 1 ? "zona" : "zonas"} · `
             + `${fmt(total)} en ${FORMA === "efectivo" ? "efectivo" : "transferencia"}`
@@ -441,9 +497,12 @@ $("#btnCobrar").onclick = async () => {
     <a class="b-out" href="/ticket?id=${d.id}">🖨️ Imprimir</a>
     ${aviso ? `<p class="nota">${aviso}</p>` : ""}`;
   toast(fin.saldo > 0 ? `${num} con saldo pendiente` : `${num} cobrado ✓`);
-  TICKET = []; CLI = null; SENAS = [];
-  $("#cliente").value = ""; $("#senas").hidden = true; $("#panelSena").innerHTML = "";
-  pintar();
+  TICKET = []; CLI = null; FORMA = null;
+  document.querySelectorAll("#formas button").forEach(x => x.classList.remove("on"));
+  $("#cliente").value = ""; $("#panelSena").innerHTML = "";
+  // mostrarSenas() y no pintar(): sin esto la caja de señas seguía mostrando las
+  // de la clienta anterior, ya aplicadas, como si todavía las tuviera a favor.
+  mostrarSenas();
 };
 
 /* ---------- las solapas ---------- */
@@ -544,27 +603,40 @@ function pintarDia(){
           <b>${d.a_cargo ? esc(d.a_cargo) : "—"}</b></div>
         ${cerrado ? `<span class="tag">Ya cerrado · ${fmt(d.cerrado.total)}</span>` : ""}
       </div>
-      ${!d.es_dia ? `<p class="muted">Ese día no se facturó depilación.</p>` : `
+      ${d.es_dia ? "" : `<p class="muted">Todavía no hay nada de depilación en este día.</p>`}
+    </div>
+
+    <div class="card" style="margin-top:var(--sp-4);">
+      <h3 style="margin:0 0 var(--sp-2);">Gastos del día</h3>
+      <p class="nota" style="margin-top:0;">Los de la depilación y nada más. Salen de la caja del
+        local como cualquier egreso, pero solo estos bajan el reparto.</p>
       <div class="cuenta">
-        <div class="ren"><span>Trabajos de depilación
-            <em class="det">en efectivo, que es con lo que se reparte</em></span><b>${fmt(q.base)}</b></div>
-        <div class="ren chico transfer"><span>Los mismos en transferencia</span><span>${fmt(q.base_transfer)}</span></div>
         ${maquinas.map(e => gasto(e, "Máquina")).join("")}
         ${maquinas.length ? "" : falta("maquina", "Máquina", "se alquila por día: poné lo que salió")}
         ${otros.map(e => gasto(e, (e.numero ? "#" + e.numero + " " : "") + esc(e.concepto || e.tipo || "Gasto"))).join("")}
         ${ayudantes.map(e => gasto(e, "Ayudante · " + esc(e.concepto || "sin nombre"))).join("")}
         ${ayudantes.length ? "" : falta("ayudante", "Pago a la ayudante",
             q.pago_ayudante ? `el fijo son ${fmt(q.pago_ayudante)}` : "lo que se le pagó")}
+        <div class="ren"><span>Total de gastos</span><b class="${q.gastos ? "resta" : ""}">${q.gastos ? "−" : ""}${fmt(q.gastos)}</b></div>
+      </div>
+      ${cerrado ? "" : `<div class="acc-cobrar" style="flex-direction:row;flex-wrap:wrap;margin-top:var(--sp-3);">
+        <button class="b-out btn-mini btn-gasto">+ Otro gasto</button>
+        ${ayudantes.length ? `<button class="b-out btn-mini btn-ayudante">+ Otra ayudante</button>` : ""}
+      </div>`}
+      <div id="panelGasto"></div>
+    </div>
+
+    <div class="card" style="margin-top:var(--sp-4);">
+      <h3 style="margin:0 0 var(--sp-2);">El reparto</h3>
+      <div class="cuenta">
+        <div class="ren"><span>Trabajos de depilación
+            <em class="det">en efectivo, que es con lo que se reparte</em></span><b>${fmt(q.base)}</b></div>
+        <div class="ren chico transfer"><span>Los mismos en transferencia</span><span>${fmt(q.base_transfer)}</span></div>
         <div class="ren"><span>Gastos del día</span><b class="${q.gastos ? "resta" : ""}">${q.gastos ? "−" : ""}${fmt(q.gastos)}</b></div>
         <div class="ren total"><span>Queda</span><b>${fmt(q.resto)}</b></div>
         <div class="ren mitad"><span>Para ${d.a_cargo ? esc(d.a_cargo) : "quien lo lleva"}</span><b>${fmt(q.parte_empleada)}</b></div>
         <div class="ren mitad"><span>Para el salón</span><b>${fmt(q.parte_salon)}</b></div>
-      </div>`}
-      ${d.es_dia && !cerrado ? `<div class="acc-cobrar" style="flex-direction:row;flex-wrap:wrap;margin-top:var(--sp-3);">
-        <button class="b-out btn-mini btn-gasto">+ Gasto del día</button>
-        ${ayudantes.length ? `<button class="b-out btn-mini btn-ayudante">+ Otra ayudante</button>` : ""}
-      </div>` : ""}
-      <div id="panelGasto"></div>
+      </div>
       ${q.falta_cobrar > 0 ? `<div class="aviso">⚠️ De este día falta cobrar ${fmt(q.falta_cobrar)}.
         El reparto es de lo que se trabajó, así que ya está contado: esa plata todavía no entró al cajón.</div>` : ""}
       ${q.resto < 0 ? `<div class="aviso">⚠️ Los gastos superan lo que se facturó. No hay nada para repartir.</div>` : ""}

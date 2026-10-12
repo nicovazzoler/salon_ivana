@@ -29,22 +29,28 @@ async function senasLibres(clienteId){
 }
 
 /* El formulario para tomar una seña. `alGuardar` recibe la seña creada, para que
-   cada pantalla refresque lo suyo sin que este archivo sepa cómo. */
+   cada pantalla refresque lo suyo sin que este archivo sepa cómo.
+
+   El monto es el monto, se pague como se pague: la cuenta de cuánto tapa de una
+   factura se hace al facturar y no acá. Los tres botones son los montos de
+   siempre, para no tipearlos. */
+const MONTOS_SENA = [5000, 10000, 15000];
+
 function panelSena(clienteId, nombre, alGuardar){
   const pan = document.createElement("div");
   pan.className = "panel-sena";
   pan.innerHTML = `
     <div class="cab">
       <b>Seña de ${_escSena(nombre || "")}</b>
-      <span class="det">Entra a la caja de hoy. Se usa cuando se le facture, sin ticket ahora.</span>
+      <span class="det">Entra a la caja de hoy y se usa sola cuando se le facture, el día que sea.</span>
     </div>
     <div class="campos">
       <div class="campo"><label>Monto</label>
         <input type="number" class="sMonto" min="1" inputmode="numeric" placeholder="0"></div>
       <div class="campo"><label>Con qué paga</label><select class="sForma"></select></div>
-      <div class="campo ancho"><label>Para qué (opcional)</label>
-        <input class="sNotas" placeholder="Ej: depilación del lunes 14"></div>
     </div>
+    <div class="montos">${MONTOS_SENA.map(m =>
+      `<button type="button" class="b-out btn-mini sTipico" data-m="${m}">${_plataSena(m)}</button>`).join("")}</div>
     <div class="acc">
       <button class="b-ok sGuardar">Tomar la seña</button>
       <button class="b-out sCancelar">Cancelar</button>
@@ -56,13 +62,15 @@ function panelSena(clienteId, nombre, alGuardar){
   });
 
   pan.querySelector(".sCancelar").onclick = () => pan.remove();
+  pan.querySelectorAll(".sTipico").forEach(b => {
+    b.onclick = () => { pan.querySelector(".sMonto").value = b.dataset.m; };
+  });
   pan.querySelector(".sGuardar").onclick = async () => {
     const monto = parseInt(pan.querySelector(".sMonto").value, 10) || 0;
     if(monto <= 0){ toast("Poné cuánto dejó"); pan.querySelector(".sMonto").focus(); return; }
     const r = await authFetch("/api/senas", {method:"POST", headers:{"Content-Type":"application/json"},
       body: JSON.stringify({cliente_id: clienteId, monto,
-                            forma_pago: pan.querySelector(".sForma").value,
-                            notas: pan.querySelector(".sNotas").value})});
+                            forma_pago: pan.querySelector(".sForma").value})});
     if(!r.ok){ toast((await r.json().catch(()=>({}))).detail || "No se pudo"); return; }
     const s = await r.json();
     pan.remove();
