@@ -569,12 +569,21 @@ function pintarDia(){
   const ayudantes = q.egresos_detalle.filter(e => e.ayudante);
   const maquinas  = q.egresos_detalle.filter(e => e.maquina);
   const otros     = q.egresos_detalle.filter(e => !e.ayudante && !e.maquina);
-  const cerrado = !!d.cerrado;
-  const borrar = e => cerrado ? "" : `<button class="b-out btn-mini borrar-gasto" data-id="${e.id}"
-      title="Sacar este gasto del día">✕</button>`;
-  const gasto = (e, rot) => `<div class="ren chico">
+  const pagado = d.cerrado ? d.cerrado.total : 0;
+  // "Cerrado" es que no quede nada por pagar. Lo facturado después de un cierre
+  // sube el reparto, y esa diferencia se cobra con otro cierre.
+  const cerrado = pagado > 0 && d.pendiente <= 0;
+  // Con el día pagado los gastos no se tocan: cambiarlos movería una cuenta que
+  // ya se liquidó. Mientras tanto se corrigen acá mismo, que equivocarse en un
+  // monto es lo más común y borrar y volver a cargar pierde la fecha y el número.
+  const acciones = e => pagado ? "" : `
+      <button class="b-out btn-mini editar-gasto" data-id="${e.id}" data-monto="${e.monto}"
+              title="Corregir el monto">✎</button>
+      <button class="b-out btn-mini borrar-gasto" data-id="${e.id}"
+              title="Sacar este gasto del día">✕</button>`;
+  const gasto = (e, rot) => `<div class="ren chico" data-gasto="${e.id}">
       <span>${rot}${e.notas ? ` <em class="det">(${esc(e.notas)})</em>` : ""}</span>
-      <span>−${fmt(e.monto)} ${borrar(e)}</span></div>`;
+      <span>−${fmt(e.monto)} ${acciones(e)}</span></div>`;
   const falta = (clase, rot) => cerrado ? "" : `<div class="ren chico falta-fijo">
       <span>${rot}</span>
       <span><button class="b-out btn-mini btn-${clase}">Cargar</button></span></div>`;
@@ -587,7 +596,8 @@ function pintarDia(){
           <input type="date" id="fDia" value="${d.fecha}"></div>
         <div class="campo"><label>Lo lleva</label>
           <b>${d.a_cargo ? esc(d.a_cargo) : "—"}</b></div>
-        ${cerrado ? `<span class="tag">Ya cerrado · ${fmt(d.cerrado.total)}</span>` : ""}
+        ${pagado ? `<span class="tag">${cerrado ? "Ya pagado" : "Pagado en parte"} · ${fmt(pagado)}${
+            d.cerrado.veces > 1 ? ` · ${d.cerrado.veces} cierres` : ""}</span>` : ""}
       </div>
       ${d.es_dia ? "" : `<p class="muted">Todavía no hay nada de depilación en este día.</p>`}
     </div>
@@ -619,6 +629,9 @@ function pintarDia(){
         <div class="ren total"><span>Queda</span><b>${fmt(q.resto)}</b></div>
         <div class="ren mitad"><span>Para ${d.a_cargo ? esc(d.a_cargo) : "quien lo lleva"}</span><b>${fmt(q.parte_empleada)}</b></div>
         <div class="ren mitad"><span>Para el salón</span><b>${fmt(q.parte_salon)}</b></div>
+        ${pagado ? `<div class="ren chico"><span>Ya se le pagó</span><span>−${fmt(pagado)}</span></div>
+          <div class="ren total"><span>${d.pendiente > 0 ? "Queda por pagar" : "No queda nada por pagar"}</span>
+            <b>${fmt(d.pendiente)}</b></div>` : ""}
       </div>
       ${q.falta_cobrar > 0 ? `<div class="aviso">⚠️ De este día falta cobrar ${fmt(q.falta_cobrar)}.
         El reparto es de lo que se trabajó, así que ya está contado: esa plata todavía no entró al cajón.</div>` : ""}
@@ -642,9 +655,11 @@ function pintarDia(){
         : `<p class="muted">Todavía no se facturó nada.</p>`}
     </details>
 
-    ${!cerrado && q.parte_empleada > 0 ? `
+    ${d.pendiente > 0 ? `
     <div class="card" style="margin-top:var(--sp-4);">
-      <h3 style="margin:0 0 var(--sp-2);">Cerrar el día</h3>
+      <h3 style="margin:0 0 var(--sp-2);">${pagado ? "Pagar la diferencia" : "Cerrar el día"}</h3>
+      ${pagado ? `<p class="nota" style="margin-top:0;">El día se cerró con ${fmt(pagado)} y
+        después se facturó más, así que quedó esta diferencia.</p>` : ""}
       <div class="dia-cab">
         <div class="campo"><label for="cForma">Se paga con</label>
           <select id="cForma"><option>Efectivo</option><option>Transferencia</option></select></div>
@@ -652,7 +667,7 @@ function pintarDia(){
           <input type="date" id="cFecha" value="${hoyArg()}"></div>
         <div class="campo"><label for="cNota">Nota (opcional)</label>
           <input id="cNota" maxlength="80"></div>
-        <button class="b-ok" id="cCerrar">Cerrar y pagar ${fmt(q.parte_empleada)}</button>
+        <button class="b-ok" id="cCerrar">Cerrar y pagar ${fmt(d.pendiente)}</button>
       </div>
       <p class="nota">Queda la foto del reparto y el egreso anotado. No se puede deshacer.</p>
     </div>` : ""}`;
@@ -664,6 +679,9 @@ function pintarDia(){
   if(ba) ba.onclick = () => formGasto("ayudante");
   const bm = $("#hDia").querySelector(".btn-maquina");
   if(bm) bm.onclick = () => formGasto("maquina");
+  $("#hDia").querySelectorAll(".editar-gasto").forEach(b => {
+    b.onclick = () => editarGasto(b);
+  });
   $("#hDia").querySelectorAll(".borrar-gasto").forEach(b => {
     b.onclick = async () => {
       if(!confirm("¿Sacar este gasto del día? El reparto se recalcula solo.")) return;
@@ -675,7 +693,7 @@ function pintarDia(){
   });
   const cerrar = $("#cCerrar");
   if(cerrar) cerrar.onclick = async () => {
-    if(!confirm(`Se le pagan ${fmt(q.parte_empleada)} a ${d.a_cargo} por el día ${d.fecha}.\n\n`
+    if(!confirm(`Se le pagan ${fmt(d.pendiente)} a ${d.a_cargo} por el día ${d.fecha}.\n\n`
               + `Queda la foto del reparto y el egreso anotado. Esto no se puede deshacer.`)) return;
     const r = await pedir("/api/depilacion/cerrar", {method:"POST",
       headers:{"Content-Type":"application/json"},
@@ -686,6 +704,37 @@ function pintarDia(){
     toast("Día cerrado ✓");
     verDia();
   };
+}
+
+/* Corregir el monto de un gasto, en el renglón. El egreso es el mismo —mismo
+   número y misma fecha—, así que la caja del día sigue contándolo una sola vez. */
+function editarGasto(boton){
+  const fila = boton.closest("[data-gasto]");
+  if(fila.querySelector(".gEdit")) return;
+  const caja = document.createElement("span");
+  caja.className = "gEdit";
+  caja.innerHTML = `<input type="number" class="gNuevo" min="1" inputmode="numeric"
+      value="${boton.dataset.monto}" style="width:7rem;">
+    <button class="b-ok btn-mini gSi">Guardar</button>
+    <button class="b-out btn-mini gNo">Cancelar</button>`;
+  fila.appendChild(caja);
+  const inp = caja.querySelector(".gNuevo");
+  inp.focus(); inp.select();
+  caja.querySelector(".gNo").onclick = () => caja.remove();
+  caja.querySelector(".gSi").onclick = async () => {
+    const monto = parseInt(inp.value, 10) || 0;
+    if(monto <= 0){ toast("Poné cuánto fue"); return; }
+    const r = await pedir("/api/depilacion/gasto/" + boton.dataset.id, {method:"PUT",
+      headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({empleado_id: DIA.empleado_id, monto})});
+    if(!r.ok){ toast((await r.json().catch(()=>({}))).detail || "No se pudo"); return; }
+    toast("Corregido");
+    verDia();
+  };
+  inp.addEventListener("keydown", e => {
+    if(e.key === "Enter") caja.querySelector(".gSi").click();
+    if(e.key === "Escape") caja.remove();
+  });
 }
 
 function tablaComprobantes(filas){
@@ -840,7 +889,9 @@ async function cargarDias(){
       <td>${esc(d.a_cargo || "—")}</td>
       <td class="num">${fmt(d.base)}</td>
       <td class="num">${fmt(d.parte_empleada)}</td>
-      <td>${d.cerrado ? "pagado" : `<b class="deuda">sin cerrar</b>`}</td>
+      <td>${d.cerrado ? "pagado"
+            : d.pagado ? `<b class="deuda">falta ${fmt(d.parte_empleada - d.pagado)}</b>`
+            : `<b class="deuda">sin cerrar</b>`}</td>
     </tr>`).join("")}</tbody></table>`
     : `<p class="muted">Todavía no hubo días de depilación.</p>`;
   $("#hDias").querySelectorAll(".ver-dia").forEach(a => {

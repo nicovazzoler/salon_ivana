@@ -2015,6 +2015,27 @@ def gasto_depilacion(g: GastoDepiIn, user = Depends(usuario_actual),
     db.add(eg); db.commit(); db.refresh(eg)
     return {"id": eg.id, "numero": eg.numero}
 
+class MontoGastoIn(BaseModel):
+    empleado_id: int; monto: int
+
+@app.put("/api/depilacion/gasto/{egreso_id}")
+def corregir_gasto_depilacion(egreso_id: int, datos: MontoGastoIn,
+                              _ = Depends(usuario_actual), db: Session = Depends(get_db)):
+    """Corrige el monto de un gasto del día. Equivocarse tipeando es lo más
+    común, y borrarlo y volver a cargarlo le cambia el número y la hora.
+
+    Pasa por las reglas del día —que sea suyo y que no esté cerrado— y no por
+    las de Caja, donde el empleado solo puede tocar lo de hoy: el día de
+    depilación se cierra al otro día y para entonces ya no podría corregir nada.
+    """
+    emp = _empleado_o_404(db, datos.empleado_id)
+    e = db.get(models.Egreso, egreso_id)
+    if not e or e.privado or not e.depilacion: raise HTTPException(404, "Gasto no existe")
+    if datos.monto <= 0: raise HTTPException(400, "El monto tiene que ser mayor que cero")
+    _dia_suyo(db, emp, hora_argentina(e.fecha).date().isoformat())
+    e.monto = datos.monto
+    db.commit(); return {"ok": True, "monto": e.monto}
+
 @app.delete("/api/depilacion/gasto/{egreso_id}")
 def borrar_gasto_depilacion(egreso_id: int, empleado_id: int, _ = Depends(usuario_actual),
                             db: Session = Depends(get_db)):
@@ -2041,12 +2062,17 @@ def _emp_del_dia(db, f: date):
     return (db.query(models.Empleado).filter(models.Empleado.nombre == nombre).first()
             if nombre else None)
 
-def cierre_de_depilacion(db, empleado_id, f: date):
-    """La liquidación de ese día, si ya se cerró."""
+def cierres_de_depilacion(db, empleado_id, f: date):
+    """Lo que ya se le pagó de ese día. Puede haber más de un cierre.
+
+    La cuenta se sigue recalculando después de cerrar: si se factura algo más
+    ese día, el reparto sube. Con un solo cierre posible, esa diferencia no se
+    podía cobrar por ninguna pantalla.
+    """
     return db.query(models.Liquidacion).filter(
         models.Liquidacion.empleado_id == empleado_id,
         models.Liquidacion.depilacion == True,
-        models.Liquidacion.desde == f.isoformat()).first()
+        models.Liquidacion.desde == f.isoformat()).order_by(models.Liquidacion.id).all()
 
 @app.get("/api/depilacion/dia")
 def depilacion_dia(fecha: str | None = None, user = Depends(usuario_actual),
@@ -2099,7 +2125,8 @@ def depilacion_dia(fecha: str | None = None, user = Depends(usuario_actual),
                         "lineas": [{"nombre": l.nombre, "cantidad": l.cantidad} for l in c.lineas],
                         "total": est["total_final"], "saldo": est["saldo"],
                         "forma": forma_comprobante(db, c, por_comp)})
-    liq = cierre_de_depilacion(db, emp.id, f) if emp else None
+    cierres = cierres_de_depilacion(db, emp.id, f) if emp else []
+    pagado = sum(l.total or 0 for l in cierres)
     return {
         "fecha": f.isoformat(),
         "a_cargo": emp.nombre if emp else None,
@@ -2112,8 +2139,11 @@ def depilacion_dia(fecha: str | None = None, user = Depends(usuario_actual),
         # reparto —esa va toda en efectivo— sino lo que el día facturó.
         "facturado": facturado,
         "comprobantes": detalle,
-        "cerrado": ({"id": liq.id, "total": liq.total, "fecha": liq.fecha.isoformat()}
-                    if liq else None),
+        # Lo ya pagado del día y lo que falta. Son dos números y no uno porque
+        # pueden no coincidir: la cuenta sigue viva y lo facturado después de
+        # cerrar se paga como una diferencia.
+        "cerrado": ({"total": pagado, "veces": len(cierres)} if cierres else None),
+        "pendiente": max(cuenta_depilacion(db, f)["parte_empleada"] - pagado, 0),
     }
 
 @app.get("/api/depilacion/dias")
@@ -2127,9 +2157,10 @@ def depilacion_dias(limite: int = 12, _ = Depends(usuario_actual),
         emp = (db.query(models.Empleado).filter(models.Empleado.nombre == nombre).first()
                if nombre else None)
         q = cuenta_depilacion(db, f)
-        liq = cierre_de_depilacion(db, emp.id, f) if emp else None
+        pagado = sum(l.total or 0 for l in cierres_de_depilacion(db, emp.id, f)) if emp else 0
         salida.append({"fecha": iso, "a_cargo": nombre, "base": q["base"],
-                       "parte_empleada": q["parte_empleada"], "cerrado": bool(liq)})
+                       "parte_empleada": q["parte_empleada"], "pagado": pagado,
+                       "cerrado": pagado > 0 and pagado >= q["parte_empleada"]})
     return salida
 
 class CerrarDepiIn(BaseModel):
@@ -2156,16 +2187,21 @@ def cerrar_depilacion(datos: CerrarDepiIn, user = Depends(usuario_actual),
     emp = (db.query(models.Empleado).filter(models.Empleado.nombre == nombre).first()
            if nombre else None)
     if not emp: raise HTTPException(400, "Ese día no tiene a nadie a cargo")
-    if cierre_de_depilacion(db, emp.id, f): raise HTTPException(409, "Ese día ya se cerró")
     q = cuenta_depilacion(db, f)
     if q["parte_empleada"] <= 0: raise HTTPException(400, "Ese día no tiene nada para repartir")
+    # Lo que falta pagar de ese día, que no siempre es el reparto entero: puede
+    # haberse cerrado antes y haberse facturado algo después.
+    cierres = cierres_de_depilacion(db, emp.id, f)
+    pagado = sum(l.total or 0 for l in cierres)
+    pendiente = q["parte_empleada"] - pagado
+    if pendiente <= 0: raise HTTPException(409, "Ese día ya está pagado")
 
     liq = models.Liquidacion(
         empleado_id=emp.id, desde=f.isoformat(), hasta=f.isoformat(),
         valor_hora=vh_de(emp, valor_hora(db)), comision_pct=comision_pct(db),
         minutos_total=0, minutos_comision=0, minutos_pagados=0,
         total_comisiones=0, total_horas=0,
-        total=q["parte_empleada"], notas=datos.notas, parcial=False,
+        total=pendiente, notas=datos.notas, parcial=False,
         depilacion=True, recaudado=q["base"], gastos=q["gastos"])
     db.add(liq); db.flush()
     # El egreso lo anota el cierre, como el del sueldo: si hubiera que cargarlo a
@@ -2176,7 +2212,8 @@ def cerrar_depilacion(datos: CerrarDepiIn, user = Depends(usuario_actual),
     # arqueo pidiendo plata que no está, sin nada que lo explique.
     eg = models.Egreso(
         numero=siguiente_numero_egreso(db), tipo=tipo_de_sueldo(db).nombre,
-        concepto=f"Depilación {emp.nombre} ({f.isoformat()})",
+        concepto=(f"Depilación {emp.nombre} ({f.isoformat()})"
+                  + (" · diferencia" if pagado else "")),
         monto=liq.total, forma_pago=datos.forma_pago, notas=datos.notas,
         privado=es_dueno(user),
         fecha=fecha_del_servicio(datos.fecha_pago,
@@ -2184,7 +2221,8 @@ def cerrar_depilacion(datos: CerrarDepiIn, user = Depends(usuario_actual),
     db.add(eg); db.flush()
     liq.egreso_id = eg.id
     db.commit()
-    return {"id": liq.id, "total": liq.total, "egreso_numero": eg.numero}
+    return {"id": liq.id, "total": liq.total, "egreso_numero": eg.numero,
+            "diferencia": bool(pagado)}
 
 @app.put("/api/sueldos/horas")
 def cargar_horas(h: HorasIn, user = Depends(usuario_actual),

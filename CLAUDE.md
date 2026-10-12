@@ -198,7 +198,15 @@ Lo que hay que respetar:
   privado **solo si lo cerró la dueña**: uno que cargó el empleado y no puede
   ver le deja el arqueo pidiendo plata que no está.
 - La liquidación guarda la foto: `recaudado` es lo facturado en efectivo y
-  `gastos` lo que se restó.
+  `gastos` lo que se restó. **Un día se puede cerrar más de una vez**: la cuenta
+  sigue viva, así que lo que se facture después de cerrar sube el reparto y esa
+  diferencia se cobra con otro cierre. Con un cierre único, esa plata no se
+  podía pagar por ninguna pantalla. Lo que no se toca después de un cierre son
+  los gastos: moverlos cambiaría una cuenta ya liquidada.
+- El monto de un gasto se corrige desde la pantalla, con las reglas del DÍA —que
+  sea suyo y que no esté cerrado— y no con las de Caja, donde el empleado solo
+  puede tocar lo de hoy: el día se cierra al otro día y para entonces ya no
+  podría corregir nada.
 - Un día que fue SOLO depilación no aparece en Sueldos: no tiene comisiones ni
   horas que pagar. El que además tuvo peluquería sí, con la peluquería adentro.
 
