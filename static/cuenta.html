@@ -121,18 +121,6 @@
   .sena-fila.usada, .sena-fila.anulada{ opacity:.55; }
   .sena-fila.usada b, .sena-fila.anulada b{ color:var(--text-suave); }
 
-  .panel-sena{
-    margin:var(--sp-3) 0; padding:var(--sp-3) var(--sp-4);
-    background:var(--bg-sutil); border:1px solid var(--acento-border); border-radius:var(--r-lg);
-  }
-  .panel-sena .cab b{ font-family:var(--font-display); font-size:var(--fs-lg); color:var(--text-titulo); }
-  .panel-sena .cab .det{ display:block; font-size:var(--fs-sm); color:var(--text-tenue); margin-bottom:var(--sp-3); }
-  .panel-sena .campos{ display:flex; flex-wrap:wrap; gap:var(--sp-3); }
-  .panel-sena .campo{ display:flex; flex-direction:column; gap:3px; flex:1 1 150px; }
-  .panel-sena .campo.ancho{ flex:2 1 220px; }
-  .panel-sena .campo label{ margin:0; }
-  .panel-sena .campo input, .panel-sena .campo select{ width:100%; }
-  .panel-sena .acc{ display:flex; gap:var(--sp-2); margin-top:var(--sp-3); flex-wrap:wrap; }
 </style>
 <script src="/static/auth.js"></script>
 <script src="/static/js/peluquero.js"></script>
@@ -201,7 +189,6 @@ async function cargar(){
     <div class="fila acciones">
       ${data.saldo_total>0 ? `<a class="btnAbonar" href="/ticket?tipo=cuenta&cliente=${id}">🖨️ Imprimir cuenta</a>` : ''}
       <button class="b-out" id="btnEditar">✏️ Editar datos</button>
-      <button class="b-out" id="btnSena">💵 Tomar seña</button>
       ${getRol()==="dueno" ? '<button class="b-del" id="btnEliminar">🗑️ Eliminar</button>' : ''}
     </div>
     <div class="editar-box" id="editarBox">
@@ -218,7 +205,6 @@ async function cargar(){
         <button class="b-out" id="btnCancelar">Cancelar</button>
       </div>
     </div>
-    <div id="cajaSena"></div>
     <div class="senas-box">
       <div class="eti-senas">Señas</div>
       <div id="listaSenas"></div>
@@ -234,11 +220,6 @@ async function cargar(){
     $("#eDireccion").value = c.direccion || "";
     $("#eNotas").value     = c.notas     || "";
   }
-  $("#btnSena").onclick=()=>{
-    if($("#cajaSena").firstChild){ $("#cajaSena").innerHTML=""; return; }
-    $("#cajaSena").appendChild(panelSena(c.id, c.nombre, refrescarSenas));
-  };
-
   $("#btnEditar").onclick=()=>{
     if(editBox.style.display==="block"){ editBox.style.display="none"; return; }
     llenarForm();
