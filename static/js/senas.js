@@ -61,7 +61,7 @@ function panelSena(clienteId, nombre, alGuardar){
       <span class="det">Entra a la caja de hoy y se usa sola cuando se le facture, el día que sea.</span>
     </div>
     <div class="campos">
-      ${eligeCliente ? `<div class="campo ancho sCli"><label>Clienta</label>
+      ${eligeCliente ? `<div class="campo ancho sCli"><label>Cliente</label>
         <input class="sNombre" autocomplete="off" placeholder="Buscar o escribir el nombre">
         <div class="cli-drop sDrop"></div></div>` : ""}
       <div class="campo"><label>De cuánto es</label>
@@ -145,7 +145,7 @@ function panelSena(clienteId, nombre, alGuardar){
       const igual = res.find(c => c.nombre.toLowerCase() === nom.toLowerCase());
       if(igual){ elegido = igual.id; }
       else {
-        if(!confirm(`"${nom}" no está en la lista de clientas.\n\n¿La creamos?`)) return;
+        if(!confirm(`"${nom}" no está en la lista de clientes.\n\n¿Lo creamos?`)) return;
         const rc = await authFetch("/api/clientes", {method:"POST",
           headers:{"Content-Type":"application/json"}, body: JSON.stringify({nombre: nom})});
         if(!rc.ok){ toast((await rc.json().catch(()=>({}))).detail || "No se pudo crear"); return; }

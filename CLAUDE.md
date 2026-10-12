@@ -226,6 +226,14 @@ efectivo devuelva exactamente el precio impreso; si alguno no cierra, no escribe
 nada. Veinte renglones tipeados a mano en la tablet son media hora, y un número
 mal puesto se le cobra a alguien.
 
+Una zona suelta se agrega desde la pantalla, con la casilla "+ Agregar" de cada
+lista, y ahí también se pone el precio de TRANSFERENCIA: es el que está impreso
+y el único orden en el que se copia un renglón del papel sin hacer ninguna
+cuenta. El de efectivo lo saca el backend con el mismo `efectivo_de()` del
+script, y un precio que no cierra se rebota con 400 en vez de guardar uno que en
+el papel saldría distinto. Es al revés que el catálogo de peluquería, que se
+carga en efectivo.
+
 **La seña es plata de la clienta, no un pago de un ticket.** Se toma sin
 comprobante —desde la pantalla de depilación, que es donde se señan los
 trabajos— y entra a la caja del día en que se cobra. La lista que se ve ahí es

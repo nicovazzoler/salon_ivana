@@ -305,9 +305,12 @@ class ClienteIn(BaseModel):
 class ClienteEdit(BaseModel):
     nombre: str | None = None; telefono: str | None = None; alias: str | None = None; notas: str | None = None; activo: bool | None = None; direccion: str | None = None; dni: str | None = None
 class ItemIn(BaseModel):
-    categoria: str; nombre: str; precio: int; es_producto: bool = False
+    categoria: str; nombre: str; precio: int = 0; es_producto: bool = False
     es_comision: bool = False; comision_pct: int | None = None
     es_depilacion: bool = False
+    # Depilación se carga al revés que la peluquería: la lista impresa son los
+    # precios de TRANSFERENCIA y el de efectivo sale de ahí. Si viene este, manda.
+    precio_transfer: int | None = None
 class ItemEdit(BaseModel):
     categoria: str | None = None; nombre: str | None = None; precio: int | None = None; activo: bool | None = None
     es_comision: bool | None = None; es_producto: bool | None = None
@@ -2940,8 +2943,20 @@ def proximo_turno(cliente_id: int, _ = Depends(usuario_actual), db: Session = De
 # ---------- catalogo (admin: dueña y empleado) ----------
 @app.post("/api/items")
 def crear_item(item: ItemIn, _ = Depends(usuario_actual), db: Session = Depends(get_db)):
+    precio = item.precio
+    if item.precio_transfer:
+        # El mismo lector que el script de la lista: busca el efectivo que vuelve
+        # a dar ESE transfer, porque el 10% de ida y el 1,1111 de vuelta no son
+        # inversas exactas. Un precio que no cierra no se guarda: en el papel
+        # saldría un número distinto del que dice la lista del local.
+        from cargar_depilacion import efectivo_de
+        precio = efectivo_de(item.precio_transfer)
+        if not precio:
+            raise HTTPException(400, f"Con {item.precio_transfer} no cierra la cuenta "
+                                     "de las dos listas. Probá con un precio redondo.")
+    if precio <= 0: raise HTTPException(400, "Falta el precio")
     nuevo = models.Item(categoria=item.categoria.strip(), nombre=item.nombre.strip(),
-                        precio=item.precio, precio_transfer=calcular_transfer(item.precio),
+                        precio=precio, precio_transfer=calcular_transfer(precio),
                         es_producto=item.es_producto, es_comision=item.es_comision,
                         es_depilacion=item.es_depilacion,
                         comision_pct=item.comision_pct)
