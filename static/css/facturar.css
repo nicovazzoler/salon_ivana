@@ -413,6 +413,17 @@
   .tot-row .lbl{ text-align:left; }
   .tot-row .v2{ display:none; }
 
+  /* Cada renglón cerrado con su línea: son cuentas encadenadas —subtotal,
+     descuento, subtotal otra vez, extras— y de corrido se leían como una lista
+     de números sueltos, sin que se viera cuál sale de cuál. El total no la
+     lleva: ya se despega con el filete de arriba. */
+  .totales .tot-row{ padding-bottom:5px; border-bottom:1px solid var(--border-sutil); }
+  .totales .tot-final{ padding-bottom:0; border-bottom:none; }
+  /* En presupuesto no van: las filas son display:contents y la línea se corta en
+     cada hueco entre columnas, así que en vez de separar quedaban tres rayitas
+     sueltas por renglón. Ahí las dos columnas de importes ya ordenan solas. */
+  .totales.presu .tot-row{ padding-bottom:0; border-bottom:none; }
+
   /* Renglones de importe DENTRO de los paneles de cobro.
      Arriba, en el bloque de totales, el rótulo lleva .lbl y hay una segunda
      columna de importes para el presupuesto. Acá son dos datos sueltos y el
