@@ -1135,11 +1135,11 @@ $("#cobrarParte").onclick=async()=>{
    que no, la seña queda libre para la próxima. */
 async function aplicarSenasSiHay(compId){
   if(!SENAS_CLIENTA.length) return;
-  const total = SENAS_CLIENTA.reduce((a, s) => a + s.monto, 0);
+  const total = SENAS_CLIENTA.reduce((a, s) => a + valorSena(s), 0);
   const cuantas = SENAS_CLIENTA.length === 1
     ? `${fmt(total)} de seña`
     : `${fmt(total)} en ${SENAS_CLIENTA.length} señas`;
-  const ok = confirm(`${cliInput.value.trim() || "La clienta"} tiene ${cuantas}.\n\n` +
+  const ok = confirm(`${cliInput.value.trim() || "El cliente"} tiene ${cuantas}.\n\n` +
     `¿Se ${SENAS_CLIENTA.length === 1 ? "la" : "las"} descontamos de este ticket?\n` +
     `Si decís que no, queda a favor para la próxima.`);
   if(!ok){ SENAS_CLIENTA = []; return; }

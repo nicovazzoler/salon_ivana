@@ -72,6 +72,25 @@
                font-variant-numeric:tabular-nums; }
   .zona .p-ef{ font-size:var(--fs-xs); color:var(--text-tenue); font-variant-numeric:tabular-nums; }
   .zona.puesta{ border-color:var(--acento); background:var(--bg-header); }
+  /* La casilla de agregar: misma medida que una zona pero se lee como un hueco,
+     no como un precio más para tocar de apurado. */
+  .zona.nueva{ align-items:center; justify-content:center; text-align:center;
+               border-style:dashed; color:var(--text-tenue); }
+  /* El hueco no se pinta como una zona al pasarle por encima: la de al lado es
+     un precio para tocar de apurado y las dos iguales se confunden. */
+  .zona.nueva:hover{ background:var(--oro-a08); border-color:var(--acento);
+                     color:var(--acento); }
+  .alta{ display:flex; flex-wrap:wrap; gap:var(--sp-3); align-items:flex-end;
+         margin-top:var(--sp-3); padding:var(--sp-3);
+         background:var(--bg-sutil); border:1px solid var(--acento-border);
+         border-radius:var(--r-md); }
+  .alta[hidden]{ display:none; }
+  .alta .campo{ display:flex; flex-direction:column; gap:4px; flex:1 1 160px; }
+  .alta .campo label{ margin:0; font-size:var(--fs-sm); font-weight:var(--fw-bold);
+                      text-transform:uppercase; letter-spacing:var(--tracking-eti);
+                      color:var(--acento); }
+  .alta .acc{ display:flex; gap:var(--sp-2); }
+  .alta .nota{ flex:1 1 100%; margin:0; font-size:var(--fs-sm); color:var(--text-tenue); }
 
   /* ----- el ticket -----
      Cuatro pasos, uno abajo del otro: con qué paga, a quién se le hace, qué se
@@ -89,26 +108,29 @@
   .lineas{ margin:0 0 var(--sp-3); padding:var(--sp-2) var(--sp-3) var(--sp-3);
            border:1px solid var(--border-sutil); border-radius:var(--r-md);
            background:var(--bg-sutil); }
-  /* La línea de un ítem, con las medidas de la de Facturar (facturar.css): el
-     nombre con su precio arriba y la tira de controles abajo. Son dos CSS
-     porque `.linea` ya quiere decir otra cosa en Admin y en Reportes; si se
-     toca una, tocar la otra. */
-  .lin{ display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:baseline;
-        gap:2px var(--sp-3); padding:var(--sp-3) 0;
+  /* La línea de un ítem, entera en un renglón: la cantidad adelante, el nombre,
+     el precio a la derecha con el de efectivo abajo y el quitar al final.
+     Facturar la parte en dos renglones porque ahí hay seis controles por línea;
+     acá son tres y, partida, la tira quedaba sola con medio renglón vacío al
+     lado y cada zona ocupaba el doble de alto. */
+  .lin{ display:grid; grid-template-columns:auto minmax(0,1fr) auto auto;
+        align-items:center; gap:var(--sp-2) var(--sp-3); padding:var(--sp-2) 0;
         border-bottom:1px solid var(--border-sutil); }
   .lin:last-child{ border-bottom:none; }
-  .lin .n{ font-family:var(--font-display); font-size:var(--fs-lg);
-           color:var(--text-titulo); line-height:1.3; overflow-wrap:anywhere; }
-  .lin .plata{ text-align:right; white-space:nowrap; font-variant-numeric:tabular-nums; }
-  .lin .ef{ font-size:var(--fs-xs); color:var(--text-tenue); }
-  .lin .controles{ grid-column:1 / -1; display:flex; align-items:center; gap:6px;
-                   margin-top:8px; }
-  .lin .qty{ display:flex; align-items:center; gap:6px; margin-left:auto;
-             font-variant-numeric:tabular-nums; }
-  .lin .qty button{ padding:4px 9px; background:var(--bg-input);
-                    border:1px solid var(--border); color:var(--text); }
-  .lin .quitar{ padding:6px 9px; background:transparent;
-                border:1px solid var(--border); color:var(--danger); }
+  .lin .n{ font-family:var(--font-display); font-size:var(--fs-base);
+           color:var(--text-titulo); line-height:1.25; overflow-wrap:anywhere; }
+  .lin .plata{ text-align:right; white-space:nowrap; font-variant-numeric:tabular-nums;
+               font-weight:var(--fw-bold); }
+  .lin .ef{ display:block; font-size:var(--fs-xs); font-weight:var(--fw-normal);
+            color:var(--text-tenue); }
+  .lin .qty{ display:flex; align-items:center; gap:4px; font-variant-numeric:tabular-nums; }
+  .lin .qty span{ min-width:1.1em; text-align:center; }
+  .lin .qty button{ width:28px; height:28px; padding:0; line-height:1;
+                    background:var(--bg-input); border:1px solid var(--border);
+                    color:var(--text); }
+  .lin .quitar{ width:28px; height:28px; padding:0; line-height:1;
+                background:transparent; border:1px solid var(--border);
+                color:var(--danger); }
   .vacio{ color:var(--text-tenue); margin:var(--sp-3) 0; }
 
   /* La cuenta: cada renglón con su línea, que son cuentas encadenadas —subtotal,
@@ -120,6 +142,7 @@
   /* La seña es plata a favor y el descuento es plata que se resta: cada uno con
      el color con el que ya se lee en el resto de la app. */
   .totales .ren.sena b{ color:var(--success); }
+  .totales .ren.sena .sin{ font-weight:var(--fw-normal); color:var(--text-tenue); }
   .totales .ren.desc{ color:var(--warn); }
   /* El total, como el de Facturar: el rótulo y el número del mismo cuerpo y el
      número en dorado, que en estas pantallas el dorado quiere decir plata. */
@@ -205,7 +228,7 @@
 <div class="wrap">
   <div class="card-head">
     <h2>Depilación</h2>
-    <p>Las zonas, la seña que la clienta ya dejó y el cobro, en una pantalla.
+    <p>Las zonas, la seña que el cliente ya dejó y el cobro, en una pantalla.
        Se factura por el mismo lugar que Facturar, así que el comprobante, la caja
        y el reparto del día salen de lo mismo.</p>
   </div>
@@ -241,7 +264,7 @@
       </div>
       <div class="quien">
         <div class="campo cli">
-          <label for="cliente">Clienta</label>
+          <label for="cliente">Cliente</label>
           <input id="cliente" autocomplete="off" placeholder="Buscar o escribir el nombre">
           <div class="cli-drop" id="cliDrop"></div>
         </div>
@@ -335,11 +358,66 @@ function pintarCatalogo(){
           <b>${esc(z.nombre)}</b>
           <span class="p-tr">${fmt(z.precio_transfer)}</span>
           <span class="p-ef">c/desc ${fmt(z.precio)}</span>
-        </button>`).join("")}</div>
+        </button>`).join("")}
+        <button class="zona nueva" data-cat="${esc(c)}"
+                title="Agregar una zona a esta lista">+ Agregar</button>
+      </div>
+      <div class="alta" data-alta="${esc(c)}" hidden></div>
     </div>`).join("");
-  cont.querySelectorAll(".zona").forEach(b => {
+  cont.querySelectorAll(".zona[data-id]").forEach(b => {
     b.onclick = () => agregar(Number(b.dataset.id));
   });
+  cont.querySelectorAll(".zona.nueva").forEach(b => {
+    b.onclick = () => abrirAlta(b.dataset.cat);
+  });
+}
+
+/* Agregar una zona desde acá, sin pasar por Admin.
+
+   El precio que se pone es el de TRANSFERENCIA, que es el de la lista impresa
+   en el local; el de efectivo lo saca el backend con la misma cuenta que el
+   script de la lista. Es la peluquería al revés, y es el único orden en el que
+   la chica puede copiar un renglón del papel sin hacer ninguna cuenta. */
+function abrirAlta(cat){
+  const caja = document.querySelector(`.alta[data-alta="${CSS.escape(cat)}"]`);
+  if(!caja) return;
+  if(!caja.hidden){ caja.hidden = true; caja.innerHTML = ""; return; }
+  caja.hidden = false;
+  caja.innerHTML = `
+    <div class="campo"><label>Cómo se llama</label>
+      <input class="aNombre" placeholder="Ej: 6 zonas" autocomplete="off"></div>
+    <div class="campo"><label>Precio por transferencia</label>
+      <input class="aPrecio" type="number" inputmode="numeric" placeholder="0"></div>
+    <div class="acc">
+      <button class="b-ok aGuardar">Agregar</button>
+      <button class="b-out aCancelar">Cancelar</button>
+    </div>
+    <p class="nota aCuenta"></p>`;
+  const nom = caja.querySelector(".aNombre"), pre = caja.querySelector(".aPrecio");
+  const cuenta = () => {
+    const v = parseInt(pre.value, 10) || 0;
+    caja.querySelector(".aCuenta").textContent = v
+      ? `Pagando en efectivo sale ${fmt(Math.round(v * 0.9))}.` : "";
+  };
+  pre.addEventListener("input", cuenta);
+  caja.querySelector(".aCancelar").onclick = () => { caja.hidden = true; caja.innerHTML = ""; };
+  caja.querySelector(".aGuardar").onclick = async () => {
+    const nombre = nom.value.trim(), transfer = parseInt(pre.value, 10) || 0;
+    if(!nombre){ toast("Falta el nombre"); nom.focus(); return; }
+    if(transfer <= 0){ toast("Falta el precio"); pre.focus(); return; }
+    const r = await authFetch("/api/items", {method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({categoria: cat, nombre, precio_transfer: transfer,
+                            es_depilacion: true})});
+    if(!r.ok){ toast((await r.json().catch(()=>({}))).detail || "No se pudo agregar"); return; }
+    toast(`${nombre} agregada`);
+    ZONAS = await (await authFetch("/api/catalogo?de=depi")).json();
+    pintarCatalogo();
+  };
+  [nom, pre].forEach(i => i.addEventListener("keydown", e => {
+    if(e.key === "Enter"){ e.preventDefault(); caja.querySelector(".aGuardar").click(); }
+  }));
+  nom.focus();
 }
 
 function agregar(id){
@@ -356,17 +434,15 @@ function pintar(){
   const cont = $("#lineas");
   cont.innerHTML = TICKET.length
     ? TICKET.map((l, i) => `<div class="lin">
+        <div class="qty">
+          <button data-menos="${i}" title="Una menos">−</button>
+          <span>${l.cantidad}</span>
+          <button data-mas="${i}" title="Una más">+</button>
+        </div>
         <span class="n">${esc(l.nombre)}</span>
         <span class="plata">${fmt(l.transfer * l.cantidad)}
-          <span class="ef">(c/desc ${fmt(l.precio * l.cantidad)})</span></span>
-        <div class="controles">
-          <div class="qty">
-            <button data-menos="${i}" title="Una menos">−</button>
-            <span>${l.cantidad}</span>
-            <button data-mas="${i}" title="Una más">+</button>
-          </div>
-          <button class="quitar" data-i="${i}" title="Sacar">×</button>
-        </div>
+          <span class="ef">c/desc ${fmt(l.precio * l.cantidad)}</span></span>
+        <button class="quitar" data-i="${i}" title="Sacar">×</button>
       </div>`).join("")
     : `<p class="vacio">Todavía no hay zonas elegidas.</p>`;
   cont.querySelectorAll("button[data-i]").forEach(b => {
@@ -402,14 +478,19 @@ function pintar(){
   const desc = restoT - total;
   const pct = restoT ? Math.round(desc / restoT * 1000) / 10 : 0;
   const botonSena = `<button class="b-out btn-mini" id="masSena"
-      title="Tomar una seña que la clienta dejó y no quedó cargada">+ seña</button>`;
+      title="Tomar una seña que el cliente dejó y no quedó cargada">+ seña</button>`;
 
   const ren = (rot, monto, clase) =>
     `<div class="ren${clase ? " " + clase : ""}"><span>${rot}</span><b>${monto}</b></div>`;
   let filas = "";
   // Con transferencia y sin seña no hay nada que explicar: va el total y listo.
   if(SENAS.length || enEfvo) filas += ren("Subtotal", fmt(trans), "sub");
-  if(SENAS.length) filas += ren(`Seña ${botonSena}`, "−" + fmt(tapaT), "sena");
+  // El renglón de la seña va SIEMPRE, aunque no tenga: ahí vive el botón para
+  // cargar la que dejó y no quedó anotada, y escondiéndolo cuando no había
+  // ninguna el botón solo aparecía cuando ya no hacía falta.
+  filas += SENAS.length
+    ? ren(`Seña ${botonSena}`, "−" + fmt(tapaT), "sena")
+    : ren(`Seña ${botonSena}`, `<span class="sin">sin seña</span>`, "sena");
   if(SENAS.length && enEfvo) filas += ren("Subtotal", fmt(restoT), "sub");
   if(enEfvo) filas += ren(`Desc. efectivo ${pct}%`, "−" + fmt(desc), "desc");
   filas += FORMA
@@ -438,7 +519,7 @@ async function resolverCliente(nombre){
   const res = await (await authFetch("/api/clientes?q=" + encodeURIComponent(nombre))).json();
   const igual = res.find(c => c.nombre.toLowerCase() === nombre.toLowerCase());
   if(igual) return {id: igual.id, nombre: igual.nombre};
-  if(!confirm(`"${nombre}" no está en la lista de clientas.\n\n¿La creamos?`)) return null;
+  if(!confirm(`"${nombre}" no está en la lista de clientes.\n\n¿Lo creamos?`)) return null;
   const r = await authFetch("/api/clientes", {method:"POST",
     headers:{"Content-Type":"application/json"}, body: JSON.stringify({nombre})});
   if(!r.ok){ toast((await r.json().catch(()=>({}))).detail || "No se pudo crear"); return null; }
@@ -495,7 +576,7 @@ async function mostrarSenas(avisar){
   const caja = $("#senas");
   caja.innerHTML = !TODAS_SENAS.length
     ? `<p class="muted">No hay ninguna seña sin usar. Las que se tomen aparecen acá
-       hasta que se le facture a la clienta.</p>`
+       hasta que se le facture.</p>`
     : `<div class="lista-senas">${TODAS_SENAS.map(s => `
         <div class="sena${CLI && s.cliente_id === CLI.id ? " suya" : ""}">
           <b>${fmt(valorSena(s))}</b>
@@ -546,7 +627,7 @@ $("#btnVaciar").onclick = () => { TICKET = []; pintar(); };
    muestra, y sale de pedirle el comprobante después de cada paso. */
 $("#btnCobrar").onclick = async () => {
   const nombre = $("#cliente").value.trim();
-  if(!nombre){ toast("Falta el nombre de la clienta"); $("#cliente").focus(); return; }
+  if(!nombre){ toast("Falta el nombre del cliente"); $("#cliente").focus(); return; }
   if(!TICKET.length) return;
   const b = $("#btnCobrar");
   b.disabled = true;
@@ -586,7 +667,7 @@ $("#btnCobrar").onclick = async () => {
       body: JSON.stringify({monto: c.saldo, saldado: c.saldo,
                             forma_pago: FORMA === "efectivo" ? "Efectivo" : "Transferencia",
                             alias: null, del_servicio: true})});
-    if(!rp.ok) aviso = "Se creó el comprobante pero el cobro falló: cobralo desde la cuenta de la clienta.";
+    if(!rp.ok) aviso = "Se creó el comprobante pero el cobro falló: cobralo desde la cuenta del cliente.";
   }
   const fin = await (await authFetch("/api/comprobantes/" + d.id)).json();
   const num = "N-" + String(d.numero).padStart(5, "0");
@@ -727,7 +808,7 @@ function pintarDia(){
         ${q.falta_cobrar > 0 ? `<div class="ren chico"><span>Falta cobrar</span><span class="deuda">${fmt(q.falta_cobrar)}</span></div>` : ""}
       </div>` : `<p class="muted">Todavía no se cobró nada de este día.</p>`}
       <p class="nota">Esta plata está también en la caja del local, con el resto del día:
-        la clienta paga en el mostrador. Acá se ve sola, para poder cerrar la depilación aparte.</p>
+        el cliente paga en el mostrador. Acá se ve sola, para poder cerrar la depilación aparte.</p>
     </div>
 
     <details class="card" style="margin-top:var(--sp-4);">
@@ -821,7 +902,7 @@ function editarGasto(boton){
 
 function tablaComprobantes(filas){
   return `<table class="tabla-chica"><thead><tr>
-      <th>N°</th><th>Hora</th><th>Clienta</th><th>Zonas</th><th>Forma</th>
+      <th>N°</th><th>Hora</th><th>Cliente</th><th>Zonas</th><th>Forma</th>
       <th class="num">Total</th><th class="num">Debe</th></tr></thead><tbody>
     ${filas.map(c => `<tr>
       <td>N-${String(c.numero).padStart(5,"0")}</td>
@@ -928,7 +1009,7 @@ async function cargarHistorial(){
   $("#hLista").innerHTML = filas.length ? `
     <p class="muted">${filas.length} de ${d.total} · deuda ${fmt(d.deuda_total || 0)}</p>
     <table class="tabla-chica"><thead><tr>
-      <th>N°</th><th>Fecha</th><th>Clienta</th><th>Atendió</th>
+      <th>N°</th><th>Fecha</th><th>Cliente</th><th>Atendió</th>
       <th class="num">Total</th><th class="num">Debe</th><th></th></tr></thead><tbody>
     ${filas.map(c => `<tr>
       <td><a href="/ticket?id=${c.id}">N-${String(c.numero).padStart(5,"0")}</a></td>
