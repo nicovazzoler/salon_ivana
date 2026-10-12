@@ -191,11 +191,14 @@ Lo que hay que respetar:
   comisiones de lo que no fue depilación sí se pagan: antes se iba el día entero
   del ciclo y se las llevaba puestas, y andaba porque el día de depilación era un
   lunes en el que no se hacía otra cosa.
-- El día se mira y se cierra en la solapa "El día" de la pantalla de depilación.
-  Cobrar lo hace cualquiera; **ver el reparto pide el código**, como un sueldo:
-  es plata de una persona y en el local hay una sola tablet. **Cierra la dueña**,
-  como todos los cierres, y la liquidación guarda la foto (`recaudado` es lo
-  facturado en efectivo, `gastos` lo que se restó).
+- El día se mira y se cierra en la solapa "El día". **Ahí adentro la empleada
+  hace todo**: cobra, carga los gastos, devuelve una seña y cierra el día. El
+  día de depilación se trabaja entre dos con una sola tablet y un código en el
+  medio sería pedirlo diez veces por día. Por eso el egreso del cierre es
+  privado **solo si lo cerró la dueña**: uno que cargó el empleado y no puede
+  ver le deja el arqueo pidiendo plata que no está.
+- La liquidación guarda la foto: `recaudado` es lo facturado en efectivo y
+  `gastos` lo que se restó.
 - Un día que fue SOLO depilación no aparece en Sueldos: no tiene comisiones ni
   horas que pagar. El que además tuvo peluquería sí, con la peluquería adentro.
 
@@ -217,9 +220,18 @@ mal puesto se le cobra a alguien.
 
 **La seña es plata de la clienta, no un pago de un ticket.** Se toma sin
 comprobante —desde la pantalla de depilación, que es donde se señan los
-trabajos— y entra a la caja del día en que se cobra. El monto que se carga es el
-monto, se pague como se pague: cuánto tapa de una factura se calcula al
-facturar. Al facturarle, se aplican todas las que tenga libres y cada una deja un
+trabajos— y entra a la caja del día en que se cobra. La lista que se ve ahí es
+la de TODAS las señas sin usar, no la de la clienta que se está facturando: es
+el pizarrón de lo que el local debe trabajo, y la que viene hoy puede no ser la
+que señó ayer.
+
+En la pantalla se pone **de cuánto es** la seña, en los precios de la lista —los
+de transferencia, que son a los que se ancla el comprobante— y pagando en
+efectivo la clienta entrega el 10% menos. Lo que se GUARDA es lo que entró, que
+es de lo que depende el arqueo; el valor contra una factura lo recalcula
+`sena_saldado()`. Es la peluquería al revés: allá el catálogo se carga en
+efectivo y el de transferencia sale solo. Una seña de $5.000 en efectivo son
+$4.500 en el cajón y tapan $5.000 de un trabajo de $20.000. Al facturarle, se aplican todas las que tenga libres y cada una deja un
 abono con `sena_id`. **Ese abono no es plata del día**: ya entró. Por eso
 `plata_que_entro()` saltea los abonos con `sena_id` y suma las señas cobradas, y
 todo lo que cuenta plata por fecha —caja, reportes, el Excel, los gráficos— pasa
@@ -241,6 +253,13 @@ entre la lista de transferencia y la de efectivo: no es un descuento que se le
 hizo a nadie, son las dos listas de precios. Por eso se parte del efectivo y no
 del de transferencia. Lo ya cerrado no se recalcula nunca: cada liquidación
 guarda `base` y `comision` como estaban ese día.
+
+**Anular un comprobante devuelve las señas que había usado.** Quedaban
+apuntando al comprobante anulado: no saldaban nada y tampoco volvían a aparecer
+como disponibles, así que esa plata se le perdía a la clienta sin que nada
+avisara. En depilación se puede anular lo facturado **del día** desde su propio
+historial; lo de días anteriores no, que ya se arqueó y puede estar adentro de
+un día cerrado.
 
 **Los extras no los toca ningún descuento.** Entran al final, después de todo.
 

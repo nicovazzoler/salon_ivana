@@ -1978,7 +1978,7 @@ def _dia_suyo(db, empleado, iso: str) -> date:
 
 @app.post("/api/depilacion/gasto")
 def gasto_depilacion(g: GastoDepiIn, user = Depends(usuario_actual),
-                     quien = Depends(token_sueldo), db: Session = Depends(get_db)):
+                     db: Session = Depends(get_db)):
     """Un gasto del día de depilación, cargado desde la pantalla de depilación.
 
     Lo carga la que lleva el día, que en Caja no entra: son los costos de SU día
@@ -1988,7 +1988,6 @@ def gasto_depilacion(g: GastoDepiIn, user = Depends(usuario_actual),
     la del día, no la de hoy: cargado con fecha de hoy, la cuenta de ese día
     le queda alta.
     """
-    permitir_sueldo(db, user, quien, g.empleado_id)
     emp = _empleado_o_404(db, g.empleado_id)
     f = _dia_suyo(db, emp, g.fecha)
     if g.monto <= 0: raise HTTPException(400, "El monto tiene que ser mayor que cero")
@@ -2017,12 +2016,11 @@ def gasto_depilacion(g: GastoDepiIn, user = Depends(usuario_actual),
     return {"id": eg.id, "numero": eg.numero}
 
 @app.delete("/api/depilacion/gasto/{egreso_id}")
-def borrar_gasto_depilacion(egreso_id: int, empleado_id: int, user = Depends(usuario_actual),
-                            quien = Depends(token_sueldo), db: Session = Depends(get_db)):
+def borrar_gasto_depilacion(egreso_id: int, empleado_id: int, _ = Depends(usuario_actual),
+                            db: Session = Depends(get_db)):
     """Saca un gasto del día de depilación. Un egreso se anula; una liquidación
     no, y esa es justo la razón por la que el pago a la ayudante es un gasto y no
     un cierre: equivocarse en el monto se arregla borrando y volviendo a cargar."""
-    permitir_sueldo(db, user, quien, empleado_id)
     emp = _empleado_o_404(db, empleado_id)
     e = db.get(models.Egreso, egreso_id)
     # 404 y no 403 si no es de depilación: un "no podés" ya le confirmaría que
@@ -2032,18 +2030,16 @@ def borrar_gasto_depilacion(egreso_id: int, empleado_id: int, user = Depends(usu
     _dia_suyo(db, emp, hora_argentina(e.fecha).date().isoformat())
     db.delete(e); db.commit(); return {"ok": True}
 
-def _emp_del_dia_o_403(db, user, quien, f: date):
-    """De quién es ese día de depilación, frenando al que no sea.
+def _emp_del_dia(db, f: date):
+    """De quién es ese día de depilación.
 
-    El reparto es plata de UNA persona, así que lo ve ella con su código o la
-    dueña, igual que un sueldo. La pantalla de depilación no pide código para
-    cobrar —eso lo hace cualquiera— pero sí para esta parte.
+    No pide código: en el día de depilación trabajan dos personas con una sola
+    tablet y todo lo del día —cobrar, cargar los gastos, cerrarlo— lo hacen las
+    dos. Un código en el medio sería pedírselo diez veces por día.
     """
     nombre = empleada_del_dia(db, f)
-    emp = (db.query(models.Empleado).filter(models.Empleado.nombre == nombre).first()
-           if nombre else None)
-    permitir_sueldo(db, user, quien, emp.id if emp else -1)
-    return emp
+    return (db.query(models.Empleado).filter(models.Empleado.nombre == nombre).first()
+            if nombre else None)
 
 def cierre_de_depilacion(db, empleado_id, f: date):
     """La liquidación de ese día, si ya se cerró."""
@@ -2054,7 +2050,7 @@ def cierre_de_depilacion(db, empleado_id, f: date):
 
 @app.get("/api/depilacion/dia")
 def depilacion_dia(fecha: str | None = None, user = Depends(usuario_actual),
-                   quien = Depends(token_sueldo), db: Session = Depends(get_db)):
+                   db: Session = Depends(get_db)):
     """El día de depilación entero: lo facturado, lo cobrado, los gastos y el reparto.
 
     Es el "cierre de caja" de la depilación y vive acá y no en Caja a propósito:
@@ -2066,7 +2062,7 @@ def depilacion_dia(fecha: str | None = None, user = Depends(usuario_actual),
         f = date.fromisoformat(fecha[:10]) if fecha else hoy_argentina()
     except ValueError:
         raise HTTPException(400, "Fecha inválida")
-    emp = _emp_del_dia_o_403(db, user, quien, f)
+    emp = _emp_del_dia(db, f)
 
     ini, fin = _rango_dia(f)
     comps = (db.query(models.Comprobante)
@@ -2075,17 +2071,27 @@ def depilacion_dia(fecha: str | None = None, user = Depends(usuario_actual),
                        models.Comprobante.depilacion == True)
                .order_by(models.Comprobante.numero).all())
     por_comp = pagos_por_comprobante(db, comps)
-    # Lo cobrado por forma de pago: es la plata de estos trabajos, haya entrado
-    # hoy o el día que se señó. Por eso sale de los pagos de ESTOS comprobantes y
-    # no de la caja del día, que es otra pregunta.
+    # Lo cobrado, en efectivo y en transferencia. Dos renglones y no tres: la
+    # seña no es una forma de pago, es plata que entró antes con la suya, así
+    # que cuenta en la columna con la que se cobró ese día.
+    #
+    # Va lo que cada pago TAPA de la factura y no la plata que trajo, para que
+    # las dos columnas sumen lo facturado: una seña en efectivo tapa más de lo
+    # que entró, y sumando lo que entró el total no cerraba con los tickets.
+    senas = {s.id: s for s in db.query(models.Sena).filter(models.Sena.comprobante_id.in_(
+        [c.id for c in comps]))} if comps else {}
     cobrado = {}
     for c in comps:
         for pg in por_comp.get(c.id, []):
             forma = pg.forma_pago or "—"
-            cobrado[forma] = cobrado.get(forma, 0) + pg.monto
-    detalle = []
+            if pg.sena_id:
+                sena = senas.get(pg.sena_id)
+                forma = (sena.forma_pago if sena and sena.forma_pago else "Efectivo")
+            cobrado[forma] = cobrado.get(forma, 0) + (pg.saldado if pg.saldado is not None else pg.monto)
+    detalle, facturado = [], 0
     for c in comps:
         est = estado_comprobante(db, c, por_comp)
+        facturado += est["total_final"]
         detalle.append({"id": c.id, "numero": c.numero,
                         "cliente": c.cliente_nombre, "cliente_id": c.cliente_id,
                         "hora": hora_argentina(c.fecha).strftime("%H:%M"),
@@ -2101,20 +2107,19 @@ def depilacion_dia(fecha: str | None = None, user = Depends(usuario_actual),
         "es_dia": es_dia_depilacion(db, f),
         "cuenta": cuenta_depilacion(db, f),
         "cobrado": cobrado,
+        # Lo que suman los tickets del día tal como se cobraron, mezclando los
+        # preciados en efectivo con los de transferencia. No es la base del
+        # reparto —esa va toda en efectivo— sino lo que el día facturó.
+        "facturado": facturado,
         "comprobantes": detalle,
         "cerrado": ({"id": liq.id, "total": liq.total, "fecha": liq.fecha.isoformat()}
                     if liq else None),
     }
 
 @app.get("/api/depilacion/dias")
-def depilacion_dias(limite: int = 12, user = Depends(usuario_actual),
+def depilacion_dias(limite: int = 12, _ = Depends(usuario_actual),
                     db: Session = Depends(get_db)):
-    """Los últimos días de depilación, con lo que dejó cada uno y si ya se cerró.
-
-    Solo la dueña: es el listado de lo que se le debe a quien lleva los días, y
-    de quién lo llevó, que no es asunto de las demás.
-    """
-    if not es_dueno(user): raise HTTPException(403, "Solo la dueña")
+    """Los últimos días de depilación, con lo que dejó cada uno y si ya se cerró."""
     salida = []
     for iso in reversed(dias_de_depilacion(db)[-max(1, min(limite, 60)):]):
         f = date.fromisoformat(iso)
@@ -2134,14 +2139,13 @@ class CerrarDepiIn(BaseModel):
     fecha_pago: str | None = None         # a qué caja va el egreso; por defecto hoy
 
 @app.post("/api/depilacion/cerrar")
-def cerrar_depilacion(datos: CerrarDepiIn, user = Depends(solo_dueno),
+def cerrar_depilacion(datos: CerrarDepiIn, user = Depends(usuario_actual),
                       db: Session = Depends(get_db)):
     """Paga el día: guarda la foto del reparto y anota el egreso.
 
-    Cierra la dueña, como todos los cierres. La foto queda fija —`recaudado` es
-    lo que ese día facturó de depilación en efectivo y `gastos` lo que se
-    restó—: corregir un ticket de un día ya pagado no puede cambiar lo que se
-    pagó.
+    La foto queda fija —`recaudado` es lo que ese día facturó de depilación en
+    efectivo y `gastos` lo que se restó—: corregir un ticket de un día ya pagado
+    no puede cambiar lo que se pagó.
     """
     try:
         f = date.fromisoformat(datos.fecha[:10])
@@ -2165,12 +2169,16 @@ def cerrar_depilacion(datos: CerrarDepiIn, user = Depends(solo_dueno),
         depilacion=True, recaudado=q["base"], gastos=q["gastos"])
     db.add(liq); db.flush()
     # El egreso lo anota el cierre, como el del sueldo: si hubiera que cargarlo a
-    # mano, el día que se olvide la caja dice que hay más plata de la que hay. Y
-    # privado, porque lo que cobra una no es asunto de las demás.
+    # mano, el día que se olvide la caja dice que hay más plata de la que hay.
+    #
+    # Privado solo si lo cerró la dueña: lo que cobra una no es asunto de las
+    # demás, pero un egreso que cargó el empleado y no puede ver le deja el
+    # arqueo pidiendo plata que no está, sin nada que lo explique.
     eg = models.Egreso(
         numero=siguiente_numero_egreso(db), tipo=tipo_de_sueldo(db).nombre,
         concepto=f"Depilación {emp.nombre} ({f.isoformat()})",
-        monto=liq.total, forma_pago=datos.forma_pago, notas=datos.notas, privado=True,
+        monto=liq.total, forma_pago=datos.forma_pago, notas=datos.notas,
+        privado=es_dueno(user),
         fecha=fecha_del_servicio(datos.fecha_pago,
                                  fecha_hora_now_utc().replace(tzinfo=None), "un pago"))
     db.add(eg); db.flush()
@@ -3364,6 +3372,12 @@ def anular_comprobante(comp_id: int, _ = Depends(usuario_actual), db: Session = 
     if not comp or not comp.activo:
         raise HTTPException(404, "Comprobante no existe")
     db.query(models.Pago).filter(models.Pago.comprobante_id == comp.id).delete()
+    # Las señas que se habían aplicado vuelven a quedar a favor de la clienta.
+    # Sin esto la seña quedaba apuntando a un comprobante anulado: no sumaba
+    # como pago de nada y tampoco volvía a aparecer como disponible, así que la
+    # plata se le perdía sin que nada avisara.
+    db.query(models.Sena).filter(models.Sena.comprobante_id == comp.id).update(
+        {"comprobante_id": None}, synchronize_session=False)
     # Se devuelve stock solo de los tickets: el presupuesto nunca lo descontó,
     # así que devolverlo estaría inventando mercadería.
     if comp.tipo == "ticket":
@@ -3614,9 +3628,14 @@ def ver_sena(sena_id: int, _ = Depends(usuario_actual), db: Session = Depends(ge
     return _sena_json(s, s.cliente.nombre if s.cliente else None)
 
 @app.delete("/api/senas/{sena_id}")
-def anular_sena(sena_id: int, _ = Depends(solo_dueno), db: Session = Depends(get_db)):
+def anular_sena(sena_id: int, _ = Depends(usuario_actual), db: Session = Depends(get_db)):
     """Se devolvió la plata. Una seña ya usada no se anula: hay que anular el
-    comprobante, que es donde quedó aplicada."""
+    comprobante, que es donde quedó aplicada.
+
+    La devuelve cualquiera de las dos: la toma el que atiende y el error se
+    arregla en el momento. Queda anulada, no borrada, así que el número sigue
+    estando y la devolución se ve.
+    """
     s = db.get(models.Sena, sena_id)
     if not s: raise HTTPException(404, "Esa seña no existe")
     if s.comprobante_id:

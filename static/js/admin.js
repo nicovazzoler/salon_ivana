@@ -963,6 +963,13 @@ async function cargarEmpleados(){
   }, {porPersona: false});
   cont.appendChild(gral);
 
+  // Los dos números de la depilación, acá y no en su pantalla: son
+  // configuración del local, se tocan una vez cada varios meses y en "El día"
+  // eran una tarjeta más abajo de la cuenta que se mira todos los días.
+  const depi = document.createElement("div");
+  panelGenerales(depi, () => {}, {soloDepi: true});
+  cont.appendChild(depi);
+
   emps.forEach(e => {
     const fila = document.createElement("div");
     fila.className = "emp-fila";

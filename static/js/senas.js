@@ -39,18 +39,26 @@ const MONTOS_SENA = [5000, 10000, 15000];
 function panelSena(clienteId, nombre, alGuardar){
   const pan = document.createElement("div");
   pan.className = "panel-sena";
+  // Sin clienta puesta, el formulario la pide: la seña se toma de la pantalla
+  // de depilación, donde la lista es de TODAS, así que a quién es se dice acá.
+  const eligeCliente = !clienteId;
+  let elegido = clienteId || null;
   pan.innerHTML = `
     <div class="cab">
-      <b>Seña de ${_escSena(nombre || "")}</b>
+      <b>${eligeCliente ? "Tomar una seña" : "Seña de " + _escSena(nombre || "")}</b>
       <span class="det">Entra a la caja de hoy y se usa sola cuando se le facture, el día que sea.</span>
     </div>
     <div class="campos">
-      <div class="campo"><label>Monto</label>
+      ${eligeCliente ? `<div class="campo ancho sCli"><label>Clienta</label>
+        <input class="sNombre" autocomplete="off" placeholder="Buscar o escribir el nombre">
+        <div class="cli-drop sDrop"></div></div>` : ""}
+      <div class="campo"><label>De cuánto es</label>
         <input type="number" class="sMonto" min="1" inputmode="numeric" placeholder="0"></div>
       <div class="campo"><label>Con qué paga</label><select class="sForma"></select></div>
     </div>
     <div class="montos">${MONTOS_SENA.map(m =>
       `<button type="button" class="b-out btn-mini sTipico" data-m="${m}">${_plataSena(m)}</button>`).join("")}</div>
+    <p class="nota sCuenta"></p>
     <div class="acc">
       <button class="b-ok sGuardar">Tomar la seña</button>
       <button class="b-out sCancelar">Cancelar</button>
@@ -59,32 +67,85 @@ function panelSena(clienteId, nombre, alGuardar){
   formasParaSena().then(fs => {
     pan.querySelector(".sForma").innerHTML =
       fs.map(f => `<option${f === "Efectivo" ? " selected" : ""}>${_escSena(f)}</option>`).join("");
+    cuenta();
   });
+
+  /* Lo que la clienta entrega y lo que le queda a favor.
+
+     El monto que se pone es de cuánto es la seña, en los precios de la lista
+     —los de transferencia, que son a los que se ancla el comprobante—. Pagando
+     en efectivo entrega el 10% menos, igual que cualquier cosa en este local, y
+     esa plata es la que entra a la caja: lo que se guarda es lo que entró.
+     Mostrar los dos números es lo que evita la pregunta de todos los días. */
+  const enEfectivo = () => pan.querySelector(".sForma").value === "Efectivo";
+  const valor = () => parseInt(pan.querySelector(".sMonto").value, 10) || 0;
+  const entra = () => enEfectivo() ? Math.round(valor() * 0.9) : valor();
+  function cuenta(){
+    const v = valor();
+    pan.querySelector(".sCuenta").textContent = !v ? ""
+      : enEfectivo()
+        ? `Le cobrás ${_plataSena(entra())} en efectivo y le quedan ${_plataSena(v)} a favor.`
+        : `Le cobrás ${_plataSena(v)} por transferencia y le quedan ${_plataSena(v)} a favor.`;
+  }
+  pan.querySelector(".sMonto").addEventListener("input", cuenta);
+  pan.querySelector(".sForma").addEventListener("change", cuenta);
 
   pan.querySelector(".sCancelar").onclick = () => pan.remove();
   pan.querySelectorAll(".sTipico").forEach(b => {
-    b.onclick = () => { pan.querySelector(".sMonto").value = b.dataset.m; };
+    b.onclick = () => { pan.querySelector(".sMonto").value = b.dataset.m; cuenta(); };
   });
+
+  if(eligeCliente){
+    const inp = pan.querySelector(".sNombre"), drop = pan.querySelector(".sDrop");
+    let t;
+    inp.addEventListener("input", () => {
+      elegido = null;
+      clearTimeout(t);
+      const q = inp.value.trim();
+      if(!q){ drop.style.display = "none"; return; }
+      t = setTimeout(async () => {
+        const res = await (await authFetch("/api/clientes?q=" + encodeURIComponent(q))).json();
+        if(!res.length){ drop.style.display = "none"; return; }
+        drop.innerHTML = res.slice(0, 8).map(c => `
+          <div class="cli-opt" data-id="${c.id}" data-nom="${_escSena(c.nombre)}">
+            <b>${_escSena(c.nombre)}</b></div>`).join("");
+        drop.style.display = "block";
+      }, 200);
+    });
+    drop.addEventListener("click", e => {
+      const o = e.target.closest(".cli-opt"); if(!o) return;
+      elegido = Number(o.dataset.id); inp.value = o.dataset.nom;
+      drop.style.display = "none";
+      pan.querySelector(".sMonto").focus();
+    });
+  }
+
   pan.querySelector(".sGuardar").onclick = async () => {
-    const monto = parseInt(pan.querySelector(".sMonto").value, 10) || 0;
-    if(monto <= 0){ toast("Poné cuánto dejó"); pan.querySelector(".sMonto").focus(); return; }
+    const v = valor();
+    if(v <= 0){ toast("Poné de cuánto es la seña"); pan.querySelector(".sMonto").focus(); return; }
+    if(eligeCliente && !elegido){
+      toast("Elegí la clienta de la lista: la seña es plata suya");
+      pan.querySelector(".sNombre").focus(); return;
+    }
+    // Se guarda lo que ENTRÓ, no el valor: de eso depende el arqueo. Lo que
+    // vale contra una factura lo calcula el backend al aplicarla.
     const r = await authFetch("/api/senas", {method:"POST", headers:{"Content-Type":"application/json"},
-      body: JSON.stringify({cliente_id: clienteId, monto,
+      body: JSON.stringify({cliente_id: elegido, monto: entra(),
                             forma_pago: pan.querySelector(".sForma").value})});
     if(!r.ok){ toast((await r.json().catch(()=>({}))).detail || "No se pudo"); return; }
     const s = await r.json();
     pan.remove();
-    toast(`Seña de ${_plataSena(s.monto)} tomada`);
+    toast(`Seña de ${_plataSena(v)} tomada`);
     if(alGuardar) alGuardar(s);
     // El papel es opcional: la seña ya quedó registrada. Se ofrece acá y no se
     // imprime solo porque casi siempre alcanza con que esté anotada.
-    if(confirm(`Seña de ${_plataSena(s.monto)} anotada.\n\n¿Le imprimimos el recibo?`))
+    if(confirm(`Seña anotada: entraron ${_plataSena(s.monto)}.\n\n¿Le imprimimos el recibo?`))
       location.href = `/ticket?tipo=sena&id=${s.id}`;
   };
   pan.querySelector(".sMonto").addEventListener("keydown", e => {
     if(e.key === "Enter"){ e.preventDefault(); pan.querySelector(".sGuardar").click(); }
   });
-  setTimeout(() => pan.querySelector(".sMonto").focus(), 0);
+  setTimeout(() => pan.querySelector(eligeCliente ? ".sNombre" : ".sMonto").focus(), 0);
   return pan;
 }
 

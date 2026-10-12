@@ -15,10 +15,14 @@
   @media (max-width:860px){ .tablero{ grid-template-columns:1fr; } }
 
   /* ----- la clienta ----- */
-  .quien{ display:flex; flex-wrap:wrap; gap:var(--sp-3); align-items:flex-end; }
-  .quien .campo{ display:flex; flex-direction:column; gap:3px; }
-  .quien .campo label{ margin:0; }
+  .quien{ display:flex; flex-wrap:wrap; gap:var(--sp-3); align-items:flex-end;
+          margin-bottom:var(--sp-3); }
+  .quien .campo{ display:flex; flex-direction:column; gap:4px; }
+  .quien .campo label{ margin:0; font-size:var(--fs-sm); font-weight:var(--fw-bold);
+                       text-transform:uppercase; letter-spacing:var(--tracking-eti);
+                       color:var(--acento); }
   .quien .cli{ flex:1 1 240px; min-width:0; position:relative; }
+  .panel-sena .sCli{ position:relative; }
   .cli-drop{ position:absolute; z-index:20; left:0; right:0; top:100%; display:none;
              background:var(--bg-card); border:1px solid var(--border); border-radius:var(--r-md);
              box-shadow:var(--sombra-flote); max-height:260px; overflow:auto; }
@@ -42,6 +46,8 @@
          padding:var(--sp-2) 0; border-bottom:1px solid var(--border-sutil); }
   .sena:last-child{ border-bottom:none; }
   .sena b{ font-variant-numeric:tabular-nums; }
+  .sena .quienes{ font-weight:var(--fw-bold); }
+  .sena.suya{ background:var(--verde-bg); }
   .sena .det{ font-size:var(--fs-sm); color:var(--text-tenue); }
   .sena .cuando{ margin-left:auto; font-size:var(--fs-sm); color:var(--text-tenue); }
 
@@ -168,19 +174,7 @@
   <div class="hoja" id="hCobrar">
   <div class="tablero">
     <div>
-      <div class="card">
-        <div class="quien">
-          <div class="campo cli">
-            <label for="cliente">Clienta</label>
-            <input id="cliente" autocomplete="off" placeholder="Buscar o escribir el nombre">
-            <div class="cli-drop" id="cliDrop"></div>
-          </div>
-          <div class="campo"><label for="atiende">Atiende</label>
-            <select id="atiende"></select></div>
-        </div>
-      </div>
-
-      <div class="card senas-card" style="margin-top:var(--sp-4);">
+      <div class="card senas-card">
         <div class="cab-senas">
           <h3>Señas</h3>
           <button class="b-out btn-mini" id="btnSena">+ Agregar seña</button>
@@ -196,6 +190,15 @@
 
     <div class="card ticket">
       <h3 style="margin:0 0 var(--sp-3);">Facturar</h3>
+      <div class="quien">
+        <div class="campo cli">
+          <label for="cliente">Clienta</label>
+          <input id="cliente" autocomplete="off" placeholder="Buscar o escribir el nombre">
+          <div class="cli-drop" id="cliDrop"></div>
+        </div>
+        <div class="campo"><label for="atiende">Atiende</label>
+          <select id="atiende"></select></div>
+      </div>
       <div class="formas" id="formas">
         <button class="b-out" data-forma="efectivo">Efectivo</button>
         <button class="b-out" data-forma="transfer">Transferencia</button>
@@ -219,7 +222,6 @@
 
 <script src="/static/auth.js"></script>
 <script src="/static/js/senas.js"></script>
-<script src="/static/js/generales.js"></script>
 <script>
 requireLogin();
 pintarNav();
@@ -389,44 +391,63 @@ document.addEventListener("click", e => {
     $("#cliDrop").style.display = "none";
 });
 
+/* Todas las señas sin usar, de quien sean.
+
+   La lista no es de la clienta que se está facturando: es el pizarrón de lo que
+   el local debe trabajo. Se señan todos los turnos y la clienta que viene hoy
+   puede no ser la que señó ayer; con la lista atada a la de arriba, esa plata no
+   se veía hasta que alguien la buscaba cliente por cliente. */
+let TODAS_SENAS = [];
+
+/* De cuánto es la seña, en los precios de la lista.
+
+   Lo guardado es la plata que entró, que en efectivo es el 10% menos. Lo que la
+   clienta tiene a favor es el otro número —el que se le dijo— y es el que esta
+   lista tiene que mostrar: es la misma cuenta que hace el backend al aplicarla. */
+const valorSena = s => (s.forma_pago || "") === "Efectivo"
+  ? Math.ceil((s.monto / 0.9) / 100) * 100 : s.monto;
+
 async function mostrarSenas(avisar){
-  SENAS = CLI ? await senasLibres(CLI.id) : [];
+  try{ TODAS_SENAS = await (await authFetch("/api/senas?solo_libres=true")).json(); }
+  catch(e){ TODAS_SENAS = []; }
+  SENAS = CLI ? TODAS_SENAS.filter(s => s.cliente_id === CLI.id) : [];
+  // El aviso salta al elegir a la clienta: una seña que aparece DESPUÉS de
+  // cobrar es plata que hay que devolver en el mostrador.
+  if(avisar && SENAS.length)
+    toast(`${CLI.nombre} tiene ${fmt(SENAS.reduce((a, s) => a + s.monto, 0))} de seña`);
+
   const caja = $("#senas");
-  if(!CLI){
-    caja.innerHTML = `<p class="muted">Elegí la clienta y acá aparecen las señas que tenga a favor.</p>`;
-  } else if(!SENAS.length){
-    caja.innerHTML = `<p class="muted">${esc(CLI.nombre)} no tiene ninguna seña a favor.</p>`;
-  } else {
-    const total = SENAS.reduce((a, s) => a + s.monto, 0);
-    // El aviso salta al elegir a la clienta: una seña que aparece DESPUÉS de
-    // cobrar es plata que hay que devolver en el mostrador.
-    if(avisar) toast(`${CLI.nombre} tiene ${fmt(total)} de seña`);
-    caja.innerHTML = `
-      <div class="tiene">Tiene ${fmt(total)} a favor · se aplica solo al cobrar</div>
-      <div class="lista-senas">${SENAS.map(s => `<div class="sena">
-        <b>${fmt(s.monto)}</b>
-        <span class="det">${esc(s.forma_pago || "")} · N-${String(s.numero || 0).padStart(5,"0")}</span>
-        <span class="cuando">${esc(s.fecha || "")}</span>
-        ${DUENO ? `<button class="b-out btn-mini borrar-sena" data-id="${s.id}"
-            title="Se le devolvió la plata">✕</button>` : ""}
-      </div>`).join("")}</div>`;
-    caja.querySelectorAll(".borrar-sena").forEach(b => {
-      b.onclick = async () => {
-        if(!confirm("¿Se le devolvió esta seña?\n\nSale de las que tiene a favor y queda anotada como devuelta.")) return;
-        const r = await authFetch("/api/senas/" + b.dataset.id, {method:"DELETE"});
-        if(!r.ok){ toast((await r.json().catch(()=>({}))).detail || "No se pudo"); return; }
-        toast("Seña devuelta");
-        mostrarSenas();
-      };
-    });
-  }
+  caja.innerHTML = !TODAS_SENAS.length
+    ? `<p class="muted">No hay ninguna seña sin usar. Las que se tomen aparecen acá
+       hasta que se le facture a la clienta.</p>`
+    : `<div class="lista-senas">${TODAS_SENAS.map(s => `
+        <div class="sena${CLI && s.cliente_id === CLI.id ? " suya" : ""}">
+          <b>${fmt(valorSena(s))}</b>
+          <span class="quienes">${esc(s.cliente || "—")}</span>
+          <span class="det">${(s.forma_pago || "") === "Efectivo"
+            ? `entraron ${fmt(s.monto)} en efectivo` : esc(s.forma_pago || "")}</span>
+          <span class="cuando">${esc(s.fecha || "")}</span>
+          <button class="b-out btn-mini borrar-sena" data-id="${s.id}"
+                  title="Se le devolvió la plata">✕</button>
+        </div>`).join("")}</div>`;
+  caja.querySelectorAll(".borrar-sena").forEach(b => {
+    b.onclick = async () => {
+      if(!confirm("¿Se le devolvió esta seña?\n\nSale de las que están a favor y queda anotada como devuelta.")) return;
+      const r = await authFetch("/api/senas/" + b.dataset.id, {method:"DELETE"});
+      if(!r.ok){ toast((await r.json().catch(()=>({}))).detail || "No se pudo"); return; }
+      toast("Seña devuelta");
+      mostrarSenas();
+    };
+  });
   pintar();
 }
 
+/* Tomar una seña es una cosa aparte de facturar: la clienta se elige adentro
+   del formulario y lo que esté a medio cargar en Facturar no se toca. */
 function abrirPanelSena(){
-  if(!CLI){ toast("Elegí la clienta de la lista: la seña es plata suya"); $("#cliente").focus(); return; }
   $("#panelSena").innerHTML = "";
-  $("#panelSena").appendChild(panelSena(CLI.id, CLI.nombre, () => mostrarSenas()));
+  $("#panelSena").appendChild(panelSena(null, null, () => mostrarSenas()));
+  $("#panelSena").scrollIntoView({behavior:"smooth", block:"nearest"});
 }
 $("#btnSena").onclick = abrirPanelSena;
 
@@ -497,6 +518,11 @@ $("#btnCobrar").onclick = async () => {
     <a class="b-out" href="/ticket?id=${d.id}">🖨️ Imprimir</a>
     ${aviso ? `<p class="nota">${aviso}</p>` : ""}`;
   toast(fin.saldo > 0 ? `${num} con saldo pendiente` : `${num} cobrado ✓`);
+  /* El papel se ofrece y no sale solo: imprimir es una navegación a RawBT y se
+     lleva la pantalla puesta, así que primero se guarda y recién después se
+     pregunta. El que dice que no tiene el botón de Imprimir ahí abajo. */
+  if(confirm(`${num} cobrado.\n\n¿Le imprimimos el comprobante?`))
+    location.href = "/ticket?id=" + d.id;
   TICKET = []; CLI = null; FORMA = null;
   document.querySelectorAll("#formas button").forEach(x => x.classList.remove("on"));
   $("#cliente").value = ""; $("#panelSena").innerHTML = "";
@@ -523,59 +549,19 @@ document.querySelectorAll(".solapas button").forEach(b => {
    gastos y el reparto. Está acá y no en Sueldos porque son dos negocios
    distintos: en Sueldos se paga la peluquería y acá se paga el día.
 
-   El reparto es plata de una persona, así que para verlo hay que ser la dueña o
-   ser ella con su código. Cobrar no: eso lo hace cualquiera. */
-let PERMISO = null, DIA = null;
+   Todo lo de esta pantalla lo hacen las dos, sin código en el medio: el día de
+   depilación se trabaja entre dos con una sola tablet. */
+let DIA = null;
 let fechaDia = new Date(Date.now() - 3*3600*1000).toISOString().slice(0, 10);
 
-async function pedir(url, opts){
-  opts = opts || {};
-  if(PERMISO) opts.headers = Object.assign({}, opts.headers || {}, {"X-Sueldo": PERMISO});
-  return authFetch(url, opts);
-}
+const pedir = (url, opts) => authFetch(url, opts);
 
 async function verDia(){
   const r = await pedir(`/api/depilacion/dia?fecha=${fechaDia}`);
-  if(r.status === 403){ PERMISO = null; pintarPuerta(); return; }
   if(!r.ok){ $("#hDia").innerHTML = `<div class="card"><p class="err">${
       (await r.json().catch(()=>({}))).detail || "No se pudo abrir el día"}</p></div>`; return; }
   DIA = await r.json();
   pintarDia();
-}
-
-/* La puerta con el código, igual que en Sueldos: en el local hay una sola
-   tablet y un solo login, así que sin esto el reparto de una queda a la vista
-   de cualquiera que agarre el aparato. */
-async function pintarPuerta(){
-  const emps = await (await authFetch("/api/empleados")).json();
-  $("#hDia").innerHTML = `<div class="card puerta">
-    <h3>El día es de quien lo lleva</h3>
-    <p class="muted">Poné tu código para ver el reparto, cargar los gastos y cerrarlo.</p>
-    <div class="campos">
-      <div><label for="pQuien">¿Quién sos?</label>
-        <select id="pQuien">${emps.filter(e => e.activo !== false)
-          .map(e => `<option value="${e.id}">${esc(e.nombre)}</option>`).join("")}</select></div>
-      <div><label for="pPin">Tu código</label>
-        <input id="pPin" type="password" inputmode="numeric" autocomplete="off"></div>
-    </div>
-    <button class="b-ok" id="pEntrar">Entrar</button>
-    <p class="err" id="pError" hidden></p>
-  </div>`;
-  const entrar = async () => {
-    const pin = $("#pPin").value.trim();
-    if(!pin){ $("#pPin").focus(); return; }
-    const r = await authFetch("/api/sueldos/entrar", {method:"POST",
-      headers:{"Content-Type":"application/json"},
-      body: JSON.stringify({empleado_id: Number($("#pQuien").value), pin})});
-    if(!r.ok){
-      $("#pError").textContent = (await r.json().catch(()=>({}))).detail || "No se pudo entrar";
-      $("#pError").hidden = false; $("#pPin").value = ""; $("#pPin").focus(); return;
-    }
-    PERMISO = (await r.json()).token;
-    verDia();
-  };
-  $("#pEntrar").onclick = entrar;
-  $("#pPin").addEventListener("keydown", e => { if(e.key === "Enter") entrar(); });
 }
 
 function pintarDia(){
@@ -589,8 +575,8 @@ function pintarDia(){
   const gasto = (e, rot) => `<div class="ren chico">
       <span>${rot}${e.notas ? ` <em class="det">(${esc(e.notas)})</em>` : ""}</span>
       <span>−${fmt(e.monto)} ${borrar(e)}</span></div>`;
-  const falta = (clase, rot, nota) => cerrado ? "" : `<div class="ren chico falta-fijo">
-      <span>${rot} <em class="det">${nota}</em></span>
+  const falta = (clase, rot) => cerrado ? "" : `<div class="ren chico falta-fijo">
+      <span>${rot}</span>
       <span><button class="b-out btn-mini btn-${clase}">Cargar</button></span></div>`;
   const cobrado = Object.keys(d.cobrado || {});
 
@@ -607,16 +593,13 @@ function pintarDia(){
     </div>
 
     <div class="card" style="margin-top:var(--sp-4);">
-      <h3 style="margin:0 0 var(--sp-2);">Gastos del día</h3>
-      <p class="nota" style="margin-top:0;">Los de la depilación y nada más. Salen de la caja del
-        local como cualquier egreso, pero solo estos bajan el reparto.</p>
+      <h3 style="margin:0 0 var(--sp-3);">Gastos del día</h3>
       <div class="cuenta">
         ${maquinas.map(e => gasto(e, "Máquina")).join("")}
-        ${maquinas.length ? "" : falta("maquina", "Máquina", "se alquila por día: poné lo que salió")}
+        ${maquinas.length ? "" : falta("maquina", "Máquina")}
         ${otros.map(e => gasto(e, (e.numero ? "#" + e.numero + " " : "") + esc(e.concepto || e.tipo || "Gasto"))).join("")}
         ${ayudantes.map(e => gasto(e, "Ayudante · " + esc(e.concepto || "sin nombre"))).join("")}
-        ${ayudantes.length ? "" : falta("ayudante", "Pago a la ayudante",
-            q.pago_ayudante ? `el fijo son ${fmt(q.pago_ayudante)}` : "lo que se le pagó")}
+        ${ayudantes.length ? "" : falta("ayudante", "Pago a la ayudante")}
         <div class="ren"><span>Total de gastos</span><b class="${q.gastos ? "resta" : ""}">${q.gastos ? "−" : ""}${fmt(q.gastos)}</b></div>
       </div>
       ${cerrado ? "" : `<div class="acc-cobrar" style="flex-direction:row;flex-wrap:wrap;margin-top:var(--sp-3);">
@@ -629,9 +612,9 @@ function pintarDia(){
     <div class="card" style="margin-top:var(--sp-4);">
       <h3 style="margin:0 0 var(--sp-2);">El reparto</h3>
       <div class="cuenta">
-        <div class="ren"><span>Trabajos de depilación
-            <em class="det">en efectivo, que es con lo que se reparte</em></span><b>${fmt(q.base)}</b></div>
-        <div class="ren chico transfer"><span>Los mismos en transferencia</span><span>${fmt(q.base_transfer)}</span></div>
+        <div class="ren"><span>Total ingresado
+            <em class="det">lo que facturó el día, como se cobró</em></span><b>${fmt(d.facturado)}</b></div>
+        <div class="ren chico transfer"><span>Los mismos trabajos en efectivo, que es con lo que se reparte</span><span>${fmt(q.base)}</span></div>
         <div class="ren"><span>Gastos del día</span><b class="${q.gastos ? "resta" : ""}">${q.gastos ? "−" : ""}${fmt(q.gastos)}</b></div>
         <div class="ren total"><span>Queda</span><b>${fmt(q.resto)}</b></div>
         <div class="ren mitad"><span>Para ${d.a_cargo ? esc(d.a_cargo) : "quien lo lleva"}</span><b>${fmt(q.parte_empleada)}</b></div>
@@ -652,13 +635,14 @@ function pintarDia(){
         la clienta paga en el mostrador. Acá se ve sola, para poder cerrar la depilación aparte.</p>
     </div>
 
-    <div class="card" style="margin-top:var(--sp-4);">
-      <h3 style="margin:0 0 var(--sp-2);">Los trabajos del día</h3>
+    <details class="card" style="margin-top:var(--sp-4);">
+      <summary><b>Los trabajos del día</b> <span class="det">${d.comprobantes.length} ${
+        d.comprobantes.length === 1 ? "ticket" : "tickets"}</span></summary>
       ${d.comprobantes.length ? tablaComprobantes(d.comprobantes)
         : `<p class="muted">Todavía no se facturó nada.</p>`}
-    </div>
+    </details>
 
-    ${DUENO && !cerrado && q.parte_empleada > 0 ? `
+    ${!cerrado && q.parte_empleada > 0 ? `
     <div class="card" style="margin-top:var(--sp-4);">
       <h3 style="margin:0 0 var(--sp-2);">Cerrar el día</h3>
       <div class="dia-cab">
@@ -671,10 +655,7 @@ function pintarDia(){
         <button class="b-ok" id="cCerrar">Cerrar y pagar ${fmt(q.parte_empleada)}</button>
       </div>
       <p class="nota">Queda la foto del reparto y el egreso anotado. No se puede deshacer.</p>
-    </div>` : ""}
-    ${DUENO ? `<div class="card" style="margin-top:var(--sp-4);"><div id="cfgDepi"></div></div>` : ""}`;
-
-  if(DUENO) panelGenerales($("#cfgDepi"), () => verDia(), {soloDepi: true});
+    </div>` : ""}`;
 
   $("#fDia").onchange = e => { fechaDia = e.target.value; verDia(); };
   const bg = $("#hDia").querySelector(".btn-gasto");
@@ -799,12 +780,12 @@ async function verHistorial(){
     </div>
     <div id="hLista"><p class="muted">Cargando…</p></div>
   </div>
-  ${DUENO ? `<div class="card" style="margin-top:var(--sp-4);">
+  <div class="card" style="margin-top:var(--sp-4);">
     <h3 style="margin:0 0 var(--sp-2);">Los días</h3>
-    <div id="hDias"><p class="muted">Cargando…</p></div></div>` : ""}`;
+    <div id="hDias"><p class="muted">Cargando…</p></div></div>`;
   $("#hVer").onclick = cargarHistorial;
   cargarHistorial();
-  if(DUENO) cargarDias();
+  cargarDias();
 }
 
 async function cargarHistorial(){
@@ -812,11 +793,12 @@ async function cargarHistorial(){
     + `&hasta=${$("#hHasta").value}&limite=200`);
   const d = await r.json();
   const filas = d.comprobantes || [];
+  const hoy = hoyArg();
   $("#hLista").innerHTML = filas.length ? `
     <p class="muted">${filas.length} de ${d.total} · deuda ${fmt(d.deuda_total || 0)}</p>
     <table class="tabla-chica"><thead><tr>
       <th>N°</th><th>Fecha</th><th>Clienta</th><th>Atendió</th>
-      <th class="num">Total</th><th class="num">Debe</th></tr></thead><tbody>
+      <th class="num">Total</th><th class="num">Debe</th><th></th></tr></thead><tbody>
     ${filas.map(c => `<tr>
       <td><a href="/ticket?id=${c.id}">N-${String(c.numero).padStart(5,"0")}</a></td>
       <td>${esc((c.fecha || "").slice(0,10).split("-").reverse().join("/"))}</td>
@@ -824,8 +806,25 @@ async function cargarHistorial(){
       <td>${esc(c.peluquero || "—")}</td>
       <td class="num">${fmt(c.total_final)}</td>
       <td class="num ${c.saldo > 0 ? "deuda" : ""}">${c.saldo > 0 ? fmt(c.saldo) : "—"}</td>
+      <td>${(c.fecha || "").slice(0,10) === hoy
+            ? `<button class="b-del btn-mini anular" data-id="${c.id}"
+                       data-num="${String(c.numero).padStart(5,"0")}">Anular</button>` : ""}</td>
     </tr>`).join("")}</tbody></table>`
     : `<p class="muted">No hay depilación en esas fechas.</p>`;
+  /* Anular solo lo de HOY: un ticket de la semana pasada ya se arqueó y puede
+     estar adentro de un día cerrado, así que sacarlo le cambia la cuenta a una
+     liquidación que ya se pagó. El error del momento, en cambio, se corrige en
+     el momento. */
+  $("#hLista").querySelectorAll(".anular").forEach(b => {
+    b.onclick = async () => {
+      if(!confirm(`¿Anular el N-${b.dataset.num}?\n\nSe le devuelven las señas que haya usado `
+                + `y sale del día. Esto no se puede deshacer.`)) return;
+      const r = await authFetch("/api/comprobantes/" + b.dataset.id, {method:"DELETE"});
+      if(!r.ok){ toast((await r.json().catch(()=>({}))).detail || "No se pudo anular"); return; }
+      toast("Anulado");
+      cargarHistorial(); cargarDias();
+    };
+  });
 }
 
 async function cargarDias(){
