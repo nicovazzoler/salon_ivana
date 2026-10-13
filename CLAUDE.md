@@ -148,7 +148,7 @@ marcado `es_depilacion`, y de ahí sale todo lo demás:
 mes solo para depilación —uno o dos días seguidos, lunes y martes—. La lleva
 Carolina, que consigue la máquina, más una ayudante que a veces no es del salón:
 
-    trabajos de depilación de la sesión, en efectivo
+    trabajos de depilación de la sesión, como se cobraron
     − gastos de la sesión (máquina + insumos + el pago a la ayudante)
     = resto  →  50% Carolina · 50% el salón, que pone el local
 
@@ -182,9 +182,21 @@ Lo que hay que respetar:
   por LÍNEA. La marca está en el ítem (`es_depilacion`) y no en el nombre de la
   categoría, que se renombra desde Admin: la cuenta de la plata no puede depender
   de un texto.
-- En **efectivo**, que es la lista con la que se pagan las comisiones. La
-  diferencia con la de transferencia no es un descuento que se le hizo a nadie.
-  El mismo número en transferencia viaja al lado, para cruzarlo con el papel.
+- Entra **todo lo facturado**, cada línea en la lista con la que se cobró el
+  comprobante: no importa si fue en efectivo o por transferencia, lo que se
+  parte es la plata que entró al local (`base_facturada()`). Ojo que NO es
+  `base_comision()`: la comisión de peluquería se paga siempre en efectivo
+  porque la diferencia entre listas no es un descuento que se le hizo a nadie,
+  pero el reparto de la sesión es otra cuenta y ahí lo que se parte es lo que
+  cobró el local.
+- **Una cuenta ya cobrada no se vuelve a calcular con otra fórmula.** Las
+  sesiones que ya estaban pagadas cuando el reparto pasó a contar todo lo
+  facturado llevan `reparto_efectivo` y se siguen contando en efectivo. Sin esa
+  marca, cada sesión vieja con tickets por transferencia aparecía debiendo plata
+  sola —dos trabajos de $20.000 de lista pasaban la parte de $18.000 a $20.000—
+  y la pantalla ofrecía cerrarla otra vez, con un egreso de verdad. La marca la
+  pone una migración de datos, UNA sola vez, y no se mira "si tiene cierres":
+  eso haría que la cuenta cambiara justo al cobrarla.
 - Se reparte lo **facturado**, no lo cobrado: lo que se reparte es el trabajo
   hecho. Lo que falta cobrar se dice aparte y a la vista.
 - **Solo restan los gastos DE esa sesión**, los que se cargan desde su pantalla
@@ -337,9 +349,22 @@ junto en efectivo. Sin la segunda, una seña de $5.000 por transferencia sobre u
 trabajo de $20.000 pagado en efectivo le regalaba el 10% de la seña: entraban
 $18.000 cuando correspondían $18.500.
 
-La pantalla muestra la cuenta entera en transferencia —subtotal, la seña que ya
-dejó, y recién al final el 10%— y saca el descuento restando, no multiplicando:
-así el total que se le dice a la clienta es exactamente el que cobra el backend.
+**La cuenta se lee de arriba a abajo, y es la misma en las cinco pantallas.**
+Subtotal en transferencia, la seña que ya dejó, subtotal otra vez y recién al
+final el 10% de pagar en efectivo; el total es lo que pone sobre el mostrador
+HOY, porque la seña ya la pagó. El descuento sale de RESTAR y no de multiplicar:
+así la columna cierra siempre y el total que se le dice a la clienta es
+exactamente el que cobra el backend. La arma `cuentaDeComprobante()` en
+`escpos.js` —el archivo que cargan las cuatro pantallas que la dibujan: el
+papel, la vista de impresión, la ficha del cliente y el historial—. La pantalla
+de depilación tiene la suya, porque ahí todavía no hay comprobante: son los
+mismos renglones y tiene que dar lo mismo. Si fueran cuatro cuentas, un día el
+papel que sale al cobrar diría otra cosa que la ficha.
+
+Los abonos de seña no se repiten abajo, en lo recibido: ya se restaron arriba, y
+listados otra vez lo recibido sumaba más que el total. Por lo mismo la tarjeta
+del historial y la de la ficha muestran `cobrado`, que es lo que entró sin
+contar señas, y no `ingresado`.
 
 **Y lo que se MUESTRA de una seña es siempre el valor de la lista de
 transferencia**, no la plata que entró al cajón: es el número que se le dijo al
@@ -357,12 +382,31 @@ hizo a nadie, son las dos listas de precios. Por eso se parte del efectivo y no
 del de transferencia. Lo ya cerrado no se recalcula nunca: cada liquidación
 guarda `base` y `comision` como estaban ese día.
 
+**El cobro de depilación va en UN solo pedido.** `POST /api/comprobantes` con
+`aplicar_senas` y `cobrar` crea el comprobante, aplica las señas y registra el
+abono en la misma transacción: o queda cobrado o no queda nada. Eran tres
+llamadas —crear, aplicar señas, cobrar— y con el internet del local la que no
+llegaba dejaba el ticket cobrado a medias: con seña quedaba cobrado SOLO con la
+seña y el resto como deuda, y si lo que fallaba era la consulta del saldo, el
+`if (c.saldo > 0)` con `c.saldo` en `undefined` se saltaba el cobro **sin
+avisar**. Facturar sigue cobrando en dos pasos porque ahí el cobro no siempre es
+entero —cobrar una parte, dejar a cuenta, pago mixto—; las dos banderas vienen
+apagadas por defecto.
+
 **Anular un comprobante devuelve las señas que había usado.** Quedaban
 apuntando al comprobante anulado: no saldaban nada y tampoco volvían a aparecer
 como disponibles, así que esa plata se le perdía a la clienta sin que nada
-avisara. En depilación se puede anular lo facturado **del día** desde su propio
-historial; lo de días anteriores no, que ya se arqueó y puede estar adentro de
-un día cerrado.
+avisara. En depilación se anula desde su propio historial lo de **toda la sesión
+mientras siga abierta**, no solo lo de hoy: la jornada dura dos días y el error
+se encuentra al otro, cuando se cierra la cuenta. Cerrada sí frena —el reparto
+ya se liquidó y sacarle un ticket le cambiaría la cuenta a lo que se pagó—, que
+es la misma regla de los gastos de la sesión. El que frena es el backend; la
+pantalla solo deja de ofrecer el botón.
+
+**La seña no es un ítem del catálogo.** Cargada como ítem SUMA al ticket en vez de
+descontar, y después la seña de verdad descuenta aparte: pasó, y al cliente se le
+cobraron $4.500 de más. Por eso `_no_es_sena()` rebota el ítem que se llame así,
+al crearlo y al renombrarlo.
 
 **Los extras no los toca ningún descuento.** Entran al final, después de todo.
 
@@ -455,7 +499,27 @@ No alcanza con que compile. Lo que se usa acá, de menor a mayor:
 4. **Comparación píxel a píxel** cuando el cambio es un refactor que no debería
    cambiar nada: capturas completas antes y después, en tema claro y oscuro.
 
-Las pruebas no están versionadas: se escriben en el scratchpad de la sesión.
+**Hay dos suites versionados y corren en cada PR** (`.github/workflows/tests.yml`):
+
+```bash
+pytest tests/test_plata.py           # la aritmética de plata del backend
+node --test "tests/escpos/**/*.test.js"   # el papel, byte a byte contra los golden
+```
+
+`tests/test_plata.py` llama las funciones de `main.py` derecho, sin levantar el
+servidor: `calcular_transfer`, `precio_con_ajuste`, `estado_comprobante`,
+`sena_saldado` y `base_facturada`. Los comprobantes y los pagos se arman con
+`SimpleNamespace`, así que **un campo nuevo en un modelo hay que agregarlo
+también ahí**, o el test revienta con un AttributeError que no es un bug.
+
+Los de `tests/escpos/` comparan el papel contra un `.bin` de referencia. Cuando
+un cambio mueve el papel A PROPÓSITO se regeneran con
+`node tests/escpos/generar-golden.js` y se mira el `git status`: los golden que
+no tendrían que haberse movido tienen que seguir sin aparecer. Un caso nuevo se
+agrega con su fixture y una línea en `CASOS`, en `tests/escpos/config.js`.
+
+Las pruebas de una sola vez —levantar el servidor, Playwright, comparar
+capturas— no se versionan: van al scratchpad de la sesión.
 
 Cuando una prueba falla, **primero preguntarse si está mal la prueba**. En este
 proyecto la mayoría de las fallas fueron eso: un puerto viejo, una contraseña

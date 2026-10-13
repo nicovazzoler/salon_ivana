@@ -1198,9 +1198,14 @@ async function abrirCobro(){
   if(compActual){
     const c=await (await authFetch("/api/comprobantes/"+compActual)).json();
     const totalEf = totalEfectivoComp(c);            // deuda total en efectivo, lista real
-    // el saldo en efectivo = total efectivo menos lo ya saldado, proporcional
+    /* Lo que falta lo dice el backend y no una resta de lo que entró: este panel
+       cobra 1 a 1 (monto y saldado son el mismo número), así que lo que hay que
+       pedir es el saldo de la cuenta. Restando la plata que trajo cada abono, una
+       seña por transferencia sobre una cuenta en efectivo —que tapa el 10% menos
+       de lo que entró— hacía pedir $13.000 cuando el saldo era $13.500, y cobrar
+       lo sugerido dejaba $500 de deuda sin que nada avisara. */
     total = esEf ? totalEf : c.total_final;
-    saldo = esEf ? Math.max(totalEf - c.pagos.reduce((a,p)=>a+p.monto,0), 0) : c.saldo;
+    saldo = Math.max(c.saldo, 0);
     pagos = c.pagos;
     titulo = c.cliente_nombre || $("#cliente").value.trim() || "Cliente";
   } else {

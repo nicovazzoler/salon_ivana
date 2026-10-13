@@ -219,6 +219,11 @@ def migrar():
     if "sesion_id" not in licols:
         with engine.begin() as con:
             con.execute(text("ALTER TABLE liquidaciones ADD COLUMN sesion_id INTEGER"))
+    if insp.has_table("sesiones_depilacion"):
+        scols = [c["name"] for c in insp.get_columns("sesiones_depilacion")]
+        if "reparto_efectivo" not in scols:
+            with engine.begin() as con:
+                con.execute(text("ALTER TABLE sesiones_depilacion ADD COLUMN reparto_efectivo BOOLEAN"))
 
 migrar()
 
@@ -347,6 +352,11 @@ class ComprobanteIn(BaseModel):
     fecha: str | None = None              # 'YYYY-MM-DD' argentino: para anotar un servicio de otro día
     lineas: list[LineaCompIn]
     extras: list[ExtraIn] = []            # cargos que ningún descuento toca
+    # Cobrar en el MISMO pedido que crea el comprobante. Lo usa depilación, que
+    # cobra siempre entero: en tres llamadas —crear, aplicar señas, cobrar— la
+    # que no llega deja el ticket cobrado a medias y con deuda.
+    aplicar_senas: bool = False
+    cobrar: bool = False
 class PagoIn(BaseModel):
     monto: int; forma_pago: str; alias: str | None = None; saldado: int | None = None
     # True = este abono cierra la venta, así que la plata pertenece al día del
@@ -884,6 +894,10 @@ def estado_comprobante(db, comp, pagos_precargados=None) -> dict:
              else db.query(models.Pago).filter(models.Pago.comprobante_id == comp.id).all())
     pagado = sum((p.saldado if p.saldado is not None else p.monto) for p in pagos)
     ingresado = sum(p.monto for p in pagos)
+    # Lo que se cobró de mostrador: la seña no, que ya había entrado antes. Es
+    # el total que muestran el papel y las pantallas, y el que cierra la cuenta
+    # que se le lee a la clienta: subtotal, menos la seña, menos el descuento.
+    cobrado = sum(p.monto for p in pagos if not p.sena_id)
     saldo = total_final - pagado
 
     if comp.tipo == "presupuesto": estado = "presupuesto"
@@ -898,7 +912,8 @@ def estado_comprobante(db, comp, pagos_precargados=None) -> dict:
         "desc_jubilado": desc_jubilado,             # descuento de listado
         "extras_total": extras_total,               # cargos que no toca ningún descuento
         "total_final": total_final,                 # lo que paga el cliente
-        "pagado": pagado, "ingresado": ingresado, "saldo": saldo, "estado": estado,
+        "pagado": pagado, "ingresado": ingresado, "cobrado": cobrado,
+        "saldo": saldo, "estado": estado,
     }
 
 def forma_comprobante(db, comp, pagos_precargados=None) -> str:
@@ -1649,19 +1664,28 @@ def empleada_del_dia(db, f: date) -> str | None:
     return max(por_nombre, key=lambda n: (por_nombre[n], n))
 
 def base_lista(linea, comp=None) -> int:
-    """Lo mismo que base_comision() pero en la lista de transferencia.
-
-    El reparto de la depilación se hace en efectivo, pero la dueña mira todo lo
-    demás con los precios del papel: tener los dos al lado es la única forma de
-    que el número de la tarjeta se pueda cruzar con el del comprobante.
-    """
+    """Lo mismo que base_comision() pero en la lista de transferencia."""
     unidad = precio_con_ajuste(linea.precio_unit or 0, linea.ajuste_pct, linea.ajuste_monto)
     base = unidad * (linea.cantidad or 1)
     pct = (comp.descuento_pct or 0) if comp is not None else 0
     return base - round(base * pct / 100) if pct else base
 
+def base_facturada(linea, comp) -> int:
+    """Lo que la línea facturó, en la lista con la que se cobró el comprobante.
+
+    Es la base del reparto de la depilación, que se hace sobre todo lo facturado
+    y no sobre una sola de las dos listas: la que pagó por transferencia dejó
+    esos pesos en el local, no los de la lista de efectivo.
+
+    Ojo que esto NO es base_comision(): la comisión de peluquería se paga
+    siempre en efectivo, porque la diferencia entre listas no es un descuento
+    que se le hizo a nadie. El reparto de la sesión es otra cuenta: ahí lo que
+    se parte es la plata que entró.
+    """
+    return base_comision(linea, comp) if comp.forma_pago == "efectivo" else base_lista(linea, comp)
+
 def cuenta_depilacion(db, ses) -> dict:
-    """El reparto de la sesión: lo facturado en efectivo − los gastos, mitad y mitad.
+    """El reparto de la sesión: todo lo facturado − los gastos, mitad y mitad.
 
     La unidad es la SESIÓN y no el día. Con el día, los gastos cargados todos
     juntos caían sobre uno solo: ese quedaba en negativo y en negativo no se
@@ -1673,18 +1697,21 @@ def cuenta_depilacion(db, ses) -> dict:
     La base son las LÍNEAS de depilación, no los comprobantes enteros: una
     sesión que además tuvo peluquería no se reparte por eso.
 
-    En efectivo, que es la misma lista con la que se pagan las comisiones: la
-    diferencia con la de transferencia no es un descuento que se le hizo a nadie,
-    son las dos listas de precios del local. El mismo número en transferencia va
-    al lado, para poder cruzarlo con el comprobante.
+    Cada línea entra por lo que facturó, en la lista con la que se cobró: no
+    importa si fue en efectivo o por transferencia, lo que se parte es la plata
+    que entró al local.
 
     Va por lo FACTURADO y no por lo cobrado: lo que se reparte es el trabajo
     hecho. Lo que todavía no entró se dice aparte y a la vista, porque esa plata
     no está en el cajón todavía.
     """
     filas = lineas_de_sesion(db, ses.id)
-    base = sum(base_comision(l, c) for l, c in filas)
-    base_transfer = sum(base_lista(l, c) for l, c in filas)
+    # `reparto_efectivo` lo llevan las sesiones que ya estaban pagadas cuando el
+    # reparto pasó a contar todo lo facturado: se siguen contando como se
+    # liquidaron. No se mira si tiene cierres, que eso haría que la cuenta
+    # cambiara justo al cobrarla.
+    cuanto = base_comision if ses.reparto_efectivo else base_facturada
+    base = sum(cuanto(l, c) for l, c in filas)
 
     # Lo que falta cobrar de los tickets que tienen depilación. No baja el
     # reparto —el reparto es del trabajo hecho— pero hay que decirlo: es plata
@@ -1706,7 +1733,7 @@ def cuenta_depilacion(db, ses) -> dict:
     # cierra, y el salón es el que puede absorberlo sin que a nadie le falte.
     parte = resto // 2 if resto > 0 else 0
     return {
-        "base": base, "base_transfer": base_transfer,
+        "base": base,
         "gastos": gastos, "resto": resto, "falta_cobrar": falta_cobrar,
         "parte_empleada": parte, "parte_salon": resto - parte,
         "trabajos": len(filas), "comprobantes": len(comps),
@@ -1804,8 +1831,37 @@ def migrar_dias_a_sesiones():
         db.commit()
         if dias: print(f"Depilación: {len(dias)} días pasados a sesiones.")
 
+MARCA_REPARTO = "reparto_por_lo_facturado"
+
+def migrar_reparto_de_lo_pagado():
+    """Las sesiones que ya se habían pagado se siguen contando en efectivo.
+
+    El reparto pasó a contar todo lo facturado, cada línea en la lista con la
+    que se cobró. Recalcular con esa fórmula una sesión ya liquidada la deja
+    debiendo plata sola: con dos trabajos por transferencia de $20.000 de lista,
+    la parte pasaba de $18.000 a $20.000 y la pantalla ofrecía cerrarla otra vez
+    por la diferencia, con un egreso de verdad. Una cuenta ya cobrada no se
+    vuelve a calcular con otra fórmula.
+
+    Se marca UNA sola vez: lo que se liquide de acá en adelante ya nace con la
+    regla nueva, incluida la sesión que está abierta.
+    """
+    from sqlalchemy.orm import Session as _S
+    with _S(engine) as db:
+        if db.query(models.Config).filter_by(clave=MARCA_REPARTO).first(): return
+        pagadas = {l.sesion_id for l in db.query(models.Liquidacion).filter(
+            models.Liquidacion.sesion_id.isnot(None)).all()}
+        if pagadas:
+            for ses in db.query(models.SesionDepilacion).filter(
+                    models.SesionDepilacion.id.in_(pagadas)).all():
+                ses.reparto_efectivo = True
+        db.add(models.Config(clave=MARCA_REPARTO, valor=str(len(pagadas))))
+        db.commit()
+        if pagadas: print(f"Depilación: {len(pagadas)} sesiones ya pagadas se siguen repartiendo en efectivo.")
+
 try:
     migrar_dias_a_sesiones()
+    migrar_reparto_de_lo_pagado()
 except Exception as _e:
     print('Aviso: no se pudieron armar las sesiones de depilación:', _e)
 
@@ -2290,10 +2346,9 @@ def _sesion_payload(db, ses) -> dict:
                 sena = senas.get(pg.sena_id)
                 forma = (sena.forma_pago if sena and sena.forma_pago else "Efectivo")
             cobrado[forma] = cobrado.get(forma, 0) + (pg.saldado if pg.saldado is not None else pg.monto)
-    detalle, facturado = [], 0
+    detalle = []
     for c in comps:
         est = estado_comprobante(db, c, por_comp)
-        facturado += est["total_final"]
         detalle.append({"id": c.id, "numero": c.numero,
                         "cliente": c.cliente_nombre, "cliente_id": c.cliente_id,
                         "dia": hora_argentina(c.fecha).date().isoformat(),
@@ -2323,10 +2378,6 @@ def _sesion_payload(db, ses) -> dict:
         "dias": dias_de_sesion(db, ses.id),
         "cuenta": q,
         "cobrado": cobrado,
-        # Lo que suman los tickets tal como se cobraron, mezclando los preciados
-        # en efectivo con los de transferencia. No es la base del reparto —esa va
-        # toda en efectivo— sino lo que la sesión facturó.
-        "facturado": facturado,
         "comprobantes": detalle,
         # Lo ya pagado y lo que falta. Son dos números y no uno porque pueden no
         # coincidir: la cuenta sigue viva y lo facturado después de cerrar se
@@ -2381,9 +2432,9 @@ def cerrar_depilacion(datos: CerrarDepiIn, user = Depends(usuario_actual),
                       db: Session = Depends(get_db)):
     """Paga la sesión: guarda la foto del reparto, anota el egreso y la cierra.
 
-    La foto queda fija —`recaudado` es lo que la sesión facturó de depilación en
-    efectivo y `gastos` lo que se restó—: corregir un ticket de una sesión ya
-    pagada no puede cambiar lo que se pagó.
+    La foto queda fija —`recaudado` es lo que la sesión facturó de depilación y
+    `gastos` lo que se restó—: corregir un ticket de una sesión ya pagada no
+    puede cambiar lo que se pagó.
     """
     ses = db.get(models.SesionDepilacion, datos.sesion_id) if datos.sesion_id else sesion_actual(db)
     if not ses: raise HTTPException(404, "No hay ninguna sesión para cerrar")
@@ -3140,7 +3191,7 @@ def cuenta_cliente(cliente_id: int, _ = Depends(usuario_actual), db: Session = D
                     "total_transfer": est["total_transfer"], "desc_efectivo": est["desc_efectivo"],
                     "subtotal": est["subtotal"], "desc_jubilado": est["desc_jubilado"],
                     "total_final": est["total_final"], "pagado": est["pagado"],
-                    "ingresado": est["ingresado"], "convertido_a": conv,
+                    "ingresado": est["ingresado"], "cobrado": est["cobrado"], "convertido_a": conv,
                     "forma_pago": forma_comprobante(db, comp, pagos_map), "forma_origen": comp.forma_pago,
                     "saldo": est["saldo"], "estado": est["estado"]})
     return {"cliente": _cliente_json(cli),
@@ -3158,8 +3209,21 @@ def proximo_turno(cliente_id: int, _ = Depends(usuario_actual), db: Session = De
     return {"turno": {"fecha": t.fecha, "hora": t.hora, "servicio": t.servicio, "es_hoy": t.fecha == hoy}}
 
 # ---------- catalogo (admin: dueña y empleado) ----------
+def _no_es_sena(nombre: str):
+    """Una seña no es un ítem del catálogo.
+
+    Cargada como ítem, SUMA al ticket en vez de descontar: el trabajo quedaba
+    $5.000 más caro y después la seña de verdad descontaba otros $5.000, así que
+    al cliente se le cobraban $4.500 de más. Se toma con "+ Agregar seña", que es
+    lo que la deja como plata a favor.
+    """
+    if _plano(nombre).strip().rstrip("s") == "sena":
+        raise HTTPException(400, "La seña no es un ítem: cargá el trabajo que se hizo y "
+                                 "tomá la seña con \"+ Agregar seña\", que la descuenta.")
+
 @app.post("/api/items")
 def crear_item(item: ItemIn, _ = Depends(usuario_actual), db: Session = Depends(get_db)):
+    _no_es_sena(item.nombre)
     precio = item.precio
     if item.precio_transfer:
         # El mismo lector que el script de la lista: busca el efectivo que vuelve
@@ -3184,7 +3248,9 @@ def editar_item(item_id: int, cambios: ItemEdit, _ = Depends(usuario_actual), db
     item = db.get(models.Item, item_id)
     if not item: raise HTTPException(404, "Item no existe")
     if cambios.categoria is not None: item.categoria = cambios.categoria.strip()
-    if cambios.nombre is not None: item.nombre = cambios.nombre.strip()
+    if cambios.nombre is not None:
+        _no_es_sena(cambios.nombre)
+        item.nombre = cambios.nombre.strip()
     if cambios.precio is not None:
         item.precio = cambios.precio
         item.precio_transfer = calcular_transfer(cambios.precio)
@@ -3429,7 +3495,8 @@ def listar_comprobantes(tipo: str | None = None,
     clave = {
         "fecha":   lambda f: f[0].fecha,
         "numero":  lambda f: f[0].numero,
-        "monto":   lambda f: f[1]["ingresado"] + f[1]["saldo"],
+        # El mismo número que muestra la tarjeta: la seña no es plata de mostrador.
+        "monto":   lambda f: f[1]["cobrado"] + max(f[1]["saldo"], 0),
         "cliente": lambda f: _sin_acentos(f[0].cliente_nombre or "Mostrador"),
     }.get(orden, lambda f: f[0].fecha)
     # Dos pasadas en vez de una clave compuesta: el desempate por número va
@@ -3464,6 +3531,12 @@ def _pagina_comprobantes(db, comps, total, total_sin_filtros, deuda, precalculad
     pagos_map = pagos_por_comprobante(db, comps)
     convertidos = (None if precalculado is not None
                    else _convertidos_de(db, [c.id for c in comps if c.tipo == "presupuesto"]))
+    # En qué estado está la sesión de depilación de cada uno: de eso depende si
+    # todavía se puede anular. Una consulta para la página entera.
+    ids_ses = {c.sesion_id for c in comps if c.sesion_id}
+    cerradas = ({s.id for s in db.query(models.SesionDepilacion).filter(
+                    models.SesionDepilacion.id.in_(ids_ses),
+                    models.SesionDepilacion.cerrada.isnot(None))} if ids_ses else set())
     out = []
     for comp in comps:
         if precalculado is not None:
@@ -3477,6 +3550,7 @@ def _pagina_comprobantes(db, comps, total, total_sin_filtros, deuda, precalculad
                     "total_lista": comp.total_lista, "extra_dificultad": comp.extra_dificultad,
                     "convertido_a": conv, "forma_pago": forma_comprobante(db, comp, pagos_map),
                     "forma_origen": comp.forma_pago, "anotado_despues": anotado_despues(comp),
+                    "sesion_id": comp.sesion_id, "sesion_cerrada": comp.sesion_id in cerradas,
                     **est})
     return {"comprobantes": out, "total": total, "total_sin_filtros": total_sin_filtros,
             "deuda_total": deuda}
@@ -3498,6 +3572,13 @@ def proximo_numero(tipo: str = "ticket", _ = Depends(usuario_actual), db: Sessio
 def ver_comprobante(comp_id: int, _ = Depends(usuario_actual), db: Session = Depends(get_db)):
     comp = db.get(models.Comprobante, comp_id)
     if not comp or not comp.activo: raise HTTPException(404, "Comprobante no existe")
+    pagos = (db.query(models.Pago).filter(models.Pago.comprobante_id == comp.id)
+               .order_by(models.Pago.fecha).all())
+    # Con qué forma se tomó cada seña: de eso depende cuánto tapa de la cuenta, y
+    # la pantalla la muestra por su valor de la lista de transferencia.
+    ids_sena = [p.sena_id for p in pagos if p.sena_id]
+    formas_sena = ({s.id: s.forma_pago for s in
+                    db.query(models.Sena).filter(models.Sena.id.in_(ids_sena))} if ids_sena else {})
     return {"id": comp.id, "tipo": comp.tipo, "numero": comp.numero, "fecha": comp.fecha.isoformat(),
         "anotado_despues": anotado_despues(comp),
         "cliente_id": comp.cliente_id, "cliente_nombre": comp.cliente_nombre, "peluquero": comp.peluquero,
@@ -3515,8 +3596,8 @@ def ver_comprobante(comp_id: int, _ = Depends(usuario_actual), db: Session = Dep
         "extras": [{"concepto": e.concepto, "monto": e.monto} for e in comp.extras],
         "pagos": [{"id": p.id, "fecha": p.fecha.isoformat(), "monto": p.monto, "saldado": p.saldado,
                    "desc_aplicado": p.desc_aplicado, "forma_pago": p.forma_pago, "alias": p.alias,
-                   "es_sena": p.sena_id is not None}
-                  for p in db.query(models.Pago).filter(models.Pago.comprobante_id == comp.id).order_by(models.Pago.fecha)],
+                   "es_sena": p.sena_id is not None, "sena_forma": formas_sena.get(p.sena_id)}
+                  for p in pagos],
         **estado_comprobante(db, comp)}
 
 @app.post("/api/comprobantes")
@@ -3600,9 +3681,27 @@ def crear_comprobante(c: ComprobanteIn, user = Depends(usuario_actual), db: Sess
     # al otro día es de la sesión igual, y es el único lugar por el que pasan
     # todos los cobros de depilación.
     if solo_depi: comp.sesion_id = sesion_para_cobrar(db).id
+
+    # El cobro, en el mismo pedido y en la misma transacción: o queda el ticket
+    # cobrado o no queda nada.
+    senas_usadas = 0
+    if c.tipo == "ticket" and comp.cliente_id and c.aplicar_senas:
+        db.flush()
+        senas_usadas, _ = _aplicar_senas(db, comp)
+    if c.tipo == "ticket" and c.cobrar:
+        db.flush()
+        saldo = estado_comprobante(db, comp)["saldo"]
+        if saldo > 0:
+            # El texto exacto, que es con el que el arqueo compara.
+            forma = "Efectivo" if comp.forma_pago == "efectivo" else "Transferencia"
+            db.add(models.Pago(comprobante_id=comp.id, monto=saldo, saldado=saldo,
+                               fecha=comp.fecha, forma_pago=forma, desc_aplicado=0))
     db.commit(); db.refresh(comp)
+    est = estado_comprobante(db, comp)
     return {"id": comp.id, "numero": comp.numero, "tipo": comp.tipo,
-            "fecha": comp.fecha.isoformat(), "anotado_despues": anotado_despues(comp)}
+            "fecha": comp.fecha.isoformat(), "anotado_despues": anotado_despues(comp),
+            "total_final": est["total_final"], "saldo": est["saldo"],
+            "senas_usadas": senas_usadas}
 
 @app.post("/api/comprobantes/{comp_id}/pagos")
 def registrar_pago(comp_id: int, pago: PagoIn, _ = Depends(usuario_actual), db: Session = Depends(get_db)):
@@ -3645,6 +3744,13 @@ def anular_comprobante(comp_id: int, _ = Depends(usuario_actual), db: Session = 
     comp = db.get(models.Comprobante, comp_id)
     if not comp or not comp.activo:
         raise HTTPException(404, "Comprobante no existe")
+    # De una sesión de depilación cerrada no se saca nada: el reparto ya se
+    # liquidó y sacarle un ticket le cambiaría la cuenta a lo que se pagó. Es la
+    # misma regla que para los gastos de la sesión.
+    if comp.sesion_id:
+        ses = db.get(models.SesionDepilacion, comp.sesion_id)
+        if ses and ses.cerrada:
+            raise HTTPException(409, f"La sesión #{ses.numero} ya se cerró: no se puede anular esto")
     db.query(models.Pago).filter(models.Pago.comprobante_id == comp.id).delete()
     # Las señas que se habían aplicado vuelven a quedar a favor de la clienta.
     # Sin esto la seña quedaba apuntando a un comprobante anulado: no sumaba
@@ -3670,6 +3776,12 @@ def borrar_pago(pago_id: int, _ = Depends(usuario_actual), db: Session = Depends
     """Anula un cobro mal cargado. El comprobante vuelve a quedar con saldo pendiente."""
     p = db.get(models.Pago, pago_id)
     if not p: raise HTTPException(404, "Pago no existe")
+    # Si el abono venía de una seña, la seña vuelve a quedar a favor de la
+    # clienta: borrado el abono, no salda nada y sin esto tampoco volvía a
+    # aparecer como disponible. Es lo mismo que hace anular el comprobante.
+    if p.sena_id:
+        db.query(models.Sena).filter(models.Sena.id == p.sena_id).update(
+            {"comprobante_id": None}, synchronize_session=False)
     db.delete(p); db.commit(); return {"ok": True}
 
 @app.post("/api/comprobantes/{comp_id}/convertir")
@@ -3936,23 +4048,15 @@ def sena_saldado(sena, comp, saldo: int) -> tuple[int, int]:
         return sena.monto, bruto
     return min(sena.monto, round(saldo / factor)), saldo
 
-@app.post("/api/comprobantes/{comp_id}/aplicar-senas")
-def aplicar_senas(comp_id: int, _ = Depends(usuario_actual), db: Session = Depends(get_db)):
-    """Usa las señas libres de la clienta como abono de este ticket.
+def _aplicar_senas(db, comp) -> tuple[int, int]:
+    """Usa las señas libres del cliente como abono. No hace commit.
 
-    Cada seña deja su propio abono con `sena_id`, así se puede seguir cuál plata
-    vino de dónde. El abono salda la cuenta pero no es plata del día: entró
-    cuando se cobró la seña.
+    Separado del endpoint porque el cobro de depilación lo hace en el mismo
+    pedido que crea el comprobante: en tres llamadas, la que no llega deja el
+    ticket cobrado a medias.
     """
-    comp = db.get(models.Comprobante, comp_id)
-    if not comp or not comp.activo: raise HTTPException(404, "Comprobante no existe")
-    if comp.tipo != "ticket": raise HTTPException(400, "Solo se cobran tickets, no presupuestos")
-    if not comp.cliente_id: raise HTTPException(400, "El comprobante no tiene cliente registrado")
-    libres = senas_libres(db, comp.cliente_id)
-    if not libres: raise HTTPException(400, "Esa clienta no tiene señas sin usar")
-
-    aplicadas, total = [], 0
-    for s in libres:
+    aplicadas, total = 0, 0
+    for s in senas_libres(db, comp.cliente_id):
         saldo = estado_comprobante(db, comp)["saldo"]
         if saldo <= 0: break
         usa, saldado = sena_saldado(s, comp, saldo)
@@ -3968,9 +4072,26 @@ def aplicar_senas(comp_id: int, _ = Depends(usuario_actual), db: Session = Depen
                            forma_pago="Seña", desc_aplicado=saldado - usa, sena_id=s.id))
         db.flush()
         s.comprobante_id = comp.id
-        aplicadas.append(s.id); total += usa
+        aplicadas += 1; total += usa
+    return aplicadas, total
+
+@app.post("/api/comprobantes/{comp_id}/aplicar-senas")
+def aplicar_senas(comp_id: int, _ = Depends(usuario_actual), db: Session = Depends(get_db)):
+    """Usa las señas libres de la clienta como abono de este ticket.
+
+    Cada seña deja su propio abono con `sena_id`, así se puede seguir cuál plata
+    vino de dónde. El abono salda la cuenta pero no es plata del día: entró
+    cuando se cobró la seña.
+    """
+    comp = db.get(models.Comprobante, comp_id)
+    if not comp or not comp.activo: raise HTTPException(404, "Comprobante no existe")
+    if comp.tipo != "ticket": raise HTTPException(400, "Solo se cobran tickets, no presupuestos")
+    if not comp.cliente_id: raise HTTPException(400, "El comprobante no tiene cliente registrado")
+    if not senas_libres(db, comp.cliente_id):
+        raise HTTPException(400, "Esa clienta no tiene señas sin usar")
+    aplicadas, total = _aplicar_senas(db, comp)
     db.commit()
-    return {"ok": True, "aplicadas": len(aplicadas), "total": total,
+    return {"ok": True, "aplicadas": aplicadas, "total": total,
             "saldo": estado_comprobante(db, comp)["saldo"]}
 
 @app.get("/api/caja/dia")

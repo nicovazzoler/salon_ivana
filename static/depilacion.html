@@ -206,7 +206,6 @@
   .cuenta .ren.chico{ padding:2px 0 2px var(--sp-3); border-bottom:none;
                       font-size:var(--fs-sm); color:var(--text-tenue); }
   .cuenta .ren.chico.falta-fijo{ color:var(--danger); }
-  .cuenta .ren.chico.transfer{ font-style:italic; }
   .cuenta .resta{ color:var(--danger); }
   /* El número del que sale el reparto, en dorado: en estas pantallas el dorado
      quiere decir plata, igual que el total de un cobro. */
@@ -682,41 +681,30 @@ $("#btnCobrar").onclick = async () => {
             + `${SENAS.length ? "\n\nSe le aplican las señas que tiene a favor." : ""}`
             + `\n\n¿Lo cobramos?`)){ b.disabled = false; return; }
 
+  /* Crear, aplicar las señas y cobrar, todo en UN pedido.
+
+     Eran tres: si la segunda o la tercera no llegaba —internet del local, la
+     tablet que se duerme— el ticket quedaba cobrado a medias. Con seña quedaba
+     cobrado SOLO con la seña y el resto como deuda, y si lo que fallaba era la
+     consulta del saldo ni siquiera avisaba. Ahora o queda cobrado o no queda
+     nada. */
   const cuerpo = {tipo: "ticket", cliente_id: CLI.id, cliente_nombre: null,
                   peluquero: $("#atiende").value || null,
                   forma_pago: FORMA, descuento_pct: 0, mostrar_motivo: false,
                   lineas: TICKET.map(l => ({item_id: l.id, nombre: l.nombre, cantidad: l.cantidad})),
-                  extras: []};
+                  extras: [], aplicar_senas: true, cobrar: true};
   const r = await authFetch("/api/comprobantes", {method:"POST",
     headers:{"Content-Type":"application/json"}, body: JSON.stringify(cuerpo)});
-  if(!r.ok){ toast((await r.json().catch(()=>({}))).detail || "No se pudo crear"); b.disabled = false; return; }
+  if(!r.ok){ toast((await r.json().catch(()=>({}))).detail || "No se pudo cobrar"); b.disabled = false; return; }
   const d = await r.json();
-
-  if(CLI && SENAS.length)
-    await authFetch(`/api/comprobantes/${d.id}/aplicar-senas`, {method:"POST"});
-
-  const c = await (await authFetch("/api/comprobantes/" + d.id)).json();
-  let aviso = "";
-  if(c.saldo > 0){
-    const rp = await authFetch(`/api/comprobantes/${d.id}/pagos`, {method:"POST",
-      headers:{"Content-Type":"application/json"},
-      body: JSON.stringify({monto: c.saldo, saldado: c.saldo,
-                            forma_pago: FORMA === "efectivo" ? "Efectivo" : "Transferencia",
-                            alias: null, del_servicio: true})});
-    if(!rp.ok) aviso = "Se creó el comprobante pero el cobro falló: cobralo desde la cuenta del cliente.";
-  }
-  const fin = await (await authFetch("/api/comprobantes/" + d.id)).json();
   const num = "N-" + String(d.numero).padStart(5, "0");
-  const sena = fin.pagos.filter(p => p.es_sena);
   $("#hecho").hidden = false;
   $("#hecho").innerHTML = `<b>${num} cobrado</b>
-    <span class="det">${fmt(fin.total_final)} de cuenta${
-      sena.length ? ` · seña ${fmt(sena.reduce((a,p)=>a+p.monto,0))}`
-                  + (sena.some(p => p.desc_aplicado) ? ` (saldó ${fmt(sena.reduce((a,p)=>a+(p.saldado||p.monto),0))} por ser en efectivo)` : "")
-                  : ""}${fin.saldo > 0 ? ` · queda debiendo ${fmt(fin.saldo)}` : ""}</span>
-    <a class="b-out" href="/ticket?id=${d.id}">🖨️ Imprimir</a>
-    ${aviso ? `<p class="nota">${aviso}</p>` : ""}`;
-  toast(fin.saldo > 0 ? `${num} con saldo pendiente` : `${num} cobrado ✓`);
+    <span class="det">${fmt(d.total_final)} de cuenta${
+      d.senas_usadas ? ` · con ${d.senas_usadas === 1 ? "la seña que tenía" : `${d.senas_usadas} señas`}` : ""}${
+      d.saldo > 0 ? ` · queda debiendo ${fmt(d.saldo)}` : ""}</span>
+    <a class="b-out" href="/ticket?id=${d.id}">🖨️ Imprimir</a>`;
+  toast(d.saldo > 0 ? `${num} con saldo pendiente` : `${num} cobrado ✓`);
   /* El papel se ofrece y no sale solo: imprimir es una navegación a RawBT y se
      lleva la pantalla puesta, así que primero se guarda y recién después se
      pregunta. El que dice que no tiene el botón de Imprimir ahí abajo. */
@@ -875,9 +863,8 @@ function pintarDia(){
     <div class="card" style="margin-top:var(--sp-4);">
       <h3>El reparto</h3>
       <div class="cuenta">
-        <div class="ren"><span>Total ingresado
-            <em class="det">lo que facturó la sesión, como se cobró</em></span><b>${fmt(d.facturado)}</b></div>
-        <div class="ren chico transfer"><span>Los mismos trabajos en efectivo, que es con lo que se reparte</span><span>${fmt(q.base)}</span></div>
+        <div class="ren"><span>Lo facturado en la sesión
+            <em class="det">los trabajos de depilación, en efectivo o por transferencia</em></span><b>${fmt(q.base)}</b></div>
         <div class="ren"><span>Gastos de la sesión</span><b class="${q.gastos ? "resta" : ""}">${q.gastos ? "−" : ""}${fmt(q.gastos)}</b></div>
         <div class="ren total"><span>Queda</span><b>${fmt(q.resto)}</b></div>
         <div class="ren mitad"><span>Para ${d.a_cargo ? esc(d.a_cargo) : "quien la lleva"}</span><b>${fmt(q.parte_empleada)}</b></div>
@@ -1126,12 +1113,19 @@ async function verHistorial(){
   cargarDias();
 }
 
+/* Se anula lo de una sesión que todavía está abierta, no solo lo de hoy: una
+   jornada dura dos días y el error se encuentra al otro, cuando se cierra la
+   cuenta. Cerrada sí frena —el reparto ya se liquidó y sacarle un ticket le
+   cambiaría la cuenta a lo que se pagó—, que es la misma regla de los gastos.
+   El que frena de verdad es el backend; esto es para no ofrecer un botón que
+   va a fallar. */
+const anulable = c => c.sesion_id ? !c.sesion_cerrada : (c.fecha || "").slice(0,10) === hoyArg();
+
 async function cargarHistorial(){
   const r = await authFetch(`/api/comprobantes?de=depi&desde=${$("#hDesde").value}`
     + `&hasta=${$("#hHasta").value}&limite=200`);
   const d = await r.json();
   const filas = d.comprobantes || [];
-  const hoy = hoyArg();
   $("#hLista").innerHTML = filas.length ? `
     <p class="muted">${filas.length} de ${d.total} · deuda ${fmt(d.deuda_total || 0)}</p>
     <table class="tabla-chica"><thead><tr>
@@ -1144,19 +1138,15 @@ async function cargarHistorial(){
       <td>${esc(c.peluquero || "—")}</td>
       <td class="num">${fmt(c.total_final)}</td>
       <td class="num ${c.saldo > 0 ? "deuda" : ""}">${c.saldo > 0 ? fmt(c.saldo) : "—"}</td>
-      <td>${(c.fecha || "").slice(0,10) === hoy
+      <td>${anulable(c)
             ? `<button class="b-del btn-mini anular" data-id="${c.id}"
                        data-num="${String(c.numero).padStart(5,"0")}">Anular</button>` : ""}</td>
     </tr>`).join("")}</tbody></table>`
     : `<p class="muted">No hay depilación en esas fechas.</p>`;
-  /* Anular solo lo de HOY: un ticket de la semana pasada ya se arqueó y puede
-     estar adentro de un día cerrado, así que sacarlo le cambia la cuenta a una
-     liquidación que ya se pagó. El error del momento, en cambio, se corrige en
-     el momento. */
   $("#hLista").querySelectorAll(".anular").forEach(b => {
     b.onclick = async () => {
       if(!confirm(`¿Anular el N-${b.dataset.num}?\n\nSe le devuelven las señas que haya usado `
-                + `y sale del día. Esto no se puede deshacer.`)) return;
+                + `y sale de la sesión. Esto no se puede deshacer.`)) return;
       const r = await authFetch("/api/comprobantes/" + b.dataset.id, {method:"DELETE"});
       if(!r.ok){ toast((await r.json().catch(()=>({}))).detail || "No se pudo anular"); return; }
       toast("Anulado");

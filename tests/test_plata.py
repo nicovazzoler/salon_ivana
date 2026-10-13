@@ -15,7 +15,14 @@ from types import SimpleNamespace
 
 import pytest
 
-from main import calcular_transfer, estado_comprobante, precio_con_ajuste
+from main import (
+    base_comision,
+    base_facturada,
+    calcular_transfer,
+    estado_comprobante,
+    precio_con_ajuste,
+    sena_saldado,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -72,6 +79,14 @@ def _linea(precio_efectivo=1000, ajuste_pct=0, ajuste_monto=0, cantidad=2):
     )
 
 
+def _pago(monto, saldado=None, sena_id=None, comp_id=1):
+    # sena_id va siempre: estado_comprobante separa lo que se cobró de mostrador
+    # de lo que vino de una seña, y un pago sin ese atributo no existe en la base.
+    return SimpleNamespace(
+        monto=monto, saldado=saldado, sena_id=sena_id, comprobante_id=comp_id
+    )
+
+
 def _comprobante(
     *,
     forma_pago="transferencia",
@@ -110,6 +125,7 @@ def test_estado_comprobante_caso_base_sin_extras_sin_descuentos():
         "total_final": 2400,
         "pagado": 0,
         "ingresado": 0,
+        "cobrado": 0,
         "saldo": 2400,
         "estado": "pendiente",
     }
@@ -150,9 +166,92 @@ def test_estado_comprobante_extras_no_reciben_ningun_descuento():
 
 def test_estado_comprobante_pago_parcial():
     comp = _comprobante()  # total_final = 2400, sin descuentos ni extras
-    pago = SimpleNamespace(monto=1000, saldado=None, comprobante_id=comp.id)
-    resultado = estado_comprobante(None, comp, pagos_precargados={comp.id: [pago]})
+    resultado = estado_comprobante(
+        None, comp, pagos_precargados={comp.id: [_pago(1000)]}
+    )
     assert resultado["pagado"] == 1000
     assert resultado["ingresado"] == 1000
+    assert resultado["cobrado"] == 1000
     assert resultado["saldo"] == 1400
     assert resultado["estado"] == "parcial"
+
+
+def test_estado_comprobante_la_sena_no_es_plata_de_mostrador():
+    """`cobrado` deja afuera los abonos que vienen de una seña.
+
+    Es el número que muestran el papel y las tarjetas: la seña ya había entrado
+    al cajón antes, así que sumarla otra vez decía que la clienta puso más plata
+    de la que puso.
+    """
+    comp = _comprobante(forma_pago="efectivo")  # total_final = 2000
+    # Una seña de 500 tomada por transferencia tapa 450 de una cuenta en
+    # efectivo (ver sena_saldado); el resto lo paga en el mostrador.
+    pagos = [_pago(500, saldado=450, sena_id=7), _pago(1550, saldado=1550)]
+    resultado = estado_comprobante(None, comp, pagos_precargados={comp.id: pagos})
+    assert resultado["ingresado"] == 2050  # toda la plata que tocó este ticket
+    assert resultado["cobrado"] == 1550  # lo que puso sobre el mostrador
+    assert resultado["pagado"] == 2000
+    assert resultado["saldo"] == 0
+    assert resultado["estado"] == "pagado"
+
+
+# ---------------------------------------------------------------------------
+# sena_saldado: cuánto tapa una seña depende de en qué lista está escrita cada
+# cosa. El 10% es de la plata que entra en EFECTIVO, no del trabajo, y la seña
+# entró antes. Las dos puntas se rompieron alguna vez.
+# ---------------------------------------------------------------------------
+
+def _sena(monto, forma_pago):
+    return SimpleNamespace(monto=monto, forma_pago=forma_pago)
+
+
+@pytest.mark.parametrize(
+    "forma_sena, forma_cuenta, saldado_esperado",
+    [
+        # Efectivo contra una cuenta sin el descuento adentro: esos pesos valen
+        # mas. 5000 / 0,9 = 5555,5 -> para arriba al siguiente múltiplo de 100.
+        pytest.param("Efectivo", "transferencia", 5600, id="efvo-contra-transfer-vale-mas"),
+        # Transferencia contra una cuenta que ya viene con el 10% sacado:
+        # descontarsela entera seria regalarle el 10% de la seña.
+        pytest.param("Transferencia", "efectivo", 4500, id="transfer-contra-efvo-vale-menos"),
+        pytest.param("Efectivo", "efectivo", 5000, id="la-misma-lista-el-monto-tal-cual"),
+        pytest.param("Transferencia", "transferencia", 5000, id="la-misma-lista-transfer"),
+    ],
+)
+def test_sena_saldado_segun_la_lista_de_cada_cosa(forma_sena, forma_cuenta, saldado_esperado):
+    comp = _comprobante(forma_pago=forma_cuenta)
+    usa, saldado = sena_saldado(_sena(5000, forma_sena), comp, saldo=100_000)
+    assert saldado == saldado_esperado
+    assert usa == 5000  # entra entera: el saldo es mucho mayor
+
+
+def test_sena_saldado_mas_grande_que_la_cuenta_se_usa_hasta_ahi():
+    # Una seña de 5000 contra una cuenta a la que le faltan 3000: se usa lo
+    # justo y el resto le queda a favor en otra fila, sin inventar un vuelto.
+    comp = _comprobante(forma_pago="transferencia")
+    usa, saldado = sena_saldado(_sena(5000, "Transferencia"), comp, saldo=3000)
+    assert (usa, saldado) == (3000, 3000)
+
+
+# ---------------------------------------------------------------------------
+# base_facturada: con qué lista entra cada línea al reparto de la depilación.
+# NO es base_comision: la comisión de peluquería se paga siempre en efectivo.
+# ---------------------------------------------------------------------------
+
+def test_base_facturada_usa_la_lista_con_la_que_se_cobro():
+    linea = SimpleNamespace(
+        precio_unit=1200, precio_efectivo=1000, ajuste_pct=0, ajuste_monto=0, cantidad=2
+    )
+    en_efvo = _comprobante(forma_pago="efectivo")
+    en_transf = _comprobante(forma_pago="transferencia")
+    assert base_facturada(linea, en_efvo) == 2000  # lista efectivo
+    assert base_facturada(linea, en_transf) == 2400  # lista transferencia
+
+
+def test_base_comision_no_mira_la_forma_de_pago():
+    """La diferencia entre listas no es un descuento que se le hizo a nadie."""
+    linea = SimpleNamespace(
+        precio_unit=1200, precio_efectivo=1000, ajuste_pct=0, ajuste_monto=0, cantidad=2
+    )
+    for forma in ("efectivo", "transferencia"):
+        assert base_comision(linea, _comprobante(forma_pago=forma)) == 2000
