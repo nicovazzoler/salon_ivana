@@ -387,20 +387,12 @@ apagadas por defecto.
 **Anular un comprobante devuelve las señas que había usado.** Quedaban
 apuntando al comprobante anulado: no saldaban nada y tampoco volvían a aparecer
 como disponibles, así que esa plata se le perdía a la clienta sin que nada
-avisara. En depilación se puede anular lo facturado **del día** desde su propio
-historial; lo de días anteriores no, que ya se arqueó y puede estar adentro de
-un día cerrado.
-
-**Un abono puede saldar MENOS de lo que trajo, y el papel lo dice.** Una seña
-tomada por transferencia sobre una cuenta en efectivo tapa el 10% menos de lo que
-entró (`desc_aplicado` negativo). El papel y los detalles muestran ese renglón
-—"Seña por transferencia +$500"— porque si no la cuenta no cierra: salía
-"Subtotal $20.000 − Descuento $2.000" y abajo "TOTAL $18.500", con $500 sin
-explicar en ningún lado. La plata estaba bien; lo que faltaba era el renglón.
-
-Ojo que ese bloque se dibuja en CUATRO lados —`escpos.js` (el papel), `ticket.html`
-(la vista), `cuenta.html` y `historial.html`— y los cuatro tenían el mismo agujero.
-Si se toca uno, tocar los cuatro.
+avisara. En depilación se anula desde su propio historial lo de **toda la sesión
+mientras siga abierta**, no solo lo de hoy: la jornada dura dos días y el error
+se encuentra al otro, cuando se cierra la cuenta. Cerrada sí frena —el reparto
+ya se liquidó y sacarle un ticket le cambiaría la cuenta a lo que se pagó—, que
+es la misma regla de los gastos de la sesión. El que frena es el backend; la
+pantalla solo deja de ofrecer el botón.
 
 **La seña no es un ítem del catálogo.** Cargada como ítem SUMA al ticket en vez de
 descontar, y después la seña de verdad descuenta aparte: pasó, y al cliente se le

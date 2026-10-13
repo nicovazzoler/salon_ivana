@@ -1113,12 +1113,19 @@ async function verHistorial(){
   cargarDias();
 }
 
+/* Se anula lo de una sesión que todavía está abierta, no solo lo de hoy: una
+   jornada dura dos días y el error se encuentra al otro, cuando se cierra la
+   cuenta. Cerrada sí frena —el reparto ya se liquidó y sacarle un ticket le
+   cambiaría la cuenta a lo que se pagó—, que es la misma regla de los gastos.
+   El que frena de verdad es el backend; esto es para no ofrecer un botón que
+   va a fallar. */
+const anulable = c => c.sesion_id ? !c.sesion_cerrada : (c.fecha || "").slice(0,10) === hoyArg();
+
 async function cargarHistorial(){
   const r = await authFetch(`/api/comprobantes?de=depi&desde=${$("#hDesde").value}`
     + `&hasta=${$("#hHasta").value}&limite=200`);
   const d = await r.json();
   const filas = d.comprobantes || [];
-  const hoy = hoyArg();
   $("#hLista").innerHTML = filas.length ? `
     <p class="muted">${filas.length} de ${d.total} · deuda ${fmt(d.deuda_total || 0)}</p>
     <table class="tabla-chica"><thead><tr>
@@ -1131,19 +1138,15 @@ async function cargarHistorial(){
       <td>${esc(c.peluquero || "—")}</td>
       <td class="num">${fmt(c.total_final)}</td>
       <td class="num ${c.saldo > 0 ? "deuda" : ""}">${c.saldo > 0 ? fmt(c.saldo) : "—"}</td>
-      <td>${(c.fecha || "").slice(0,10) === hoy
+      <td>${anulable(c)
             ? `<button class="b-del btn-mini anular" data-id="${c.id}"
                        data-num="${String(c.numero).padStart(5,"0")}">Anular</button>` : ""}</td>
     </tr>`).join("")}</tbody></table>`
     : `<p class="muted">No hay depilación en esas fechas.</p>`;
-  /* Anular solo lo de HOY: un ticket de la semana pasada ya se arqueó y puede
-     estar adentro de un día cerrado, así que sacarlo le cambia la cuenta a una
-     liquidación que ya se pagó. El error del momento, en cambio, se corrige en
-     el momento. */
   $("#hLista").querySelectorAll(".anular").forEach(b => {
     b.onclick = async () => {
       if(!confirm(`¿Anular el N-${b.dataset.num}?\n\nSe le devuelven las señas que haya usado `
-                + `y sale del día. Esto no se puede deshacer.`)) return;
+                + `y sale de la sesión. Esto no se puede deshacer.`)) return;
       const r = await authFetch("/api/comprobantes/" + b.dataset.id, {method:"DELETE"});
       if(!r.ok){ toast((await r.json().catch(()=>({}))).detail || "No se pudo anular"); return; }
       toast("Anulado");

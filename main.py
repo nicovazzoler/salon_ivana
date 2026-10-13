@@ -3491,6 +3491,12 @@ def _pagina_comprobantes(db, comps, total, total_sin_filtros, deuda, precalculad
     pagos_map = pagos_por_comprobante(db, comps)
     convertidos = (None if precalculado is not None
                    else _convertidos_de(db, [c.id for c in comps if c.tipo == "presupuesto"]))
+    # En qué estado está la sesión de depilación de cada uno: de eso depende si
+    # todavía se puede anular. Una consulta para la página entera.
+    ids_ses = {c.sesion_id for c in comps if c.sesion_id}
+    cerradas = ({s.id for s in db.query(models.SesionDepilacion).filter(
+                    models.SesionDepilacion.id.in_(ids_ses),
+                    models.SesionDepilacion.cerrada.isnot(None))} if ids_ses else set())
     out = []
     for comp in comps:
         if precalculado is not None:
@@ -3504,6 +3510,7 @@ def _pagina_comprobantes(db, comps, total, total_sin_filtros, deuda, precalculad
                     "total_lista": comp.total_lista, "extra_dificultad": comp.extra_dificultad,
                     "convertido_a": conv, "forma_pago": forma_comprobante(db, comp, pagos_map),
                     "forma_origen": comp.forma_pago, "anotado_despues": anotado_despues(comp),
+                    "sesion_id": comp.sesion_id, "sesion_cerrada": comp.sesion_id in cerradas,
                     **est})
     return {"comprobantes": out, "total": total, "total_sin_filtros": total_sin_filtros,
             "deuda_total": deuda}
@@ -3697,6 +3704,13 @@ def anular_comprobante(comp_id: int, _ = Depends(usuario_actual), db: Session = 
     comp = db.get(models.Comprobante, comp_id)
     if not comp or not comp.activo:
         raise HTTPException(404, "Comprobante no existe")
+    # De una sesión de depilación cerrada no se saca nada: el reparto ya se
+    # liquidó y sacarle un ticket le cambiaría la cuenta a lo que se pagó. Es la
+    # misma regla que para los gastos de la sesión.
+    if comp.sesion_id:
+        ses = db.get(models.SesionDepilacion, comp.sesion_id)
+        if ses and ses.cerrada:
+            raise HTTPException(409, f"La sesión #{ses.numero} ya se cerró: no se puede anular esto")
     db.query(models.Pago).filter(models.Pago.comprobante_id == comp.id).delete()
     # Las señas que se habían aplicado vuelven a quedar a favor de la clienta.
     # Sin esto la seña quedaba apuntando a un comprobante anulado: no sumaba
