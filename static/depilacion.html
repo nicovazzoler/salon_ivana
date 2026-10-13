@@ -97,6 +97,10 @@
      hizo y cuánto da. Cada uno cerrado con su línea; de corrido se leían como
      un bloque solo y había que buscar dónde terminaba uno y empezaba el otro. */
   .ticket{ position:sticky; top:var(--sp-3); }
+  /* A qué sesión va este cobro: un renglón chico abajo del título, que no compite
+     con el total pero contesta la pregunta sin cambiar de solapa. */
+  .a-que-sesion{ margin:calc(var(--sp-3) * -1 + 2px) 0 var(--sp-3);
+                 font-size:var(--fs-sm); color:var(--text-tenue); }
   /* Cada tarjeta arranca con su título cerrado por una línea: son cinco fichas
      una abajo de la otra y sin el filete se leían todas de corrido. */
   .card > h3{ margin:0 0 var(--sp-3); padding-bottom:var(--sp-2);
@@ -179,6 +183,16 @@
 
   /* ----- el día ----- */
   .dia-cab{ display:flex; gap:var(--sp-3); align-items:flex-end; flex-wrap:wrap; margin-bottom:var(--sp-3); }
+  /* El número de la sesión, que es como se la nombra en el mostrador. */
+  .n-sesion{ font-family:var(--font-display); font-size:var(--fs-lg); color:var(--text-marca); }
+  /* El nombre y su lapicito en el mismo renglón: el .campo apila en columna y
+     el botón le caía debajo, desalineando toda la cabecera. */
+  .quien-lleva{ display:flex; align-items:center; gap:var(--sp-2); }
+  .tag.abierta{ background:var(--verde-bg); color:var(--success); }
+  .tag.sin-pagar{ background:var(--rojo-bg); color:var(--danger); }
+  /* El día, adentro de los trabajos de una sesión de varios días. */
+  .dia-titulo{ margin:var(--sp-3) 0 var(--sp-2); font-size:var(--fs-base);
+               text-transform:uppercase; letter-spacing:.04em; color:var(--text-tenue); }
   .dia-cab .campo{ display:flex; flex-direction:column; gap:3px; }
   .dia-cab .campo label{ margin:0; }
   .cuenta .ren{ display:flex; align-items:baseline; gap:var(--sp-2);
@@ -230,12 +244,12 @@
     <h2>Depilación</h2>
     <p>Las zonas, la seña que el cliente ya dejó y el cobro, en una pantalla.
        Se factura por el mismo lugar que Facturar, así que el comprobante, la caja
-       y el reparto del día salen de lo mismo.</p>
+       y el reparto de la sesión salen de lo mismo.</p>
   </div>
 
   <div class="solapas">
     <button class="b-out on" data-hoja="cobrar">Cobrar</button>
-    <button class="b-out" data-hoja="dia">El día</button>
+    <button class="b-out" data-hoja="dia">La sesión</button>
     <button class="b-out" data-hoja="historial">Historial</button>
   </div>
 
@@ -258,6 +272,7 @@
 
     <div class="card ticket">
       <h3>Facturar</h3>
+      <div class="a-que-sesion" id="aQueSesion"></div>
       <div class="formas" id="formas">
         <button class="b-out" data-forma="efectivo">Efectivo</button>
         <button class="b-out" data-forma="transfer">Transferencia</button>
@@ -337,6 +352,22 @@ async function cargar(){
   pintarCatalogo();
   await mostrarSenas();      // el cartelito de "elegí la clienta" desde el arranque
   await restaurarBorrador();
+  await decirLaSesion();
+}
+
+/* A qué sesión va lo que se está por cobrar.
+
+   Es la pregunta que el cobro tiene que poder contestar sin cambiar de solapa:
+   de la sesión cuelga de quién es la mitad, y cobrar en la sesión equivocada se
+   descubre recién al repartir. */
+async function decirLaSesion(){
+  const caja = $("#aQueSesion");
+  if(!caja) return;
+  const r = await authFetch("/api/depilacion/sesion");
+  const d = r.ok ? await r.json() : null;
+  caja.innerHTML = d && d.sesion !== null
+    ? `Va a la <b>sesión #${d.numero}</b>${d.a_cargo ? ` · la lleva ${esc(d.a_cargo)}` : ""}`
+    : `No hay ninguna sesión abierta: se abre sola al cobrar.`;
 }
 
 function pintarCatalogo(){
@@ -692,6 +723,7 @@ $("#btnCobrar").onclick = async () => {
   // mostrarSenas() y no pintar(): sin esto la caja de señas seguía mostrando las
   // de la clienta anterior, ya aplicadas, como si todavía las tuviera a favor.
   mostrarSenas();
+  decirLaSesion();           // el primer cobro puede haber abierto la sesión
 };
 
 /* ---------- las solapas ---------- */
@@ -714,17 +746,53 @@ document.querySelectorAll(".solapas button").forEach(b => {
 
    Todo lo de esta pantalla lo hacen las dos, sin código en el medio: el día de
    depilación se trabaja entre dos con una sola tablet. */
-let DIA = null;
-let fechaDia = new Date(Date.now() - 3*3600*1000).toISOString().slice(0, 10);
+let DIA = null;              // la sesión que se está mirando
+let SESION_VISTA = null;     // null = la abierta; un id = una del historial
 
 const pedir = (url, opts) => authFetch(url, opts);
 
 async function verDia(){
-  const r = await pedir(`/api/depilacion/dia?fecha=${fechaDia}`);
+  const r = await pedir("/api/depilacion/sesion" + (SESION_VISTA ? "?id=" + SESION_VISTA : ""));
   if(!r.ok){ $("#hDia").innerHTML = `<div class="card"><p class="err">${
-      (await r.json().catch(()=>({}))).detail || "No se pudo abrir el día"}</p></div>`; return; }
-  DIA = await r.json();
+      (await r.json().catch(()=>({}))).detail || "No se pudo abrir la sesión"}</p></div>`; return; }
+  const d = await r.json();
+  if(!d || d.sesion === null){ DIA = null; pintarSinSesion(); return; }
+  DIA = d;
   pintarDia();
+}
+
+/* Sin sesión abierta no hay nada que mirar: lo único que se ofrece es abrirla.
+   Se elige quién la lleva porque de eso cuelga de quién es la mitad; deducirlo
+   de quién facturó más alcanzaba hasta el día que se olvida de ponerse en un
+   ticket y el reparto se lo lleva la que la ayudó. */
+async function pintarSinSesion(){
+  const emps = await (await authFetch("/api/empleados")).json();
+  const cfg = await (await authFetch("/api/config")).json();
+  const quien = cfg.depi_a_cargo || "";
+  $("#hDia").innerHTML = `
+    <div class="card">
+      <h3>No hay ninguna sesión abierta</h3>
+      <p class="nota" style="margin-top:0;">Una sesión es una jornada de depilación entera:
+         se abre, se trabaja uno o varios días, se cargan los gastos cuando se pagan,
+         y al final se cierra y se reparte <b>una sola vez</b>.</p>
+      <div class="dia-cab">
+        <div class="campo"><label for="aQuien">La lleva</label>
+          <select id="aQuien">${emps.filter(e => e.activo !== false).map(e =>
+            `<option value="${e.id}"${e.nombre === quien ? " selected" : ""}>${esc(e.nombre)}</option>`).join("")}</select></div>
+        <button class="b-ok" id="aAbrir">Abrir la sesión</button>
+      </div>
+      <p class="nota">Si se cobra o se carga un gasto sin abrirla, se abre sola con
+         ${quien ? esc(quien) : "la que lleva la depilación en Admin"}: un cobro no se
+         puede caer porque nadie apretó un botón.</p>
+    </div>`;
+  $("#aAbrir").onclick = async () => {
+    const r = await pedir("/api/depilacion/abrir", {method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({empleado_id: Number($("#aQuien").value) || null})});
+    if(!r.ok){ toast((await r.json().catch(()=>({}))).detail || "No se pudo abrir"); return; }
+    toast("Sesión abierta ✓");
+    SESION_VISTA = null; verDia();
+  };
 }
 
 function pintarDia(){
@@ -733,40 +801,55 @@ function pintarDia(){
   const maquinas  = q.egresos_detalle.filter(e => e.maquina);
   const otros     = q.egresos_detalle.filter(e => !e.ayudante && !e.maquina);
   const pagado = d.cerrado ? d.cerrado.total : 0;
-  // "Cerrado" es que no quede nada por pagar. Lo facturado después de un cierre
+  // "Cerrada" es que no quede nada por pagar. Lo facturado después de un cierre
   // sube el reparto, y esa diferencia se cobra con otro cierre.
   const cerrado = pagado > 0 && d.pendiente <= 0;
-  // Con el día pagado los gastos no se tocan: cambiarlos movería una cuenta que
-  // ya se liquidó. Mientras tanto se corrigen acá mismo, que equivocarse en un
-  // monto es lo más común y borrar y volver a cargar pierde la fecha y el número.
-  const acciones = e => pagado ? "" : `
+  const abierta = !d.cerrada;
+  // Con la sesión cerrada los gastos no se tocan: cambiarlos movería una cuenta
+  // ya liquidada. Mientras está abierta se corrigen acá mismo, que equivocarse
+  // en un monto es lo más común y borrar y volver a cargar pierde el número.
+  const acciones = e => !abierta ? "" : `
       <button class="b-out btn-mini editar-gasto" data-id="${e.id}" data-monto="${e.monto}"
               title="Corregir el monto">✎</button>
       <button class="b-out btn-mini borrar-gasto" data-id="${e.id}"
-              title="Sacar este gasto del día">✕</button>`;
+              title="Sacar este gasto de la sesión">✕</button>`;
   const gasto = (e, rot) => `<div class="ren chico" data-gasto="${e.id}">
-      <span>${rot}${e.notas ? ` <em class="det">(${esc(e.notas)})</em>` : ""}</span>
+      <span>${rot}${e.fecha && d.dias.length > 1 ? ` <em class="det">${fechaCorta(e.fecha)}</em>` : ""}${
+        e.notas ? ` <em class="det">(${esc(e.notas)})</em>` : ""}</span>
       <span>−${fmt(e.monto)} ${acciones(e)}</span></div>`;
-  const falta = (clase, rot) => cerrado ? "" : `<div class="ren chico falta-fijo">
+  const falta = (clase, rot) => !abierta ? "" : `<div class="ren chico falta-fijo">
       <span>${rot}</span>
       <span><button class="b-out btn-mini btn-${clase}">Cargar</button></span></div>`;
   const cobrado = Object.keys(d.cobrado || {});
+  const cuando = d.dias.length
+    ? (d.dias.length === 1 ? fechaLarga(d.dias[0])
+       : `${fechaLarga(d.dias[0])} al ${fechaLarga(d.dias[d.dias.length - 1])} · ${d.dias.length} días`)
+    : "todavía sin movimiento";
 
   $("#hDia").innerHTML = `
     <div class="card">
       <div class="dia-cab">
-        <div class="campo"><label for="fDia">Día</label>
-          <input type="date" id="fDia" value="${d.fecha}"></div>
-        <div class="campo"><label>Lo lleva</label>
-          <b>${d.a_cargo ? esc(d.a_cargo) : "—"}</b></div>
-        ${pagado ? `<span class="tag">${cerrado ? "Ya pagado" : "Pagado en parte"} · ${fmt(pagado)}${
+        <div class="campo"><label>Sesión</label>
+          <b class="n-sesion">#${d.numero}</b></div>
+        <div class="campo"><label>La lleva</label>
+          <span class="quien-lleva"><b>${d.a_cargo ? esc(d.a_cargo) : "—"}</b>${abierta
+            ? `<button class="b-out btn-mini" id="bQuien" title="Corregir quién la lleva">✎</button>` : ""}</span></div>
+        <div class="campo"><label>Cuándo</label><b>${cuando}</b></div>
+        ${abierta ? `<span class="tag abierta">Abierta</span>` : ""}
+        ${pagado ? `<span class="tag">${cerrado ? "Ya pagada" : "Pagada en parte"} · ${fmt(pagado)}${
             d.cerrado.veces > 1 ? ` · ${d.cerrado.veces} cierres` : ""}</span>` : ""}
+        ${!abierta && !pagado ? `<span class="tag sin-pagar">Cerrada sin pagar</span>` : ""}
       </div>
-      ${d.es_dia ? "" : `<p class="muted">Todavía no hay nada de depilación en este día.</p>`}
+      <div id="panelQuien"></div>
+      ${d.dias.length ? "" : `<p class="muted">Todavía no se facturó ni se gastó nada en esta sesión.</p>`}
+      ${SESION_VISTA ? `<p class="nota"><a href="#" id="bVolver">← Volver a la sesión en curso</a></p>` : ""}
+      ${(d.otras_abiertas || []).length ? `<div class="aviso">⚠️ Hay
+        ${d.otras_abiertas.length === 1 ? "otra sesión abierta" : `otras ${d.otras_abiertas.length} sesiones abiertas`}:
+        ${d.otras_abiertas.map(o => `<a href="#" class="ir-sesion" data-id="${o.id}">#${o.numero}</a>`).join(", ")}.</div>` : ""}
     </div>
 
     <div class="card" style="margin-top:var(--sp-4);">
-      <h3>Gastos del día</h3>
+      <h3>Gastos de la sesión</h3>
       <div class="cuenta">
         ${maquinas.map(e => gasto(e, "Máquina")).join("")}
         ${maquinas.length ? "" : falta("maquina", "Máquina")}
@@ -775,28 +858,30 @@ function pintarDia(){
         ${ayudantes.length ? "" : falta("ayudante", "Pago a la ayudante")}
         <div class="ren"><span>Total de gastos</span><b class="${q.gastos ? "resta" : ""}">${q.gastos ? "−" : ""}${fmt(q.gastos)}</b></div>
       </div>
-      ${cerrado ? "" : `<div class="acc-cobrar" style="flex-direction:row;flex-wrap:wrap;margin-top:var(--sp-3);">
+      ${!abierta ? "" : `<div class="acc-cobrar" style="flex-direction:row;flex-wrap:wrap;margin-top:var(--sp-3);">
         <button class="b-out btn-mini btn-gasto">+ Otro gasto</button>
         ${ayudantes.length ? `<button class="b-out btn-mini btn-ayudante">+ Otra ayudante</button>` : ""}
       </div>`}
       <div id="panelGasto"></div>
+      <p class="nota">Se restan de la sesión entera, no del día en que se pagaron:
+         la máquina se alquila para toda la jornada.</p>
     </div>
 
     <div class="card" style="margin-top:var(--sp-4);">
       <h3>El reparto</h3>
       <div class="cuenta">
         <div class="ren"><span>Total ingresado
-            <em class="det">lo que facturó el día, como se cobró</em></span><b>${fmt(d.facturado)}</b></div>
+            <em class="det">lo que facturó la sesión, como se cobró</em></span><b>${fmt(d.facturado)}</b></div>
         <div class="ren chico transfer"><span>Los mismos trabajos en efectivo, que es con lo que se reparte</span><span>${fmt(q.base)}</span></div>
-        <div class="ren"><span>Gastos del día</span><b class="${q.gastos ? "resta" : ""}">${q.gastos ? "−" : ""}${fmt(q.gastos)}</b></div>
+        <div class="ren"><span>Gastos de la sesión</span><b class="${q.gastos ? "resta" : ""}">${q.gastos ? "−" : ""}${fmt(q.gastos)}</b></div>
         <div class="ren total"><span>Queda</span><b>${fmt(q.resto)}</b></div>
-        <div class="ren mitad"><span>Para ${d.a_cargo ? esc(d.a_cargo) : "quien lo lleva"}</span><b>${fmt(q.parte_empleada)}</b></div>
+        <div class="ren mitad"><span>Para ${d.a_cargo ? esc(d.a_cargo) : "quien la lleva"}</span><b>${fmt(q.parte_empleada)}</b></div>
         <div class="ren mitad"><span>Para el salón</span><b>${fmt(q.parte_salon)}</b></div>
         ${pagado ? `<div class="ren chico"><span>Ya se le pagó</span><span>−${fmt(pagado)}</span></div>
           <div class="ren total"><span>${d.pendiente > 0 ? "Queda por pagar" : "No queda nada por pagar"}</span>
             <b>${fmt(d.pendiente)}</b></div>` : ""}
       </div>
-      ${q.falta_cobrar > 0 ? `<div class="aviso">⚠️ De este día falta cobrar ${fmt(q.falta_cobrar)}.
+      ${q.falta_cobrar > 0 ? `<div class="aviso">⚠️ De esta sesión falta cobrar ${fmt(q.falta_cobrar)}.
         El reparto es de lo que se trabajó, así que ya está contado: esa plata todavía no entró al cajón.</div>` : ""}
       ${q.resto < 0 ? `<div class="aviso">⚠️ Los gastos superan lo que se facturó. No hay nada para repartir.</div>` : ""}
     </div>
@@ -806,22 +891,26 @@ function pintarDia(){
       ${cobrado.length ? `<div class="cuenta">${cobrado.map(f => `
         <div class="ren"><span>${esc(f)}</span><b>${fmt(d.cobrado[f])}</b></div>`).join("")}
         ${q.falta_cobrar > 0 ? `<div class="ren chico"><span>Falta cobrar</span><span class="deuda">${fmt(q.falta_cobrar)}</span></div>` : ""}
-      </div>` : `<p class="muted">Todavía no se cobró nada de este día.</p>`}
+      </div>` : `<p class="muted">Todavía no se cobró nada de esta sesión.</p>`}
       <p class="nota">Esta plata está también en la caja del local, con el resto del día:
         el cliente paga en el mostrador. Acá se ve sola, para poder cerrar la depilación aparte.</p>
     </div>
 
     <details class="card" style="margin-top:var(--sp-4);">
-      <summary><b>Los trabajos del día</b> <span class="det">${d.comprobantes.length} ${
+      <summary><b>Los trabajos de la sesión</b> <span class="det">${d.comprobantes.length} ${
         d.comprobantes.length === 1 ? "ticket" : "tickets"}</span></summary>
-      ${d.comprobantes.length ? tablaComprobantes(d.comprobantes)
-        : `<p class="muted">Todavía no se facturó nada.</p>`}
+      ${d.comprobantes.length ? d.dias.map(f => {
+        const del = d.comprobantes.filter(c => c.dia === f);
+        if(!del.length) return "";
+        return `${d.dias.length > 1 ? `<h4 class="dia-titulo">${fechaLarga(f)}</h4>` : ""}
+                ${tablaComprobantes(del)}`;
+      }).join("") : `<p class="muted">Todavía no se facturó nada.</p>`}
     </details>
 
     ${d.pendiente > 0 ? `
     <div class="card" style="margin-top:var(--sp-4);">
-      <h3>${pagado ? "Pagar la diferencia" : "Cerrar el día"}</h3>
-      ${pagado ? `<p class="nota" style="margin-top:0;">El día se cerró con ${fmt(pagado)} y
+      <h3>${pagado ? "Pagar la diferencia" : "Cerrar la sesión"}</h3>
+      ${pagado ? `<p class="nota" style="margin-top:0;">La sesión se cerró con ${fmt(pagado)} y
         después se facturó más, así que quedó esta diferencia.</p>` : ""}
       <div class="dia-cab">
         <div class="campo"><label for="cForma">Se paga con</label>
@@ -832,10 +921,17 @@ function pintarDia(){
           <input id="cNota" maxlength="80"></div>
         <button class="b-ok" id="cCerrar">Cerrar y pagar ${fmt(d.pendiente)}</button>
       </div>
-      <p class="nota">Queda la foto del reparto y el egreso anotado. No se puede deshacer.</p>
+      <p class="nota">Queda la foto del reparto y el egreso anotado. Después de esto
+         la sesión no recibe más trabajo y los gastos no se tocan.</p>
     </div>` : ""}`;
 
-  $("#fDia").onchange = e => { fechaDia = e.target.value; verDia(); };
+  const volver = $("#bVolver");
+  if(volver) volver.onclick = e => { e.preventDefault(); SESION_VISTA = null; verDia(); };
+  $("#hDia").querySelectorAll(".ir-sesion").forEach(a => {
+    a.onclick = e => { e.preventDefault(); SESION_VISTA = Number(a.dataset.id); verDia(); };
+  });
+  const bq = $("#bQuien");
+  if(bq) bq.onclick = cambiarQuienLleva;
   const bg = $("#hDia").querySelector(".btn-gasto");
   if(bg) bg.onclick = () => formGasto("insumo");
   const ba = $("#hDia").querySelector(".btn-ayudante");
@@ -847,24 +943,47 @@ function pintarDia(){
   });
   $("#hDia").querySelectorAll(".borrar-gasto").forEach(b => {
     b.onclick = async () => {
-      if(!confirm("¿Sacar este gasto del día? El reparto se recalcula solo.")) return;
-      const r = await pedir(`/api/depilacion/gasto/${b.dataset.id}?empleado_id=${DIA.empleado_id}`,
-                            {method:"DELETE"});
+      if(!confirm("¿Sacar este gasto de la sesión? El reparto se recalcula solo.")) return;
+      const r = await pedir(`/api/depilacion/gasto/${b.dataset.id}`, {method:"DELETE"});
       if(!r.ok){ toast((await r.json().catch(()=>({}))).detail || "No se pudo"); return; }
       verDia();
     };
   });
   const cerrar = $("#cCerrar");
   if(cerrar) cerrar.onclick = async () => {
-    if(!confirm(`Se le pagan ${fmt(d.pendiente)} a ${d.a_cargo} por el día ${d.fecha}.\n\n`
+    if(!confirm(`Se le pagan ${fmt(d.pendiente)} a ${d.a_cargo} por la sesión #${d.numero}.\n\n`
               + `Queda la foto del reparto y el egreso anotado. Esto no se puede deshacer.`)) return;
     const r = await pedir("/api/depilacion/cerrar", {method:"POST",
       headers:{"Content-Type":"application/json"},
-      body: JSON.stringify({fecha: d.fecha, forma_pago: $("#cForma").value,
+      body: JSON.stringify({sesion_id: d.id, forma_pago: $("#cForma").value,
                             fecha_pago: $("#cFecha").value,
                             notas: $("#cNota").value.trim() || null})});
     if(!r.ok){ toast((await r.json().catch(()=>({}))).detail || "No se pudo cerrar"); return; }
-    toast("Día cerrado ✓");
+    toast("Sesión cerrada ✓");
+    SESION_VISTA = null; verDia();
+  };
+}
+
+/* Quién lleva la sesión se corrige: la sesión se abre sola con la de Admin
+   cuando nadie la abrió a mano, y de esto cuelga de quién es la mitad. */
+async function cambiarQuienLleva(){
+  const emps = await (await authFetch("/api/empleados")).json();
+  const caja = document.createElement("div");
+  caja.className = "agregar";
+  caja.innerHTML = `<div class="ancho"><label>La lleva</label>
+      <select class="qQuien">${emps.filter(e => e.activo !== false).map(e =>
+        `<option value="${e.id}"${e.nombre === DIA.a_cargo ? " selected" : ""}>${esc(e.nombre)}</option>`).join("")}</select></div>
+    <button class="b-ok qOk">Guardar</button>
+    <button class="b-out qNo">Cancelar</button>`;
+  $("#panelQuien").innerHTML = "";
+  $("#panelQuien").appendChild(caja);
+  caja.querySelector(".qNo").onclick = () => caja.remove();
+  caja.querySelector(".qOk").onclick = async () => {
+    const r = await pedir(`/api/depilacion/sesion/${DIA.id}`, {method:"PUT",
+      headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({empleado_id: Number(caja.querySelector(".qQuien").value)})});
+    if(!r.ok){ toast((await r.json().catch(()=>({}))).detail || "No se pudo"); return; }
+    toast("Guardado");
     verDia();
   };
 }
@@ -937,14 +1056,14 @@ async function formGasto(clase){
        <button class="b-ok gOk">Anotar el pago</button>
        <button class="b-out gNo">Cancelar</button>
        ${fijo ? `<span class="nota">El fijo son ${fmt(fijo)}. Si ponés otro número queda escrito que se cambió.</span>` : ""}`
-    : `<div class="ancho"><label>${clase === "maquina" ? "Máquina del día" : "Gasto del día"}</label>
+    : `<div class="ancho"><label>${clase === "maquina" ? "Máquina de la sesión" : "Gasto de la sesión"}</label>
          <input class="gConcepto" maxlength="80" value="${clase === "maquina" ? "Alquiler de la máquina" : ""}"
                 placeholder="Cera, descartables…"></div>
        <div style="flex:0 0 130px;"><label>${clase === "maquina" ? "Costó" : "Monto"}</label>
          <input type="number" class="gMonto" min="1" inputmode="numeric"></div>
        <button class="b-ok gOk">Anotar</button>
        <button class="b-out gNo">Cancelar</button>
-       <span class="nota">Entra en la resta del día, así que baja las dos mitades.</span>`;
+       <span class="nota">Entra en la resta de la sesión, así que baja las dos mitades.</span>`;
   $("#panelGasto").innerHTML = "";
   $("#panelGasto").appendChild(caja);
   const sel = caja.querySelector(".gQuien");
@@ -956,7 +1075,9 @@ async function formGasto(clase){
   caja.querySelector(".gOk").onclick = async () => {
     const monto = parseInt(caja.querySelector(".gMonto").value, 10) || 0;
     if(monto <= 0){ toast("Poné cuánto fue"); return; }
-    let cuerpo = {empleado_id: DIA.empleado_id, fecha: DIA.fecha, monto};
+    // Sin fecha: el egreso sale con la de hoy, que es cuando sale la plata del
+    // cajón. De qué reparto se resta lo dice la sesión, no esa fecha.
+    let cuerpo = {sesion_id: DIA.id, monto};
     if(esAyudante){
       const elegida = sel.value || caja.querySelector(".gNombre").value.trim();
       if(!elegida){ toast("Decí quién ayudó"); return; }
@@ -993,7 +1114,7 @@ async function verHistorial(){
     <div id="hLista"><p class="muted">Cargando…</p></div>
   </div>
   <div class="card" style="margin-top:var(--sp-4);">
-    <h3>Los días</h3>
+    <h3>Las sesiones</h3>
     <div id="hDias"><p class="muted">Cargando…</p></div></div>`;
   $("#hVer").onclick = cargarHistorial;
   cargarHistorial();
@@ -1040,27 +1161,32 @@ async function cargarHistorial(){
 }
 
 async function cargarDias(){
-  const r = await authFetch("/api/depilacion/dias");
+  const r = await authFetch("/api/depilacion/sesiones");
   if(!r.ok){ $("#hDias").innerHTML = ""; return; }
-  const dias = await r.json();
-  $("#hDias").innerHTML = dias.length ? `
+  const ses = await r.json();
+  const cuando = s => !s.desde ? "—"
+    : s.dias > 1 ? `${fechaCorta(s.desde)} al ${fechaCorta(s.hasta)}` : fechaCorta(s.desde);
+  $("#hDias").innerHTML = ses.length ? `
     <table class="tabla-chica"><thead><tr>
-      <th>Día</th><th>Lo llevó</th><th class="num">Trabajos</th>
-      <th class="num">Le tocó</th><th></th></tr></thead><tbody>
-    ${dias.map(d => `<tr>
-      <td><a href="#" class="ver-dia" data-f="${d.fecha}">${esc(d.fecha.split("-").reverse().join("/"))}</a></td>
-      <td>${esc(d.a_cargo || "—")}</td>
-      <td class="num">${fmt(d.base)}</td>
-      <td class="num">${fmt(d.parte_empleada)}</td>
-      <td>${d.cerrado ? "pagado"
-            : d.pagado ? `<b class="deuda">falta ${fmt(d.parte_empleada - d.pagado)}</b>`
-            : `<b class="deuda">sin cerrar</b>`}</td>
+      <th>Sesión</th><th>Cuándo</th><th>La llevó</th><th class="num">Trabajos</th>
+      <th class="num">Gastos</th><th class="num">Le tocó</th><th></th></tr></thead><tbody>
+    ${ses.map(s => `<tr>
+      <td><a href="#" class="ver-dia" data-id="${s.id}">#${s.numero}</a></td>
+      <td>${cuando(s)}${s.dias > 1 ? ` <span class="det">${s.dias} días</span>` : ""}</td>
+      <td>${esc(s.a_cargo || "—")}</td>
+      <td class="num">${fmt(s.base)}</td>
+      <td class="num">${s.gastos ? "−" + fmt(s.gastos) : "—"}</td>
+      <td class="num">${fmt(s.parte_empleada)}</td>
+      <td>${s.abierta ? `<b>abierta</b>`
+            : s.cerrada ? "pagada"
+            : s.pagado ? `<b class="deuda">falta ${fmt(s.parte_empleada - s.pagado)}</b>`
+            : `<b class="deuda">sin pagar</b>`}</td>
     </tr>`).join("")}</tbody></table>`
-    : `<p class="muted">Todavía no hubo días de depilación.</p>`;
+    : `<p class="muted">Todavía no hubo sesiones de depilación.</p>`;
   $("#hDias").querySelectorAll(".ver-dia").forEach(a => {
     a.onclick = e => {
       e.preventDefault();
-      fechaDia = a.dataset.f;
+      SESION_VISTA = Number(a.dataset.id);
       document.querySelector('.solapas button[data-hoja="dia"]').click();
     };
   });
@@ -1068,6 +1194,15 @@ async function cargarDias(){
 
 const DUENO = getRol() === "dueno";
 const hoyArg = () => new Date(Date.now() - 3*3600*1000).toISOString().slice(0, 10);
+const fechaCorta = iso => iso ? iso.slice(8,10) + "/" + iso.slice(5,7) : "";
+const _DIAS = ["domingo","lunes","martes","mi\u00e9rcoles","jueves","viernes","s\u00e1bado"];
+/* "lunes 12/10". El día de la semana y no solo el número: una sesión se nombra
+   por los días que se trabajó, y en el local se habla del lunes, no del 12. */
+const fechaLarga = iso => {
+  if(!iso) return "";
+  const [a, m, d] = iso.split("-").map(Number);
+  return `${_DIAS[new Date(a, m-1, d).getDay()]} ${fechaCorta(iso)}`;
+};
 
 cargar();
 </script>
