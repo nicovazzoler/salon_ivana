@@ -1659,19 +1659,28 @@ def empleada_del_dia(db, f: date) -> str | None:
     return max(por_nombre, key=lambda n: (por_nombre[n], n))
 
 def base_lista(linea, comp=None) -> int:
-    """Lo mismo que base_comision() pero en la lista de transferencia.
-
-    El reparto de la depilación se hace en efectivo, pero la dueña mira todo lo
-    demás con los precios del papel: tener los dos al lado es la única forma de
-    que el número de la tarjeta se pueda cruzar con el del comprobante.
-    """
+    """Lo mismo que base_comision() pero en la lista de transferencia."""
     unidad = precio_con_ajuste(linea.precio_unit or 0, linea.ajuste_pct, linea.ajuste_monto)
     base = unidad * (linea.cantidad or 1)
     pct = (comp.descuento_pct or 0) if comp is not None else 0
     return base - round(base * pct / 100) if pct else base
 
+def base_facturada(linea, comp) -> int:
+    """Lo que la línea facturó, en la lista con la que se cobró el comprobante.
+
+    Es la base del reparto de la depilación, que se hace sobre todo lo facturado
+    y no sobre una sola de las dos listas: la que pagó por transferencia dejó
+    esos pesos en el local, no los de la lista de efectivo.
+
+    Ojo que esto NO es base_comision(): la comisión de peluquería se paga
+    siempre en efectivo, porque la diferencia entre listas no es un descuento
+    que se le hizo a nadie. El reparto de la sesión es otra cuenta: ahí lo que
+    se parte es la plata que entró.
+    """
+    return base_comision(linea, comp) if comp.forma_pago == "efectivo" else base_lista(linea, comp)
+
 def cuenta_depilacion(db, ses) -> dict:
-    """El reparto de la sesión: lo facturado en efectivo − los gastos, mitad y mitad.
+    """El reparto de la sesión: todo lo facturado − los gastos, mitad y mitad.
 
     La unidad es la SESIÓN y no el día. Con el día, los gastos cargados todos
     juntos caían sobre uno solo: ese quedaba en negativo y en negativo no se
@@ -1683,18 +1692,16 @@ def cuenta_depilacion(db, ses) -> dict:
     La base son las LÍNEAS de depilación, no los comprobantes enteros: una
     sesión que además tuvo peluquería no se reparte por eso.
 
-    En efectivo, que es la misma lista con la que se pagan las comisiones: la
-    diferencia con la de transferencia no es un descuento que se le hizo a nadie,
-    son las dos listas de precios del local. El mismo número en transferencia va
-    al lado, para poder cruzarlo con el comprobante.
+    Cada línea entra por lo que facturó, en la lista con la que se cobró: no
+    importa si fue en efectivo o por transferencia, lo que se parte es la plata
+    que entró al local.
 
     Va por lo FACTURADO y no por lo cobrado: lo que se reparte es el trabajo
     hecho. Lo que todavía no entró se dice aparte y a la vista, porque esa plata
     no está en el cajón todavía.
     """
     filas = lineas_de_sesion(db, ses.id)
-    base = sum(base_comision(l, c) for l, c in filas)
-    base_transfer = sum(base_lista(l, c) for l, c in filas)
+    base = sum(base_facturada(l, c) for l, c in filas)
 
     # Lo que falta cobrar de los tickets que tienen depilación. No baja el
     # reparto —el reparto es del trabajo hecho— pero hay que decirlo: es plata
@@ -1716,7 +1723,7 @@ def cuenta_depilacion(db, ses) -> dict:
     # cierra, y el salón es el que puede absorberlo sin que a nadie le falte.
     parte = resto // 2 if resto > 0 else 0
     return {
-        "base": base, "base_transfer": base_transfer,
+        "base": base,
         "gastos": gastos, "resto": resto, "falta_cobrar": falta_cobrar,
         "parte_empleada": parte, "parte_salon": resto - parte,
         "trabajos": len(filas), "comprobantes": len(comps),
@@ -2300,10 +2307,9 @@ def _sesion_payload(db, ses) -> dict:
                 sena = senas.get(pg.sena_id)
                 forma = (sena.forma_pago if sena and sena.forma_pago else "Efectivo")
             cobrado[forma] = cobrado.get(forma, 0) + (pg.saldado if pg.saldado is not None else pg.monto)
-    detalle, facturado = [], 0
+    detalle = []
     for c in comps:
         est = estado_comprobante(db, c, por_comp)
-        facturado += est["total_final"]
         detalle.append({"id": c.id, "numero": c.numero,
                         "cliente": c.cliente_nombre, "cliente_id": c.cliente_id,
                         "dia": hora_argentina(c.fecha).date().isoformat(),
@@ -2333,10 +2339,6 @@ def _sesion_payload(db, ses) -> dict:
         "dias": dias_de_sesion(db, ses.id),
         "cuenta": q,
         "cobrado": cobrado,
-        # Lo que suman los tickets tal como se cobraron, mezclando los preciados
-        # en efectivo con los de transferencia. No es la base del reparto —esa va
-        # toda en efectivo— sino lo que la sesión facturó.
-        "facturado": facturado,
         "comprobantes": detalle,
         # Lo ya pagado y lo que falta. Son dos números y no uno porque pueden no
         # coincidir: la cuenta sigue viva y lo facturado después de cerrar se
@@ -2391,9 +2393,9 @@ def cerrar_depilacion(datos: CerrarDepiIn, user = Depends(usuario_actual),
                       db: Session = Depends(get_db)):
     """Paga la sesión: guarda la foto del reparto, anota el egreso y la cierra.
 
-    La foto queda fija —`recaudado` es lo que la sesión facturó de depilación en
-    efectivo y `gastos` lo que se restó—: corregir un ticket de una sesión ya
-    pagada no puede cambiar lo que se pagó.
+    La foto queda fija —`recaudado` es lo que la sesión facturó de depilación y
+    `gastos` lo que se restó—: corregir un ticket de una sesión ya pagada no
+    puede cambiar lo que se pagó.
     """
     ses = db.get(models.SesionDepilacion, datos.sesion_id) if datos.sesion_id else sesion_actual(db)
     if not ses: raise HTTPException(404, "No hay ninguna sesión para cerrar")

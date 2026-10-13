@@ -148,7 +148,7 @@ marcado `es_depilacion`, y de ahí sale todo lo demás:
 mes solo para depilación —uno o dos días seguidos, lunes y martes—. La lleva
 Carolina, que consigue la máquina, más una ayudante que a veces no es del salón:
 
-    trabajos de depilación de la sesión, en efectivo
+    trabajos de depilación de la sesión, como se cobraron
     − gastos de la sesión (máquina + insumos + el pago a la ayudante)
     = resto  →  50% Carolina · 50% el salón, que pone el local
 
@@ -182,9 +182,13 @@ Lo que hay que respetar:
   por LÍNEA. La marca está en el ítem (`es_depilacion`) y no en el nombre de la
   categoría, que se renombra desde Admin: la cuenta de la plata no puede depender
   de un texto.
-- En **efectivo**, que es la lista con la que se pagan las comisiones. La
-  diferencia con la de transferencia no es un descuento que se le hizo a nadie.
-  El mismo número en transferencia viaja al lado, para cruzarlo con el papel.
+- Entra **todo lo facturado**, cada línea en la lista con la que se cobró el
+  comprobante: no importa si fue en efectivo o por transferencia, lo que se
+  parte es la plata que entró al local (`base_facturada()`). Ojo que NO es
+  `base_comision()`: la comisión de peluquería se paga siempre en efectivo
+  porque la diferencia entre listas no es un descuento que se le hizo a nadie,
+  pero el reparto de la sesión es otra cuenta y ahí lo que se parte es lo que
+  cobró el local.
 - Se reparte lo **facturado**, no lo cobrado: lo que se reparte es el trabajo
   hecho. Lo que falta cobrar se dice aparte y a la vista.
 - **Solo restan los gastos DE esa sesión**, los que se cargan desde su pantalla

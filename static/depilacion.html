@@ -206,7 +206,6 @@
   .cuenta .ren.chico{ padding:2px 0 2px var(--sp-3); border-bottom:none;
                       font-size:var(--fs-sm); color:var(--text-tenue); }
   .cuenta .ren.chico.falta-fijo{ color:var(--danger); }
-  .cuenta .ren.chico.transfer{ font-style:italic; }
   .cuenta .resta{ color:var(--danger); }
   /* El número del que sale el reparto, en dorado: en estas pantallas el dorado
      quiere decir plata, igual que el total de un cobro. */
@@ -864,9 +863,8 @@ function pintarDia(){
     <div class="card" style="margin-top:var(--sp-4);">
       <h3>El reparto</h3>
       <div class="cuenta">
-        <div class="ren"><span>Total ingresado
-            <em class="det">lo que facturó la sesión, como se cobró</em></span><b>${fmt(d.facturado)}</b></div>
-        <div class="ren chico transfer"><span>Los mismos trabajos en efectivo, que es con lo que se reparte</span><span>${fmt(q.base)}</span></div>
+        <div class="ren"><span>Lo facturado en la sesión
+            <em class="det">los trabajos de depilación, en efectivo o por transferencia</em></span><b>${fmt(q.base)}</b></div>
         <div class="ren"><span>Gastos de la sesión</span><b class="${q.gastos ? "resta" : ""}">${q.gastos ? "−" : ""}${fmt(q.gastos)}</b></div>
         <div class="ren total"><span>Queda</span><b>${fmt(q.resto)}</b></div>
         <div class="ren mitad"><span>Para ${d.a_cargo ? esc(d.a_cargo) : "quien la lleva"}</span><b>${fmt(q.parte_empleada)}</b></div>
