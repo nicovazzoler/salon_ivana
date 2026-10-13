@@ -337,9 +337,21 @@ junto en efectivo. Sin la segunda, una seña de $5.000 por transferencia sobre u
 trabajo de $20.000 pagado en efectivo le regalaba el 10% de la seña: entraban
 $18.000 cuando correspondían $18.500.
 
-La pantalla muestra la cuenta entera en transferencia —subtotal, la seña que ya
-dejó, y recién al final el 10%— y saca el descuento restando, no multiplicando:
-así el total que se le dice a la clienta es exactamente el que cobra el backend.
+**La cuenta se lee de arriba a abajo, y es la misma en las cinco pantallas.**
+Subtotal en transferencia, la seña que ya dejó, subtotal otra vez y recién al
+final el 10% de pagar en efectivo; el total es lo que pone sobre el mostrador
+HOY, porque la seña ya la pagó. El descuento sale de RESTAR y no de multiplicar:
+así la columna cierra siempre y el total que se le dice a la clienta es
+exactamente el que cobra el backend. La arma `cuentaDeComprobante()` en
+`escpos.js` —el archivo que cargan las cuatro pantallas que la dibujan: el
+papel, la vista de impresión, la ficha del cliente y el historial— y la pantalla
+de depilación hace la misma cuenta antes de que el comprobante exista. Si fueran
+cuatro cuentas, un día el papel que sale al cobrar diría otra cosa que la ficha.
+
+Los abonos de seña no se repiten abajo, en lo recibido: ya se restaron arriba, y
+listados otra vez lo recibido sumaba más que el total. Por lo mismo la tarjeta
+del historial y la de la ficha muestran `cobrado`, que es lo que entró sin
+contar señas, y no `ingresado`.
 
 **Y lo que se MUESTRA de una seña es siempre el valor de la lista de
 transferencia**, no la plata que entró al cajón: es el número que se le dijo al

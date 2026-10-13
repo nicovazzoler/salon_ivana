@@ -130,6 +130,7 @@
 requireLogin(); pintarNav();
 const $=s=>document.querySelector(s);
 const fmt=n=>"$"+(n||0).toLocaleString("es-AR");
+const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const id=new URLSearchParams(location.search).get("id");
 const ORIGEN = { efectivo:"Efectivo", transfer:"Transferencia", cuenta:"A cuenta", mixto:"Mixto" };
 let FORMAS=[], ALIAS=[];
@@ -291,7 +292,7 @@ function renderComprobantes(){
         <div class="comp-datos">
           <div>
             <div class="sub">${fecha} · <span class="num">${numComp(comp)}</span></div>
-            <div class="comp-total">${fmt(comp.ingresado + comp.saldo)} ${esPresu?'':`<span class="fp">· ${ORIGEN[comp.forma_origen]||comp.forma_origen}${comp.forma_pago!==ORIGEN[comp.forma_origen]?` → ${comp.forma_pago}`:''}</span>`}</div>
+            <div class="comp-total">${fmt(comp.cobrado + Math.max(comp.saldo,0))} ${esPresu?'':`<span class="fp">· ${ORIGEN[comp.forma_origen]||comp.forma_origen}${comp.forma_pago!==ORIGEN[comp.forma_origen]?` → ${comp.forma_pago}`:''}</span>`}</div>
           </div>
           <span class="badge ${comp.estado}">${comp.estado}</span>
         </div>
@@ -416,29 +417,25 @@ function renderComprobantes(){
       ).join("");
       const extra = d.extra_dificultad>0 ? `<div class="fila" style="justify-content:space-between;color:var(--warn);"><span>Extra dificultad</span><span>+${fmt(d.extra_dificultad)}</span></div>` : "";
 
-      const pctEf = d.desc_efectivo>0 ? (d.desc_efectivo / d.total_transfer * 100).toFixed(2) : 0;
-      const filaDescEf = d.desc_efectivo>0 ? `<div class="fila" style="justify-content:space-between;color:var(--warn);"><span>Descuento ${pctEf}%</span><span>−${fmt(d.desc_efectivo)}</span></div>` : "";
-      const filaSubtotal = d.desc_jubilado>0 ? `<div class="fila" style="justify-content:space-between;border-top:1px solid var(--border);padding-top:6px;"><span>Subtotal</span><span>${fmt(d.subtotal)}</span></div>` : "";
-      const filaDescJub = d.desc_jubilado>0 ? `<div class="fila" style="justify-content:space-between;color:var(--warn);"><span>${d.descuento_nombre||'Descuento'} ${d.descuento_pct}%</span><span>−${fmt(d.desc_jubilado)}</span></div>` : "";
+      /* La cuenta la arma EscPos.cuentaDeComprobante(), el mismo cálculo que el
+         papel y que la pantalla de facturar. */
+      const q = EscPos.cuentaDeComprobante(d);
+      const filasCuenta = q.filas.map(f => {
+        const color = f.clase==="desc" || f.clase==="sena" ? "color:var(--warn);" : "";
+        const borde = f.clase==="sub" ? "border-top:1px solid var(--border);padding-top:6px;" : "";
+        return `<div class="fila" style="justify-content:space-between;${color}${borde}">`+
+               `<span>${esc(f.rot)}</span><span>${f.monto<0?"−":""}${fmt(Math.abs(f.monto))}</span></div>`;
+      }).join("");
 
-      const pagos = d.pagos.length
-        ? d.pagos.map(p=>{
+      // Las señas no se repiten en los pagos: ya se restaron en la cuenta de arriba.
+      const pagos = q.abonos.length
+        ? q.abonos.map(p=>{
             const f=new Date(p.fecha.endsWith("Z")?p.fecha:p.fecha+"Z").toLocaleDateString("es-AR");
             const desc = p.desc_aplicado || 0;
             const extra = desc>0 ? ` <span class="muted">(saldó ${fmt(p.saldado)} · ${(desc / p.saldado * 100).toFixed(2)}% desc)</span>` : "";
             return `<div class="fila" style="justify-content:space-between;color:var(--text-tenue);"><span>✓ ${f} · ${p.forma_pago}${p.alias?' ('+p.alias+')':''}${extra}</span><span>${fmt(p.monto)}</span></div>`;
           }).join("")
         : '<div class="muted">Sin pagos todavía.</div>';
-      const descEfvoReal = d.pagos.reduce((a,p)=> a + (p.desc_aplicado || 0), 0);
-      const pctEfvoReal = descEfvoReal>0 ? (descEfvoReal / d.total_final * 100).toFixed(2) : 0;
-      const filaDescEfvoReal = descEfvoReal>0
-        ? `<div class="fila fila-desc"><span>Descuento ${pctEfvoReal}%</span><span>−${fmt(descEfvoReal)}</span></div>` : "";
-      /* Y lo que un abono NO descuenta, que suma. Pasa con una seña tomada por
-         transferencia sobre una cuenta en efectivo: esa plata entró sin el
-         descuento, así que tapa el 10% menos de lo que trajo. Sin este renglón
-         la cuenta no cerraba y la diferencia no estaba en ningún lado. */
-      const filaSenaTransfer = descEfvoReal<0
-        ? `<div class="fila fila-desc"><span>Seña por transferencia</span><span>+${fmt(-descEfvoReal)}</span></div>` : "";
       const filaPendiente = d.saldo > 0
         ? `<div class="fila fila-desc"><span>Pendiente</span><span>${fmt(d.saldo)}</span></div>` : "";
       if(esPresu){
@@ -460,8 +457,8 @@ function renderComprobantes(){
       } else {
         boxDet.innerHTML=`
           <div style="font-weight:700;margin-bottom:6px;">Detalle</div>
-          ${lineas}${extra}${filaDescEf}${filaSubtotal}${filaDescEfvoReal}${filaSenaTransfer}${filaDescJub}
-          <div class="fila fila-total"><span>Total</span><span>${fmt(d.ingresado + d.saldo)}</span></div>
+          ${lineas}${extra}${filasCuenta}
+          <div class="fila fila-total"><span>Total</span><span>${fmt(q.total)}</span></div>
           <div style="font-weight:700;margin:10px 0 6px;">Pagos</div>
           ${pagos}${filaPendiente}
           <div class="quien-atendio"></div>`;

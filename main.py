@@ -889,6 +889,10 @@ def estado_comprobante(db, comp, pagos_precargados=None) -> dict:
              else db.query(models.Pago).filter(models.Pago.comprobante_id == comp.id).all())
     pagado = sum((p.saldado if p.saldado is not None else p.monto) for p in pagos)
     ingresado = sum(p.monto for p in pagos)
+    # Lo que se cobró de mostrador: la seña no, que ya había entrado antes. Es
+    # el total que muestran el papel y las pantallas, y el que cierra la cuenta
+    # que se le lee a la clienta: subtotal, menos la seña, menos el descuento.
+    cobrado = sum(p.monto for p in pagos if not p.sena_id)
     saldo = total_final - pagado
 
     if comp.tipo == "presupuesto": estado = "presupuesto"
@@ -903,7 +907,8 @@ def estado_comprobante(db, comp, pagos_precargados=None) -> dict:
         "desc_jubilado": desc_jubilado,             # descuento de listado
         "extras_total": extras_total,               # cargos que no toca ningún descuento
         "total_final": total_final,                 # lo que paga el cliente
-        "pagado": pagado, "ingresado": ingresado, "saldo": saldo, "estado": estado,
+        "pagado": pagado, "ingresado": ingresado, "cobrado": cobrado,
+        "saldo": saldo, "estado": estado,
     }
 
 def forma_comprobante(db, comp, pagos_precargados=None) -> str:
@@ -3145,7 +3150,7 @@ def cuenta_cliente(cliente_id: int, _ = Depends(usuario_actual), db: Session = D
                     "total_transfer": est["total_transfer"], "desc_efectivo": est["desc_efectivo"],
                     "subtotal": est["subtotal"], "desc_jubilado": est["desc_jubilado"],
                     "total_final": est["total_final"], "pagado": est["pagado"],
-                    "ingresado": est["ingresado"], "convertido_a": conv,
+                    "ingresado": est["ingresado"], "cobrado": est["cobrado"], "convertido_a": conv,
                     "forma_pago": forma_comprobante(db, comp, pagos_map), "forma_origen": comp.forma_pago,
                     "saldo": est["saldo"], "estado": est["estado"]})
     return {"cliente": _cliente_json(cli),
@@ -3518,6 +3523,13 @@ def proximo_numero(tipo: str = "ticket", _ = Depends(usuario_actual), db: Sessio
 def ver_comprobante(comp_id: int, _ = Depends(usuario_actual), db: Session = Depends(get_db)):
     comp = db.get(models.Comprobante, comp_id)
     if not comp or not comp.activo: raise HTTPException(404, "Comprobante no existe")
+    pagos = (db.query(models.Pago).filter(models.Pago.comprobante_id == comp.id)
+               .order_by(models.Pago.fecha).all())
+    # Con qué forma se tomó cada seña: de eso depende cuánto tapa de la cuenta, y
+    # la pantalla la muestra por su valor de la lista de transferencia.
+    ids_sena = [p.sena_id for p in pagos if p.sena_id]
+    formas_sena = ({s.id: s.forma_pago for s in
+                    db.query(models.Sena).filter(models.Sena.id.in_(ids_sena))} if ids_sena else {})
     return {"id": comp.id, "tipo": comp.tipo, "numero": comp.numero, "fecha": comp.fecha.isoformat(),
         "anotado_despues": anotado_despues(comp),
         "cliente_id": comp.cliente_id, "cliente_nombre": comp.cliente_nombre, "peluquero": comp.peluquero,
@@ -3535,8 +3547,8 @@ def ver_comprobante(comp_id: int, _ = Depends(usuario_actual), db: Session = Dep
         "extras": [{"concepto": e.concepto, "monto": e.monto} for e in comp.extras],
         "pagos": [{"id": p.id, "fecha": p.fecha.isoformat(), "monto": p.monto, "saldado": p.saldado,
                    "desc_aplicado": p.desc_aplicado, "forma_pago": p.forma_pago, "alias": p.alias,
-                   "es_sena": p.sena_id is not None}
-                  for p in db.query(models.Pago).filter(models.Pago.comprobante_id == comp.id).order_by(models.Pago.fecha)],
+                   "es_sena": p.sena_id is not None, "sena_forma": formas_sena.get(p.sena_id)}
+                  for p in pagos],
         **estado_comprobante(db, comp)}
 
 @app.post("/api/comprobantes")

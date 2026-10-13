@@ -78,6 +78,63 @@ const pe = l => l.precio_efectivo_final ?? l.precio_efectivo ?? 0;
 // Si la línea tiene un ajuste, sea en porcentaje o en pesos.
 const hayAjuste = l => !!(l.ajuste_pct || l.ajuste_monto);
 
+/* ---------- la cuenta de un comprobante, renglón por renglón ----------
+
+   Se lee igual que la pantalla de facturar, y toda en la lista de
+   transferencia, que es a la que se ancla el comprobante: subtotal, la seña que
+   la clienta ya había dejado, y recién al final el descuento por pagar en
+   efectivo. El total es lo que pone sobre el mostrador HOY; la seña ya la pagó.
+
+   Un solo cálculo para las cuatro pantallas que dibujan esta cuenta (el papel,
+   la vista de impresión, la ficha del cliente y el historial). El descuento
+   sale de RESTAR y no de multiplicar: así la columna cierra siempre y el total
+   de acá es exactamente el que cobró el backend, que es el único que importa.
+
+   La seña se muestra por lo que vale contra la lista de transferencia —el
+   número que se le dijo al tomarla— y no por la plata que entró al cajón, que
+   en efectivo es el 10% menos. Tiene que dar igual que valorSena() de senas.js
+   y que sena_saldado() en el backend. */
+const senaTransfer = p => (p.sena_forma || "") === "Efectivo"
+  ? Math.ceil((p.monto / 0.9) / 100) * 100 : p.monto;
+
+function cuentaDeComprobante(d){
+  const pagos  = d.pagos || [];
+  const senas  = pagos.filter(p => p.es_sena);
+  const abonos = pagos.filter(p => !p.es_sena);
+  const subtotal = d.lineas.reduce((a,l) => a + pu(l)*l.cantidad, 0) + (d.extra_dificultad||0);
+  const extras   = (d.extras||[]).reduce((a,e) => a + (e.monto||0), 0);
+  const descJub  = d.desc_jubilado || 0;
+  const descAbono = abonos.reduce((a,p) => a + (p.desc_aplicado||0), 0);
+  // Lo que se cobra de mostrador: lo que ya entró sin contar señas, más lo que falta.
+  const total = abonos.reduce((a,p) => a + p.monto, 0) + Math.max(d.saldo, 0);
+
+  let senaT  = Math.min(subtotal, senas.reduce((a,p) => a + senaTransfer(p), 0));
+  let descEf = (subtotal - senaT) - descJub - descAbono + extras - total;
+  // Redondeos de las dos listas: antes que mostrar un descuento negativo, que
+  // no existe, se le saca a la seña. Son 100 pesos en el peor caso.
+  if(descEf < 0){ senaT = Math.max(0, senaT + descEf); descEf = 0; }
+  const resto = subtotal - senaT;
+
+  const filas = [];
+  const hayDesc = descEf>0 || descJub>0 || descAbono>0;
+  if(senaT>0 || hayDesc) filas.push({rot:"Subtotal", monto:subtotal, clase:"sub"});
+  if(senaT>0){
+    filas.push({rot:"Seña", monto:-senaT, clase:"sena"});
+    if(hayDesc) filas.push({rot:"Subtotal", monto:resto, clase:"sub"});
+  }
+  if(descEf>0)
+    filas.push({rot:"Descuento "+(resto ? (descEf/resto*100).toFixed(2) : 0)+"%",
+                monto:-descEf, clase:"desc"});
+  if(descJub>0)
+    filas.push({rot:(d.descuento_nombre||"Descuento")+" "+d.descuento_pct+"%",
+                monto:-descJub, clase:"desc"});
+  if(descAbono>0)
+    filas.push({rot:"Descuento (al abonar)", monto:-descAbono, clase:"desc"});
+  (d.extras||[]).forEach(e => filas.push({rot:"+ "+e.concepto, monto:e.monto, clase:"extra"}));
+
+  return {filas, total, senaT, abonos};
+}
+
 function fila2(izq, der, w=ANCHO){
   izq=translit(izq); der=translit(der);
   const max=w-der.length-1;
@@ -303,29 +360,20 @@ function deComprobante(d, negocio){
     });
     if(d.extra_dificultad>0) h.lin(fila2("* Extra dificultad","+"+fmtP(d.extra_dificultad)));
     h.sep();
-    // Subtotal antes de descuentos, sumado de los renglones de arriba
-    const subtotal = d.lineas.reduce((a,l)=>a+pu(l)*l.cantidad,0) + (d.extra_dificultad||0);
-    const descPagos=d.pagos.reduce((a,p)=>a+(p.desc_aplicado||0),0);
-    const hayDesc = d.desc_efectivo>0 || d.desc_jubilado>0 || descPagos!==0;
-    if(hayDesc) h.lin(fila2("Subtotal", fmtP(subtotal)));
-    if(d.desc_efectivo>0) h.lin(fila2("Descuento "+(d.desc_efectivo/d.total_transfer*100).toFixed(2)+"%","-"+fmtP(d.desc_efectivo)));
-    if(d.desc_jubilado>0) h.lin(fila2((d.descuento_nombre||"Descuento")+" "+d.descuento_pct+"%","-"+fmtP(d.desc_jubilado)));
-    if(descPagos>0) h.lin(fila2("Descuento (al abonar)","-"+fmtP(descPagos)));
-    /* Y lo que un abono NO descuenta, que suma.
-
-       Pasa con una sena tomada por transferencia sobre una cuenta en efectivo:
-       esa plata entro sin el descuento, asi que tapa el 10% menos de lo que
-       trajo. Sin este renglon el papel no cerraba —subtotal menos descuento
-       daba $18.000 y el TOTAL decia $18.500— y la diferencia no estaba
-       explicada en ningun lado. */
-    if(descPagos<0) h.lin(fila2("Sena por transferencia","+"+fmtP(-descPagos)));
-    (d.extras||[]).forEach(e=>filaItem("+ "+e.concepto, fmtP(e.monto)).forEach(h.lin));
+    const q = cuentaDeComprobante(d);
+    q.filas.forEach(f => {
+      const monto = (f.monto<0 ? "-" : "") + fmtP(Math.abs(f.monto));
+      if(f.clase === "extra") filaItem(f.rot, monto).forEach(h.lin);
+      else h.lin(fila2(f.rot, monto));
+    });
     h.negrita(true); h.grande(true);
-    h.lin(fila2("TOTAL",fmtP(d.ingresado+Math.max(d.saldo,0)),24));   // 24 cols: la letra es doble ancho
+    h.lin(fila2("TOTAL", fmtP(q.total), 24));   // 24 cols: la letra es doble ancho
     h.grande(false); h.negrita(false);
-    if(d.pagos.length){
+    // Las señas no van acá: ya se restaron arriba, y repetirlas haría que lo
+    // recibido sume más que el total.
+    if(q.abonos.length){
       h.sep();
-      d.pagos.forEach(p=>{
+      q.abonos.forEach(p=>{
         const fp = p.forma_pago ? " ("+p.forma_pago+")" : "";
         h.lin(fila2("Recibido "+fechaSolo(p.fecha)+fp, fmtP(p.monto)));
       });
@@ -399,6 +447,7 @@ global.EscPos = {
   ANCHO, LEGAL_TXT,
   deComprobante, deCuenta, deSena, urlRawbt,
   numComp, fechaLocal, fechaSolo, pu, pe, hayAjuste, textoAjuste,
+  cuentaDeComprobante,
 };
 
 })(window);

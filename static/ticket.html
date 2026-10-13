@@ -251,41 +251,20 @@ function render(){
     if(d.extra_dificultad>0) partes.push(`<div class="fila tenue"><span>* Extra dificultad</span><span class="der">+${fmt(d.extra_dificultad)}</span></div>`);
     partes.push('<hr class="sep">');
 
-    /* Subtotal antes de cualquier descuento. Se suma de los mismos renglones
-       que se acaban de imprimir, no de un campo aparte: así la cuenta cierra a
-       ojo sobre el papel. */
-    const subtotal = d.lineas.reduce((a,l)=>a+pu(l)*l.cantidad,0) + (d.extra_dificultad||0);
-    // Lo que los abonos descuentan (o dejan de descontar, si es negativo).
-    const descPagos=d.pagos.reduce((a,p)=>a+(p.desc_aplicado||0),0);
-    const hayDesc = d.desc_efectivo>0 || d.desc_jubilado>0 || descPagos!==0;
-    if(hayDesc) partes.push(`<div class="fila"><span>Subtotal</span><span class="der">${fmt(subtotal)}</span></div>`);
+    /* La cuenta la arma EscPos.cuentaDeComprobante(), el mismo cálculo que el
+       papel: subtotal, la seña que ya dejó y recién al final el descuento. */
+    const q = EscPos.cuentaDeComprobante(d);
+    q.filas.forEach(f => {
+      const tenue = f.clase==="desc" || f.clase==="sena" ? " tenue" : "";
+      const signo = f.monto<0 ? "−" : "";
+      partes.push(`<div class="fila${tenue}"><span>${esc(f.rot)}</span><span class="der">${signo}${fmt(Math.abs(f.monto))}</span></div>`);
+    });
+    partes.push(`<div class="fila total"><span>TOTAL</span><span class="der">${fmt(q.total)}</span></div>`);
 
-    if(d.desc_efectivo>0){
-      const pct=(d.desc_efectivo/d.total_transfer*100).toFixed(2);
-      partes.push(`<div class="fila tenue"><span>Descuento ${pct}%</span><span class="der">−${fmt(d.desc_efectivo)}</span></div>`);
-    }
-    if(d.desc_jubilado>0){
-      partes.push(`<div class="fila tenue"><span>${esc(d.descuento_nombre||"Descuento")} ${d.descuento_pct}%</span><span class="der">−${fmt(d.desc_jubilado)}</span></div>`);
-    }
-    // descuento hecho al momento de pagar (ej: abonó en promo una deuda)
-    if(descPagos>0) partes.push(`<div class="fila tenue"><span>Descuento (al abonar)</span><span class="der">−${fmt(descPagos)}</span></div>`);
-    /* Y lo que un abono NO descuenta, que suma.
-
-       Pasa con una seña tomada por transferencia sobre una cuenta en efectivo:
-       esa plata entró sin el descuento, así que tapa el 10% menos de lo que
-       trajo. Sin este renglón el papel no cerraba —subtotal menos descuento daba
-       $18.000 y el TOTAL decía $18.500— y la diferencia no estaba en ningun lado. */
-    if(descPagos<0) partes.push(`<div class="fila tenue"><span>Seña por transferencia</span><span class="der">+${fmt(-descPagos)}</span></div>`);
-
-    (d.extras||[]).forEach(e=>
-      partes.push(`<div class="fila"><span>+ ${esc(e.concepto)}</span><span class="der">${fmt(e.monto)}</span></div>`));
-
-    const totalCobrado=d.ingresado + Math.max(d.saldo,0);
-    partes.push(`<div class="fila total"><span>TOTAL</span><span class="der">${fmt(totalCobrado)}</span></div>`);
-
-    if(d.pagos.length){
+    // Las señas no se repiten acá: ya se restaron arriba.
+    if(q.abonos.length){
       partes.push('<hr class="sep">');
-      d.pagos.forEach(p=>{
+      q.abonos.forEach(p=>{
         const f=new Date(p.fecha.endsWith("Z")?p.fecha:p.fecha+"Z").toLocaleDateString("es-AR");
         const fp=p.forma_pago ? ` (${p.forma_pago}${p.alias?" · "+p.alias:""})` : "";
         partes.push(`<div class="fila tenue"><span>Recibido ${f}${fp}</span><span class="der">${fmt(p.monto)}</span></div>`);
