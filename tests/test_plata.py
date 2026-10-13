@@ -16,6 +16,7 @@ from types import SimpleNamespace
 import pytest
 
 from main import (
+    _aplicar_senas,
     base_comision,
     base_facturada,
     calcular_transfer,
@@ -100,6 +101,7 @@ def _comprobante(
     total_lista=2400,
     lineas=None,
     comp_id=1,
+    depilacion=False,
 ):
     return SimpleNamespace(
         id=comp_id,
@@ -110,6 +112,7 @@ def _comprobante(
         tipo=tipo,
         total_lista=total_lista,
         lineas=lineas if lineas is not None else [_linea()],
+        depilacion=depilacion,
     )
 
 
@@ -246,6 +249,15 @@ def test_base_facturada_usa_la_lista_con_la_que_se_cobro():
     en_transf = _comprobante(forma_pago="transferencia")
     assert base_facturada(linea, en_efvo) == 2000  # lista efectivo
     assert base_facturada(linea, en_transf) == 2400  # lista transferencia
+
+
+def test_la_sena_no_toca_un_ticket_de_peluqueria():
+    """Las señas son de depilación: es donde se señan los turnos.
+
+    Se corta antes de tocar la base —por eso `db` puede ser None—, así la que
+    quedó sin usar sigue libre para la jornada que venga.
+    """
+    assert _aplicar_senas(None, _comprobante(depilacion=False)) == (0, 0)
 
 
 def test_base_comision_no_mira_la_forma_de_pago():

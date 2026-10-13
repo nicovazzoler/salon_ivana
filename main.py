@@ -4051,10 +4051,15 @@ def sena_saldado(sena, comp, saldo: int) -> tuple[int, int]:
 def _aplicar_senas(db, comp) -> tuple[int, int]:
     """Usa las señas libres del cliente como abono. No hace commit.
 
+    Solo en depilación, que es donde se señan los turnos: una seña puesta en un
+    ticket de peluquería le gasta a la clienta, en un corte, la plata que había
+    dejado para la jornada de dentro de un mes.
+
     Separado del endpoint porque el cobro de depilación lo hace en el mismo
     pedido que crea el comprobante: en tres llamadas, la que no llega deja el
     ticket cobrado a medias.
     """
+    if not comp.depilacion: return 0, 0
     aplicadas, total = 0, 0
     for s in senas_libres(db, comp.cliente_id):
         saldo = estado_comprobante(db, comp)["saldo"]
@@ -4087,6 +4092,8 @@ def aplicar_senas(comp_id: int, _ = Depends(usuario_actual), db: Session = Depen
     if not comp or not comp.activo: raise HTTPException(404, "Comprobante no existe")
     if comp.tipo != "ticket": raise HTTPException(400, "Solo se cobran tickets, no presupuestos")
     if not comp.cliente_id: raise HTTPException(400, "El comprobante no tiene cliente registrado")
+    if not comp.depilacion:
+        raise HTTPException(400, "Las señas se usan solo en depilación")
     if not senas_libres(db, comp.cliente_id):
         raise HTTPException(400, "Esa clienta no tiene señas sin usar")
     aplicadas, total = _aplicar_senas(db, comp)
