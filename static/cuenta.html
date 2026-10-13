@@ -103,9 +103,13 @@
   /* Las señas de la clienta: un saldo a favor, no una deuda. */
   .senas-box{ margin-top:var(--sp-3); padding-top:var(--sp-3); border-top:1px solid var(--border-sutil); }
   .eti-senas{
+    display:flex; align-items:center; gap:var(--sp-3);
     font-size:var(--fs-xs); letter-spacing:var(--tracking-eti); text-transform:uppercase;
     color:var(--acento); font-weight:var(--fw-bold); margin-bottom:var(--sp-2);
   }
+  .eti-senas button{ margin-left:auto; }
+  .eti-senas .det{ letter-spacing:normal; text-transform:none;
+                   color:var(--text-tenue); font-weight:var(--fw-normal); }
   .sena-fila{
     display:flex; align-items:center; gap:var(--sp-3); flex-wrap:wrap;
     padding:8px 0; border-bottom:1px solid var(--border-sutil);
@@ -207,12 +211,15 @@ async function cargar(){
       </div>
     </div>
     <div class="senas-box">
-      <div class="eti-senas">Señas</div>
+      <div class="eti-senas">Señas <span class="det">son de depilación</span>
+        <button class="b-out" id="btnTomarSena">+ Tomar seña</button></div>
+      <div id="panelSena"></div>
       <div id="listaSenas"></div>
     </div>`;
 
   const editBox=$("#editarBox");
   refrescarSenas();
+  $("#btnTomarSena").onclick = () => abrirTomarSena(c.nombre);
   function llenarForm(){
     $("#eNombre").value    = c.nombre    || "";
     $("#eTelefono").value  = c.telefono  || "";
@@ -393,8 +400,11 @@ function renderComprobantes(){
       e.stopPropagation();
       if(!confirm("¿Anular este servicio?")) return;
       const r = await authFetch("/api/comprobantes/"+comp.id, {method:"DELETE"});
-      if(r.ok){ toast("Servicio anulado"); cargar(); }
-      else { toast("No se pudo anular"); }
+      // El motivo lo dice el backend, y la lista se refresca pase lo que pase:
+      // el caso más común de fallo es que la pantalla quedó vieja.
+      toast(r.ok ? "Servicio anulado"
+                 : ((await r.json().catch(()=>({}))).detail || "No se pudo anular"));
+      cargar();
     };
 
     const btnDet=div.querySelector(".btnDetalle");
@@ -489,6 +499,16 @@ document.querySelectorAll("#tabsTipo button").forEach(b=>{
     renderComprobantes();
   };
 });
+
+/* Tomar una seña desde la ficha. El formulario es el mismo de la pantalla de
+   depilación (`panelSena` en senas.js): si fueran dos, el día que se le agregue
+   un campo a uno el otro sigue sin pedirlo. */
+function abrirTomarSena(nombre){
+  const cont = $("#panelSena");
+  cont.innerHTML = "";
+  cont.appendChild(panelSena(Number(id), nombre, () => refrescarSenas()));
+  cont.scrollIntoView({behavior:"smooth", block:"nearest"});
+}
 
 /* Las señas de la clienta. Se refresca sola al tomar una y al devolverla: es un
    saldo a favor y verlo desactualizado se cobra dos veces. */

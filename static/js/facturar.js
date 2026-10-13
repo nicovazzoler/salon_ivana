@@ -1060,24 +1060,11 @@ cliDrop.addEventListener("click", e=>{          // elegir una opción → guarda
   cliInput.value = opt.dataset.nom;
   cliDrop.style.display = "none";
   mostrarNotaCliente(opt.dataset.nota || "");
-  mirarSenas();
 });
 
-/* Si la clienta dejó plata adelantada hay que verlo ANTES de cobrar, no después:
-   cobrarle todo y recién ahí acordarse es devolverle plata en el mostrador. */
-let SENAS_CLIENTA = [];
-async function mirarSenas(){
-  const caja = $("#avisoSena");
-  SENAS_CLIENTA = clienteIdSel ? await senasLibres(clienteIdSel) : [];
-  // Lo que tiene a favor, en la lista de transferencia: es la lista a la que se
-  // ancla el comprobante y el número que se le dijo al tomarla. Con lo que
-  // entró al cajón, una seña en efectivo de $5.000 avisaba $4.500 y el cartel
-  // decía menos de lo que la seña después tapaba.
-  const total = SENAS_CLIENTA.reduce((a, s) => a + valorSena(s), 0);
-  caja.style.display = total ? "flex" : "none";
-  if(total) caja.innerHTML = `<b>Tiene ${fmt(total)} de seña</b>
-    <span>al cobrar se pregunta si ${SENAS_CLIENTA.length === 1 ? "se usa" : "se usan"}</span>`;
-}
+/* Acá no hay señas: son de depilación, se toman en su pantalla o en la ficha de
+   la clienta y solo saldan un ticket de depilación. El backend las rechaza
+   igual; esta pantalla ni las pide. */
 
 /* La nota del cliente elegido queda a la vista mientras se arma el ticket, en
    un renglón chico debajo del campo. No es un cartel ni bloquea nada: si
@@ -1098,18 +1085,11 @@ $("#cobrarTodo").onclick=async()=>{
   const otroDia = esDeOtroDia();
   const d=await crearComprobante();
   if(!d){ renderTicket(); return; }
-  // Las señas se aplican ANTES de calcular lo que falta cobrar: si no, se le
-  // cobraría el total y la plata que ya dejó quedaría a favor para siempre.
-  await aplicarSenasSiHay(d.id);
   const c=await (await authFetch("/api/comprobantes/"+d.id)).json();
 
   const forma = formaPago==="efectivo" ? "Efectivo" : "Transferencia";
   const monto = c.saldo;            // el total ya trae el descuento: se salda 1:1
-  if(monto <= 0){
-    toast("Cubierto con la seña ✓"); limpiar();
-    if(!otroDia) imprimirComprobante(d.id);
-    return;
-  }
+  if(monto <= 0){ limpiar(); if(!otroDia) imprimirComprobante(d.id); return; }
 
   const r=await authFetch("/api/comprobantes/"+d.id+"/pagos",{method:"POST",headers:{"Content-Type":"application/json"},
     body:JSON.stringify({monto, saldado:monto, forma_pago:forma, alias:null, del_servicio:true})});
@@ -1124,32 +1104,8 @@ $("#cobrarParte").onclick=async()=>{
   compEsDeOtroDia = esDeOtroDia();    // se recuerda: al finalizar decide si imprime
   const d=await crearComprobante();
   if(!d){ renderTicket(); return; }
-  await aplicarSenasSiHay(d.id);
   compActual=d.id; abrirCobro();     // ← esta línea es la que setea compActual
 };
-
-/* Aplica lo que la clienta tenga a favor, preguntando primero.
-
-   Pregunta porque la seña era para un trabajo puntual: si vino por otra cosa y
-   se descuenta sola, el día que venga por lo que señó ya no la tiene. Diciendo
-   que no, la seña queda libre para la próxima. */
-async function aplicarSenasSiHay(compId){
-  if(!SENAS_CLIENTA.length) return;
-  const total = SENAS_CLIENTA.reduce((a, s) => a + valorSena(s), 0);
-  const cuantas = SENAS_CLIENTA.length === 1
-    ? `${fmt(total)} de seña`
-    : `${fmt(total)} en ${SENAS_CLIENTA.length} señas`;
-  const ok = confirm(`${cliInput.value.trim() || "El cliente"} tiene ${cuantas}.\n\n` +
-    `¿Se ${SENAS_CLIENTA.length === 1 ? "la" : "las"} descontamos de este ticket?\n` +
-    `Si decís que no, queda a favor para la próxima.`);
-  if(!ok){ SENAS_CLIENTA = []; return; }
-  const r = await authFetch(`/api/comprobantes/${compId}/aplicar-senas`, {method:"POST"});
-  if(r.ok){
-    const d = await r.json();
-    toast(`Se descontaron ${fmt(d.total)} de seña`);
-  }
-  SENAS_CLIENTA = [];
-}
 
 // Dejar a cuenta: crea el comprobante sin ningún pago. Queda pendiente en la cuenta.
 $("#dejarCuenta").onclick=async()=>{
@@ -1180,7 +1136,6 @@ function limpiar(){
   // La fecha vuelve a hoy sí o sí. Si quedara pegada, el servicio siguiente se
   // cargaría sin querer en el día viejo y a nadie se le ocurriría mirar ahí.
   ticket=[]; $("#cliente").value=""; clienteIdSel=null; $("#peluquero").value="";
-  SENAS_CLIENTA=[]; if($("#avisoSena")) $("#avisoSena").style.display="none";
   compEsDeOtroDia=false;
   if(hayOtroDia()){ $("#fechaServicio").value=""; $("#otroDiaBox").open=false; }
   pintarOtroDia();

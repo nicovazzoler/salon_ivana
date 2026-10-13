@@ -2274,6 +2274,25 @@ def borrar_gasto_depilacion(egreso_id: int, _ = Depends(usuario_actual),
     e = _gasto_de_sesion_abierta(db, egreso_id)
     db.delete(e); db.commit(); return {"ok": True}
 
+def deuda_de_sesiones(db, empleado_id: int) -> list[dict]:
+    """Lo que la empleada quedó debiendo de sesiones ya pagadas, sesión por sesión.
+
+    Pasa al sacarle a una sesión un ticket que no iba: la cuenta baja y lo que ya
+    cobró no. Se calcula en vivo sobre lo que cada sesión dice HOY, así que el
+    cierre que lo recupera —una liquidación negativa contra esa sesión— la deja
+    saldada sola y no hay forma de descontarlo dos veces.
+    """
+    salida = []
+    for ses in (db.query(models.SesionDepilacion)
+                  .filter(models.SesionDepilacion.empleado_id == empleado_id)
+                  .order_by(models.SesionDepilacion.id).all()):
+        pagado = sum(l.total or 0 for l in cierres_de_sesion(db, ses.id))
+        if not pagado: continue
+        de_mas = pagado - cuenta_depilacion(db, ses)["parte_empleada"]
+        if de_mas > 0:
+            salida.append({"sesion_id": ses.id, "numero": ses.numero, "monto": de_mas})
+    return salida
+
 def cierres_de_sesion(db, sesion_id: int):
     """Lo que ya se pagó de esa sesión. Puede haber más de un cierre.
 
@@ -2384,6 +2403,14 @@ def _sesion_payload(db, ses) -> dict:
         # paga como una diferencia.
         "cerrado": ({"total": pagado, "veces": len(cierres)} if cierres else None),
         "pendiente": max(q["parte_empleada"] - pagado, 0),
+        # Lo que se le pagó de más. Pasa al reabrir una sesión para sacarle un
+        # ticket que no iba: la cuenta baja y lo ya cobrado no. Hay que decirlo,
+        # que si no la sesión se ve saldada y la diferencia no la reclama nadie.
+        "de_mas": max(pagado - q["parte_empleada"], 0),
+        # Lo que arrastra de otras sesiones, para avisarlo ANTES de cerrar: el
+        # cierre lo descuenta solo y el egreso sale más chico.
+        "deuda_previa": [d for d in deuda_de_sesiones(db, ses.empleado_id)
+                         if d["sesion_id"] != ses.id] if ses.empleado_id else [],
         "otras_abiertas": otras,
     }
 
@@ -2395,6 +2422,35 @@ def depilacion_sesion(id: int | None = None, _ = Depends(usuario_actual),
     ses = db.get(models.SesionDepilacion, id) if id else sesion_actual(db)
     if id and not ses: raise HTTPException(404, "Esa sesión no existe")
     if not ses: return {"sesion": None}
+    return _sesion_payload(db, ses)
+
+class ReabrirDepiIn(BaseModel):
+    sesion_id: int
+
+@app.post("/api/depilacion/reabrir")
+def reabrir_depilacion(datos: ReabrirDepiIn, _ = Depends(solo_dueno),
+                       db: Session = Depends(get_db)):
+    """Vuelve a abrir una sesión cerrada, para corregirla.
+
+    Cerrada no acepta más nada: ni un trabajo, ni un gasto, ni anular un ticket
+    que no iba. Es lo que protege un reparto ya pagado, pero deja sin salida el
+    error que se descubre después —un ticket cargado de más que nadie borró
+    antes de cerrar—, así que la salida es esta y es de la dueña.
+
+    Los cierres no se tocan: lo que ya se pagó, pagado está. Al reabrirla la
+    cuenta vuelve a calcularse sola, y si queda por debajo de lo cobrado la
+    pantalla lo dice.
+    """
+    ses = db.get(models.SesionDepilacion, datos.sesion_id)
+    if not ses: raise HTTPException(404, "Esa sesión no existe")
+    if not ses.cerrada: raise HTTPException(409, "Esa sesión ya está abierta")
+    # Una sola abierta por vez: con dos, un cobro cae en cualquiera de las dos.
+    otra = sesion_actual(db)
+    if otra:
+        raise HTTPException(409, f"Hay otra sesión abierta (la {otra.numero}). "
+                                 "Cerrala antes de reabrir esta.")
+    ses.cerrada = None
+    db.commit()
     return _sesion_payload(db, ses)
 
 @app.get("/api/depilacion/sesiones")
@@ -2418,7 +2474,10 @@ def depilacion_sesiones(limite: int = 12, _ = Depends(usuario_actual),
                        "base": q["base"], "gastos": q["gastos"],
                        "parte_empleada": q["parte_empleada"], "pagado": pagado,
                        "abierta": ses.cerrada is None,
-                       "cerrada": pagado > 0 and pagado >= q["parte_empleada"]})
+                       "cerrada": pagado > 0 and pagado >= q["parte_empleada"],
+                       # Lo pagado de más no puede quedar escondido atrás de un
+                       # "pagada": es plata que el salón tiene que recuperar.
+                       "de_mas": max(pagado - q["parte_empleada"], 0)})
     return salida
 
 class CerrarDepiIn(BaseModel):
@@ -2432,6 +2491,12 @@ def cerrar_depilacion(datos: CerrarDepiIn, user = Depends(usuario_actual),
                       db: Session = Depends(get_db)):
     """Paga la sesión: guarda la foto del reparto, anota el egreso y la cierra.
 
+    Sin nada para pagar la cierra igual y nada más, sin liquidación ni egreso:
+    cerrada es que no recibe más trabajo, no que esté saldada. Si no, una sesión
+    en la que solo se tomó una seña, o una que se reabrió para sacarle un ticket
+    que no iba, no había forma de cerrarla y se quedaba abierta tragándose la
+    jornada siguiente.
+
     La foto queda fija —`recaudado` es lo que la sesión facturó de depilación y
     `gastos` lo que se restó—: corregir un ticket de una sesión ya pagada no
     puede cambiar lo que se pagó.
@@ -2441,13 +2506,17 @@ def cerrar_depilacion(datos: CerrarDepiIn, user = Depends(usuario_actual),
     if not ses.empleado_id: raise HTTPException(400, "Esa sesión no tiene a nadie a cargo")
     emp = _empleado_o_404(db, ses.empleado_id)
     q = cuenta_depilacion(db, ses)
-    if q["parte_empleada"] <= 0: raise HTTPException(400, "Esa sesión no tiene nada para repartir")
     # Lo que falta pagar, que no siempre es el reparto entero: puede haberse
     # cerrado antes y haberse facturado algo después.
     cierres = cierres_de_sesion(db, ses.id)
     pagado = sum(l.total or 0 for l in cierres)
     pendiente = q["parte_empleada"] - pagado
-    if pendiente <= 0: raise HTTPException(409, "Esa sesión ya está pagada")
+    if pendiente <= 0:
+        if ses.cerrada: raise HTTPException(409, "Esa sesión ya está cerrada")
+        ses.cerrada = fecha_hora_now_utc().replace(tzinfo=None)
+        db.commit()
+        return {"id": ses.id, "total": 0, "egreso_numero": None, "diferencia": False,
+                "sin_pagar": True}
 
     dias = dias_de_sesion(db, ses.id)
     liq = models.Liquidacion(
@@ -2461,30 +2530,59 @@ def cerrar_depilacion(datos: CerrarDepiIn, user = Depends(usuario_actual),
         total=pendiente, notas=datos.notas, parcial=False,
         depilacion=True, sesion_id=ses.id, recaudado=q["base"], gastos=q["gastos"])
     db.add(liq); db.flush()
+
+    # Lo que quedó debiendo de sesiones anteriores se le descuenta acá, que es
+    # como se arregla en el local: la próxima jornada cobra de menos. Cada
+    # descuento queda como una liquidación NEGATIVA contra la sesión de la que
+    # salió, así esa sesión se salda sola y no hay forma de cobrarlo dos veces.
+    descontado = []
+    resta = liq.total
+    for d in deuda_de_sesiones(db, emp.id):
+        if resta <= 0: break
+        saca = min(d["monto"], resta)
+        db.add(models.Liquidacion(
+            empleado_id=emp.id, desde=None, hasta=None,
+            valor_hora=0, comision_pct=0,
+            minutos_total=0, minutos_comision=0, minutos_pagados=0,
+            total_comisiones=0, total_horas=0,
+            total=-saca, parcial=False, depilacion=True, sesion_id=d["sesion_id"],
+            recaudado=0, gastos=0,
+            notas=f"Se le había pagado de más; se descontó al cerrar la sesión {ses.numero}"))
+        descontado.append({"numero": d["numero"], "monto": saca})
+        resta -= saca
+    a_pagar = resta
+
     # El egreso lo anota el cierre, como el del sueldo: si hubiera que cargarlo a
     # mano, el día que se olvide la caja dice que hay más plata de la que hay.
+    # Sale por lo que REALMENTE se le da, ya con el descuento: es la plata que
+    # sale del cajón.
     #
     # Privado solo si lo cerró la dueña: lo que cobra una no es asunto de las
     # demás, pero un egreso que cargó el empleado y no puede ver le deja el
     # arqueo pidiendo plata que no está, sin nada que lo explique.
     rango = (f"{dias[0]} a {dias[-1]}" if len(dias) > 1 else (dias[0] if dias else "sin días"))
-    eg = models.Egreso(
-        numero=siguiente_numero_egreso(db), tipo=tipo_de_sueldo(db).nombre,
-        concepto=(f"Depilación {emp.nombre} ({rango})"
-                  + (" · diferencia" if pagado else "")),
-        monto=liq.total, forma_pago=datos.forma_pago, notas=datos.notas,
-        privado=es_dueno(user),
-        fecha=fecha_del_servicio(datos.fecha_pago,
-                                 fecha_hora_now_utc().replace(tzinfo=None), "un pago"))
-    db.add(eg); db.flush()
-    liq.egreso_id = eg.id
+    eg = None
+    if a_pagar > 0:
+        detalle = ", ".join(f"#{d['numero']}" for d in descontado)
+        eg = models.Egreso(
+            numero=siguiente_numero_egreso(db), tipo=tipo_de_sueldo(db).nombre,
+            concepto=(f"Depilación {emp.nombre} ({rango})"
+                      + (" · diferencia" if pagado else "")
+                      + (f" · menos lo de más de {detalle}" if descontado else "")),
+            monto=a_pagar, forma_pago=datos.forma_pago, notas=datos.notas,
+            privado=es_dueno(user),
+            fecha=fecha_del_servicio(datos.fecha_pago,
+                                     fecha_hora_now_utc().replace(tzinfo=None), "un pago"))
+        db.add(eg); db.flush()
+        liq.egreso_id = eg.id
     # La sesión queda cerrada. Si después se factura algo suyo, el reparto sube y
     # esa diferencia se cobra con otro cierre de la misma sesión: cerrada no
     # quiere decir que la cuenta murió, quiere decir que no es la de hoy.
     ses.cerrada = fecha_hora_now_utc().replace(tzinfo=None)
     db.commit()
-    return {"id": liq.id, "total": liq.total, "egreso_numero": eg.numero,
-            "diferencia": bool(pagado)}
+    return {"id": liq.id, "total": a_pagar, "le_tocaba": liq.total,
+            "egreso_numero": eg.numero if eg else None,
+            "diferencia": bool(pagado), "descontado": descontado}
 
 @app.put("/api/sueldos/horas")
 def cargar_horas(h: HorasIn, user = Depends(usuario_actual),
@@ -3742,8 +3840,10 @@ def registrar_pago(comp_id: int, pago: PagoIn, _ = Depends(usuario_actual), db: 
 @app.delete("/api/comprobantes/{comp_id}")
 def anular_comprobante(comp_id: int, _ = Depends(usuario_actual), db: Session = Depends(get_db)):
     comp = db.get(models.Comprobante, comp_id)
-    if not comp or not comp.activo:
-        raise HTTPException(404, "Comprobante no existe")
+    if not comp: raise HTTPException(404, "Ese comprobante no existe")
+    # Ya anulado no es lo mismo que no existe: lo que pasa es que la pantalla
+    # quedó dibujada de antes, y "no existe" no le dice a nadie que ya está hecho.
+    if not comp.activo: raise HTTPException(409, "Ese servicio ya estaba anulado")
     # De una sesión de depilación cerrada no se saca nada: el reparto ya se
     # liquidó y sacarle un ticket le cambiaría la cuenta a lo que se pagó. Es la
     # misma regla que para los gastos de la sesión.
@@ -4051,10 +4151,15 @@ def sena_saldado(sena, comp, saldo: int) -> tuple[int, int]:
 def _aplicar_senas(db, comp) -> tuple[int, int]:
     """Usa las señas libres del cliente como abono. No hace commit.
 
+    Solo en depilación, que es donde se señan los turnos: una seña puesta en un
+    ticket de peluquería le gasta a la clienta, en un corte, la plata que había
+    dejado para la jornada de dentro de un mes.
+
     Separado del endpoint porque el cobro de depilación lo hace en el mismo
     pedido que crea el comprobante: en tres llamadas, la que no llega deja el
     ticket cobrado a medias.
     """
+    if not comp.depilacion: return 0, 0
     aplicadas, total = 0, 0
     for s in senas_libres(db, comp.cliente_id):
         saldo = estado_comprobante(db, comp)["saldo"]
@@ -4087,6 +4192,8 @@ def aplicar_senas(comp_id: int, _ = Depends(usuario_actual), db: Session = Depen
     if not comp or not comp.activo: raise HTTPException(404, "Comprobante no existe")
     if comp.tipo != "ticket": raise HTTPException(400, "Solo se cobran tickets, no presupuestos")
     if not comp.cliente_id: raise HTTPException(400, "El comprobante no tiene cliente registrado")
+    if not comp.depilacion:
+        raise HTTPException(400, "Las señas se usan solo en depilación")
     if not senas_libres(db, comp.cliente_id):
         raise HTTPException(400, "Esa clienta no tiene señas sin usar")
     aplicadas, total = _aplicar_senas(db, comp)

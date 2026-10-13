@@ -1,8 +1,9 @@
 /* Señas: plata que la clienta deja adelantada, sin atarla a ningún ticket.
 
-   Un solo dibujante para las dos pantallas que la usan —la ficha del cliente y
-   facturar—, igual que las listas de Admin. Si fueran dos, el día que se agregue
-   un campo acá una de las dos se queda sin pedirlo.
+   Son de DEPILACIÓN: se toman en su pantalla o en la ficha de la clienta, y
+   solo saldan un ticket de depilación. Un solo dibujante para las dos, igual
+   que las listas de Admin. Si fueran dos, el día que se agregue un campo acá
+   una de las dos se queda sin pedirlo.
 
    La plata entra a la caja el día que se cobra la seña. Al aplicarla a un ticket
    no vuelve a entrar: ese abono salda la cuenta y nada más. */
@@ -34,12 +35,6 @@ async function formasParaSena(){
   return _FORMAS_SENA;
 }
 
-async function senasLibres(clienteId){
-  if(!clienteId) return [];
-  try{ return await (await authFetch(`/api/senas?cliente_id=${clienteId}&solo_libres=true`)).json(); }
-  catch(e){ return []; }
-}
-
 /* El formulario para tomar una seña. `alGuardar` recibe la seña creada, para que
    cada pantalla refresque lo suyo sin que este archivo sepa cómo.
 
@@ -58,7 +53,8 @@ function panelSena(clienteId, nombre, alGuardar){
   pan.innerHTML = `
     <div class="cab">
       <b>${eligeCliente ? "Tomar una seña" : "Seña de " + _escSena(nombre || "")}</b>
-      <span class="det">Entra a la caja de hoy y se usa sola cuando se le facture, el día que sea.</span>
+      <span class="det">Entra a la caja de hoy y se usa sola cuando se le facture la
+        depilación, la jornada que sea.</span>
     </div>
     <div class="campos">
       ${eligeCliente ? `<div class="campo ancho sCli"><label>Cliente</label>

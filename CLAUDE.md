@@ -175,7 +175,25 @@ Lo que hay que respetar:
   pagado son sus liquidaciones. Una sesión cerrada sin pagar sigue a la vista en
   el historial y se paga desde ahí. Por eso la migración cierra todo lo viejo:
   dejarlo abierto haría que lo que se facture mañana caiga adentro de una jornada
-  de hace tres meses.
+  de hace tres meses. Y por eso **sin nada para pagar se cierra igual**, sin
+  liquidación ni egreso: una sesión en la que solo se tomó una seña, o una que se
+  reabrió para sacarle un ticket que no iba, si no quedaba abierta para siempre y
+  se tragaba la jornada siguiente.
+- **Y se puede REABRIR, que es de la dueña.** Cerrada no acepta nada: ni trabajo,
+  ni un gasto, ni anular un ticket que no iba. Eso protege un reparto ya pagado,
+  pero deja sin salida el error que se descubre después, así que
+  `POST /api/depilacion/reabrir` la vuelve a abrir —una sola abierta por vez, así
+  que la otra tiene que estar cerrada—. Los cierres no se tocan: lo pagado,
+  pagado está. Si al corregirla la cuenta queda por debajo de lo cobrado, la
+  pantalla lo dice con `de_mas`: se le pagó de más.
+- **Y lo pagado de más se descuenta solo del próximo cierre**, que es como se
+  arregla en el local: la jornada siguiente cobra de menos. El descuento queda
+  como una liquidación NEGATIVA contra la sesión de la que salió, así esa sesión
+  se salda sola y `deuda_de_sesiones()` —que cuenta en vivo— deja de verla: no
+  hay forma de cobrarlo dos veces. El egreso sale por lo que realmente se le da.
+  Lo que NO se toca es el egreso del cierre viejo: esa plata salió del cajón de
+  verdad, y bajarlo dejaría el arqueo de ese día pidiendo más de lo que hay.
+  Se avisa antes de cerrar, con la cuenta hecha.
 - **La base son las LÍNEAS de depilación, no los comprobantes enteros.** Una
   sesión que además tuvo peluquería no se reparte por eso, y esa peluquería se
   paga por comisión como cualquier otro día. Por lo mismo, la comisión se excluye
@@ -313,11 +331,27 @@ el papel saldría distinto. Es al revés que el catálogo de peluquería, que se
 carga en efectivo.
 
 **La seña es plata de la clienta, no un pago de un ticket.** Se toma sin
-comprobante —desde la pantalla de depilación, que es donde se señan los
-trabajos— y entra a la caja del día en que se cobra. La lista que se ve ahí es
-la de TODAS las señas sin usar, no la de la clienta que se está facturando: es
-el pizarrón de lo que el local debe trabajo, y la que viene hoy puede no ser la
-que señó ayer.
+comprobante y entra a la caja del día en que se cobra. Desde la pantalla de
+depilación, que es donde se señan los trabajos, y desde la ficha de la clienta,
+que es donde se la pide cuando llama por teléfono. Las dos dibujan el mismo
+formulario (`panelSena()` en `senas.js`). La lista que se ve en depilación es la
+de TODAS las señas sin usar, no la de la clienta que se está facturando: es el
+pizarrón de lo que el local debe trabajo, y la que viene hoy puede no ser la que
+señó ayer.
+
+**La seña es de DEPILACIÓN y solo salda depilación.** Es donde se señan los
+turnos: puesta en un ticket de peluquería le gasta a la clienta, en un corte, la
+plata que había dejado para la jornada de dentro de un mes. El freno está en
+`_aplicar_senas()`, que no toca un comprobante sin `depilacion`, y el endpoint
+contesta 400; Facturar directamente ni las pide. Como la seña no es de ninguna
+sesión —la tabla no tiene `sesion_id`—, **la que no se usa queda libre para la
+jornada que venga**, que es justo para lo que se toma.
+
+**Y no entra en el reparto.** La base son las líneas facturadas, no los pagos:
+una seña es trabajo que todavía no se hizo. Cuando la clienta viene, esa sesión
+cuenta el trabajo ENTERO —aunque parte ya estuviera pagada— y ahí se reparte. Lo
+contrario le pagaría a quien lleva la sesión por un trabajo que todavía no hizo,
+y después se lo descontaría del que sí.
 
 En la pantalla se pone **de cuánto es** la seña, en los precios de la lista —los
 de transferencia, que son a los que se ancla el comprobante— y pagando en
