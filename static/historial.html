@@ -485,6 +485,12 @@ function crearFila(comp){
       const pctEfvoReal = descEfvoReal>0 ? (descEfvoReal / d.total_final * 100).toFixed(2) : 0;
       const filaDescEfvoReal = descEfvoReal>0
         ? `<div class="fila" style="color:var(--warn);"><span>Descuento ${pctEfvoReal}%</span><span>−${fmt(descEfvoReal)}</span></div>` : "";
+      /* Y lo que un abono NO descuenta, que suma. Pasa con una seña tomada por
+         transferencia sobre una cuenta en efectivo: esa plata entró sin el
+         descuento, así que tapa el 10% menos de lo que trajo. Sin este renglón
+         la cuenta no cerraba y la diferencia no estaba en ningún lado. */
+      const filaSenaTransfer = descEfvoReal<0
+        ? `<div class="fila" style="color:var(--warn);"><span>Seña por transferencia</span><span>+${fmt(-descEfvoReal)}</span></div>` : "";
       const filaPendiente = d.saldo > 0
         ? `<div class="fila fila-desc"><span>Pendiente</span><span>${fmt(d.saldo)}</span></div>` : "";
 
@@ -509,7 +515,7 @@ function crearFila(comp){
 
       box.innerHTML=`<div class="detalle-cab">Detalle
           <span class="cuando">${fechaHora(d)}</span></div>
-        ${lineas}${extra}${esPresu?'':filaDescEf+filaSubtotal+filaDescEfvoReal+filaDescJub}
+        ${lineas}${extra}${esPresu?'':filaDescEf+filaSubtotal+filaDescEfvoReal+filaSenaTransfer+filaDescJub}
         ${totales}
         ${d.tipo==="ticket"?`<div style="font-weight:700;margin:10px 0 6px;">Pagos</div>${pagos}${filaPendiente}`:''}
         ${d.tipo==="ticket"?`<div class="quien-atendio"></div>`:''}

@@ -305,13 +305,20 @@ function deComprobante(d, negocio){
     h.sep();
     // Subtotal antes de descuentos, sumado de los renglones de arriba
     const subtotal = d.lineas.reduce((a,l)=>a+pu(l)*l.cantidad,0) + (d.extra_dificultad||0);
-    const hayDesc = d.desc_efectivo>0 || d.desc_jubilado>0
-                 || d.pagos.reduce((a,p)=>a+(p.desc_aplicado||0),0)>0;
+    const descPagos=d.pagos.reduce((a,p)=>a+(p.desc_aplicado||0),0);
+    const hayDesc = d.desc_efectivo>0 || d.desc_jubilado>0 || descPagos!==0;
     if(hayDesc) h.lin(fila2("Subtotal", fmtP(subtotal)));
     if(d.desc_efectivo>0) h.lin(fila2("Descuento "+(d.desc_efectivo/d.total_transfer*100).toFixed(2)+"%","-"+fmtP(d.desc_efectivo)));
     if(d.desc_jubilado>0) h.lin(fila2((d.descuento_nombre||"Descuento")+" "+d.descuento_pct+"%","-"+fmtP(d.desc_jubilado)));
-    const descPagos=d.pagos.reduce((a,p)=>a+(p.desc_aplicado||0),0);
     if(descPagos>0) h.lin(fila2("Descuento (al abonar)","-"+fmtP(descPagos)));
+    /* Y lo que un abono NO descuenta, que suma.
+
+       Pasa con una sena tomada por transferencia sobre una cuenta en efectivo:
+       esa plata entro sin el descuento, asi que tapa el 10% menos de lo que
+       trajo. Sin este renglon el papel no cerraba —subtotal menos descuento
+       daba $18.000 y el TOTAL decia $18.500— y la diferencia no estaba
+       explicada en ningun lado. */
+    if(descPagos<0) h.lin(fila2("Sena por transferencia","+"+fmtP(-descPagos)));
     (d.extras||[]).forEach(e=>filaItem("+ "+e.concepto, fmtP(e.monto)).forEach(h.lin));
     h.negrita(true); h.grande(true);
     h.lin(fila2("TOTAL",fmtP(d.ingresado+Math.max(d.saldo,0)),24));   // 24 cols: la letra es doble ancho

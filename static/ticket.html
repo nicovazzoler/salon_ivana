@@ -255,8 +255,9 @@ function render(){
        que se acaban de imprimir, no de un campo aparte: así la cuenta cierra a
        ojo sobre el papel. */
     const subtotal = d.lineas.reduce((a,l)=>a+pu(l)*l.cantidad,0) + (d.extra_dificultad||0);
-    const hayDesc = d.desc_efectivo>0 || d.desc_jubilado>0
-                 || d.pagos.reduce((a,p)=>a+(p.desc_aplicado||0),0)>0;
+    // Lo que los abonos descuentan (o dejan de descontar, si es negativo).
+    const descPagos=d.pagos.reduce((a,p)=>a+(p.desc_aplicado||0),0);
+    const hayDesc = d.desc_efectivo>0 || d.desc_jubilado>0 || descPagos!==0;
     if(hayDesc) partes.push(`<div class="fila"><span>Subtotal</span><span class="der">${fmt(subtotal)}</span></div>`);
 
     if(d.desc_efectivo>0){
@@ -267,8 +268,14 @@ function render(){
       partes.push(`<div class="fila tenue"><span>${esc(d.descuento_nombre||"Descuento")} ${d.descuento_pct}%</span><span class="der">−${fmt(d.desc_jubilado)}</span></div>`);
     }
     // descuento hecho al momento de pagar (ej: abonó en promo una deuda)
-    const descPagos=d.pagos.reduce((a,p)=>a+(p.desc_aplicado||0),0);
     if(descPagos>0) partes.push(`<div class="fila tenue"><span>Descuento (al abonar)</span><span class="der">−${fmt(descPagos)}</span></div>`);
+    /* Y lo que un abono NO descuenta, que suma.
+
+       Pasa con una seña tomada por transferencia sobre una cuenta en efectivo:
+       esa plata entró sin el descuento, así que tapa el 10% menos de lo que
+       trajo. Sin este renglón el papel no cerraba —subtotal menos descuento daba
+       $18.000 y el TOTAL decía $18.500— y la diferencia no estaba en ningun lado. */
+    if(descPagos<0) partes.push(`<div class="fila tenue"><span>Seña por transferencia</span><span class="der">+${fmt(-descPagos)}</span></div>`);
 
     (d.extras||[]).forEach(e=>
       partes.push(`<div class="fila"><span>+ ${esc(e.concepto)}</span><span class="der">${fmt(e.monto)}</span></div>`));

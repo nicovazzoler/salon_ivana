@@ -3163,8 +3163,21 @@ def proximo_turno(cliente_id: int, _ = Depends(usuario_actual), db: Session = De
     return {"turno": {"fecha": t.fecha, "hora": t.hora, "servicio": t.servicio, "es_hoy": t.fecha == hoy}}
 
 # ---------- catalogo (admin: dueña y empleado) ----------
+def _no_es_sena(nombre: str):
+    """Una seña no es un ítem del catálogo.
+
+    Cargada como ítem, SUMA al ticket en vez de descontar: el trabajo quedaba
+    $5.000 más caro y después la seña de verdad descontaba otros $5.000, así que
+    al cliente se le cobraban $4.500 de más. Se toma con "+ Agregar seña", que es
+    lo que la deja como plata a favor.
+    """
+    if _plano(nombre).strip().rstrip("s") == "sena":
+        raise HTTPException(400, "La seña no es un ítem: cargá el trabajo que se hizo y "
+                                 "tomá la seña con \"+ Agregar seña\", que la descuenta.")
+
 @app.post("/api/items")
 def crear_item(item: ItemIn, _ = Depends(usuario_actual), db: Session = Depends(get_db)):
+    _no_es_sena(item.nombre)
     precio = item.precio
     if item.precio_transfer:
         # El mismo lector que el script de la lista: busca el efectivo que vuelve
@@ -3189,7 +3202,9 @@ def editar_item(item_id: int, cambios: ItemEdit, _ = Depends(usuario_actual), db
     item = db.get(models.Item, item_id)
     if not item: raise HTTPException(404, "Item no existe")
     if cambios.categoria is not None: item.categoria = cambios.categoria.strip()
-    if cambios.nombre is not None: item.nombre = cambios.nombre.strip()
+    if cambios.nombre is not None:
+        _no_es_sena(cambios.nombre)
+        item.nombre = cambios.nombre.strip()
     if cambios.precio is not None:
         item.precio = cambios.precio
         item.precio_transfer = calcular_transfer(cambios.precio)

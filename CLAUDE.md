@@ -375,6 +375,22 @@ avisara. En depilación se puede anular lo facturado **del día** desde su propi
 historial; lo de días anteriores no, que ya se arqueó y puede estar adentro de
 un día cerrado.
 
+**Un abono puede saldar MENOS de lo que trajo, y el papel lo dice.** Una seña
+tomada por transferencia sobre una cuenta en efectivo tapa el 10% menos de lo que
+entró (`desc_aplicado` negativo). El papel y los detalles muestran ese renglón
+—"Seña por transferencia +$500"— porque si no la cuenta no cierra: salía
+"Subtotal $20.000 − Descuento $2.000" y abajo "TOTAL $18.500", con $500 sin
+explicar en ningún lado. La plata estaba bien; lo que faltaba era el renglón.
+
+Ojo que ese bloque se dibuja en CUATRO lados —`escpos.js` (el papel), `ticket.html`
+(la vista), `cuenta.html` y `historial.html`— y los cuatro tenían el mismo agujero.
+Si se toca uno, tocar los cuatro.
+
+**La seña no es un ítem del catálogo.** Cargada como ítem SUMA al ticket en vez de
+descontar, y después la seña de verdad descuenta aparte: pasó, y al cliente se le
+cobraron $4.500 de más. Por eso `_no_es_sena()` rebota el ítem que se llame así,
+al crearlo y al renombrarlo.
+
 **Los extras no los toca ningún descuento.** Entran al final, después de todo.
 
 **Ajuste por línea: porcentaje O monto fijo**, nunca los dos. Va por unidad y
