@@ -814,6 +814,8 @@ function pintarDia(){
       <span>${rot}</span>
       <span><button class="b-out btn-mini btn-${clase}">Cargar</button></span></div>`;
   const cobrado = Object.keys(d.cobrado || {});
+  // Lo que arrastra de otras sesiones: el cierre lo descuenta solo.
+  const deuda = (d.deuda_previa || []).reduce((a, x) => a + x.monto, 0);
   const cuando = d.dias.length
     ? (d.dias.length === 1 ? fechaLarga(d.dias[0])
        : `${fechaLarga(d.dias[0])} al ${fechaLarga(d.dias[d.dias.length - 1])} · ${d.dias.length} días`)
@@ -907,6 +909,10 @@ function pintarDia(){
       <h3>${pagado ? "Pagar la diferencia" : "Cerrar la sesión"}</h3>
       ${pagado ? `<p class="nota" style="margin-top:0;">La sesión se cerró con ${fmt(pagado)} y
         después se facturó más, así que quedó esta diferencia.</p>` : ""}
+      ${deuda ? `<div class="aviso">⚠️ A ${esc(d.a_cargo || "quien la lleva")} se le pagó de más en
+        ${d.deuda_previa.map(x => `la sesión #${x.numero} (${fmt(x.monto)})`).join(", ")}.
+        Se le descuenta${d.deuda_previa.length > 1 ? "n" : ""} de este cierre:
+        le toca ${fmt(d.pendiente)} y se le dan <b>${fmt(Math.max(d.pendiente - deuda, 0))}</b>.</div>` : ""}
       <div class="dia-cab">
         <div class="campo"><label for="cForma">Se paga con</label>
           <select id="cForma"><option>Efectivo</option><option>Transferencia</option></select></div>
@@ -914,7 +920,7 @@ function pintarDia(){
           <input type="date" id="cFecha" value="${hoyArg()}"></div>
         <div class="campo"><label for="cNota">Nota (opcional)</label>
           <input id="cNota" maxlength="80"></div>
-        <button class="b-ok" id="cCerrar">Cerrar y pagar ${fmt(d.pendiente)}</button>
+        <button class="b-ok" id="cCerrar">Cerrar y pagar ${fmt(Math.max(d.pendiente - deuda, 0))}</button>
       </div>
       <p class="nota">Queda la foto del reparto y el egreso anotado. Después de esto
          la sesión no recibe más trabajo y los gastos no se tocan.</p>
@@ -955,8 +961,11 @@ function pintarDia(){
   if(cerrar) cerrar.onclick = async () => {
     // Sin nada para pagar no hay formulario: la sesión se cierra y nada más.
     const paga = d.pendiente > 0;
+    const neto = Math.max(d.pendiente - deuda, 0);
     if(!confirm(paga
-        ? `Se le pagan ${fmt(d.pendiente)} a ${d.a_cargo} por la sesión #${d.numero}.\n\n`
+        ? `Se le pagan ${fmt(neto)} a ${d.a_cargo} por la sesión #${d.numero}.\n\n`
+          + (deuda ? `Le toca ${fmt(d.pendiente)} menos ${fmt(Math.min(deuda, d.pendiente))} `
+                   + `que se le había pagado de más.\n\n` : "")
           + `Queda la foto del reparto y el egreso anotado. Esto no se puede deshacer.`
         : `Cerrar la sesión #${d.numero} sin pagar nada.\n\n`
           + `Deja de aceptar trabajo y no anota ningún egreso.`)) return;

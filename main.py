@@ -2274,6 +2274,25 @@ def borrar_gasto_depilacion(egreso_id: int, _ = Depends(usuario_actual),
     e = _gasto_de_sesion_abierta(db, egreso_id)
     db.delete(e); db.commit(); return {"ok": True}
 
+def deuda_de_sesiones(db, empleado_id: int) -> list[dict]:
+    """Lo que la empleada quedó debiendo de sesiones ya pagadas, sesión por sesión.
+
+    Pasa al sacarle a una sesión un ticket que no iba: la cuenta baja y lo que ya
+    cobró no. Se calcula en vivo sobre lo que cada sesión dice HOY, así que el
+    cierre que lo recupera —una liquidación negativa contra esa sesión— la deja
+    saldada sola y no hay forma de descontarlo dos veces.
+    """
+    salida = []
+    for ses in (db.query(models.SesionDepilacion)
+                  .filter(models.SesionDepilacion.empleado_id == empleado_id)
+                  .order_by(models.SesionDepilacion.id).all()):
+        pagado = sum(l.total or 0 for l in cierres_de_sesion(db, ses.id))
+        if not pagado: continue
+        de_mas = pagado - cuenta_depilacion(db, ses)["parte_empleada"]
+        if de_mas > 0:
+            salida.append({"sesion_id": ses.id, "numero": ses.numero, "monto": de_mas})
+    return salida
+
 def cierres_de_sesion(db, sesion_id: int):
     """Lo que ya se pagó de esa sesión. Puede haber más de un cierre.
 
@@ -2388,6 +2407,10 @@ def _sesion_payload(db, ses) -> dict:
         # ticket que no iba: la cuenta baja y lo ya cobrado no. Hay que decirlo,
         # que si no la sesión se ve saldada y la diferencia no la reclama nadie.
         "de_mas": max(pagado - q["parte_empleada"], 0),
+        # Lo que arrastra de otras sesiones, para avisarlo ANTES de cerrar: el
+        # cierre lo descuenta solo y el egreso sale más chico.
+        "deuda_previa": [d for d in deuda_de_sesiones(db, ses.empleado_id)
+                         if d["sesion_id"] != ses.id] if ses.empleado_id else [],
         "otras_abiertas": otras,
     }
 
@@ -2507,30 +2530,59 @@ def cerrar_depilacion(datos: CerrarDepiIn, user = Depends(usuario_actual),
         total=pendiente, notas=datos.notas, parcial=False,
         depilacion=True, sesion_id=ses.id, recaudado=q["base"], gastos=q["gastos"])
     db.add(liq); db.flush()
+
+    # Lo que quedó debiendo de sesiones anteriores se le descuenta acá, que es
+    # como se arregla en el local: la próxima jornada cobra de menos. Cada
+    # descuento queda como una liquidación NEGATIVA contra la sesión de la que
+    # salió, así esa sesión se salda sola y no hay forma de cobrarlo dos veces.
+    descontado = []
+    resta = liq.total
+    for d in deuda_de_sesiones(db, emp.id):
+        if resta <= 0: break
+        saca = min(d["monto"], resta)
+        db.add(models.Liquidacion(
+            empleado_id=emp.id, desde=None, hasta=None,
+            valor_hora=0, comision_pct=0,
+            minutos_total=0, minutos_comision=0, minutos_pagados=0,
+            total_comisiones=0, total_horas=0,
+            total=-saca, parcial=False, depilacion=True, sesion_id=d["sesion_id"],
+            recaudado=0, gastos=0,
+            notas=f"Se le había pagado de más; se descontó al cerrar la sesión {ses.numero}"))
+        descontado.append({"numero": d["numero"], "monto": saca})
+        resta -= saca
+    a_pagar = resta
+
     # El egreso lo anota el cierre, como el del sueldo: si hubiera que cargarlo a
     # mano, el día que se olvide la caja dice que hay más plata de la que hay.
+    # Sale por lo que REALMENTE se le da, ya con el descuento: es la plata que
+    # sale del cajón.
     #
     # Privado solo si lo cerró la dueña: lo que cobra una no es asunto de las
     # demás, pero un egreso que cargó el empleado y no puede ver le deja el
     # arqueo pidiendo plata que no está, sin nada que lo explique.
     rango = (f"{dias[0]} a {dias[-1]}" if len(dias) > 1 else (dias[0] if dias else "sin días"))
-    eg = models.Egreso(
-        numero=siguiente_numero_egreso(db), tipo=tipo_de_sueldo(db).nombre,
-        concepto=(f"Depilación {emp.nombre} ({rango})"
-                  + (" · diferencia" if pagado else "")),
-        monto=liq.total, forma_pago=datos.forma_pago, notas=datos.notas,
-        privado=es_dueno(user),
-        fecha=fecha_del_servicio(datos.fecha_pago,
-                                 fecha_hora_now_utc().replace(tzinfo=None), "un pago"))
-    db.add(eg); db.flush()
-    liq.egreso_id = eg.id
+    eg = None
+    if a_pagar > 0:
+        detalle = ", ".join(f"#{d['numero']}" for d in descontado)
+        eg = models.Egreso(
+            numero=siguiente_numero_egreso(db), tipo=tipo_de_sueldo(db).nombre,
+            concepto=(f"Depilación {emp.nombre} ({rango})"
+                      + (" · diferencia" if pagado else "")
+                      + (f" · menos lo de más de {detalle}" if descontado else "")),
+            monto=a_pagar, forma_pago=datos.forma_pago, notas=datos.notas,
+            privado=es_dueno(user),
+            fecha=fecha_del_servicio(datos.fecha_pago,
+                                     fecha_hora_now_utc().replace(tzinfo=None), "un pago"))
+        db.add(eg); db.flush()
+        liq.egreso_id = eg.id
     # La sesión queda cerrada. Si después se factura algo suyo, el reparto sube y
     # esa diferencia se cobra con otro cierre de la misma sesión: cerrada no
     # quiere decir que la cuenta murió, quiere decir que no es la de hoy.
     ses.cerrada = fecha_hora_now_utc().replace(tzinfo=None)
     db.commit()
-    return {"id": liq.id, "total": liq.total, "egreso_numero": eg.numero,
-            "diferencia": bool(pagado)}
+    return {"id": liq.id, "total": a_pagar, "le_tocaba": liq.total,
+            "egreso_numero": eg.numero if eg else None,
+            "diferencia": bool(pagado), "descontado": descontado}
 
 @app.put("/api/sueldos/horas")
 def cargar_horas(h: HorasIn, user = Depends(usuario_actual),

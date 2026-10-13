@@ -185,8 +185,15 @@ Lo que hay que respetar:
   `POST /api/depilacion/reabrir` la vuelve a abrir —una sola abierta por vez, así
   que la otra tiene que estar cerrada—. Los cierres no se tocan: lo pagado,
   pagado está. Si al corregirla la cuenta queda por debajo de lo cobrado, la
-  pantalla lo dice con `de_mas`: se le pagó de más y eso se arregla afuera de la
-  app, porque un cierre ya pagado no se reescribe.
+  pantalla lo dice con `de_mas`: se le pagó de más.
+- **Y lo pagado de más se descuenta solo del próximo cierre**, que es como se
+  arregla en el local: la jornada siguiente cobra de menos. El descuento queda
+  como una liquidación NEGATIVA contra la sesión de la que salió, así esa sesión
+  se salda sola y `deuda_de_sesiones()` —que cuenta en vivo— deja de verla: no
+  hay forma de cobrarlo dos veces. El egreso sale por lo que realmente se le da.
+  Lo que NO se toca es el egreso del cierre viejo: esa plata salió del cajón de
+  verdad, y bajarlo dejaría el arqueo de ese día pidiendo más de lo que hay.
+  Se avisa antes de cerrar, con la cuenta hecha.
 - **La base son las LÍNEAS de depilación, no los comprobantes enteros.** Una
   sesión que además tuvo peluquería no se reparte por eso, y esa peluquería se
   paga por comisión como cualquier otro día. Por lo mismo, la comisión se excluye
