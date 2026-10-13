@@ -36,8 +36,8 @@ static/
                  que es donde se toman; la ficha del cliente solo las lista. El
                  CSS vive en components.css: estando en una sola pantalla, en la
                  otra salía sin estilo
-  depilacion.html Depilación entera: cobrar, el cierre del día con su reparto y
-                 su propio historial. No se mezcla con peluquería
+  depilacion.html Depilación entera: cobrar, la sesión con su reparto y su cierre,
+                 y su propio historial. No se mezcla con peluquería
   escpos.js      Generador del papel de la comandera (ticket.html y facturar.js)
 ```
 
@@ -144,71 +144,92 @@ marcado `es_depilacion`, y de ahí sale todo lo demás:
   pidiendo menos plata de la que hay. Caja la cuenta y la marca; el resumen
   propio del día vive en la pantalla de depilación.
 
-**Y no se paga por comisión: se reparte el día.** El local abre un día al mes
-solo para depilación —lunes o martes, lo deciden ellas—. Lo lleva Carolina, que
-consigue la máquina, más una ayudante que a veces no es del salón:
+**Y no se paga por comisión: se reparte la SESIÓN.** El local abre una jornada al
+mes solo para depilación —uno o dos días seguidos, lunes y martes—. La lleva
+Carolina, que consigue la máquina, más una ayudante que a veces no es del salón:
 
-    trabajos de depilación del día, en efectivo
-    − egresos del día (máquina + insumos + el pago a la ayudante)
+    trabajos de depilación de la sesión, en efectivo
+    − gastos de la sesión (máquina + insumos + el pago a la ayudante)
     = resto  →  50% Carolina · 50% el salón, que pone el local
 
+**La unidad es la sesión y no el día**, y eso no es cosmético: con el día, los
+gastos cargados todos juntos caían sobre uno solo. Ese día quedaba en negativo
+—y en negativo no se reparte nada ni se puede cerrar, así que el negativo no se
+arrastraba a ningún lado— y el otro día se repartía entero. Medido: dos días de
+$27.000 y $81.000 con una máquina de $50.000 cargada en el primero le pagaban
+$40.500 en vez de $29.000, y los $50.000 de la máquina no se los descontaba
+nadie.
+
 Lo que hay que respetar:
-- **Un día es de depilación si se facturó depilación**, no si es lunes. La marca
-  está en el ítem (`es_depilacion`) y no en el nombre de la categoría, que se
-  renombra desde Admin: la cuenta de la plata no puede depender de un texto.
-  También cuenta como día de depilación el que se abrió eligiendo quién lo lleva.
-- **La base son las LÍNEAS de depilación, no el día entero.** Un día que además
-  tuvo peluquería no se reparte por eso, y esa peluquería se paga por comisión
-  como cualquier otro día. Por lo mismo, la comisión se excluye por LÍNEA.
+- **Lo que entra se MARCA al cargarlo**, no se deduce de la fecha: el comprobante
+  y el egreso nacen con `sesion_id`. Así entran bien la máquina pagada el viernes
+  anterior y el trabajo anotado al otro día. El egreso conserva **su propia
+  fecha** para la caja —la plata sale del cajón el día que sale—; de qué reparto
+  se resta lo dice la sesión.
+- **Una sola sesión abierta por vez.** Se abre eligiendo quién la lleva, que es de
+  quien es la mitad; deducirlo de quién facturó más alcanzaba hasta el día que
+  esa persona se olvida de ponerse en un ticket. Si se cobra o se carga un gasto
+  sin abrirla, se abre sola con la de Admin: un cobro no se puede caer porque
+  nadie apretó un botón, y la máquina se paga antes de atender a la primera.
+- **Cerrada no quiere decir pagada.** `cerrada` es que no recibe más trabajo; lo
+  pagado son sus liquidaciones. Una sesión cerrada sin pagar sigue a la vista en
+  el historial y se paga desde ahí. Por eso la migración cierra todo lo viejo:
+  dejarlo abierto haría que lo que se facture mañana caiga adentro de una jornada
+  de hace tres meses.
+- **La base son las LÍNEAS de depilación, no los comprobantes enteros.** Una
+  sesión que además tuvo peluquería no se reparte por eso, y esa peluquería se
+  paga por comisión como cualquier otro día. Por lo mismo, la comisión se excluye
+  por LÍNEA. La marca está en el ítem (`es_depilacion`) y no en el nombre de la
+  categoría, que se renombra desde Admin: la cuenta de la plata no puede depender
+  de un texto.
 - En **efectivo**, que es la lista con la que se pagan las comisiones. La
   diferencia con la de transferencia no es un descuento que se le hizo a nadie.
   El mismo número en transferencia viaja al lado, para cruzarlo con el papel.
 - Se reparte lo **facturado**, no lo cobrado: lo que se reparte es el trabajo
   hecho. Lo que falta cobrar se dice aparte y a la vista.
-- **Solo restan los gastos DE la depilación**, los que se cargan desde su
-  pantalla y quedan marcados con `depilacion` en el egreso. No los egresos del
-  día: uno de peluquería del mismo día le bajaría la mitad a quien lleva la
-  depilación. Aparecen en Caja como cualquier egreso —la plata sale del cajón—
-  pero marcados.
+- **Solo restan los gastos DE esa sesión**, los que se cargan desde su pantalla
+  y quedan con su `sesion_id`. No los egresos del día: uno de peluquería del
+  mismo día le bajaría la mitad a quien lleva la depilación. Aparecen en Caja
+  como cualquier egreso —la plata sale del cajón— pero marcados.
 - La máquina y el pago a la ayudante tienen además su marca propia (`maquina`,
   `ayudante`) y no se reconocen por el texto del tipo, que renombrarlo haría que
   la pantalla ofrezca cargarlos de nuevo y el día se reparta con la máquina dos
   veces. El pago a la ayudante tiene monto fijo; la máquina **no**: se alquila
   por jornada y un día de pocas horas sale menos.
-- Un gasto de depilación también dice que ese día hubo depilación: la máquina se
-  paga antes de atender a la primera, y pedir que el día ya fuera de depilación
-  para poder cargarla no dejaba cargar nada nunca.
+- Cargar un gasto abre la sesión si no había ninguna: la máquina se paga antes de
+  atender a la primera, y pedir que ya hubiera movimiento para poder cargarla no
+  dejaba cargar nada nunca.
 - Los egresos **privados** no entran: el alquiler no es costo de la depilación, y
   el detalle se lo muestra a ella. Sin ese filtro, cerrar la liquidación —que
   crea un egreso privado con el sueldo, con fecha de hoy— le cambiaba la cuenta
   al día que se estaba cerrando.
-- El ciclo es de un solo día y le toca a UNA sola persona: `empleada_del_dia()`
-  mira la elegida al abrir el día, después la puesta por defecto en Admin, y
-  recién al final la que más facturó. Si fuera "la que tenga alguna línea", la
-  ayudante que atendió algo vería el reparto entero y el número aparecería dos
-  veces.
-- **Las horas de ese día no se pagan aparte**: las paga el reparto. Lo mismo las
-  del día que alguien trabajó de ayudante, que ya cobró por el día entero. Sus
+- La sesión le toca a UNA sola persona, la que se eligió al abrirla. Si fuera "la
+  que tenga alguna línea", la ayudante que atendió algo vería el reparto entero y
+  el número aparecería dos veces. `empleada_del_dia()` quedó solo para la
+  migración: es la regla con la que se liquidó lo viejo, día por día.
+- **Las horas de los días de su sesión no se pagan aparte**: las paga el reparto.
+  Lo mismo las del día que alguien trabajó de ayudante, que ya cobró por el día
+  entero. Sus
   comisiones de lo que no fue depilación sí se pagan: antes se iba el día entero
   del ciclo y se las llevaba puestas, y andaba porque el día de depilación era un
   lunes en el que no se hacía otra cosa.
-- El día se mira y se cierra en la solapa "El día". **Ahí adentro la empleada
-  hace todo**: cobra, carga los gastos, devuelve una seña y cierra el día. El
-  día de depilación se trabaja entre dos con una sola tablet y un código en el
-  medio sería pedirlo diez veces por día. Por eso el egreso del cierre es
+- La sesión se mira y se cierra en la solapa "La sesión". **Ahí adentro la
+  empleada hace todo**: cobra, carga los gastos, devuelve una seña y la cierra.
+  Se trabaja entre dos con una sola tablet y un código en el medio sería pedirlo
+  diez veces por día. Por eso el egreso del cierre es
   privado **solo si lo cerró la dueña**: uno que cargó el empleado y no puede
   ver le deja el arqueo pidiendo plata que no está.
 - La liquidación guarda la foto: `recaudado` es lo facturado en efectivo y
-  `gastos` lo que se restó. **Un día se puede cerrar más de una vez**: la cuenta
-  sigue viva, así que lo que se facture después de cerrar sube el reparto y esa
+  `gastos` lo que se restó. **Una sesión se puede cerrar más de una vez**: la
+  cuenta sigue viva, así que lo que se facture después de cerrar sube el reparto y esa
   diferencia se cobra con otro cierre. Con un cierre único, esa plata no se
   podía pagar por ninguna pantalla. Lo que no se toca después de un cierre son
   los gastos: moverlos cambiaría una cuenta ya liquidada.
-- El monto de un gasto se corrige desde la pantalla, con las reglas del DÍA —que
-  sea suyo y que no esté cerrado— y no con las de Caja, donde el empleado solo
-  puede tocar lo de hoy: el día se cierra al otro día y para entonces ya no
+- El monto de un gasto se corrige desde la pantalla, con las reglas de la
+  SESIÓN —que no esté cerrada— y no con las de Caja, donde el empleado solo
+  puede tocar lo de hoy: una sesión se cierra días después y para entonces ya no
   podría corregir nada.
-- Un día de depilación suyo no paga ni comisiones ni horas: lo paga el reparto.
+- Un día de una sesión suya no paga ni comisiones ni horas: lo paga el reparto.
   En Sueldos se ve igual, marcado "las paga el día de depilación" y sin casillero
   de horas. Esconderlo era mejor cuando en Sueldos estaban solo los días con
   movimiento; ahora están los siete, y un día en blanco se lee como "no vine":
@@ -247,6 +268,13 @@ Sueldos— y lo que deja afuera lo contesta el backend
 (`GET /api/sueldos/arranque?fecha=`), que es el que sabe lo que cada una tiene
 pendiente: contándolo en la pantalla, el cartel decía los ciclos de la empleada
 que estaba abierta y parecía que el corte valía solo para ella.
+
+**La migración a sesiones agrupa lo viejo por día**, que es como se trabajó y se
+liquidó: así ningún número cambia. Todas quedan cerradas, pagadas o no. La
+excepción es **la jornada que están trabajando ahora**: los días seguidos sin
+pagar que terminan hoy o ayer son UNA sola sesión, y queda abierta. Partida en
+dos, la máquina de los dos días caería sobre uno solo, que es el problema que
+las sesiones vienen a arreglar.
 
 **La lista de precios de depilación se siembra sola.** `sembrar_depilacion()`
 corre al arrancar y la carga si la base no tiene ninguna zona, con marca en

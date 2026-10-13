@@ -97,6 +97,33 @@ class Egreso(Base):
     # ese mismo día le bajaba la mitad a quien lleva la depilación.
     depilacion = Column(Boolean, default=False)
     empleado_id = Column(Integer, ForeignKey("empleados.id"), index=True)
+    # De qué sesión es este gasto. La fecha sigue siendo la del día en que salió
+    # la plata, que es lo que mira la caja; de qué reparto se resta lo dice esto.
+    sesion_id = Column(Integer, ForeignKey("sesiones_depilacion.id"), index=True)
+
+class SesionDepilacion(Base):
+    """Una jornada de depilación: se abre, se trabaja uno o varios días, se cierra.
+
+    La unidad de la plata es la sesión y no el día. Con el día, los gastos
+    cargados todos juntos caían sobre uno solo: ese quedaba en negativo —y en
+    negativo no se puede cerrar, así que no se arrastraba a ningún lado— y el
+    otro se repartía entero. La máquina desaparecía del reparto.
+
+    Lo que entra se marca al cargarlo (`sesion_id` en el comprobante y en el
+    egreso) y no se deduce de la fecha: la máquina se paga el viernes anterior y
+    un trabajo se anota al otro día, y los dos son de esta sesión igual.
+    """
+    __tablename__ = "sesiones_depilacion"
+    id = Column(Integer, primary_key=True)
+    numero = Column(Integer, index=True)              # para nombrarla: "Sesión 7"
+    # Quién la lleva, que es de quien es la mitad. Se elige al abrirla: deducirlo
+    # de quién facturó más alcanza hasta el día que la que lleva la sesión se
+    # olvida de ponerse en un ticket.
+    empleado_id = Column(Integer, ForeignKey("empleados.id"), index=True)
+    abierta = Column(DateTime, default=fecha_hora_now_utc)
+    cerrada = Column(DateTime)                        # NULL = sigue abierta
+    notas = Column(String)
+    empleado = relationship("Empleado")
 
 class FormaPago(Base):
     __tablename__ = "formas_pago"
@@ -280,6 +307,8 @@ class Comprobante(Base):
     # el reparto— y preguntarlo con un join por cada fila de una lista paginada
     # es la diferencia entre que el historial abra o no abra.
     depilacion = Column(Boolean, default=False)
+    # La sesión de depilación a la que pertenece, puesta al crearlo.
+    sesion_id = Column(Integer, ForeignKey("sesiones_depilacion.id"), index=True)
     activo = Column(Boolean, default=True)
     cliente = relationship("Cliente")
     lineas = relationship("ComprobanteLinea", back_populates="comprobante", cascade="all, delete-orphan")
@@ -420,6 +449,7 @@ class Liquidacion(Base):
     # facturó de depilación en efectivo, que es la base del reparto; se llama así
     # desde cuando el reparto era de lo cobrado.
     depilacion = Column(Boolean, default=False)
+    sesion_id = Column(Integer, ForeignKey("sesiones_depilacion.id"), index=True)
     recaudado = Column(Integer)
     gastos = Column(Integer)
     empleado = relationship("Empleado")

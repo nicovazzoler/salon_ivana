@@ -207,7 +207,19 @@ def migrar():
     if "dni" not in clcols:
         with engine.begin() as con:
             con.execute(text("ALTER TABLE clientes ADD COLUMN dni VARCHAR"))
-    
+    # A qué sesión de depilación pertenece cada cosa. La tabla la crea
+    # create_all(); acá van las columnas en las tablas que ya existían.
+    if "sesion_id" not in ccols:
+        with engine.begin() as con:
+            con.execute(text("ALTER TABLE comprobantes ADD COLUMN sesion_id INTEGER"))
+    if "sesion_id" not in ecols:
+        with engine.begin() as con:
+            con.execute(text("ALTER TABLE egresos ADD COLUMN sesion_id INTEGER"))
+    licols = [c["name"] for c in insp.get_columns("liquidaciones")]
+    if "sesion_id" not in licols:
+        with engine.begin() as con:
+            con.execute(text("ALTER TABLE liquidaciones ADD COLUMN sesion_id INTEGER"))
+
 migrar()
 
 # Auto-siembra al iniciar (idempotente): crea catalogo y usuarios si la base esta vacia
@@ -254,6 +266,7 @@ try:
     sembrar_depilacion()
 except Exception as _e:
     print('Aviso: no se pudo sembrar la depilación:', _e)
+
 
 app = FastAPI(title="Pelu App")
 
@@ -382,13 +395,13 @@ class SueldosConfigIn(BaseModel):
     pago_ayudante: int | None = None
     depi_a_cargo: str | None = None       # "" saca el defecto y vuelve a deducirse
 class GastoDepiIn(BaseModel):
-    empleado_id: int                      # de quién es el día, no quién cobra
-    fecha: str                            # 'YYYY-MM-DD' argentino del día
     monto: int
+    sesion_id: int | None = None          # la abierta si no viene
+    fecha: str | None = None              # a qué caja va; por defecto hoy
     tipo: str | None = None; concepto: str | None = None; forma_pago: str | None = None
     ayudante: bool = False
     ayudante_id: int | None = None        # si la ayudante es del salón
-    maquina: bool = False                 # el alquiler de la máquina de ese día
+    maquina: bool = False                 # el alquiler de la máquina de la sesión
 class HorasIn(BaseModel):
     empleado_id: int; fecha: str; minutos: int
 class MinutosTrabajoIn(BaseModel):
@@ -495,6 +508,16 @@ def hora_argentina(dt):
 def hoy_argentina():
     """La fecha de hoy EN EL LOCAL, no la del servidor."""
     return hora_argentina(fecha_hora_now_utc()).date()
+
+def _rango_dia(d):
+    """Ventana en UTC que cubre el día argentino `d`.
+
+    Las fechas se guardan en UTC, así que el día del local —de 00:00 a 24:00 en
+    Argentina— es de 03:00 a 03:00 UTC. Antes esta ventana arrancaba a la
+    medianoche UTC, o sea a las 21:00 argentinas: todo lo cargado de noche caía
+    en el día siguiente."""
+    ini = datetime(d.year, d.month, d.day) + timedelta(hours=HORAS_ARG)
+    return ini, ini + timedelta(days=1)
 
 _SEPARA_PALABRA = re.compile(r"([^\W\d_]+)", re.UNICODE)
 
@@ -1524,45 +1547,70 @@ def ciclo_de(f: date) -> tuple[date, date]:
     ini = f - timedelta(days=dow + 2)                  # martes..viernes → el sábado anterior
     return ini, ini + timedelta(days=6)                # y su viernes
 
-def lineas_depilacion(db, f: date):
-    """Las líneas de depilación facturadas ese día, cada una con su comprobante."""
-    ini, fin = _rango_dia(f)
+def lineas_de_sesion(db, sesion_id: int):
+    """Las líneas de depilación facturadas en esa sesión, con su comprobante."""
     return (db.query(models.ComprobanteLinea, models.Comprobante)
               .join(models.Comprobante,
                     models.ComprobanteLinea.comprobante_id == models.Comprobante.id)
               .join(models.Item, models.ComprobanteLinea.item_id == models.Item.id)
-              .filter(models.Comprobante.fecha >= ini, models.Comprobante.fecha < fin,
+              .filter(models.Comprobante.sesion_id == sesion_id,
                       models.Comprobante.activo == True,
                       models.Comprobante.tipo == "ticket",
                       models.Item.es_depilacion == True)
               .all())
 
-def es_dia_depilacion(db, f: date) -> bool:
-    """Si ese día se hizo depilación.
+def sesion_actual(db):
+    """La sesión de depilación abierta, o None.
 
-    Tres señales, las tres válidas: que se haya facturado al menos un ítem de
-    depilación, que se haya cargado un gasto de depilación —la máquina se paga
-    antes de atender a la primera— o que al abrir el día se haya elegido quién
-    lo lleva.
-
-    Ojo que esto NO es "el lunes". Lo era cuando el local abría un lunes al mes
-    solo para esto, pero puede caer lunes o martes, y en un día cualquiera
-    también se puede depilar: lo que hace al día de depilación es el trabajo, no
-    el almanaque. Y por eso la señal es la línea facturada y no "hubo
-    movimiento": con el almanaque afuera, "hubo movimiento" sería todos los días.
+    La más reciente si quedara más de una: la migración dejó abierta cada
+    jornada vieja que no se había pagado, y esa plata se sigue debiendo.
     """
-    marcado = db.query(models.ExcepcionHorario).filter(
-        models.ExcepcionHorario.fecha == f.isoformat(),
-        models.ExcepcionHorario.a_cargo.isnot(None)).first()
-    if marcado: return True
-    if lineas_depilacion(db, f): return True
-    ini, fin = _rango_dia(f)
-    return db.query(models.Egreso.id).filter(
-        models.Egreso.fecha >= ini, models.Egreso.fecha < fin,
-        models.Egreso.depilacion == True).first() is not None
+    return (db.query(models.SesionDepilacion)
+              .filter(models.SesionDepilacion.cerrada.is_(None))
+              .order_by(models.SesionDepilacion.abierta.desc(),
+                        models.SesionDepilacion.id.desc()).first())
+
+def abrir_sesion(db, empleado_id: int | None = None):
+    """Abre una sesión de depilación. Sin empleada, la puesta por defecto en Admin."""
+    if empleado_id is None:
+        nombre = depi_por_defecto(db)
+        emp = (db.query(models.Empleado).filter(models.Empleado.nombre == nombre).first()
+               if nombre else None)
+        empleado_id = emp.id if emp else None
+    n = (db.query(func.coalesce(func.max(models.SesionDepilacion.numero), 0)).scalar() or 0) + 1
+    ses = models.SesionDepilacion(numero=n, empleado_id=empleado_id)
+    db.add(ses); db.flush()
+    return ses
+
+def sesion_para_cobrar(db):
+    """Dónde cae lo que se factura o se gasta ahora. Si no hay ninguna, se abre.
+
+    Nunca frena: un cobro no se puede caer porque nadie apretó "Abrir sesión", y
+    la máquina se paga antes de atender a la primera. Se abre con la que lleva la
+    depilación en Admin, y si no era ella se cambia desde la pantalla.
+    """
+    return sesion_actual(db) or abrir_sesion(db)
+
+def dias_de_sesion(db, sesion_id: int) -> list[str]:
+    """Los días argentinos que tocó una sesión, por lo facturado y lo gastado."""
+    dias = {hora_argentina(f).date().isoformat() for (f,) in
+            db.query(models.Comprobante.fecha).filter(
+                models.Comprobante.sesion_id == sesion_id,
+                models.Comprobante.activo == True).distinct()}
+    dias |= {hora_argentina(f).date().isoformat() for (f,) in
+             db.query(models.Egreso.fecha).filter(
+                 models.Egreso.sesion_id == sesion_id).distinct()}
+    return sorted(dias)
 
 def empleada_del_dia(db, f: date) -> str | None:
-    """De quién es el día de depilación: la que más facturó ese día.
+    """De quién era un día de depilación, para la migración a sesiones.
+
+    La unidad de la plata es la sesión, y de la sesión cuelga de quién es la
+    mitad. Esto queda para repartir lo VIEJO, que se trabajó por día: es la
+    regla con la que se liquidó entonces, así que agrupado así ningún número
+    cambia. Para lo nuevo no se deduce nada, se elige al abrir la sesión.
+
+    De quién es el día: la que más facturó ese día.
 
     Tiene que dar UNA sola: el reparto es entero, así que si se lo mostrara a
     todas las que atendieron algo, el mismo número aparecería dos veces. La
@@ -1600,31 +1648,6 @@ def empleada_del_dia(db, f: date) -> str | None:
     # igual, no volverse "de cualquiera".
     return max(por_nombre, key=lambda n: (por_nombre[n], n))
 
-def dias_de_depilacion(db, dias_atras: int = 180) -> list[str]:
-    """Los días en que se hizo depilación, del más viejo al más nuevo.
-
-    Dos señales, las mismas que es_dia_depilacion(): haber facturado depilación,
-    o haber abierto el día eligiendo quién lo lleva.
-
-    Acotado a los últimos meses porque esto se usa para mirar los días y
-    cerrarlos: traer la fecha de todos los comprobantes de la historia para
-    quedarse con diez días no tiene sentido.
-    """
-    corte = hoy_argentina() - timedelta(days=dias_atras)
-    fechas = {f for (f,) in db.query(models.ExcepcionHorario.fecha)
-                              .filter(models.ExcepcionHorario.a_cargo.isnot(None)).distinct()
-              if f >= corte.isoformat()}
-    q = (db.query(models.Comprobante.fecha)
-           .filter(models.Comprobante.activo == True,
-                   models.Comprobante.depilacion == True,
-                   models.Comprobante.fecha >= _rango_dia(corte)[0]))
-    fechas |= {hora_argentina(f).date().isoformat() for (f,) in q.distinct().all()}
-    g = (db.query(models.Egreso.fecha)
-           .filter(models.Egreso.depilacion == True,
-                   models.Egreso.fecha >= _rango_dia(corte)[0]))
-    fechas |= {hora_argentina(f).date().isoformat() for (f,) in g.distinct().all()}
-    return sorted(fechas)
-
 def base_lista(linea, comp=None) -> int:
     """Lo mismo que base_comision() pero en la lista de transferencia.
 
@@ -1637,12 +1660,18 @@ def base_lista(linea, comp=None) -> int:
     pct = (comp.descuento_pct or 0) if comp is not None else 0
     return base - round(base * pct / 100) if pct else base
 
-def cuenta_depilacion(db, f: date) -> dict:
-    """El reparto del día de depilación: lo facturado en efectivo − gastos, mitad y mitad.
+def cuenta_depilacion(db, ses) -> dict:
+    """El reparto de la sesión: lo facturado en efectivo − los gastos, mitad y mitad.
 
-    La base son las LÍNEAS de depilación de ese día, no el día entero. Así un día
-    que además tuvo peluquería no se reparte por eso, y lo de peluquería se sigue
-    pagando por comisión como cualquier otro día.
+    La unidad es la SESIÓN y no el día. Con el día, los gastos cargados todos
+    juntos caían sobre uno solo: ese quedaba en negativo y en negativo no se
+    reparte nada —ni se puede cerrar—, así que el otro día se repartía entero y
+    la máquina no se la descontaba nadie. Con dos días de $27.000 y $81.000 y una
+    máquina de $50.000 cargada en el primero, le tocaban $40.500 en vez de
+    $29.000.
+
+    La base son las LÍNEAS de depilación, no los comprobantes enteros: una
+    sesión que además tuvo peluquería no se reparte por eso.
 
     En efectivo, que es la misma lista con la que se pagan las comisiones: la
     diferencia con la de transferencia no es un descuento que se le hizo a nadie,
@@ -1653,8 +1682,7 @@ def cuenta_depilacion(db, f: date) -> dict:
     hecho. Lo que todavía no entró se dice aparte y a la vista, porque esa plata
     no está en el cajón todavía.
     """
-    ini, fin = _rango_dia(f)
-    filas = lineas_depilacion(db, f)
+    filas = lineas_de_sesion(db, ses.id)
     base = sum(base_comision(l, c) for l, c in filas)
     base_transfer = sum(base_lista(l, c) for l, c in filas)
 
@@ -1665,13 +1693,12 @@ def cuenta_depilacion(db, f: date) -> dict:
     por_comp = pagos_por_comprobante(db, comps)
     falta_cobrar = sum(max(estado_comprobante(db, c, por_comp)["saldo"], 0) for c in comps)
 
-    # Solo los gastos DE LA DEPILACIÓN, los que se cargan desde su pantalla. No
-    # los egresos del día: un gasto de peluquería del mismo día le bajaría la
-    # mitad a quien lleva la depilación, y el alquiler del local ni hablar.
+    # Los gastos de ESTA sesión, los que se cargan desde su pantalla. No los
+    # egresos del día: un gasto de peluquería le bajaría la mitad a quien lleva
+    # la depilación, y el alquiler del local ni hablar.
     egresos = db.query(models.Egreso).filter(
-        models.Egreso.fecha >= ini, models.Egreso.fecha < fin,
-        models.Egreso.depilacion == True,
-        _no_privado(models.Egreso.privado)).all()
+        models.Egreso.sesion_id == ses.id,
+        _no_privado(models.Egreso.privado)).order_by(models.Egreso.fecha).all()
     gastos = sum(e.monto or 0 for e in egresos)
 
     resto = base - gastos
@@ -1679,7 +1706,6 @@ def cuenta_depilacion(db, f: date) -> dict:
     # cierra, y el salón es el que puede absorberlo sin que a nadie le falte.
     parte = resto // 2 if resto > 0 else 0
     return {
-        "fecha": f.isoformat(),
         "base": base, "base_transfer": base_transfer,
         "gastos": gastos, "resto": resto, "falta_cobrar": falta_cobrar,
         "parte_empleada": parte, "parte_salon": resto - parte,
@@ -1690,10 +1716,98 @@ def cuenta_depilacion(db, f: date) -> dict:
         "pago_ayudante": pago_ayudante(db),
         "egresos_detalle": [{"id": e.id, "numero": e.numero, "tipo": e.tipo,
                              "concepto": e.concepto, "monto": e.monto or 0,
+                             "fecha": hora_argentina(e.fecha).date().isoformat(),
                              "ayudante": bool(e.ayudante), "maquina": bool(e.maquina),
                              "empleado_id": e.empleado_id,
                              "notas": e.notas} for e in egresos],
     }
+
+MARCA_SESIONES = "migro_sesiones_depi"
+
+def migrar_dias_a_sesiones():
+    """Cada día de depilación que ya estaba pasa a ser una sesión de un día.
+
+    La unidad de la plata pasó a ser la sesión, pero lo viejo se trabajó y se
+    liquidó por día: agrupado así, ningún número cambia.
+
+    Todas quedan CERRADAS, incluso las que no se pagaron: cerrada quiere decir
+    que no recibe trabajo nuevo, no que esté saldada. Una jornada vieja sin pagar
+    sigue a la vista en el historial y se paga desde ahí; dejarla abierta haría
+    que lo que se facture mañana caiga adentro de un día de hace tres meses.
+
+    Con marca en config para que corra UNA vez. Sin eso, cada reinicio volvería
+    a armar sesiones de lo que ya está repartido.
+    """
+    from sqlalchemy.orm import Session as _S
+    with _S(engine) as db:
+        if db.query(models.Config).filter_by(clave=MARCA_SESIONES).first(): return
+        dias = {}
+        def dia_de(f): return hora_argentina(f).date().isoformat()
+        for c in db.query(models.Comprobante).filter(
+                models.Comprobante.depilacion == True,
+                models.Comprobante.sesion_id.is_(None)).all():
+            dias.setdefault(dia_de(c.fecha), {"comps": [], "egresos": []})["comps"].append(c)
+        for e in db.query(models.Egreso).filter(
+                models.Egreso.depilacion == True,
+                models.Egreso.sesion_id.is_(None)).all():
+            dias.setdefault(dia_de(e.fecha), {"comps": [], "egresos": []})["egresos"].append(e)
+
+        def cierres_de(iso):
+            return db.query(models.Liquidacion).filter(
+                models.Liquidacion.depilacion == True,
+                models.Liquidacion.desde == iso).all()
+
+        # La jornada que están trabajando AHORA no se parte: los días seguidos sin
+        # pagar que terminan hoy o ayer son una sola sesión, y queda abierta.
+        # Una jornada va de lunes a martes y se cierra después; cortada en dos, la
+        # máquina de los dos días caería sobre uno solo, que es justo el problema
+        # que las sesiones vienen a arreglar.
+        hoy = hoy_argentina()
+        ordenados = sorted(dias)
+        cola = []
+        for iso in reversed(ordenados):
+            f = date.fromisoformat(iso)
+            if cierres_de(iso): break                    # un día ya pagado corta
+            if not cola:
+                if (hoy - f).days > 1: break             # la cola termina hoy o ayer
+            elif (date.fromisoformat(cola[-1]) - f).days != 1:
+                break                                    # y son días seguidos
+            cola.append(iso)
+        cola.reverse()
+
+        n = db.query(func.coalesce(func.max(models.SesionDepilacion.numero), 0)).scalar() or 0
+        def crear(isos, abierta_asi):
+            nonlocal n
+            f0 = date.fromisoformat(isos[0])
+            nombre = empleada_del_dia(db, f0)
+            emp = (db.query(models.Empleado).filter(models.Empleado.nombre == nombre).first()
+                   if nombre else None)
+            n += 1
+            cierres = [l for iso in isos for l in cierres_de(iso)]
+            ses = models.SesionDepilacion(
+                numero=n, empleado_id=emp.id if emp else None,
+                abierta=_rango_dia(f0)[0],
+                cerrada=None if abierta_asi else max(
+                    (l.cerrada for l in cierres if l.cerrada),
+                    default=_rango_dia(date.fromisoformat(isos[-1]))[1]))
+            db.add(ses); db.flush()
+            for iso in isos:
+                for c in dias[iso]["comps"]: c.sesion_id = ses.id
+                for e in dias[iso]["egresos"]: e.sesion_id = ses.id
+            for l in cierres: l.sesion_id = ses.id
+
+        for iso in ordenados:
+            if iso in cola: continue
+            crear([iso], False)
+        if cola: crear(cola, True)
+        db.add(models.Config(clave=MARCA_SESIONES, valor=str(len(dias))))
+        db.commit()
+        if dias: print(f"Depilación: {len(dias)} días pasados a sesiones.")
+
+try:
+    migrar_dias_a_sesiones()
+except Exception as _e:
+    print('Aviso: no se pudieron armar las sesiones de depilación:', _e)
 
 def resumen_pendiente(db, empleado) -> dict:
     """Lo que se le debe a una empleada, partido en ciclos.
@@ -1811,9 +1925,24 @@ def resumen_pendiente(db, empleado) -> dict:
     # y es sacando horas: el día que le tocó el reparto, y el día que cobró como
     # ayudante, ya le pagaron el día entero. Pagarle además las horas sería
     # pagarle dos veces el mismo día.
-    suyos = {f for f in dias
-             if es_dia_depilacion(db, date.fromisoformat(f))
-             and empleada_del_dia(db, date.fromisoformat(f)) == empleado.nombre}
+    # Los días de SUS sesiones de depilación, por lo facturado y lo gastado en
+    # ellas. Va por la sesión y no por el día: de la sesión cuelga de quién es
+    # la mitad, y es lo mismo que mira el reparto.
+    suyos = set()
+    if dias:
+        desde_utc = _rango_dia(date.fromisoformat(min(dias)))[0]
+        ses_ids = [i for (i,) in db.query(models.SesionDepilacion.id).filter(
+            models.SesionDepilacion.empleado_id == empleado.id)]
+        if ses_ids:
+            for (f,) in db.query(models.Comprobante.fecha).filter(
+                    models.Comprobante.sesion_id.in_(ses_ids),
+                    models.Comprobante.activo == True,
+                    models.Comprobante.fecha >= desde_utc).distinct():
+                suyos.add(hora_argentina(f).date().isoformat())
+            for (f,) in db.query(models.Egreso.fecha).filter(
+                    models.Egreso.sesion_id.in_(ses_ids),
+                    models.Egreso.fecha >= desde_utc).distinct():
+                suyos.add(hora_argentina(f).date().isoformat())
     de_ayudante = {hora_argentina(f).date().isoformat()
                    for (f,) in db.query(models.Egreso.fecha).filter(
                        models.Egreso.ayudante == True,
@@ -1995,53 +2124,48 @@ def sueldo_pendiente(empleado_id: int, user = Depends(usuario_actual),
     permitir_sueldo(db, user, quien, empleado_id)
     return resumen_pendiente(db, _empleado_o_404(db, empleado_id))
 
-def _dia_suyo(db, empleado, iso: str) -> date:
-    """El día de depilación de esa empleada, o un error.
+def _sesion_para_tocar(db, sesion_id: int | None = None):
+    """La sesión sobre la que se está trabajando, o un error.
 
-    Todo lo que se toca de un día de depilación pasa por acá: cargar un gasto de
-    un día que no es suyo sería bajarle la parte a otra, y un día ya cerrado
-    quedaría con la cuenta cambiada después de pagado.
+    Sin id, la que está abierta. Una cerrada no se toca: mover un gasto después
+    de pagado le cambiaría la cuenta a un reparto ya liquidado.
+
+    No pide código: en una sesión de depilación trabajan dos personas con una
+    sola tablet y todo —cobrar, cargar los gastos, cerrarla— lo hacen las dos.
+    Un código en el medio sería pedirlo diez veces por día.
     """
-    try:
-        f = date.fromisoformat(iso[:10])
-    except ValueError:
-        raise HTTPException(400, "Fecha inválida")
-    # No se pide que el día YA sea de depilación: el primer movimiento suele ser
-    # justamente el gasto de la máquina, antes de facturarle a la primera. Lo que
-    # se pide es que el día sea suyo, que es lo que decide de quién es la plata.
-    if empleada_del_dia(db, f) != empleado.nombre:
-        raise HTTPException(403, "Ese día no es tuyo")
-    ya = db.query(models.Liquidacion).filter(
-        models.Liquidacion.empleado_id == empleado.id,
-        models.Liquidacion.depilacion == True,
-        models.Liquidacion.desde == f.isoformat()).first()
-    if ya: raise HTTPException(409, "Ese día ya se cerró")
-    return f
+    ses = db.get(models.SesionDepilacion, sesion_id) if sesion_id else sesion_actual(db)
+    if not ses: raise HTTPException(404, "No hay ninguna sesión abierta")
+    if ses.cerrada: raise HTTPException(409, "Esa sesión ya se cerró")
+    return ses
 
 @app.post("/api/depilacion/gasto")
 def gasto_depilacion(g: GastoDepiIn, user = Depends(usuario_actual),
                      db: Session = Depends(get_db)):
-    """Un gasto del día de depilación, cargado desde la pantalla de depilación.
+    """Un gasto de la sesión de depilación, cargado desde su pantalla.
 
-    Lo carga la que lleva el día, que en Caja no entra: son los costos de SU día
-    y son los únicos que le bajan la parte, así que si tuviera que pedirlos, el
-    reparto sale mal el día que la dueña no esté. Nunca es privado —un gasto que
-    baja el reparto tiene que estar a la vista de la que lo cobra— y la fecha es
-    la del día, no la de hoy: cargado con fecha de hoy, la cuenta de ese día
-    le queda alta.
+    Lo carga la que lleva la sesión, que en Caja no entra: son los costos de SU
+    reparto y son los únicos que le bajan la parte, así que si tuviera que
+    pedirlos, la cuenta sale mal el día que la dueña no esté. Nunca es privado:
+    un gasto que baja el reparto tiene que estar a la vista de la que lo cobra.
+
+    La fecha del egreso es cuándo salió la plata del cajón, que es lo que mira la
+    caja, y por defecto es hoy. De qué reparto se resta no lo decide esa fecha
+    sino la sesión: la máquina se paga el viernes anterior y es de esta sesión
+    igual.
     """
-    emp = _empleado_o_404(db, g.empleado_id)
-    f = _dia_suyo(db, emp, g.fecha)
+    ses = _sesion_para_tocar(db, g.sesion_id) if g.sesion_id else sesion_para_cobrar(db)
     if g.monto <= 0: raise HTTPException(400, "El monto tiene que ser mayor que cero")
+    quien = ses.empleado.nombre if ses.empleado else "la que lleva la sesión"
 
     notas = None; de_quien = None
-    # Queda escrito cuando un renglón fijo se pagó distinto. El número de un día
-    # suelto no se discute de memoria tres semanas después, y el que lo cambió es
-    # el que está cerrando el día.
+    # Queda escrito cuando un renglón fijo se pagó distinto. El número de una
+    # sesión suelta no se discute de memoria tres semanas después, y el que lo
+    # cambió es el que la está cerrando.
     fijo = pago_ayudante(db) if g.ayudante else 0
     if fijo and g.monto != fijo:
         pesos = lambda n: "$" + f"{n:,}".replace(",", ".")
-        notas = f"Fijo {pesos(fijo)} · se pagó {pesos(g.monto)} · lo cambió {emp.nombre}"
+        notas = f"Fijo {pesos(fijo)} · se pagó {pesos(g.monto)} · lo cambió {quien}"
     if g.ayudante and g.ayudante_id:
         de_quien = _empleado_o_404(db, g.ayudante_id).id
     por_defecto = ("Ayudante depilación" if g.ayudante
@@ -2051,97 +2175,107 @@ def gasto_depilacion(g: GastoDepiIn, user = Depends(usuario_actual),
         tipo=(g.tipo or "").strip() or por_defecto,
         concepto=(g.concepto or "").strip() or None,
         monto=g.monto, forma_pago=g.forma_pago, notas=notas, privado=False,
-        fecha=fecha_del_servicio(f.isoformat(), fecha_hora_now_utc().replace(tzinfo=None), "un gasto"),
-        depilacion=True,
+        fecha=fecha_del_servicio(g.fecha, fecha_hora_now_utc().replace(tzinfo=None), "un gasto"),
+        depilacion=True, sesion_id=ses.id,
         ayudante=bool(g.ayudante), maquina=bool(g.maquina), empleado_id=de_quien)
     db.add(eg); db.commit(); db.refresh(eg)
-    return {"id": eg.id, "numero": eg.numero}
+    return {"id": eg.id, "numero": eg.numero, "sesion_id": ses.id}
 
 class MontoGastoIn(BaseModel):
-    empleado_id: int; monto: int
+    monto: int
+
+def _gasto_de_sesion_abierta(db, egreso_id: int):
+    """El gasto que se puede tocar: de depilación, no privado y de una sesión abierta."""
+    e = db.get(models.Egreso, egreso_id)
+    # 404 y no 403 si no es de depilación: un "no podés" ya le confirmaría que
+    # existe. Desde acá se tocan los gastos de la depilación y nada más; los del
+    # local se tocan en Caja, que es de la dueña.
+    if not e or e.privado or not e.depilacion: raise HTTPException(404, "Gasto no existe")
+    _sesion_para_tocar(db, e.sesion_id)
+    return e
 
 @app.put("/api/depilacion/gasto/{egreso_id}")
 def corregir_gasto_depilacion(egreso_id: int, datos: MontoGastoIn,
                               _ = Depends(usuario_actual), db: Session = Depends(get_db)):
-    """Corrige el monto de un gasto del día. Equivocarse tipeando es lo más
-    común, y borrarlo y volver a cargarlo le cambia el número y la hora.
+    """Corrige el monto de un gasto. Equivocarse tipeando es lo más común, y
+    borrarlo y volver a cargarlo le cambia el número y la hora.
 
-    Pasa por las reglas del día —que sea suyo y que no esté cerrado— y no por
-    las de Caja, donde el empleado solo puede tocar lo de hoy: el día de
-    depilación se cierra al otro día y para entonces ya no podría corregir nada.
+    Pasa por las reglas de la SESIÓN —que no esté cerrada— y no por las de Caja,
+    donde el empleado solo puede tocar lo de hoy: una sesión se cierra días
+    después y para entonces ya no podría corregir nada.
     """
-    emp = _empleado_o_404(db, datos.empleado_id)
-    e = db.get(models.Egreso, egreso_id)
-    if not e or e.privado or not e.depilacion: raise HTTPException(404, "Gasto no existe")
     if datos.monto <= 0: raise HTTPException(400, "El monto tiene que ser mayor que cero")
-    _dia_suyo(db, emp, hora_argentina(e.fecha).date().isoformat())
+    e = _gasto_de_sesion_abierta(db, egreso_id)
     e.monto = datos.monto
     db.commit(); return {"ok": True, "monto": e.monto}
 
 @app.delete("/api/depilacion/gasto/{egreso_id}")
-def borrar_gasto_depilacion(egreso_id: int, empleado_id: int, _ = Depends(usuario_actual),
+def borrar_gasto_depilacion(egreso_id: int, _ = Depends(usuario_actual),
                             db: Session = Depends(get_db)):
-    """Saca un gasto del día de depilación. Un egreso se anula; una liquidación
-    no, y esa es justo la razón por la que el pago a la ayudante es un gasto y no
-    un cierre: equivocarse en el monto se arregla borrando y volviendo a cargar."""
-    emp = _empleado_o_404(db, empleado_id)
-    e = db.get(models.Egreso, egreso_id)
-    # 404 y no 403 si no es de depilación: un "no podés" ya le confirmaría que
-    # existe. Desde acá se borran los gastos de la depilación y nada más; los
-    # del local se tocan en Caja, que es de la dueña.
-    if not e or e.privado or not e.depilacion: raise HTTPException(404, "Gasto no existe")
-    _dia_suyo(db, emp, hora_argentina(e.fecha).date().isoformat())
+    """Saca un gasto de la sesión. Un egreso se anula; una liquidación no, y esa
+    es justo la razón por la que el pago a la ayudante es un gasto y no un
+    cierre: equivocarse en el monto se arregla borrando y volviendo a cargar."""
+    e = _gasto_de_sesion_abierta(db, egreso_id)
     db.delete(e); db.commit(); return {"ok": True}
 
-def _emp_del_dia(db, f: date):
-    """De quién es ese día de depilación.
+def cierres_de_sesion(db, sesion_id: int):
+    """Lo que ya se pagó de esa sesión. Puede haber más de un cierre.
 
-    No pide código: en el día de depilación trabajan dos personas con una sola
-    tablet y todo lo del día —cobrar, cargar los gastos, cerrarlo— lo hacen las
-    dos. Un código en el medio sería pedírselo diez veces por día.
-    """
-    nombre = empleada_del_dia(db, f)
-    return (db.query(models.Empleado).filter(models.Empleado.nombre == nombre).first()
-            if nombre else None)
-
-def cierres_de_depilacion(db, empleado_id, f: date):
-    """Lo que ya se le pagó de ese día. Puede haber más de un cierre.
-
-    La cuenta se sigue recalculando después de cerrar: si se factura algo más
-    ese día, el reparto sube. Con un solo cierre posible, esa diferencia no se
+    La cuenta se sigue recalculando después de cerrar: si se factura algo más de
+    esa sesión, el reparto sube. Con un solo cierre posible, esa diferencia no se
     podía cobrar por ninguna pantalla.
     """
     return db.query(models.Liquidacion).filter(
-        models.Liquidacion.empleado_id == empleado_id,
-        models.Liquidacion.depilacion == True,
-        models.Liquidacion.desde == f.isoformat()).order_by(models.Liquidacion.id).all()
+        models.Liquidacion.sesion_id == sesion_id).order_by(models.Liquidacion.id).all()
 
-@app.get("/api/depilacion/dia")
-def depilacion_dia(fecha: str | None = None, user = Depends(usuario_actual),
-                   db: Session = Depends(get_db)):
-    """El día de depilación entero: lo facturado, lo cobrado, los gastos y el reparto.
+class AbrirSesionIn(BaseModel):
+    empleado_id: int | None = None
+
+@app.post("/api/depilacion/abrir")
+def abrir_sesion_depilacion(datos: AbrirSesionIn, _ = Depends(usuario_actual),
+                            db: Session = Depends(get_db)):
+    """Abre una sesión de depilación eligiendo quién la lleva.
+
+    Rebota si ya hay una abierta: dos abiertas a la vez es la forma de que lo que
+    se factura caiga en la que no era y el reparto le llegue a la otra.
+    """
+    ya = sesion_actual(db)
+    if ya:
+        raise HTTPException(409, f"Ya hay una sesión abierta (la {ya.numero}). "
+                                 "Cerrala antes de abrir otra.")
+    if datos.empleado_id: _empleado_o_404(db, datos.empleado_id)
+    ses = abrir_sesion(db, datos.empleado_id)
+    db.commit()
+    return {"id": ses.id, "numero": ses.numero}
+
+class CambiarSesionIn(BaseModel):
+    empleado_id: int
+
+@app.put("/api/depilacion/sesion/{sesion_id}")
+def cambiar_quien_lleva(sesion_id: int, datos: CambiarSesionIn, _ = Depends(usuario_actual),
+                        db: Session = Depends(get_db)):
+    """Corrige quién lleva la sesión. De esto cuelga de quién es la mitad, y la
+    sesión se abre sola con la de Admin cuando nadie la abrió a mano."""
+    ses = _sesion_para_tocar(db, sesion_id)
+    ses.empleado_id = _empleado_o_404(db, datos.empleado_id).id
+    db.commit(); return {"ok": True}
+
+def _sesion_payload(db, ses) -> dict:
+    """Todo lo de una sesión: lo facturado, lo cobrado, los gastos y el reparto.
 
     Es el "cierre de caja" de la depilación y vive acá y no en Caja a propósito:
-    son dos negocios distintos y el día se mira y se cierra por separado. Ojo que
-    la plata sí está en la caja del local —la clienta paga en el mostrador—, así
-    que esto no la reemplaza: la explica.
+    son dos negocios distintos y la sesión se mira y se cierra por separado. Ojo
+    que la plata sí está en la caja del local —la clienta paga en el mostrador—,
+    así que esto no la reemplaza: la explica.
     """
-    try:
-        f = date.fromisoformat(fecha[:10]) if fecha else hoy_argentina()
-    except ValueError:
-        raise HTTPException(400, "Fecha inválida")
-    emp = _emp_del_dia(db, f)
-
-    ini, fin = _rango_dia(f)
     comps = (db.query(models.Comprobante)
-               .filter(models.Comprobante.fecha >= ini, models.Comprobante.fecha < fin,
-                       models.Comprobante.activo == True,
-                       models.Comprobante.depilacion == True)
-               .order_by(models.Comprobante.numero).all())
+               .filter(models.Comprobante.sesion_id == ses.id,
+                       models.Comprobante.activo == True)
+               .order_by(models.Comprobante.fecha, models.Comprobante.numero).all())
     por_comp = pagos_por_comprobante(db, comps)
     # Lo cobrado, en efectivo y en transferencia. Dos renglones y no tres: la
     # seña no es una forma de pago, es plata que entró antes con la suya, así
-    # que cuenta en la columna con la que se cobró ese día.
+    # que cuenta en la columna con la que se cobró.
     #
     # Va lo que cada pago TAPA de la factura y no la plata que trajo, para que
     # las dos columnas sumen lo facturado: una seña en efectivo tapa más de lo
@@ -2162,51 +2296,82 @@ def depilacion_dia(fecha: str | None = None, user = Depends(usuario_actual),
         facturado += est["total_final"]
         detalle.append({"id": c.id, "numero": c.numero,
                         "cliente": c.cliente_nombre, "cliente_id": c.cliente_id,
+                        "dia": hora_argentina(c.fecha).date().isoformat(),
                         "hora": hora_argentina(c.fecha).strftime("%H:%M"),
                         "peluquero": c.peluquero,
                         "lineas": [{"nombre": l.nombre, "cantidad": l.cantidad} for l in c.lineas],
                         "total": est["total_final"], "saldo": est["saldo"],
                         "forma": forma_comprobante(db, c, por_comp)})
-    cierres = cierres_de_depilacion(db, emp.id, f) if emp else []
+    q = cuenta_depilacion(db, ses)
+    cierres = cierres_de_sesion(db, ses.id)
     pagado = sum(l.total or 0 for l in cierres)
+    # Las que quedaron abiertas de antes. Avisan y no se esconden: es plata que
+    # se debe, y la migración dejó así cada jornada vieja sin pagar.
+    otras = [{"id": o.id, "numero": o.numero,
+              "abierta": hora_argentina(o.abierta).date().isoformat() if o.abierta else None,
+              "a_cargo": o.empleado.nombre if o.empleado else None}
+             for o in db.query(models.SesionDepilacion).filter(
+                 models.SesionDepilacion.cerrada.is_(None),
+                 models.SesionDepilacion.id != ses.id)
+               .order_by(models.SesionDepilacion.abierta).all()]
     return {
-        "fecha": f.isoformat(),
-        "a_cargo": emp.nombre if emp else None,
-        "empleado_id": emp.id if emp else None,
-        "es_dia": es_dia_depilacion(db, f),
-        "cuenta": cuenta_depilacion(db, f),
+        "id": ses.id, "numero": ses.numero,
+        "abierta": hora_argentina(ses.abierta).date().isoformat() if ses.abierta else None,
+        "cerrada": hora_argentina(ses.cerrada).date().isoformat() if ses.cerrada else None,
+        "a_cargo": ses.empleado.nombre if ses.empleado else None,
+        "empleado_id": ses.empleado_id,
+        "dias": dias_de_sesion(db, ses.id),
+        "cuenta": q,
         "cobrado": cobrado,
-        # Lo que suman los tickets del día tal como se cobraron, mezclando los
-        # preciados en efectivo con los de transferencia. No es la base del
-        # reparto —esa va toda en efectivo— sino lo que el día facturó.
+        # Lo que suman los tickets tal como se cobraron, mezclando los preciados
+        # en efectivo con los de transferencia. No es la base del reparto —esa va
+        # toda en efectivo— sino lo que la sesión facturó.
         "facturado": facturado,
         "comprobantes": detalle,
-        # Lo ya pagado del día y lo que falta. Son dos números y no uno porque
-        # pueden no coincidir: la cuenta sigue viva y lo facturado después de
-        # cerrar se paga como una diferencia.
+        # Lo ya pagado y lo que falta. Son dos números y no uno porque pueden no
+        # coincidir: la cuenta sigue viva y lo facturado después de cerrar se
+        # paga como una diferencia.
         "cerrado": ({"total": pagado, "veces": len(cierres)} if cierres else None),
-        "pendiente": max(cuenta_depilacion(db, f)["parte_empleada"] - pagado, 0),
+        "pendiente": max(q["parte_empleada"] - pagado, 0),
+        "otras_abiertas": otras,
     }
 
-@app.get("/api/depilacion/dias")
-def depilacion_dias(limite: int = 12, _ = Depends(usuario_actual),
-                    db: Session = Depends(get_db)):
-    """Los últimos días de depilación, con lo que dejó cada uno y si ya se cerró."""
+@app.get("/api/depilacion/sesion")
+def depilacion_sesion(id: int | None = None, _ = Depends(usuario_actual),
+                      db: Session = Depends(get_db)):
+    """La sesión abierta, o la que se pida por id. Sin ninguna abierta, no hay nada
+    que mostrar y la pantalla ofrece abrirla."""
+    ses = db.get(models.SesionDepilacion, id) if id else sesion_actual(db)
+    if id and not ses: raise HTTPException(404, "Esa sesión no existe")
+    if not ses: return {"sesion": None}
+    return _sesion_payload(db, ses)
+
+@app.get("/api/depilacion/sesiones")
+def depilacion_sesiones(limite: int = 12, _ = Depends(usuario_actual),
+                        db: Session = Depends(get_db)):
+    """Las últimas sesiones, con lo que dejó cada una y si ya se cerró."""
     salida = []
-    for iso in reversed(dias_de_depilacion(db)[-max(1, min(limite, 60)):]):
-        f = date.fromisoformat(iso)
-        nombre = empleada_del_dia(db, f)
-        emp = (db.query(models.Empleado).filter(models.Empleado.nombre == nombre).first()
-               if nombre else None)
-        q = cuenta_depilacion(db, f)
-        pagado = sum(l.total or 0 for l in cierres_de_depilacion(db, emp.id, f)) if emp else 0
-        salida.append({"fecha": iso, "a_cargo": nombre, "base": q["base"],
+    for ses in (db.query(models.SesionDepilacion)
+                  .order_by(models.SesionDepilacion.abierta.desc(),
+                            models.SesionDepilacion.id.desc())
+                  .limit(max(1, min(limite, 60))).all()):
+        q = cuenta_depilacion(db, ses)
+        pagado = sum(l.total or 0 for l in cierres_de_sesion(db, ses.id))
+        dias = dias_de_sesion(db, ses.id)
+        salida.append({"id": ses.id, "numero": ses.numero,
+                       "desde": dias[0] if dias else (
+                           hora_argentina(ses.abierta).date().isoformat() if ses.abierta else None),
+                       "hasta": dias[-1] if dias else None,
+                       "dias": len(dias),
+                       "a_cargo": ses.empleado.nombre if ses.empleado else None,
+                       "base": q["base"], "gastos": q["gastos"],
                        "parte_empleada": q["parte_empleada"], "pagado": pagado,
-                       "cerrado": pagado > 0 and pagado >= q["parte_empleada"]})
+                       "abierta": ses.cerrada is None,
+                       "cerrada": pagado > 0 and pagado >= q["parte_empleada"]})
     return salida
 
 class CerrarDepiIn(BaseModel):
-    fecha: str                            # el día que se cierra
+    sesion_id: int | None = None          # la abierta si no viene
     forma_pago: str = "Efectivo"
     notas: str | None = None
     fecha_pago: str | None = None         # a qué caja va el egreso; por defecto hoy
@@ -2214,37 +2379,36 @@ class CerrarDepiIn(BaseModel):
 @app.post("/api/depilacion/cerrar")
 def cerrar_depilacion(datos: CerrarDepiIn, user = Depends(usuario_actual),
                       db: Session = Depends(get_db)):
-    """Paga el día: guarda la foto del reparto y anota el egreso.
+    """Paga la sesión: guarda la foto del reparto, anota el egreso y la cierra.
 
-    La foto queda fija —`recaudado` es lo que ese día facturó de depilación en
-    efectivo y `gastos` lo que se restó—: corregir un ticket de un día ya pagado
-    no puede cambiar lo que se pagó.
+    La foto queda fija —`recaudado` es lo que la sesión facturó de depilación en
+    efectivo y `gastos` lo que se restó—: corregir un ticket de una sesión ya
+    pagada no puede cambiar lo que se pagó.
     """
-    try:
-        f = date.fromisoformat(datos.fecha[:10])
-    except ValueError:
-        raise HTTPException(400, "Fecha inválida")
-    if not es_dia_depilacion(db, f): raise HTTPException(400, "Ese día no hubo depilación")
-    nombre = empleada_del_dia(db, f)
-    emp = (db.query(models.Empleado).filter(models.Empleado.nombre == nombre).first()
-           if nombre else None)
-    if not emp: raise HTTPException(400, "Ese día no tiene a nadie a cargo")
-    q = cuenta_depilacion(db, f)
-    if q["parte_empleada"] <= 0: raise HTTPException(400, "Ese día no tiene nada para repartir")
-    # Lo que falta pagar de ese día, que no siempre es el reparto entero: puede
-    # haberse cerrado antes y haberse facturado algo después.
-    cierres = cierres_de_depilacion(db, emp.id, f)
+    ses = db.get(models.SesionDepilacion, datos.sesion_id) if datos.sesion_id else sesion_actual(db)
+    if not ses: raise HTTPException(404, "No hay ninguna sesión para cerrar")
+    if not ses.empleado_id: raise HTTPException(400, "Esa sesión no tiene a nadie a cargo")
+    emp = _empleado_o_404(db, ses.empleado_id)
+    q = cuenta_depilacion(db, ses)
+    if q["parte_empleada"] <= 0: raise HTTPException(400, "Esa sesión no tiene nada para repartir")
+    # Lo que falta pagar, que no siempre es el reparto entero: puede haberse
+    # cerrado antes y haberse facturado algo después.
+    cierres = cierres_de_sesion(db, ses.id)
     pagado = sum(l.total or 0 for l in cierres)
     pendiente = q["parte_empleada"] - pagado
-    if pendiente <= 0: raise HTTPException(409, "Ese día ya está pagado")
+    if pendiente <= 0: raise HTTPException(409, "Esa sesión ya está pagada")
 
+    dias = dias_de_sesion(db, ses.id)
     liq = models.Liquidacion(
-        empleado_id=emp.id, desde=f.isoformat(), hasta=f.isoformat(),
+        empleado_id=emp.id,
+        # Informativos, como en el sueldo: de cuándo a cuándo fue la sesión. Lo
+        # que entra lo decide `sesion_id`, no estas fechas.
+        desde=dias[0] if dias else None, hasta=dias[-1] if dias else None,
         valor_hora=vh_de(emp, valor_hora(db)), comision_pct=comision_pct(db),
         minutos_total=0, minutos_comision=0, minutos_pagados=0,
         total_comisiones=0, total_horas=0,
         total=pendiente, notas=datos.notas, parcial=False,
-        depilacion=True, recaudado=q["base"], gastos=q["gastos"])
+        depilacion=True, sesion_id=ses.id, recaudado=q["base"], gastos=q["gastos"])
     db.add(liq); db.flush()
     # El egreso lo anota el cierre, como el del sueldo: si hubiera que cargarlo a
     # mano, el día que se olvide la caja dice que hay más plata de la que hay.
@@ -2252,9 +2416,10 @@ def cerrar_depilacion(datos: CerrarDepiIn, user = Depends(usuario_actual),
     # Privado solo si lo cerró la dueña: lo que cobra una no es asunto de las
     # demás, pero un egreso que cargó el empleado y no puede ver le deja el
     # arqueo pidiendo plata que no está, sin nada que lo explique.
+    rango = (f"{dias[0]} a {dias[-1]}" if len(dias) > 1 else (dias[0] if dias else "sin días"))
     eg = models.Egreso(
         numero=siguiente_numero_egreso(db), tipo=tipo_de_sueldo(db).nombre,
-        concepto=(f"Depilación {emp.nombre} ({f.isoformat()})"
+        concepto=(f"Depilación {emp.nombre} ({rango})"
                   + (" · diferencia" if pagado else "")),
         monto=liq.total, forma_pago=datos.forma_pago, notas=datos.notas,
         privado=es_dueno(user),
@@ -2262,6 +2427,10 @@ def cerrar_depilacion(datos: CerrarDepiIn, user = Depends(usuario_actual),
                                  fecha_hora_now_utc().replace(tzinfo=None), "un pago"))
     db.add(eg); db.flush()
     liq.egreso_id = eg.id
+    # La sesión queda cerrada. Si después se factura algo suyo, el reparto sube y
+    # esa diferencia se cobra con otro cierre de la misma sesión: cerrada no
+    # quiere decir que la cuenta murió, quiere decir que no es la de hoy.
+    ses.cerrada = fecha_hora_now_utc().replace(tzinfo=None)
     db.commit()
     return {"id": liq.id, "total": liq.total, "egreso_numero": eg.numero,
             "diferencia": bool(pagado)}
@@ -3427,6 +3596,10 @@ def crear_comprobante(c: ComprobanteIn, user = Depends(usuario_actual), db: Sess
     comp.total_lista = total
     comp.extra_dificultad = 0        # el extra por dificultad ya no existe
     comp.depilacion = solo_depi
+    # De qué sesión es, puesto acá y no deducido de la fecha: un trabajo anotado
+    # al otro día es de la sesión igual, y es el único lugar por el que pasan
+    # todos los cobros de depilación.
+    if solo_depi: comp.sesion_id = sesion_para_cobrar(db).id
     db.commit(); db.refresh(comp)
     return {"id": comp.id, "numero": comp.numero, "tipo": comp.tipo,
             "fecha": comp.fecha.isoformat(), "anotado_despues": anotado_despues(comp)}
@@ -3630,15 +3803,6 @@ def anular_egreso(egreso_id: int, user = Depends(usuario_actual), db: Session = 
     db.delete(e); db.commit(); return {"ok": True}
 
 # ---------- caja (solo dueño) ----------
-def _rango_dia(d):
-    """Ventana en UTC que cubre el día argentino `d`.
-
-    Las fechas se guardan en UTC, así que el día del local —de 00:00 a 24:00 en
-    Argentina— es de 03:00 a 03:00 UTC. Antes esta ventana arrancaba a la
-    medianoche UTC, o sea a las 21:00 argentinas: todo lo cargado de noche caía
-    en el día siguiente."""
-    ini = datetime(d.year, d.month, d.day) + timedelta(hours=HORAS_ARG)
-    return ini, ini + timedelta(days=1)
 def plata_que_entro(db, ini, fin):
     """Todo lo que entró en el período: los abonos más las señas cobradas.
 

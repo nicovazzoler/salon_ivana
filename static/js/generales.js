@@ -75,7 +75,7 @@ function panelGenerales(cont, alGuardar, opciones){
     const campos = soloDepi ? [
       ["Pago a la ayudante",  `<input type="number" class="gAyu" min="0" inputmode="numeric" value="${cfg.pago_ayudante ?? 0}">`,
                               _pesos(cfg.pago_ayudante)],
-      ["El día lo lleva",     `<select class="gDepi"><option value="">La que más facture</option>${
+      ["Las sesiones las lleva", `<select class="gDepi"><option value="">La que más facture</option>${
                                 activas().map(e => `<option${e.nombre === sel ? " selected" : ""}>${_escGral(e.nombre)}</option>`).join("")}</select>`,
                               sel ? _escGral(sel) : `<span class="flojo">la que más facture</span>`],
     ] : [
@@ -86,7 +86,7 @@ function panelGenerales(cont, alGuardar, opciones){
     ];
     caja.innerHTML = `
       <div class="gral-cab">
-        <h3>${soloDepi ? "Los números del día" : "Para todas"}</h3>
+        <h3>${soloDepi ? "Los números de la depilación" : "Para todas"}</h3>
         ${editando
           ? `<span class="gral-acc"><button class="b-ok gGuardar">Guardar</button>
              <button class="b-out gCancelar">Cancelar</button></span>`
@@ -119,8 +119,10 @@ function panelGenerales(cont, alGuardar, opciones){
   }
 
   function avisoDepi(){
-    return "El pago a la ayudante viene puesto al cargar el gasto del día y se puede "
-         + "cambiar ahí. La máquina no tiene número fijo: se alquila por jornada.";
+    return "Con quién las lleva puesto, toda sesión nueva arranca con ella —y la que "
+         + "se abre sola al cobrar, también—; igual se puede cambiar en la sesión. "
+         + "El pago a la ayudante viene puesto al cargar el gasto y se puede cambiar ahí. "
+         + "La máquina no tiene número fijo: se alquila por jornada.";
   }
 
   async function guardarGeneral(){
@@ -148,8 +150,9 @@ function panelGenerales(cont, alGuardar, opciones){
     if(a !== null && a !== (cfg.pago_ayudante ?? 0)) cambios.push(`El pago a la ayudante pasa a ${_pesos(a)}, `
       + "que es el que va a venir puesto en el próximo día de depilación.");
     if(d !== null && d !== (cfg.depi_a_cargo || "")) cambios.push(d
-      ? `Los días de depilación pasan a ser de ${d}, salvo que al abrir el día se elija a otra.`
-      : "Los días de depilación vuelven a ser de la que más facture ese día.");
+      ? `Las sesiones de depilación nuevas arrancan con ${d}, salvo que al abrirla se elija a otra. `
+        + "Las que ya están abiertas no cambian."
+      : "Las sesiones nuevas vuelven a arrancar con la que más facture.");
     if(!cambios.length){ editando = false; pintar(); return; }
     if(!confirm(cambios.join("\n\n") + "\n\nLo ya cerrado no cambia. ¿Guardamos?")) return;
 
