@@ -1192,6 +1192,7 @@ async function cargarDias(){
             : s.cerrada ? "pagada"
             : s.pagado ? `<b class="deuda">falta ${fmt(s.parte_empleada - s.pagado)}</b>`
             : `<b class="deuda">sin pagar</b>`}
+        ${s.de_mas > 0 ? `<b class="deuda">· ${fmt(s.de_mas)} de más</b>` : ""}
         ${s.abierta ? "" : `<button class="b-out btn-mini reabrir" data-dueno
             data-id="${s.id}" data-num="${s.numero}"
             title="Volver a abrirla para corregirla">Reabrir</button>`}</td>

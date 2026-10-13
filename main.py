@@ -2451,7 +2451,10 @@ def depilacion_sesiones(limite: int = 12, _ = Depends(usuario_actual),
                        "base": q["base"], "gastos": q["gastos"],
                        "parte_empleada": q["parte_empleada"], "pagado": pagado,
                        "abierta": ses.cerrada is None,
-                       "cerrada": pagado > 0 and pagado >= q["parte_empleada"]})
+                       "cerrada": pagado > 0 and pagado >= q["parte_empleada"],
+                       # Lo pagado de más no puede quedar escondido atrás de un
+                       # "pagada": es plata que el salón tiene que recuperar.
+                       "de_mas": max(pagado - q["parte_empleada"], 0)})
     return salida
 
 class CerrarDepiIn(BaseModel):
