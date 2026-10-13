@@ -499,7 +499,27 @@ No alcanza con que compile. Lo que se usa acá, de menor a mayor:
 4. **Comparación píxel a píxel** cuando el cambio es un refactor que no debería
    cambiar nada: capturas completas antes y después, en tema claro y oscuro.
 
-Las pruebas no están versionadas: se escriben en el scratchpad de la sesión.
+**Hay dos suites versionados y corren en cada PR** (`.github/workflows/tests.yml`):
+
+```bash
+pytest tests/test_plata.py           # la aritmética de plata del backend
+node --test "tests/escpos/**/*.test.js"   # el papel, byte a byte contra los golden
+```
+
+`tests/test_plata.py` llama las funciones de `main.py` derecho, sin levantar el
+servidor: `calcular_transfer`, `precio_con_ajuste`, `estado_comprobante`,
+`sena_saldado` y `base_facturada`. Los comprobantes y los pagos se arman con
+`SimpleNamespace`, así que **un campo nuevo en un modelo hay que agregarlo
+también ahí**, o el test revienta con un AttributeError que no es un bug.
+
+Los de `tests/escpos/` comparan el papel contra un `.bin` de referencia. Cuando
+un cambio mueve el papel A PROPÓSITO se regeneran con
+`node tests/escpos/generar-golden.js` y se mira el `git status`: los golden que
+no tendrían que haberse movido tienen que seguir sin aparecer. Un caso nuevo se
+agrega con su fixture y una línea en `CASOS`, en `tests/escpos/config.js`.
+
+Las pruebas de una sola vez —levantar el servidor, Playwright, comparar
+capturas— no se versionan: van al scratchpad de la sesión.
 
 Cuando una prueba falla, **primero preguntarse si está mal la prueba**. En este
 proyecto la mayoría de las fallas fueron eso: un puerto viejo, una contraseña

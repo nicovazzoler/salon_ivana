@@ -1,0 +1,22 @@
+{
+  "tipo": "ticket",
+  "numero": 551,
+  "fecha": "2026-08-27T18:00:00",
+  "cliente_nombre": "Abigail Cuello",
+  "lineas": [
+    { "cantidad": 1, "nombre": "Depilación 5 zonas", "precio_unit_final": 20000, "precio_efectivo_final": 18000 }
+  ],
+  "extra_dificultad": 0,
+  "desc_efectivo": 0,
+  "desc_jubilado": 0,
+  "total_transfer": 20000,
+  "total_final": 21000,
+  "extras": [ { "concepto": "Traslado", "monto": 1000 } ],
+  "pagos": [
+    { "monto": 21000, "saldado": 21000, "desc_aplicado": 0, "fecha": "2026-08-20T10:00:00",
+      "forma_pago": "Seña", "es_sena": true, "sena_forma": "Transferencia" }
+  ],
+  "ingresado": 21000,
+  "cobrado": 0,
+  "saldo": 0
+}
