@@ -183,11 +183,16 @@
 
   /* ----- el día ----- */
   .dia-cab{ display:flex; gap:var(--sp-3); align-items:flex-end; flex-wrap:wrap; margin-bottom:var(--sp-3); }
-  /* El número de la sesión, que es como se la nombra en el mostrador. */
+  /* La cabecera, en un renglón: "Sesión #6 · la lleva Carolina · lunes 12/10".
+     Con rótulo arriba y dato abajo eran tres columnitas de distinto alto —el
+     lapicito estiraba la del medio— y la línea quedaba toda escalonada. */
+  .cab-sesion{ display:flex; flex-wrap:wrap; align-items:center; gap:var(--sp-2);
+               margin-bottom:var(--sp-3); }
+  .cab-sesion .sep{ color:var(--text-tenue); }
+  /* El lapicito, al alto del renglón y no al de un botón: acá es un detalle al
+     lado de un nombre, no una acción de la tarjeta. */
+  .cab-sesion .btn-mini{ padding:2px 8px; }
   .n-sesion{ font-family:var(--font-display); font-size:var(--fs-lg); color:var(--text-marca); }
-  /* El nombre y su lapicito en el mismo renglón: el .campo apila en columna y
-     el botón le caía debajo, desalineando toda la cabecera. */
-  .quien-lleva{ display:flex; align-items:center; gap:var(--sp-2); }
   .tag.abierta{ background:var(--verde-bg); color:var(--success); }
   .tag.sin-pagar{ background:var(--rojo-bg); color:var(--danger); }
   /* El día, adentro de los trabajos de una sesión de varios días. */
@@ -828,13 +833,13 @@ function pintarDia(){
 
   $("#hDia").innerHTML = `
     <div class="card">
-      <div class="dia-cab">
-        <div class="campo"><label>Sesión</label>
-          <b class="n-sesion">#${d.numero}</b></div>
-        <div class="campo"><label>La lleva</label>
-          <span class="quien-lleva"><b>${d.a_cargo ? esc(d.a_cargo) : "—"}</b>${abierta
-            ? `<button class="b-out btn-mini" id="bQuien" title="Corregir quién la lleva">✎</button>` : ""}</span></div>
-        <div class="campo"><label>Cuándo</label><b>${cuando}</b></div>
+      <div class="cab-sesion">
+        <b class="n-sesion">Sesión #${d.numero}</b>
+        <span class="sep">·</span>
+        <span>la lleva <b>${d.a_cargo ? esc(d.a_cargo) : "—"}</b></span>
+        ${abierta ? `<button class="b-out btn-mini" id="bQuien" title="Corregir quién la lleva">✎</button>` : ""}
+        <span class="sep">·</span>
+        <span>${cuando}</span>
         ${abierta ? `<span class="tag abierta">Abierta</span>` : ""}
         ${pagado ? `<span class="tag">${cerrado ? "Ya pagada" : "Pagada en parte"} · ${fmt(pagado)}${
             d.cerrado.veces > 1 ? ` · ${d.cerrado.veces} cierres` : ""}</span>` : ""}
