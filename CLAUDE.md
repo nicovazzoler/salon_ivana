@@ -175,7 +175,18 @@ Lo que hay que respetar:
   pagado son sus liquidaciones. Una sesión cerrada sin pagar sigue a la vista en
   el historial y se paga desde ahí. Por eso la migración cierra todo lo viejo:
   dejarlo abierto haría que lo que se facture mañana caiga adentro de una jornada
-  de hace tres meses.
+  de hace tres meses. Y por eso **sin nada para pagar se cierra igual**, sin
+  liquidación ni egreso: una sesión en la que solo se tomó una seña, o una que se
+  reabrió para sacarle un ticket que no iba, si no quedaba abierta para siempre y
+  se tragaba la jornada siguiente.
+- **Y se puede REABRIR, que es de la dueña.** Cerrada no acepta nada: ni trabajo,
+  ni un gasto, ni anular un ticket que no iba. Eso protege un reparto ya pagado,
+  pero deja sin salida el error que se descubre después, así que
+  `POST /api/depilacion/reabrir` la vuelve a abrir —una sola abierta por vez, así
+  que la otra tiene que estar cerrada—. Los cierres no se tocan: lo pagado,
+  pagado está. Si al corregirla la cuenta queda por debajo de lo cobrado, la
+  pantalla lo dice con `de_mas`: se le pagó de más y eso se arregla afuera de la
+  app, porque un cierre ya pagado no se reescribe.
 - **La base son las LÍNEAS de depilación, no los comprobantes enteros.** Una
   sesión que además tuvo peluquería no se reparte por eso, y esa peluquería se
   paga por comisión como cualquier otro día. Por lo mismo, la comisión se excluye

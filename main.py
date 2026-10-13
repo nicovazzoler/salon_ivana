@@ -2384,6 +2384,10 @@ def _sesion_payload(db, ses) -> dict:
         # paga como una diferencia.
         "cerrado": ({"total": pagado, "veces": len(cierres)} if cierres else None),
         "pendiente": max(q["parte_empleada"] - pagado, 0),
+        # Lo que se le pagó de más. Pasa al reabrir una sesión para sacarle un
+        # ticket que no iba: la cuenta baja y lo ya cobrado no. Hay que decirlo,
+        # que si no la sesión se ve saldada y la diferencia no la reclama nadie.
+        "de_mas": max(pagado - q["parte_empleada"], 0),
         "otras_abiertas": otras,
     }
 
@@ -2395,6 +2399,35 @@ def depilacion_sesion(id: int | None = None, _ = Depends(usuario_actual),
     ses = db.get(models.SesionDepilacion, id) if id else sesion_actual(db)
     if id and not ses: raise HTTPException(404, "Esa sesión no existe")
     if not ses: return {"sesion": None}
+    return _sesion_payload(db, ses)
+
+class ReabrirDepiIn(BaseModel):
+    sesion_id: int
+
+@app.post("/api/depilacion/reabrir")
+def reabrir_depilacion(datos: ReabrirDepiIn, _ = Depends(solo_dueno),
+                       db: Session = Depends(get_db)):
+    """Vuelve a abrir una sesión cerrada, para corregirla.
+
+    Cerrada no acepta más nada: ni un trabajo, ni un gasto, ni anular un ticket
+    que no iba. Es lo que protege un reparto ya pagado, pero deja sin salida el
+    error que se descubre después —un ticket cargado de más que nadie borró
+    antes de cerrar—, así que la salida es esta y es de la dueña.
+
+    Los cierres no se tocan: lo que ya se pagó, pagado está. Al reabrirla la
+    cuenta vuelve a calcularse sola, y si queda por debajo de lo cobrado la
+    pantalla lo dice.
+    """
+    ses = db.get(models.SesionDepilacion, datos.sesion_id)
+    if not ses: raise HTTPException(404, "Esa sesión no existe")
+    if not ses.cerrada: raise HTTPException(409, "Esa sesión ya está abierta")
+    # Una sola abierta por vez: con dos, un cobro cae en cualquiera de las dos.
+    otra = sesion_actual(db)
+    if otra:
+        raise HTTPException(409, f"Hay otra sesión abierta (la {otra.numero}). "
+                                 "Cerrala antes de reabrir esta.")
+    ses.cerrada = None
+    db.commit()
     return _sesion_payload(db, ses)
 
 @app.get("/api/depilacion/sesiones")
@@ -2432,6 +2465,12 @@ def cerrar_depilacion(datos: CerrarDepiIn, user = Depends(usuario_actual),
                       db: Session = Depends(get_db)):
     """Paga la sesión: guarda la foto del reparto, anota el egreso y la cierra.
 
+    Sin nada para pagar la cierra igual y nada más, sin liquidación ni egreso:
+    cerrada es que no recibe más trabajo, no que esté saldada. Si no, una sesión
+    en la que solo se tomó una seña, o una que se reabrió para sacarle un ticket
+    que no iba, no había forma de cerrarla y se quedaba abierta tragándose la
+    jornada siguiente.
+
     La foto queda fija —`recaudado` es lo que la sesión facturó de depilación y
     `gastos` lo que se restó—: corregir un ticket de una sesión ya pagada no
     puede cambiar lo que se pagó.
@@ -2441,13 +2480,17 @@ def cerrar_depilacion(datos: CerrarDepiIn, user = Depends(usuario_actual),
     if not ses.empleado_id: raise HTTPException(400, "Esa sesión no tiene a nadie a cargo")
     emp = _empleado_o_404(db, ses.empleado_id)
     q = cuenta_depilacion(db, ses)
-    if q["parte_empleada"] <= 0: raise HTTPException(400, "Esa sesión no tiene nada para repartir")
     # Lo que falta pagar, que no siempre es el reparto entero: puede haberse
     # cerrado antes y haberse facturado algo después.
     cierres = cierres_de_sesion(db, ses.id)
     pagado = sum(l.total or 0 for l in cierres)
     pendiente = q["parte_empleada"] - pagado
-    if pendiente <= 0: raise HTTPException(409, "Esa sesión ya está pagada")
+    if pendiente <= 0:
+        if ses.cerrada: raise HTTPException(409, "Esa sesión ya está cerrada")
+        ses.cerrada = fecha_hora_now_utc().replace(tzinfo=None)
+        db.commit()
+        return {"id": ses.id, "total": 0, "egreso_numero": None, "diferencia": False,
+                "sin_pagar": True}
 
     dias = dias_de_sesion(db, ses.id)
     liq = models.Liquidacion(
