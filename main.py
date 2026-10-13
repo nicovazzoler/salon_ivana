@@ -3788,8 +3788,10 @@ def registrar_pago(comp_id: int, pago: PagoIn, _ = Depends(usuario_actual), db: 
 @app.delete("/api/comprobantes/{comp_id}")
 def anular_comprobante(comp_id: int, _ = Depends(usuario_actual), db: Session = Depends(get_db)):
     comp = db.get(models.Comprobante, comp_id)
-    if not comp or not comp.activo:
-        raise HTTPException(404, "Comprobante no existe")
+    if not comp: raise HTTPException(404, "Ese comprobante no existe")
+    # Ya anulado no es lo mismo que no existe: lo que pasa es que la pantalla
+    # quedó dibujada de antes, y "no existe" no le dice a nadie que ya está hecho.
+    if not comp.activo: raise HTTPException(409, "Ese servicio ya estaba anulado")
     # De una sesión de depilación cerrada no se saca nada: el reparto ya se
     # liquidó y sacarle un ticket le cambiaría la cuenta a lo que se pagó. Es la
     # misma regla que para los gastos de la sesión.

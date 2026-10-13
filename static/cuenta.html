@@ -400,8 +400,11 @@ function renderComprobantes(){
       e.stopPropagation();
       if(!confirm("¿Anular este servicio?")) return;
       const r = await authFetch("/api/comprobantes/"+comp.id, {method:"DELETE"});
-      if(r.ok){ toast("Servicio anulado"); cargar(); }
-      else { toast("No se pudo anular"); }
+      // El motivo lo dice el backend, y la lista se refresca pase lo que pase:
+      // el caso más común de fallo es que la pantalla quedó vieja.
+      toast(r.ok ? "Servicio anulado"
+                 : ((await r.json().catch(()=>({}))).detail || "No se pudo anular"));
+      cargar();
     };
 
     const btnDet=div.querySelector(".btnDetalle");
