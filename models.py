@@ -130,6 +130,24 @@ class SesionDepilacion(Base):
     notas = Column(String)
     empleado = relationship("Empleado")
 
+class CorreccionSesion(Base):
+    """Lo que se le tocó a una sesión DESPUÉS de haberla cerrado.
+
+    Una sesión cerrada es una cuenta repartida: si se reabre para sacarle un
+    ticket que no iba, la mitad que le toca a la empleada cambia y lo que ya
+    cobró no. Cada movimiento queda acá con la parte de antes y la de después,
+    que es lo que se mira cuando tres semanas más tarde alguien pregunta por qué
+    esa jornada pagó distinto.
+    """
+    __tablename__ = "correcciones_sesion"
+    id = Column(Integer, primary_key=True)
+    sesion_id = Column(Integer, ForeignKey("sesiones_depilacion.id"), index=True)
+    fecha = Column(DateTime, default=fecha_hora_now_utc)
+    usuario = Column(String)
+    detalle = Column(String, nullable=False)
+    parte_antes = Column(Integer)
+    parte_despues = Column(Integer)
+
 class FormaPago(Base):
     __tablename__ = "formas_pago"
     id = Column(Integer, primary_key=True)

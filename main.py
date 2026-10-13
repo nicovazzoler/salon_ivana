@@ -2274,6 +2274,23 @@ def borrar_gasto_depilacion(egreso_id: int, _ = Depends(usuario_actual),
     e = _gasto_de_sesion_abierta(db, egreso_id)
     db.delete(e); db.commit(); return {"ok": True}
 
+def anotar_correccion(db, ses, detalle: str, parte_antes: int, usuario: str | None = None):
+    """Deja anotado un cambio en una sesión que ya se había cerrado. No hace commit.
+
+    Solo se anota si la sesión tuvo un cierre: lo que pasa en una jornada abierta
+    es trabajo, no una corrección.
+    """
+    if not cierres_de_sesion(db, ses.id): return
+    db.add(models.CorreccionSesion(
+        sesion_id=ses.id, usuario=usuario, detalle=detalle,
+        parte_antes=parte_antes,
+        parte_despues=cuenta_depilacion(db, ses)["parte_empleada"]))
+
+def correcciones_de_sesion(db, sesion_id: int):
+    return (db.query(models.CorreccionSesion)
+              .filter(models.CorreccionSesion.sesion_id == sesion_id)
+              .order_by(models.CorreccionSesion.id).all())
+
 def deuda_de_sesiones(db, empleado_id: int) -> list[dict]:
     """Lo que la empleada quedó debiendo de sesiones ya pagadas, sesión por sesión.
 
@@ -2403,10 +2420,13 @@ def _sesion_payload(db, ses) -> dict:
         # paga como una diferencia.
         "cerrado": ({"total": pagado, "veces": len(cierres)} if cierres else None),
         "pendiente": max(q["parte_empleada"] - pagado, 0),
-        # Lo que se le pagó de más. Pasa al reabrir una sesión para sacarle un
-        # ticket que no iba: la cuenta baja y lo ya cobrado no. Hay que decirlo,
-        # que si no la sesión se ve saldada y la diferencia no la reclama nadie.
+        # Lo que se le pagó de más. No se muestra como una alarma: lo explica el
+        # historial de correcciones, y el próximo cierre lo descuenta solo.
         "de_mas": max(pagado - q["parte_empleada"], 0),
+        "correcciones": [{"fecha": hora_argentina(c.fecha).strftime("%d/%m %H:%M") if c.fecha else "",
+                          "usuario": c.usuario, "detalle": c.detalle,
+                          "antes": c.parte_antes, "despues": c.parte_despues}
+                         for c in correcciones_de_sesion(db, ses.id)],
         # Lo que arrastra de otras sesiones, para avisarlo ANTES de cerrar: el
         # cierre lo descuenta solo y el egreso sale más chico.
         "deuda_previa": [d for d in deuda_de_sesiones(db, ses.empleado_id)
@@ -2428,7 +2448,7 @@ class ReabrirDepiIn(BaseModel):
     sesion_id: int
 
 @app.post("/api/depilacion/reabrir")
-def reabrir_depilacion(datos: ReabrirDepiIn, _ = Depends(solo_dueno),
+def reabrir_depilacion(datos: ReabrirDepiIn, user = Depends(solo_dueno),
                        db: Session = Depends(get_db)):
     """Vuelve a abrir una sesión cerrada, para corregirla.
 
@@ -2450,6 +2470,8 @@ def reabrir_depilacion(datos: ReabrirDepiIn, _ = Depends(solo_dueno),
         raise HTTPException(409, f"Hay otra sesión abierta (la {otra.numero}). "
                                  "Cerrala antes de reabrir esta.")
     ses.cerrada = None
+    anotar_correccion(db, ses, "Se reabrió",
+                      cuenta_depilacion(db, ses)["parte_empleada"], user.get("usuario"))
     db.commit()
     return _sesion_payload(db, ses)
 
@@ -2475,9 +2497,8 @@ def depilacion_sesiones(limite: int = 12, _ = Depends(usuario_actual),
                        "parte_empleada": q["parte_empleada"], "pagado": pagado,
                        "abierta": ses.cerrada is None,
                        "cerrada": pagado > 0 and pagado >= q["parte_empleada"],
-                       # Lo pagado de más no puede quedar escondido atrás de un
-                       # "pagada": es plata que el salón tiene que recuperar.
-                       "de_mas": max(pagado - q["parte_empleada"], 0)})
+                       "de_mas": max(pagado - q["parte_empleada"], 0),
+                       "correcciones": len(correcciones_de_sesion(db, ses.id))})
     return salida
 
 class CerrarDepiIn(BaseModel):
@@ -3778,7 +3799,16 @@ def crear_comprobante(c: ComprobanteIn, user = Depends(usuario_actual), db: Sess
     # De qué sesión es, puesto acá y no deducido de la fecha: un trabajo anotado
     # al otro día es de la sesión igual, y es el único lugar por el que pasan
     # todos los cobros de depilación.
-    if solo_depi: comp.sesion_id = sesion_para_cobrar(db).id
+    parte_previa = 0
+    if solo_depi:
+        ses_cobro = sesion_para_cobrar(db)
+        # La foto de ANTES se toma con `sesion_id` todavía sin poner: es lo que
+        # hace que este comprobante cuente. Y solo si la sesión ya tuvo un
+        # cierre, que es cuando esto pasa a ser una corrección: en una jornada
+        # normal sería una cuenta de más por cada cobro.
+        if cierres_de_sesion(db, ses_cobro.id):
+            parte_previa = cuenta_depilacion(db, ses_cobro)["parte_empleada"]
+        comp.sesion_id = ses_cobro.id
 
     # El cobro, en el mismo pedido y en la misma transacción: o queda el ticket
     # cobrado o no queda nada.
@@ -3794,6 +3824,14 @@ def crear_comprobante(c: ComprobanteIn, user = Depends(usuario_actual), db: Sess
             forma = "Efectivo" if comp.forma_pago == "efectivo" else "Transferencia"
             db.add(models.Pago(comprobante_id=comp.id, monto=saldo, saldado=saldo,
                                fecha=comp.fecha, forma_pago=forma, desc_aplicado=0))
+    # Facturado dentro de una sesión que ya se había cerrado, esto es una
+    # corrección: la cuenta sube y la diferencia se paga con otro cierre.
+    if comp.sesion_id:
+        ses_nueva = db.get(models.SesionDepilacion, comp.sesion_id)
+        if ses_nueva:
+            db.flush()
+            anotar_correccion(db, ses_nueva, f"Se agregó el N-{comp.numero or 0:05d}",
+                              parte_previa, user.get("usuario"))
     db.commit(); db.refresh(comp)
     est = estado_comprobante(db, comp)
     return {"id": comp.id, "numero": comp.numero, "tipo": comp.tipo,
@@ -3838,7 +3876,7 @@ def registrar_pago(comp_id: int, pago: PagoIn, _ = Depends(usuario_actual), db: 
     db.commit(); return estado_comprobante(db, comp)
 
 @app.delete("/api/comprobantes/{comp_id}")
-def anular_comprobante(comp_id: int, _ = Depends(usuario_actual), db: Session = Depends(get_db)):
+def anular_comprobante(comp_id: int, user = Depends(usuario_actual), db: Session = Depends(get_db)):
     comp = db.get(models.Comprobante, comp_id)
     if not comp: raise HTTPException(404, "Ese comprobante no existe")
     # Ya anulado no es lo mismo que no existe: lo que pasa es que la pantalla
@@ -3847,10 +3885,14 @@ def anular_comprobante(comp_id: int, _ = Depends(usuario_actual), db: Session = 
     # De una sesión de depilación cerrada no se saca nada: el reparto ya se
     # liquidó y sacarle un ticket le cambiaría la cuenta a lo que se pagó. Es la
     # misma regla que para los gastos de la sesión.
+    ses_corr, parte_antes = None, 0
     if comp.sesion_id:
         ses = db.get(models.SesionDepilacion, comp.sesion_id)
         if ses and ses.cerrada:
             raise HTTPException(409, f"La sesión #{ses.numero} ya se cerró: no se puede anular esto")
+        if ses:
+            ses_corr = ses
+            parte_antes = cuenta_depilacion(db, ses)["parte_empleada"]
     db.query(models.Pago).filter(models.Pago.comprobante_id == comp.id).delete()
     # Las señas que se habían aplicado vuelven a quedar a favor de la clienta.
     # Sin esto la seña quedaba apuntando a un comprobante anulado: no sumaba
@@ -3868,6 +3910,13 @@ def anular_comprobante(comp_id: int, _ = Depends(usuario_actual), db: Session = 
                     log_stock(db, it, "anulacion", l.cantidad, f"Anulación comprobante #{comp.id}", "sistema")
                     it.stock_actual += l.cantidad
     comp.activo = False
+    # Si era de una sesión que ya se había cerrado, esto es una corrección y
+    # queda anotada: tres semanas después nadie se acuerda de qué ticket se sacó.
+    # `antes` se tomó arriba, con el comprobante todavía activo.
+    if ses_corr:
+        db.flush()              # que la cuenta de después ya no lo vea
+        anotar_correccion(db, ses_corr, f"Se anuló el N-{comp.numero or 0:05d}",
+                          parte_antes, user.get("usuario"))
     db.commit()
     return {"ok": True}
 

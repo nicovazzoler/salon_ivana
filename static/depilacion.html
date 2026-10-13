@@ -218,11 +218,17 @@
   .puerta{ max-width:420px; margin:0 auto; text-align:center; }
   .puerta .campos{ display:flex; flex-direction:column; gap:var(--sp-3); margin:var(--sp-3) 0; text-align:left; }
   .err{ color:var(--danger); }
+  /* La tabla desliza sola. Las columnas de plata no se parten (`nowrap`), así
+     que abajo de 600px no entra: sin esto desbordaba la PÁGINA y se iba de
+     costado todo —menú, tarjetas— y el botón de la última columna quedaba
+     fuera de la pantalla del celular. */
+  .tabla-scroll{ overflow-x:auto; }
   .tabla-chica{ width:100%; border-collapse:collapse; }
   .tabla-chica th{ text-align:left; font-size:var(--fs-sm); color:var(--text-tenue);
                    text-transform:uppercase; letter-spacing:.04em; padding:var(--sp-2); }
   .tabla-chica td{ padding:var(--sp-2); border-top:1px solid var(--border-sutil); }
-  .tabla-chica td.num{ text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; }
+  .tabla-chica td.num, .tabla-chica th.num{ text-align:right;
+                   font-variant-numeric:tabular-nums; white-space:nowrap; }
   .deuda{ color:var(--danger); }
 
   /* El formulario de un gasto, igual que el de Sueldos: rótulo arriba, todo en
@@ -255,6 +261,7 @@
     <button class="b-out on" data-hoja="cobrar">Cobrar</button>
     <button class="b-out" data-hoja="dia">La sesión</button>
     <button class="b-out" data-hoja="historial">Historial</button>
+    <button class="b-out" data-hoja="sesiones">Las sesiones</button>
   </div>
 
   <div class="hoja" id="hCobrar">
@@ -303,6 +310,7 @@
 
   <div class="hoja" id="hDia" hidden></div>
   <div class="hoja" id="hHistorial" hidden></div>
+  <div class="hoja" id="hSesiones" hidden></div>
 </div>
 
 <div class="toast" id="toast"></div>
@@ -726,8 +734,10 @@ document.querySelectorAll(".solapas button").forEach(b => {
     $("#hCobrar").hidden = b.dataset.hoja !== "cobrar";
     $("#hDia").hidden = b.dataset.hoja !== "dia";
     $("#hHistorial").hidden = b.dataset.hoja !== "historial";
+    $("#hSesiones").hidden = b.dataset.hoja !== "sesiones";
     if(b.dataset.hoja === "dia") verDia();
     if(b.dataset.hoja === "historial") verHistorial();
+    if(b.dataset.hoja === "sesiones") verSesiones();
   };
 });
 
@@ -834,6 +844,7 @@ function pintarDia(){
         ${pagado ? `<span class="tag">${cerrado ? "Ya pagada" : "Pagada en parte"} · ${fmt(pagado)}${
             d.cerrado.veces > 1 ? ` · ${d.cerrado.veces} cierres` : ""}</span>` : ""}
         ${!abierta && !pagado ? `<span class="tag sin-pagar">Cerrada sin pagar</span>` : ""}
+        ${(d.correcciones || []).length ? `<span class="tag">Corregida</span>` : ""}
       </div>
       <div id="panelQuien"></div>
       ${d.dias.length ? "" : `<p class="muted">Todavía no se facturó ni se gastó nada en esta sesión.</p>`}
@@ -875,13 +886,23 @@ function pintarDia(){
           <div class="ren total"><span>${d.pendiente > 0 ? "Queda por pagar" : "No queda nada por pagar"}</span>
             <b>${fmt(d.pendiente)}</b></div>` : ""}
       </div>
-      ${d.de_mas > 0 ? `<div class="aviso">⚠️ Se le pagó ${fmt(d.de_mas)} de más: la cuenta
-        bajó después del cierre. Eso se arregla afuera de la app —descontándolo del próximo
-        reparto o devolviéndolo—, porque un cierre ya pagado no se toca.</div>` : ""}
       ${q.falta_cobrar > 0 ? `<div class="aviso">⚠️ De esta sesión falta cobrar ${fmt(q.falta_cobrar)}.
         El reparto es de lo que se trabajó, así que ya está contado: esa plata todavía no entró al cajón.</div>` : ""}
       ${q.resto < 0 ? `<div class="aviso">⚠️ Los gastos superan lo que se facturó. No hay nada para repartir.</div>` : ""}
     </div>
+
+    ${(d.correcciones || []).length ? `
+    <div class="card" style="margin-top:var(--sp-4);">
+      <h3>Correcciones</h3>
+      <p class="nota" style="margin-top:0;">Lo que se le tocó a esta sesión después de
+        cerrarla. El próximo cierre ajusta solo la diferencia.</p>
+      <div class="cuenta">
+        ${d.correcciones.map(c => `
+          <div class="ren"><span>${esc(c.detalle)}
+              <em class="det">${esc(c.fecha)}${c.usuario ? " · " + esc(c.usuario) : ""}</em></span>
+            <b>${c.antes === c.despues ? "—" : `${fmt(c.antes)} → ${fmt(c.despues)}`}</b></div>`).join("")}
+      </div>
+    </div>` : ""}
 
     <div class="card" style="margin-top:var(--sp-4);">
       <h3>Lo que entró</h3>
@@ -1037,7 +1058,7 @@ function editarGasto(boton){
 }
 
 function tablaComprobantes(filas){
-  return `<table class="tabla-chica"><thead><tr>
+  return `<div class="tabla-scroll"><table class="tabla-chica"><thead><tr>
       <th>N°</th><th>Hora</th><th>Cliente</th><th>Zonas</th><th>Forma</th>
       <th class="num">Total</th><th class="num">Debe</th></tr></thead><tbody>
     ${filas.map(c => `<tr>
@@ -1048,7 +1069,7 @@ function tablaComprobantes(filas){
       <td>${esc(c.forma || "")}</td>
       <td class="num">${fmt(c.total)}</td>
       <td class="num ${c.saldo > 0 ? "deuda" : ""}">${c.saldo > 0 ? fmt(c.saldo) : "—"}</td>
-    </tr>`).join("")}</tbody></table>`;
+    </tr>`).join("")}</tbody></table></div>`;
 }
 
 /* El formulario de un gasto del día. El de la ayudante pide QUIÉN, porque es un
@@ -1129,12 +1150,18 @@ async function verHistorial(){
       <button class="b-out" id="hVer">Ver</button>
     </div>
     <div id="hLista"><p class="muted">Cargando…</p></div>
-  </div>
-  <div class="card" style="margin-top:var(--sp-4);">
-    <h3>Las sesiones</h3>
-    <div id="hDias"><p class="muted">Cargando…</p></div></div>`;
+  </div>`;
   $("#hVer").onclick = cargarHistorial;
   cargarHistorial();
+}
+
+/* Las sesiones, en su propia solapa. Antes vivían abajo de la tabla de
+   comprobantes: para mirar una jornada vieja había que pasar de largo los
+   trabajos de los últimos dos meses. */
+function verSesiones(){
+  $("#hSesiones").innerHTML = `<div class="card">
+    <h3>Las sesiones</h3>
+    <div id="hDias"><p class="muted">Cargando…</p></div></div>`;
   cargarDias();
 }
 
@@ -1147,13 +1174,14 @@ async function verHistorial(){
 const anulable = c => c.sesion_id ? !c.sesion_cerrada : (c.fecha || "").slice(0,10) === hoyArg();
 
 async function cargarHistorial(){
+  if(!$("#hLista")) return;          // su solapa no está abierta
   const r = await authFetch(`/api/comprobantes?de=depi&desde=${$("#hDesde").value}`
     + `&hasta=${$("#hHasta").value}&limite=200`);
   const d = await r.json();
   const filas = d.comprobantes || [];
   $("#hLista").innerHTML = filas.length ? `
     <p class="muted">${filas.length} de ${d.total} · deuda ${fmt(d.deuda_total || 0)}</p>
-    <table class="tabla-chica"><thead><tr>
+    <div class="tabla-scroll"><table class="tabla-chica"><thead><tr>
       <th>N°</th><th>Fecha</th><th>Cliente</th><th>Atendió</th>
       <th class="num">Total</th><th class="num">Debe</th><th></th></tr></thead><tbody>
     ${filas.map(c => `<tr>
@@ -1166,7 +1194,7 @@ async function cargarHistorial(){
       <td>${anulable(c)
             ? `<button class="b-del btn-mini anular" data-id="${c.id}"
                        data-num="${String(c.numero).padStart(5,"0")}">Anular</button>` : ""}</td>
-    </tr>`).join("")}</tbody></table>`
+    </tr>`).join("")}</tbody></table></div>`
     : `<p class="muted">No hay depilación en esas fechas.</p>`;
   $("#hLista").querySelectorAll(".anular").forEach(b => {
     b.onclick = async () => {
@@ -1181,13 +1209,14 @@ async function cargarHistorial(){
 }
 
 async function cargarDias(){
+  if(!$("#hDias")) return;           // su solapa no está abierta
   const r = await authFetch("/api/depilacion/sesiones");
   if(!r.ok){ $("#hDias").innerHTML = ""; return; }
   const ses = await r.json();
   const cuando = s => !s.desde ? "—"
     : s.dias > 1 ? `${fechaCorta(s.desde)} al ${fechaCorta(s.hasta)}` : fechaCorta(s.desde);
   $("#hDias").innerHTML = ses.length ? `
-    <table class="tabla-chica"><thead><tr>
+    <div class="tabla-scroll"><table class="tabla-chica"><thead><tr>
       <th>Sesión</th><th>Cuándo</th><th>La llevó</th><th class="num">Trabajos</th>
       <th class="num">Gastos</th><th class="num">Le tocó</th><th></th></tr></thead><tbody>
     ${ses.map(s => `<tr>
@@ -1201,11 +1230,11 @@ async function cargarDias(){
             : s.cerrada ? "pagada"
             : s.pagado ? `<b class="deuda">falta ${fmt(s.parte_empleada - s.pagado)}</b>`
             : `<b class="deuda">sin pagar</b>`}
-        ${s.de_mas > 0 ? `<b class="deuda">· ${fmt(s.de_mas)} de más</b>` : ""}
+        ${s.correcciones ? `<span class="det">· corregida</span>` : ""}
         ${s.abierta ? "" : `<button class="b-out btn-mini reabrir" data-dueno
             data-id="${s.id}" data-num="${s.numero}"
             title="Volver a abrirla para corregirla">Reabrir</button>`}</td>
-    </tr>`).join("")}</tbody></table>`
+    </tr>`).join("")}</tbody></table></div>`
     : `<p class="muted">Todavía no hubo sesiones de depilación.</p>`;
   /* Reabrir es de la dueña: una sesión cerrada no acepta nada —ni anular un
      ticket que no iba— y eso es lo que protege un reparto ya pagado. El que
