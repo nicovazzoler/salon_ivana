@@ -122,6 +122,11 @@ class SesionDepilacion(Base):
     empleado_id = Column(Integer, ForeignKey("empleados.id"), index=True)
     abierta = Column(DateTime, default=fecha_hora_now_utc)
     cerrada = Column(DateTime)                        # NULL = sigue abierta
+    # El reparto de esta sesión se cuenta sobre la lista de efectivo, que es la
+    # regla con la que se liquidó. Solo lo llevan las que ya estaban pagadas
+    # cuando el reparto pasó a contar todo lo facturado: una cuenta ya cobrada
+    # no se vuelve a calcular con otra fórmula.
+    reparto_efectivo = Column(Boolean, default=False)
     notas = Column(String)
     empleado = relationship("Empleado")
 

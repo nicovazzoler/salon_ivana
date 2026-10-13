@@ -435,7 +435,8 @@ function renderComprobantes(){
             const extra = desc>0 ? ` <span class="muted">(saldó ${fmt(p.saldado)} · ${(desc / p.saldado * 100).toFixed(2)}% desc)</span>` : "";
             return `<div class="fila" style="justify-content:space-between;color:var(--text-tenue);"><span>✓ ${f} · ${p.forma_pago}${p.alias?' ('+p.alias+')':''}${extra}</span><span>${fmt(p.monto)}</span></div>`;
           }).join("")
-        : '<div class="muted">Sin pagos todavía.</div>';
+        : (q.senaT > 0 ? '<div class="muted">Lo cubrió la seña que ya había dejado.</div>'
+                       : '<div class="muted">Sin pagos todavía.</div>');
       const filaPendiente = d.saldo > 0
         ? `<div class="fila fila-desc"><span>Pendiente</span><span>${fmt(d.saldo)}</span></div>` : "";
       if(esPresu){

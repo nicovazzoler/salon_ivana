@@ -219,6 +219,11 @@ def migrar():
     if "sesion_id" not in licols:
         with engine.begin() as con:
             con.execute(text("ALTER TABLE liquidaciones ADD COLUMN sesion_id INTEGER"))
+    if insp.has_table("sesiones_depilacion"):
+        scols = [c["name"] for c in insp.get_columns("sesiones_depilacion")]
+        if "reparto_efectivo" not in scols:
+            with engine.begin() as con:
+                con.execute(text("ALTER TABLE sesiones_depilacion ADD COLUMN reparto_efectivo BOOLEAN"))
 
 migrar()
 
@@ -1701,7 +1706,12 @@ def cuenta_depilacion(db, ses) -> dict:
     no está en el cajón todavía.
     """
     filas = lineas_de_sesion(db, ses.id)
-    base = sum(base_facturada(l, c) for l, c in filas)
+    # `reparto_efectivo` lo llevan las sesiones que ya estaban pagadas cuando el
+    # reparto pasó a contar todo lo facturado: se siguen contando como se
+    # liquidaron. No se mira si tiene cierres, que eso haría que la cuenta
+    # cambiara justo al cobrarla.
+    cuanto = base_comision if ses.reparto_efectivo else base_facturada
+    base = sum(cuanto(l, c) for l, c in filas)
 
     # Lo que falta cobrar de los tickets que tienen depilación. No baja el
     # reparto —el reparto es del trabajo hecho— pero hay que decirlo: es plata
@@ -1821,8 +1831,37 @@ def migrar_dias_a_sesiones():
         db.commit()
         if dias: print(f"Depilación: {len(dias)} días pasados a sesiones.")
 
+MARCA_REPARTO = "reparto_por_lo_facturado"
+
+def migrar_reparto_de_lo_pagado():
+    """Las sesiones que ya se habían pagado se siguen contando en efectivo.
+
+    El reparto pasó a contar todo lo facturado, cada línea en la lista con la
+    que se cobró. Recalcular con esa fórmula una sesión ya liquidada la deja
+    debiendo plata sola: con dos trabajos por transferencia de $20.000 de lista,
+    la parte pasaba de $18.000 a $20.000 y la pantalla ofrecía cerrarla otra vez
+    por la diferencia, con un egreso de verdad. Una cuenta ya cobrada no se
+    vuelve a calcular con otra fórmula.
+
+    Se marca UNA sola vez: lo que se liquide de acá en adelante ya nace con la
+    regla nueva, incluida la sesión que está abierta.
+    """
+    from sqlalchemy.orm import Session as _S
+    with _S(engine) as db:
+        if db.query(models.Config).filter_by(clave=MARCA_REPARTO).first(): return
+        pagadas = {l.sesion_id for l in db.query(models.Liquidacion).filter(
+            models.Liquidacion.sesion_id.isnot(None)).all()}
+        if pagadas:
+            for ses in db.query(models.SesionDepilacion).filter(
+                    models.SesionDepilacion.id.in_(pagadas)).all():
+                ses.reparto_efectivo = True
+        db.add(models.Config(clave=MARCA_REPARTO, valor=str(len(pagadas))))
+        db.commit()
+        if pagadas: print(f"Depilación: {len(pagadas)} sesiones ya pagadas se siguen repartiendo en efectivo.")
+
 try:
     migrar_dias_a_sesiones()
+    migrar_reparto_de_lo_pagado()
 except Exception as _e:
     print('Aviso: no se pudieron armar las sesiones de depilación:', _e)
 
@@ -3456,7 +3495,8 @@ def listar_comprobantes(tipo: str | None = None,
     clave = {
         "fecha":   lambda f: f[0].fecha,
         "numero":  lambda f: f[0].numero,
-        "monto":   lambda f: f[1]["ingresado"] + f[1]["saldo"],
+        # El mismo número que muestra la tarjeta: la seña no es plata de mostrador.
+        "monto":   lambda f: f[1]["cobrado"] + max(f[1]["saldo"], 0),
         "cliente": lambda f: _sin_acentos(f[0].cliente_nombre or "Mostrador"),
     }.get(orden, lambda f: f[0].fecha)
     # Dos pasadas en vez de una clave compuesta: el desempate por número va
@@ -3736,6 +3776,12 @@ def borrar_pago(pago_id: int, _ = Depends(usuario_actual), db: Session = Depends
     """Anula un cobro mal cargado. El comprobante vuelve a quedar con saldo pendiente."""
     p = db.get(models.Pago, pago_id)
     if not p: raise HTTPException(404, "Pago no existe")
+    # Si el abono venía de una seña, la seña vuelve a quedar a favor de la
+    # clienta: borrado el abono, no salda nada y sin esto tampoco volvía a
+    # aparecer como disponible. Es lo mismo que hace anular el comprobante.
+    if p.sena_id:
+        db.query(models.Sena).filter(models.Sena.id == p.sena_id).update(
+            {"comprobante_id": None}, synchronize_session=False)
     db.delete(p); db.commit(); return {"ok": True}
 
 @app.post("/api/comprobantes/{comp_id}/convertir")

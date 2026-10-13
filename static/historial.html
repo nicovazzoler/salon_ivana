@@ -477,7 +477,9 @@ function crearFila(comp){
         ? q.abonos.map(p=>{const f=new Date(p.fecha.endsWith("Z")?p.fecha:p.fecha+"Z").toLocaleDateString("es-AR");
             return `<div class="fila" style="color:var(--text-tenue);"><span>✓ ${f} · ${p.forma_pago}${p.alias?' ('+p.alias+')':''}</span><span>${fmt(p.monto)}</span></div>`;
           }).join("")
-        : (d.tipo==="ticket"?'<div class="muted">Sin pagos.</div>':'');
+        : (d.tipo!=="ticket" ? ''
+           : q.senaT > 0 ? '<div class="muted">Lo cubrió la seña que ya había dejado.</div>'
+           : '<div class="muted">Sin pagos.</div>');
       const filaPendiente = d.saldo > 0
         ? `<div class="fila fila-desc"><span>Pendiente</span><span>${fmt(d.saldo)}</span></div>` : "";
 

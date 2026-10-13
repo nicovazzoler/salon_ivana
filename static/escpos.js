@@ -108,7 +108,10 @@ function cuentaDeComprobante(d){
   // Lo que se cobra de mostrador: lo que ya entró sin contar señas, más lo que falta.
   const total = abonos.reduce((a,p) => a + p.monto, 0) + Math.max(d.saldo, 0);
 
-  let senaT  = Math.min(subtotal, senas.reduce((a,p) => a + senaTransfer(p), 0));
+  // El tope es la cuenta entera, extras incluidos: una seña que los tapa también
+  // tiene que poder mostrarse entera, o la diferencia salía como un descuento
+  // del 0% que nunca existió.
+  let senaT  = Math.min(subtotal + extras, senas.reduce((a,p) => a + senaTransfer(p), 0));
   let descEf = (subtotal - senaT) - descJub - descAbono + extras - total;
   // Redondeos de las dos listas: antes que mostrar un descuento negativo, que
   // no existe, se le saca a la seña. Son 100 pesos en el peor caso.

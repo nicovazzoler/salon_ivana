@@ -189,6 +189,14 @@ Lo que hay que respetar:
   porque la diferencia entre listas no es un descuento que se le hizo a nadie,
   pero el reparto de la sesión es otra cuenta y ahí lo que se parte es lo que
   cobró el local.
+- **Una cuenta ya cobrada no se vuelve a calcular con otra fórmula.** Las
+  sesiones que ya estaban pagadas cuando el reparto pasó a contar todo lo
+  facturado llevan `reparto_efectivo` y se siguen contando en efectivo. Sin esa
+  marca, cada sesión vieja con tickets por transferencia aparecía debiendo plata
+  sola —dos trabajos de $20.000 de lista pasaban la parte de $18.000 a $20.000—
+  y la pantalla ofrecía cerrarla otra vez, con un egreso de verdad. La marca la
+  pone una migración de datos, UNA sola vez, y no se mira "si tiene cierres":
+  eso haría que la cuenta cambiara justo al cobrarla.
 - Se reparte lo **facturado**, no lo cobrado: lo que se reparte es el trabajo
   hecho. Lo que falta cobrar se dice aparte y a la vista.
 - **Solo restan los gastos DE esa sesión**, los que se cargan desde su pantalla
@@ -348,9 +356,10 @@ HOY, porque la seña ya la pagó. El descuento sale de RESTAR y no de multiplica
 así la columna cierra siempre y el total que se le dice a la clienta es
 exactamente el que cobra el backend. La arma `cuentaDeComprobante()` en
 `escpos.js` —el archivo que cargan las cuatro pantallas que la dibujan: el
-papel, la vista de impresión, la ficha del cliente y el historial— y la pantalla
-de depilación hace la misma cuenta antes de que el comprobante exista. Si fueran
-cuatro cuentas, un día el papel que sale al cobrar diría otra cosa que la ficha.
+papel, la vista de impresión, la ficha del cliente y el historial—. La pantalla
+de depilación tiene la suya, porque ahí todavía no hay comprobante: son los
+mismos renglones y tiene que dar lo mismo. Si fueran cuatro cuentas, un día el
+papel que sale al cobrar diría otra cosa que la ficha.
 
 Los abonos de seña no se repiten abajo, en lo recibido: ya se restaron arriba, y
 listados otra vez lo recibido sumaba más que el total. Por lo mismo la tarjeta
