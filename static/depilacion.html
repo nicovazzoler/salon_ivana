@@ -682,41 +682,30 @@ $("#btnCobrar").onclick = async () => {
             + `${SENAS.length ? "\n\nSe le aplican las señas que tiene a favor." : ""}`
             + `\n\n¿Lo cobramos?`)){ b.disabled = false; return; }
 
+  /* Crear, aplicar las señas y cobrar, todo en UN pedido.
+
+     Eran tres: si la segunda o la tercera no llegaba —internet del local, la
+     tablet que se duerme— el ticket quedaba cobrado a medias. Con seña quedaba
+     cobrado SOLO con la seña y el resto como deuda, y si lo que fallaba era la
+     consulta del saldo ni siquiera avisaba. Ahora o queda cobrado o no queda
+     nada. */
   const cuerpo = {tipo: "ticket", cliente_id: CLI.id, cliente_nombre: null,
                   peluquero: $("#atiende").value || null,
                   forma_pago: FORMA, descuento_pct: 0, mostrar_motivo: false,
                   lineas: TICKET.map(l => ({item_id: l.id, nombre: l.nombre, cantidad: l.cantidad})),
-                  extras: []};
+                  extras: [], aplicar_senas: true, cobrar: true};
   const r = await authFetch("/api/comprobantes", {method:"POST",
     headers:{"Content-Type":"application/json"}, body: JSON.stringify(cuerpo)});
-  if(!r.ok){ toast((await r.json().catch(()=>({}))).detail || "No se pudo crear"); b.disabled = false; return; }
+  if(!r.ok){ toast((await r.json().catch(()=>({}))).detail || "No se pudo cobrar"); b.disabled = false; return; }
   const d = await r.json();
-
-  if(CLI && SENAS.length)
-    await authFetch(`/api/comprobantes/${d.id}/aplicar-senas`, {method:"POST"});
-
-  const c = await (await authFetch("/api/comprobantes/" + d.id)).json();
-  let aviso = "";
-  if(c.saldo > 0){
-    const rp = await authFetch(`/api/comprobantes/${d.id}/pagos`, {method:"POST",
-      headers:{"Content-Type":"application/json"},
-      body: JSON.stringify({monto: c.saldo, saldado: c.saldo,
-                            forma_pago: FORMA === "efectivo" ? "Efectivo" : "Transferencia",
-                            alias: null, del_servicio: true})});
-    if(!rp.ok) aviso = "Se creó el comprobante pero el cobro falló: cobralo desde la cuenta del cliente.";
-  }
-  const fin = await (await authFetch("/api/comprobantes/" + d.id)).json();
   const num = "N-" + String(d.numero).padStart(5, "0");
-  const sena = fin.pagos.filter(p => p.es_sena);
   $("#hecho").hidden = false;
   $("#hecho").innerHTML = `<b>${num} cobrado</b>
-    <span class="det">${fmt(fin.total_final)} de cuenta${
-      sena.length ? ` · seña ${fmt(sena.reduce((a,p)=>a+p.monto,0))}`
-                  + (sena.some(p => p.desc_aplicado) ? ` (saldó ${fmt(sena.reduce((a,p)=>a+(p.saldado||p.monto),0))} por ser en efectivo)` : "")
-                  : ""}${fin.saldo > 0 ? ` · queda debiendo ${fmt(fin.saldo)}` : ""}</span>
-    <a class="b-out" href="/ticket?id=${d.id}">🖨️ Imprimir</a>
-    ${aviso ? `<p class="nota">${aviso}</p>` : ""}`;
-  toast(fin.saldo > 0 ? `${num} con saldo pendiente` : `${num} cobrado ✓`);
+    <span class="det">${fmt(d.total_final)} de cuenta${
+      d.senas_usadas ? ` · con ${d.senas_usadas === 1 ? "la seña que tenía" : `${d.senas_usadas} señas`}` : ""}${
+      d.saldo > 0 ? ` · queda debiendo ${fmt(d.saldo)}` : ""}</span>
+    <a class="b-out" href="/ticket?id=${d.id}">🖨️ Imprimir</a>`;
+  toast(d.saldo > 0 ? `${num} con saldo pendiente` : `${num} cobrado ✓`);
   /* El papel se ofrece y no sale solo: imprimir es una navegación a RawBT y se
      lleva la pantalla puesta, así que primero se guarda y recién después se
      pregunta. El que dice que no tiene el botón de Imprimir ahí abajo. */

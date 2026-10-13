@@ -347,6 +347,11 @@ class ComprobanteIn(BaseModel):
     fecha: str | None = None              # 'YYYY-MM-DD' argentino: para anotar un servicio de otro día
     lineas: list[LineaCompIn]
     extras: list[ExtraIn] = []            # cargos que ningún descuento toca
+    # Cobrar en el MISMO pedido que crea el comprobante. Lo usa depilación, que
+    # cobra siempre entero: en tres llamadas —crear, aplicar señas, cobrar— la
+    # que no llega deja el ticket cobrado a medias y con deuda.
+    aplicar_senas: bool = False
+    cobrar: bool = False
 class PagoIn(BaseModel):
     monto: int; forma_pago: str; alias: str | None = None; saldado: int | None = None
     # True = este abono cierra la venta, así que la plata pertenece al día del
@@ -3600,9 +3605,27 @@ def crear_comprobante(c: ComprobanteIn, user = Depends(usuario_actual), db: Sess
     # al otro día es de la sesión igual, y es el único lugar por el que pasan
     # todos los cobros de depilación.
     if solo_depi: comp.sesion_id = sesion_para_cobrar(db).id
+
+    # El cobro, en el mismo pedido y en la misma transacción: o queda el ticket
+    # cobrado o no queda nada.
+    senas_usadas = 0
+    if c.tipo == "ticket" and comp.cliente_id and c.aplicar_senas:
+        db.flush()
+        senas_usadas, _ = _aplicar_senas(db, comp)
+    if c.tipo == "ticket" and c.cobrar:
+        db.flush()
+        saldo = estado_comprobante(db, comp)["saldo"]
+        if saldo > 0:
+            # El texto exacto, que es con el que el arqueo compara.
+            forma = "Efectivo" if comp.forma_pago == "efectivo" else "Transferencia"
+            db.add(models.Pago(comprobante_id=comp.id, monto=saldo, saldado=saldo,
+                               fecha=comp.fecha, forma_pago=forma, desc_aplicado=0))
     db.commit(); db.refresh(comp)
+    est = estado_comprobante(db, comp)
     return {"id": comp.id, "numero": comp.numero, "tipo": comp.tipo,
-            "fecha": comp.fecha.isoformat(), "anotado_despues": anotado_despues(comp)}
+            "fecha": comp.fecha.isoformat(), "anotado_despues": anotado_despues(comp),
+            "total_final": est["total_final"], "saldo": est["saldo"],
+            "senas_usadas": senas_usadas}
 
 @app.post("/api/comprobantes/{comp_id}/pagos")
 def registrar_pago(comp_id: int, pago: PagoIn, _ = Depends(usuario_actual), db: Session = Depends(get_db)):
@@ -3936,23 +3959,15 @@ def sena_saldado(sena, comp, saldo: int) -> tuple[int, int]:
         return sena.monto, bruto
     return min(sena.monto, round(saldo / factor)), saldo
 
-@app.post("/api/comprobantes/{comp_id}/aplicar-senas")
-def aplicar_senas(comp_id: int, _ = Depends(usuario_actual), db: Session = Depends(get_db)):
-    """Usa las señas libres de la clienta como abono de este ticket.
+def _aplicar_senas(db, comp) -> tuple[int, int]:
+    """Usa las señas libres del cliente como abono. No hace commit.
 
-    Cada seña deja su propio abono con `sena_id`, así se puede seguir cuál plata
-    vino de dónde. El abono salda la cuenta pero no es plata del día: entró
-    cuando se cobró la seña.
+    Separado del endpoint porque el cobro de depilación lo hace en el mismo
+    pedido que crea el comprobante: en tres llamadas, la que no llega deja el
+    ticket cobrado a medias.
     """
-    comp = db.get(models.Comprobante, comp_id)
-    if not comp or not comp.activo: raise HTTPException(404, "Comprobante no existe")
-    if comp.tipo != "ticket": raise HTTPException(400, "Solo se cobran tickets, no presupuestos")
-    if not comp.cliente_id: raise HTTPException(400, "El comprobante no tiene cliente registrado")
-    libres = senas_libres(db, comp.cliente_id)
-    if not libres: raise HTTPException(400, "Esa clienta no tiene señas sin usar")
-
-    aplicadas, total = [], 0
-    for s in libres:
+    aplicadas, total = 0, 0
+    for s in senas_libres(db, comp.cliente_id):
         saldo = estado_comprobante(db, comp)["saldo"]
         if saldo <= 0: break
         usa, saldado = sena_saldado(s, comp, saldo)
@@ -3968,9 +3983,26 @@ def aplicar_senas(comp_id: int, _ = Depends(usuario_actual), db: Session = Depen
                            forma_pago="Seña", desc_aplicado=saldado - usa, sena_id=s.id))
         db.flush()
         s.comprobante_id = comp.id
-        aplicadas.append(s.id); total += usa
+        aplicadas += 1; total += usa
+    return aplicadas, total
+
+@app.post("/api/comprobantes/{comp_id}/aplicar-senas")
+def aplicar_senas(comp_id: int, _ = Depends(usuario_actual), db: Session = Depends(get_db)):
+    """Usa las señas libres de la clienta como abono de este ticket.
+
+    Cada seña deja su propio abono con `sena_id`, así se puede seguir cuál plata
+    vino de dónde. El abono salda la cuenta pero no es plata del día: entró
+    cuando se cobró la seña.
+    """
+    comp = db.get(models.Comprobante, comp_id)
+    if not comp or not comp.activo: raise HTTPException(404, "Comprobante no existe")
+    if comp.tipo != "ticket": raise HTTPException(400, "Solo se cobran tickets, no presupuestos")
+    if not comp.cliente_id: raise HTTPException(400, "El comprobante no tiene cliente registrado")
+    if not senas_libres(db, comp.cliente_id):
+        raise HTTPException(400, "Esa clienta no tiene señas sin usar")
+    aplicadas, total = _aplicar_senas(db, comp)
     db.commit()
-    return {"ok": True, "aplicadas": len(aplicadas), "total": total,
+    return {"ok": True, "aplicadas": aplicadas, "total": total,
             "saldo": estado_comprobante(db, comp)["saldo"]}
 
 @app.get("/api/caja/dia")

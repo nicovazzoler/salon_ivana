@@ -357,6 +357,17 @@ hizo a nadie, son las dos listas de precios. Por eso se parte del efectivo y no
 del de transferencia. Lo ya cerrado no se recalcula nunca: cada liquidación
 guarda `base` y `comision` como estaban ese día.
 
+**El cobro de depilación va en UN solo pedido.** `POST /api/comprobantes` con
+`aplicar_senas` y `cobrar` crea el comprobante, aplica las señas y registra el
+abono en la misma transacción: o queda cobrado o no queda nada. Eran tres
+llamadas —crear, aplicar señas, cobrar— y con el internet del local la que no
+llegaba dejaba el ticket cobrado a medias: con seña quedaba cobrado SOLO con la
+seña y el resto como deuda, y si lo que fallaba era la consulta del saldo, el
+`if (c.saldo > 0)` con `c.saldo` en `undefined` se saltaba el cobro **sin
+avisar**. Facturar sigue cobrando en dos pasos porque ahí el cobro no siempre es
+entero —cobrar una parte, dejar a cuenta, pago mixto—; las dos banderas vienen
+apagadas por defecto.
+
 **Anular un comprobante devuelve las señas que había usado.** Quedaban
 apuntando al comprobante anulado: no saldaban nada y tampoco volvían a aparecer
 como disponibles, así que esa plata se le perdía a la clienta sin que nada
