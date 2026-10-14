@@ -15,7 +15,15 @@
   th,td{ text-align:right; }
   th:first-child,
   td:first-child{ text-align:left; }
-  .nums{ grid-template-columns:repeat(4, 1fr); }
+  /* Las cuatro en fila solo donde entran; abajo manda el auto-fit de
+     components.css, que baja las que no.
+
+     Ojo con el minmax(0,…): `1fr` es minmax(auto,1fr) y ese `auto` es
+     min-content, así que la columna no achica abajo del número que tiene
+     adentro y un día de $472.500 desborda la tarjeta igual. */
+  @media (min-width:561px){
+    .nums{ grid-template-columns:repeat(4, minmax(0, 1fr)); }
+  }
   /* El tipo y el concepto se muestran como TEXTO y solo se vuelven casilleros al
      tocar el lapicito. Adentro de un input el texto no crece con la columna: un
      concepto largo —"Sueldo Cristina (2026-09-26 a 2026-10-02)"— salía cortado a
@@ -165,7 +173,7 @@ async function cargarDia(){
   // detalle de cada venta y egreso del dia (editable por el dueño)
   let html = "";
   if(d.ventas_detalle && d.ventas_detalle.length){
-    html += '<b class="sub-titulo">Lo que entró</b><table style="margin-top:6px;"><thead><tr><th>Hora</th><th>Servicio</th><th>Pago</th><th>Monto</th><th></th></tr></thead><tbody>';
+    html += '<b class="sub-titulo">Lo que entró</b><div class="tabla-scroll"><table style="margin-top:6px;"><thead><tr><th>Hora</th><th>Servicio</th><th>Pago</th><th>Monto</th><th></th></tr></thead><tbody>';
     d.ventas_detalle.forEach(v=>{
       const al=v.alias?` (${v.alias})`:"";
       /* Solo un cobro se anula desde acá. Una seña se devuelve desde la ficha de
@@ -180,10 +188,10 @@ async function cargarDia(){
       html+=`<tr><td>${v.hora}</td><td>${esc(v.ref||'—')}${marca}</td><td>${esc(v.forma_pago||'')}${esc(al)}</td><td class="money">${money(v.total)}</td>
              <td>${puedeAnular ? `<button class="mini b-del" onclick="anularPagoCaja('${v.id}')">Anular</button>` : ''}</td></tr>`;
     });
-    html += '</tbody></table>';
+    html += '</tbody></table></div>';
   }
   if(d.egresos_detalle && d.egresos_detalle.length){
-    html += '<b class="sub-titulo">Egresos del día</b><table class="t-egresos" style="margin-top:6px;"><thead><tr><th>N°</th><th>Hora</th><th>Tipo</th><th>Concepto</th><th>Monto</th><th></th></tr></thead><tbody>';
+    html += '<b class="sub-titulo">Egresos del día</b><div class="tabla-scroll"><table class="t-egresos" style="margin-top:6px;"><thead><tr><th>N°</th><th>Hora</th><th>Tipo</th><th>Concepto</th><th>Monto</th><th></th></tr></thead><tbody>';
     d.egresos_detalle.forEach(e=>{
       // El empleado directamente no recibe los privados; la dueña los ve marcados,
       // para saber cuál de los egresos del día no está en la caja del otro.
@@ -204,7 +212,7 @@ async function cargarDia(){
             <button id="ec_cancel_${e.id}" class="mini b-out" onclick="cancelarEgresoCaja(${e.id})" style="display:none;">↩</button>
             <button class="mini b-del" onclick="anularEgresoCaja(${e.id})">×</button></td></tr>`;
     });
-    html += '</tbody></table>';
+    html += '</tbody></table></div>';
   }
   if(!html) html = '<span class="muted">Sin movimientos en esta fecha.</span>';
   $("#detalle").innerHTML = html;

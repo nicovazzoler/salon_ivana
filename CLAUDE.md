@@ -45,9 +45,10 @@ static/
                  sesiones con los tickets de cada una adentro—. El reparto lo
                  dibuja `repartoHTML()`, que usan la solapa y el cartel del
                  resumen: con dos, un día el cartel diría otra cosa. Las tablas
-                 van adentro de un `.tabla-scroll`: las de plata no se parten, así que
-                 abajo de 600px desbordaban la PÁGINA y en el celular el botón de
-                 la última columna quedaba fuera de la pantalla
+                 van adentro de un `.tabla-scroll` —que vive en components.css,
+                 porque Caja tiene el mismo problema—: las columnas de plata no
+                 se parten, así que abajo de 600px desbordaban la PÁGINA y en el
+                 celular el botón de la última columna quedaba fuera
   escpos.js      Generador del papel de la comandera (ticket.html y facturar.js)
 ```
 

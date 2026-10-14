@@ -299,6 +299,12 @@
 .campo{ display:flex; flex-direction:column; gap:var(--sp-1); }
 .campo label{ font-size:var(--fs-lg); color:var(--text-tenue); }
 
+/* ----- Tabla que desliza sola (caja, depilación) -----
+   Las columnas de plata no se parten, así que abajo de 600px la tabla no entra:
+   sin esto desborda la PÁGINA y se va de costado todo —menú, tarjetas— con el
+   botón de la última columna afuera de la pantalla del celular. */
+.tabla-scroll{ overflow-x:auto; }
+
 /* ----- Números destacados (caja, reportes) ----- */
 .nums{
   display:grid;
