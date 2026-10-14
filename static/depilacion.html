@@ -252,9 +252,6 @@
 <div class="wrap">
   <div class="card-head">
     <h2>Depilación</h2>
-    <p>Las zonas, la seña que el cliente ya dejó y el cobro, en una pantalla.
-       Se factura por el mismo lugar que Facturar, así que el comprobante, la caja
-       y el reparto de la sesión salen de lo mismo.</p>
   </div>
 
   <div class="solapas">
@@ -385,8 +382,7 @@ async function decirLaSesion(){
 function pintarCatalogo(){
   const cont = $("#catalogo");
   if(!ZONAS.length){
-    cont.innerHTML = `<p class="muted">No hay zonas de depilación en el catálogo.
-      Se marcan en Admin con "Es depilación", o se cargan de una con el script de la lista de precios.</p>`;
+    cont.innerHTML = `<p class="muted">No hay zonas. Se marcan en Admin con "Es depilación".</p>`;
     return;
   }
   // Por precio y no por nombre: el catálogo ordena alfabéticamente y así "10
@@ -618,8 +614,7 @@ async function mostrarSenas(avisar){
 
   const caja = $("#senas");
   caja.innerHTML = !TODAS_SENAS.length
-    ? `<p class="muted">No hay ninguna seña sin usar. Las que se tomen aparecen acá
-       hasta que se le facture.</p>`
+    ? `<p class="muted">No hay señas sin usar.</p>`
     : `<div class="lista-senas">${TODAS_SENAS.map(s => `
         <div class="sena${CLI && s.cliente_id === CLI.id ? " suya" : ""}">
           <b>${fmt(valorSena(s))}</b>
@@ -775,18 +770,12 @@ async function pintarSinSesion(){
   $("#hDia").innerHTML = `
     <div class="card">
       <h3>No hay ninguna sesión abierta</h3>
-      <p class="nota" style="margin-top:0;">Una sesión es una jornada de depilación entera:
-         se abre, se trabaja uno o varios días, se cargan los gastos cuando se pagan,
-         y al final se cierra y se reparte <b>una sola vez</b>.</p>
       <div class="dia-cab">
         <div class="campo"><label for="aQuien">La lleva</label>
           <select id="aQuien">${emps.filter(e => e.activo !== false).map(e =>
             `<option value="${e.id}"${e.nombre === quien ? " selected" : ""}>${esc(e.nombre)}</option>`).join("")}</select></div>
         <button class="b-ok" id="aAbrir">Abrir la sesión</button>
       </div>
-      <p class="nota">Si se cobra o se carga un gasto sin abrirla, se abre sola con
-         ${quien ? esc(quien) : "la que lleva la depilación en Admin"}: un cobro no se
-         puede caer porque nadie apretó un botón.</p>
     </div>`;
   $("#aAbrir").onclick = async () => {
     const r = await pedir("/api/depilacion/abrir", {method:"POST",
@@ -869,8 +858,6 @@ function pintarDia(){
         ${ayudantes.length ? `<button class="b-out btn-mini btn-ayudante">+ Otra ayudante</button>` : ""}
       </div>`}
       <div id="panelGasto"></div>
-      <p class="nota">Se restan de la sesión entera, no del día en que se pagaron:
-         la máquina se alquila para toda la jornada.</p>
     </div>
 
     <div class="card" style="margin-top:var(--sp-4);">
@@ -894,8 +881,7 @@ function pintarDia(){
     ${(d.correcciones || []).length ? `
     <div class="card" style="margin-top:var(--sp-4);">
       <h3>Correcciones</h3>
-      <p class="nota" style="margin-top:0;">Lo que se le tocó a esta sesión después de
-        cerrarla. El próximo cierre ajusta solo la diferencia.</p>
+      <p class="nota" style="margin-top:0;">El próximo cierre ajusta la diferencia.</p>
       <div class="cuenta">
         ${d.correcciones.map(c => `
           <div class="ren"><span>${esc(c.detalle)}
@@ -910,8 +896,6 @@ function pintarDia(){
         <div class="ren"><span>${esc(f)}</span><b>${fmt(d.cobrado[f])}</b></div>`).join("")}
         ${q.falta_cobrar > 0 ? `<div class="ren chico"><span>Falta cobrar</span><span class="deuda">${fmt(q.falta_cobrar)}</span></div>` : ""}
       </div>` : `<p class="muted">Todavía no se cobró nada de esta sesión.</p>`}
-      <p class="nota">Esta plata está también en la caja del local, con el resto del día:
-        el cliente paga en el mostrador. Acá se ve sola, para poder cerrar la depilación aparte.</p>
     </div>
 
     <details class="card" style="margin-top:var(--sp-4);">
@@ -928,8 +912,6 @@ function pintarDia(){
     ${!abierta ? "" : d.pendiente > 0 ? `
     <div class="card" style="margin-top:var(--sp-4);">
       <h3>${pagado ? "Pagar la diferencia" : "Cerrar la sesión"}</h3>
-      ${pagado ? `<p class="nota" style="margin-top:0;">La sesión se cerró con ${fmt(pagado)} y
-        después se facturó más, así que quedó esta diferencia.</p>` : ""}
       ${deuda ? `<div class="aviso">⚠️ A ${esc(d.a_cargo || "quien la lleva")} se le pagó de más en
         ${d.deuda_previa.map(x => `la sesión #${x.numero} (${fmt(x.monto)})`).join(", ")}.
         Se le descuenta${d.deuda_previa.length > 1 ? "n" : ""} de este cierre:
@@ -943,14 +925,11 @@ function pintarDia(){
           <input id="cNota" maxlength="80"></div>
         <button class="b-ok" id="cCerrar">Cerrar y pagar ${fmt(Math.max(d.pendiente - deuda, 0))}</button>
       </div>
-      <p class="nota">Queda la foto del reparto y el egreso anotado. Después de esto
-         la sesión no recibe más trabajo y los gastos no se tocan.</p>
     </div>` : `
     <div class="card" style="margin-top:var(--sp-4);">
       <h3>Cerrar la sesión</h3>
       <p class="nota" style="margin-top:0;">${pagado
-        ? "No queda nada para pagar." : "No hay nada para repartir todavía."}
-        Cerrarla es dejar de aceptarle trabajo: no anota ningún egreso.</p>
+        ? "No queda nada para pagar." : "No hay nada para repartir todavía."}</p>
       <button class="b-out" id="cCerrar">Cerrar la sesión</button>
     </div>`}`;
 
@@ -1093,15 +1072,14 @@ async function formGasto(clase){
          <input type="number" class="gMonto" min="1" inputmode="numeric" value="${fijo || ""}"></div>
        <button class="b-ok gOk">Anotar el pago</button>
        <button class="b-out gNo">Cancelar</button>
-       ${fijo ? `<span class="nota">El fijo son ${fmt(fijo)}. Si ponés otro número queda escrito que se cambió.</span>` : ""}`
+       ${fijo ? `<span class="nota">El fijo son ${fmt(fijo)}.</span>` : ""}`
     : `<div class="ancho"><label>${clase === "maquina" ? "Máquina de la sesión" : "Gasto de la sesión"}</label>
          <input class="gConcepto" maxlength="80" value="${clase === "maquina" ? "Alquiler de la máquina" : ""}"
                 placeholder="Cera, descartables…"></div>
        <div style="flex:0 0 130px;"><label>${clase === "maquina" ? "Costó" : "Monto"}</label>
          <input type="number" class="gMonto" min="1" inputmode="numeric"></div>
        <button class="b-ok gOk">Anotar</button>
-       <button class="b-out gNo">Cancelar</button>
-       <span class="nota">Entra en la resta de la sesión, así que baja las dos mitades.</span>`;
+       <button class="b-out gNo">Cancelar</button>`;
   $("#panelGasto").innerHTML = "";
   $("#panelGasto").appendChild(caja);
   const sel = caja.querySelector(".gQuien");

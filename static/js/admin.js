@@ -467,7 +467,7 @@ function pintarBarra(){
   btn.textContent = `Guardar ${n} ${n===1?"cambio":"cambios"}`;
   nota.textContent = n
     ? (cats > 1 ? `Sin guardar todavía · ${cats} categorías tocadas` : "Sin guardar todavía.")
-    : "Tocá los precios o los nombres que haya que cambiar y guardalos todos juntos. Podés moverte entre categorías: los cambios se acumulan.";
+    : "Se guardan todos juntos, de todas las categorías.";
 }
 
 /* Se guarda TODO lo tocado, esté o no en la categoría que se está viendo. La
@@ -800,8 +800,7 @@ function dibujarCrearUsuario(us){
   if (!libres.length){
     const p = document.createElement("p");
     p.className = "nota-vacio";
-    p.textContent = "Los dos roles están ocupados. Para cambiar de persona, "
-                  + "renombrá el usuario y cambiale la contraseña, o borralo y creá otro.";
+    p.textContent = "Los dos roles están ocupados: renombrá uno o borralo para crear otro.";
     cont.appendChild(p);
     return;
   }
@@ -1463,8 +1462,7 @@ function pintarBarraHorario(emps){
       <span class="tramo bt2" hidden><input type="time" class="bd2" value="16:00"><span class="a">a</span><input type="time" class="bh2" value="20:00"></span>
       <button class="b-tinta aplicar" disabled>Aplicar</button>
     </div>
-    <p class="muted resumen-barra" style="margin:var(--sp-2) 0 0;">Elegí a quién y qué días. Solo se
-      cambian esos días; el resto de la semana de cada una queda como está.</p>`;
+    <p class="muted resumen-barra" style="margin:var(--sp-2) 0 0;">Elegí a quién y qué días.</p>`;
 
   const sel = s => caja.querySelector(s), todos = s => [...caja.querySelectorAll(s)];
   const elegidas = () => todos(".quienes .chip-dia.on[data-emp]").map(b => Number(b.dataset.emp));
@@ -1475,8 +1473,8 @@ function pintarBarraHorario(emps){
     const q = elegidas().length, d = diasSel().length;
     aplicar.disabled = !q || !d;
     sel(".resumen-barra").textContent = (!q || !d)
-      ? "Elegí a quién y qué días. Solo se cambian esos días; el resto de la semana de cada una queda como está."
-      : `Le cambia ${d === 1 ? "1 día" : d + " días"} a ${q === 1 ? "1 persona" : q + " personas"}. El resto de su semana queda como está.`;
+      ? "Elegí a quién y qué días."
+      : `Le cambia ${d === 1 ? "1 día" : d + " días"} a ${q === 1 ? "1 persona" : q + " personas"}; el resto de su semana queda como está.`;
     sel(".todas").classList.toggle("on", q === activas.length && q > 0);
   };
 

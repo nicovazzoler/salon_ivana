@@ -52,22 +52,21 @@ function panelGenerales(cont, alGuardar, opciones){
 
   /* Quién queda afuera de estos números.
 
-     Las excepciones NO se pisan —vh_de() y pct_de() usan el general solo como
-     respaldo— pero eso no se ve por ningún lado, y no verlo lleva a las dos
-     equivocaciones opuestas: creer que se pisó lo de alguien, o creer que no se
-     le cambió a nadie. */
+     Solo las excepciones: las que hay, no las que no. Las excepciones NO se
+     pisan —vh_de() y pct_de() usan el general solo como respaldo— pero eso no
+     se ve por ningún lado, y no verlo lleva a las dos equivocaciones opuestas:
+     creer que se pisó lo de alguien, o creer que no se le cambió a nadie. */
   function aviso(){
-    const propias = cfg.hora_propia || [], n = propias.length;
-    const quienes = n === 0
-      ? "El valor hora les llega a todas: ninguna tiene uno propio."
-      : n === 1 ? `Les llega a todas menos a ${_escGral(propias[0])}, que cobra la suya.`
-      : `Les llega a todas menos a ${propias.map(_escGral).join(", ")}, que cobran la suya.`;
-    const uno = cfg.pct_propio === 1;
-    const items = cfg.pct_propio
-      ? ` ${cfg.pct_propio} ${uno ? "servicio tiene" : "servicios tienen"} su propio porcentaje`
-        + ` y tampoco ${uno ? "cambia" : "cambian"}.`
-      : " Ningún servicio tiene un porcentaje propio.";
-    return quienes + items + " Lo ya cerrado no se toca.";
+    const propias = cfg.hora_propia || [];
+    const partes = [];
+    if(propias.length)
+      partes.push(`Menos ${propias.map(_escGral).join(", ")}, que ${
+        propias.length === 1 ? "cobra la suya" : "cobran la suya"}.`);
+    if(cfg.pct_propio)
+      partes.push(`${cfg.pct_propio} ${cfg.pct_propio === 1 ? "servicio tiene" : "servicios tienen"
+        } su propio porcentaje.`);
+    partes.push("Lo ya cerrado no se toca.");
+    return partes.join(" ");
   }
 
   function pintar(){
@@ -84,6 +83,9 @@ function panelGenerales(cont, alGuardar, opciones){
       ["Comisión",            `<input type="number" class="gPct" min="0" max="100" inputmode="numeric" value="${cfg.comision_pct ?? 40}">`,
                               (cfg.comision_pct ?? 40) + "%"],
     ];
+    // En depilación no hay nota: los dos rótulos ya lo dicen y los dos valores
+    // se pueden cambiar en la sesión.
+    const nota = soloDepi ? "" : aviso();
     caja.innerHTML = `
       <div class="gral-cab">
         <h3>${soloDepi ? "Los números de la depilación" : "Para todas"}</h3>
@@ -97,7 +99,7 @@ function panelGenerales(cont, alGuardar, opciones){
           <div class="campo"><label>${rot}</label>
             ${editando ? edit : `<b class="val">${texto}</b>`}</div>`).join("")}
       </div>
-      <p class="nota">${soloDepi ? avisoDepi() : aviso()}</p>
+      ${nota ? `<p class="nota">${nota}</p>` : ""}
       ${editando && porPersona ? listaPropios() : ""}`;
 
     const editar = caja.querySelector(".gEditar");
@@ -116,13 +118,6 @@ function panelGenerales(cont, alGuardar, opciones){
       }));
       engancharPropios();
     }
-  }
-
-  function avisoDepi(){
-    return "Con quién las lleva puesto, toda sesión nueva arranca con ella —y la que "
-         + "se abre sola al cobrar, también—; igual se puede cambiar en la sesión. "
-         + "El pago a la ayudante viene puesto al cargar el gasto y se puede cambiar ahí. "
-         + "La máquina no tiene número fijo: se alquila por jornada.";
   }
 
   async function guardarGeneral(){
@@ -299,8 +294,7 @@ function panelCorteSueldos(cont, alGuardar){
            <span class="arrCajon" style="display:none;">${controles}</span>
          </div>`
       : `<div class="arranque">
-           <span>Los sueldos cuentan desde siempre: aparece todo lo que quedó sin pagar.
-                 El corte vale para <b>todas</b> las empleadas.</span>
+           <span>Sin corte, los sueldos cuentan desde siempre.</span>
            ${controles}
          </div>`;
 

@@ -68,8 +68,8 @@ const VOS = {
   debe:   DUENO ? "Se le debe" : "Se te debe",
   quien:  DUENO ? "Empleada" : "Quién sos",
   sinNada: DUENO ? "No tiene nada pendiente" : "No tenés nada pendiente",
-  comoAparece: DUENO ? "Los trabajos aparecen solos cuando se cobra un ticket a su nombre con un ítem a comisión."
-                     : "Los trabajos aparecen solos cuando se cobra un ticket a tu nombre con un ítem a comisión.",
+  comoAparece: DUENO ? "Aparecen solos al cobrar un ticket a su nombre."
+                     : "Aparecen solos al cobrar un ticket a tu nombre.",
 };
 
 /* Las horas se muestran como las dice la gente ("8 h 30"), nunca en decimales:
@@ -129,12 +129,9 @@ async function arranque(){
     // que está mirando. El selector de arriba sigue existiendo porque es lo que
     // dice de quién es lo que se ve.
     $("#tituloDetalle").textContent = "Detalle";
-    $("#bajadaDetalle").textContent = "Lo que se le debe, ciclo por ciclo. Cada semana se cierra por separado.";
     $("#rotuloQuien").textContent = VOS.quien;
   } else {
     $("#tituloDetalle").textContent = "👛 Tu semana";
-    $("#bajadaDetalle").textContent = "Están todos los días: poné las horas que hiciste y cuánto duró cada trabajo. "
-      + "El que no quedó en ningún ticket lo agregás vos. El total se actualiza solo.";
   }
   // Ordenados por nombre: el desplegable se usa buscando uno puntual, y el orden
   // en que los devuelve la base no le dice nada al que busca.
@@ -294,7 +291,6 @@ async function pintarLiquidaciones(){
   }
   if(!DUENO){
     $("#tituloPagado").textContent = "🧾 Lo que ya cobraste";
-    $("#bajadaPagado").textContent = "Tus ciclos cerrados, con los números tal como estaban ese día.";
   }
 
   // Se agrupa por el rango del ciclo. La clave es desde+hasta: dos empleadas de
