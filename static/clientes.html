@@ -14,6 +14,7 @@
     gap:10px;
     align-items:center;
   }
+  .barra-buscar{ display:flex; gap:var(--sp-2); align-items:center; margin-bottom:10px; }
   .grid-cli.cab{
     padding:0 var(--sp-2) var(--sp-2);
     font-size:var(--fs-xs);
@@ -64,18 +65,20 @@
 <div class="wrap">
 
   <div class="card">
-    <h2>Nuevo cliente</h2>
-    <div class="fila">
+    <!-- Agregar un cliente se hace de vez en cuando; buscarlo, todo el día. El
+         formulario abierto empujaba la lista para abajo en cada visita. -->
+    <div class="barra-buscar">
+      <input id="buscar" placeholder="🔎 Buscar por nombre o teléfono..." style="flex:1;min-width:0;">
+      <button class="b-tinta" id="btnAbrirNuevo">+ Cliente</button>
+    </div>
+    <div class="fila" id="formNuevo" hidden style="margin-bottom:10px;">
       <input id="nNombre" placeholder="Nombre y apellido" style="flex:1;min-width:160px;">
       <input id="nTel" placeholder="Teléfono (opcional)">
       <input id="nAlias" placeholder="Alias transferencia (opcional)">
       <input id="nNotas" placeholder="Nota (ej: mamá de Sofía)" style="flex:1;min-width:180px;">
       <button id="btnNuevo">Agregar</button>
+      <button class="b-out" id="btnCancelarNuevo">Cancelar</button>
     </div>
-  </div>
-
-  <div class="card">
-    <input id="buscar" placeholder="🔎 Buscar por nombre o teléfono..." style="width:100%;margin-bottom:10px;">
     <div class="pills" id="filtros">
       <button class="pill on" data-f="todos">Todos</button>
       <button class="pill" data-f="deudores">Solo deudores</button>
@@ -157,6 +160,18 @@ document.querySelectorAll("#filtros .pill").forEach(b=>{
   };
 });
 
+const formNuevo = $("#formNuevo");
+$("#btnAbrirNuevo").onclick=()=>{
+  formNuevo.hidden=!formNuevo.hidden;
+  if(!formNuevo.hidden) $("#nNombre").focus();
+};
+$("#btnCancelarNuevo").onclick=()=>{ formNuevo.hidden=true; };
+// Enter en cualquiera de los cuatro agrega: con el teclado de la tablet abierto,
+// el botón queda tapado.
+formNuevo.querySelectorAll("input").forEach(i=>{
+  i.addEventListener("keydown", e=>{ if(e.key==="Enter") $("#btnNuevo").click(); });
+});
+
 $("#btnNuevo").onclick=async()=>{
   const nombre=$("#nNombre").value.trim();
   if(!nombre){ toast("Poné al menos el nombre"); return; }
@@ -165,6 +180,7 @@ $("#btnNuevo").onclick=async()=>{
   const r=await authFetch("/api/clientes",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
   if(!r.ok){ const e=await r.json().catch(()=>({})); toast(e.detail || "No se pudo crear"); return; }
   $("#nNombre").value=""; $("#nTel").value=""; $("#nAlias").value=""; $("#nNotas").value="";
+  formNuevo.hidden=true;
   toast("Cliente agregado"); cargar();
 };
 
