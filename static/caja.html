@@ -82,6 +82,10 @@
        fijo de la tablet no entra ni el tipo. */
     #detalle .celda-input{ width:100%; }
     .col-tipo{ white-space:normal; }
+    /* Con el dedo, y no con el mouse: 28px de alto es la mitad de lo que ocupa
+       una yema. En el egreso el lapicito y la × están pegados, y una borra. */
+    #detalle .mini{ min-height:40px; padding:6px 12px; }
+    #detalle td:last-child{ display:flex; gap:6px; justify-content:flex-end; }
   }
   .sub-titulo{ display:block; margin-top:14px; color:var(--text-titulo); }
   /* Egreso que el empleado no ve. Solo aparece en la caja de la dueña: el
