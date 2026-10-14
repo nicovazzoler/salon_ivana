@@ -295,6 +295,9 @@ async function traer(reiniciar){
   const p = new URLSearchParams({
     tipo, estado: estadoFiltro, orden: orden.campo,
     desc: orden.desc ? "true" : "false",
+    // Todo, peluquería y depilación: es el historial del local. La depilación
+    // tiene además el suyo, agrupado por sesión, que es otra pregunta.
+    de: "todo",
     limite: POR_TRAMO, offset: desdeFila,
   });
   const w = ventana();
@@ -421,7 +424,8 @@ function crearFila(comp){
         <div class="comp-datos">
           <div>
             <div class="sub">${fecha} · <span class="num">${numComp(comp.tipo,comp.numero)}</span> · ${titulo(quien)}${anotado}</div>
-            <div class="comp-total">${fmt(comp.cobrado + Math.max(comp.saldo,0))} <span class="fp">· ${formaTxt}</span></div>
+            <div class="comp-total">${fmt(comp.cobrado + Math.max(comp.saldo,0))} <span class="fp">· ${formaTxt}${
+              comp.depilacion ? " · Depilación" : ""}</span></div>
           </div>
           <span class="badge ${comp.estado}">${comp.estado}</span>
         </div>

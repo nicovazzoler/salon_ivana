@@ -1976,37 +1976,9 @@ def resumen_pendiente(db, empleado) -> dict:
                     and not (arranque and iso < arranque)):
                 dias[iso] = {"id": None, "fecha": iso, "minutos": 0, "trabajos": []}
             f += timedelta(days=1)
-    # Sueldos es de peluquería y nada más: la depilación se cobra, se mira y se
-    # cierra en su propia pantalla. Acá la depilación aparece de una sola forma,
-    # y es sacando horas: el día que le tocó el reparto, y el día que cobró como
-    # ayudante, ya le pagaron el día entero. Pagarle además las horas sería
-    # pagarle dos veces el mismo día.
-    # Los días de SUS sesiones de depilación, por lo facturado y lo gastado en
-    # ellas. Va por la sesión y no por el día: de la sesión cuelga de quién es
-    # la mitad, y es lo mismo que mira el reparto.
-    suyos = set()
-    if dias:
-        desde_utc = _rango_dia(date.fromisoformat(min(dias)))[0]
-        ses_ids = [i for (i,) in db.query(models.SesionDepilacion.id).filter(
-            models.SesionDepilacion.empleado_id == empleado.id)]
-        if ses_ids:
-            for (f,) in db.query(models.Comprobante.fecha).filter(
-                    models.Comprobante.sesion_id.in_(ses_ids),
-                    models.Comprobante.activo == True,
-                    models.Comprobante.fecha >= desde_utc).distinct():
-                suyos.add(hora_argentina(f).date().isoformat())
-            for (f,) in db.query(models.Egreso.fecha).filter(
-                    models.Egreso.sesion_id.in_(ses_ids),
-                    models.Egreso.fecha >= desde_utc).distinct():
-                suyos.add(hora_argentina(f).date().isoformat())
-    de_ayudante = {hora_argentina(f).date().isoformat()
-                   for (f,) in db.query(models.Egreso.fecha).filter(
-                       models.Egreso.ayudante == True,
-                       models.Egreso.empleado_id == empleado.id).all()}
-    # Un día de depilación suyo no paga ni comisiones ni horas: lo paga el
-    # reparto. Se queda a la vista igual, marcado, porque ahora están todos los
-    # días del ciclo y uno en blanco se lee como "no vine": ahí cargaría las
-    # horas de un día que ya cobró entero.
+    # Sueldos es de peluquería y la depilación no entra de ninguna forma: se
+    # cobra, se mira y se cierra en su propia pantalla, y lo que se le pagó por
+    # una sesión queda anotado en el egreso de ese cierre. Acá un día es un día.
     # Días cuyas horas YA se pagaron en un cierre anterior. El día puede volver a
     # aparecer —una comisión nueva con fecha de esa semana— y su casillero de
     # horas está vacío, pero ahí no falta nada: esas horas ya se cobraron y el
@@ -2017,12 +1989,11 @@ def resumen_pendiente(db, empleado) -> dict:
         models.HoraTrabajada.liquidacion_id.isnot(None)).distinct()}
     for f, d in dias.items():
         d["horas_pagadas"] = f in ya_pagadas and not d["minutos"]
-        d["horas_aparte"] = f in suyos or f in de_ayudante
         # Horas declaradas en un día sin ningún trabajo detrás. No está mal
         # —se puede venir a ordenar el local y no facturar nada— pero es lo
         # único que nadie puede verificar contra un comprobante, así que va
         # marcado para que la dueña lo vea antes de pagarlo.
-        d["sin_respaldo"] = bool(d["minutos"]) and not d["trabajos"] and not d["horas_aparte"]
+        d["sin_respaldo"] = bool(d["minutos"]) and not d["trabajos"]
         d["trabajos"].sort(key=lambda t: (t["numero"] or 0, t["id"] or 0))
 
     # --- y los días se agrupan en ciclos ---
@@ -2037,7 +2008,7 @@ def resumen_pendiente(db, empleado) -> dict:
     for clave in sorted(ciclos):
         c = ciclos[clave]
         c["dias"].sort(key=lambda d: d["fecha"])
-        min_total = sum(d["minutos"] for d in c["dias"] if not d["horas_aparte"])
+        min_total = sum(d["minutos"] for d in c["dias"])
         listos = [t for d in c["dias"] for t in d["trabajos"] if t["minutos"] > 0]
         faltan = [t for d in c["dias"] for t in d["trabajos"] if not t["minutos"]]
         min_com = sum(t["minutos"] for t in listos)
@@ -2064,7 +2035,7 @@ def resumen_pendiente(db, empleado) -> dict:
             # nada: ahora están todos los días de la semana, y pidiendo horas
             # en todos no se podría cerrar nunca.
             "sin_horas": sum(1 for d in c["dias"] if not d["minutos"] and d["trabajos"]
-                             and not d["horas_pagadas"] and not d["horas_aparte"]),
+                             and not d["horas_pagadas"]),
             "sin_respaldo": sum(1 for d in c["dias"] if d["sin_respaldo"]),
             # El ciclo en curso aparece aunque no haya pasado nada, para que
             # tenga dónde cargar las horas. Quien cuenta "semanas sin pagar"
@@ -2291,25 +2262,6 @@ def correcciones_de_sesion(db, sesion_id: int):
               .filter(models.CorreccionSesion.sesion_id == sesion_id)
               .order_by(models.CorreccionSesion.id).all())
 
-def deuda_de_sesiones(db, empleado_id: int) -> list[dict]:
-    """Lo que la empleada quedó debiendo de sesiones ya pagadas, sesión por sesión.
-
-    Pasa al sacarle a una sesión un ticket que no iba: la cuenta baja y lo que ya
-    cobró no. Se calcula en vivo sobre lo que cada sesión dice HOY, así que el
-    cierre que lo recupera —una liquidación negativa contra esa sesión— la deja
-    saldada sola y no hay forma de descontarlo dos veces.
-    """
-    salida = []
-    for ses in (db.query(models.SesionDepilacion)
-                  .filter(models.SesionDepilacion.empleado_id == empleado_id)
-                  .order_by(models.SesionDepilacion.id).all()):
-        pagado = sum(l.total or 0 for l in cierres_de_sesion(db, ses.id))
-        if not pagado: continue
-        de_mas = pagado - cuenta_depilacion(db, ses)["parte_empleada"]
-        if de_mas > 0:
-            salida.append({"sesion_id": ses.id, "numero": ses.numero, "monto": de_mas})
-    return salida
-
 def cierres_de_sesion(db, sesion_id: int):
     """Lo que ya se pagó de esa sesión. Puede haber más de un cierre.
 
@@ -2421,16 +2373,12 @@ def _sesion_payload(db, ses) -> dict:
         "cerrado": ({"total": pagado, "veces": len(cierres)} if cierres else None),
         "pendiente": max(q["parte_empleada"] - pagado, 0),
         # Lo que se le pagó de más. No se muestra como una alarma: lo explica el
-        # historial de correcciones, y el próximo cierre lo descuenta solo.
+        # historial de correcciones, y al cerrarla vuelve al cajón como ajuste.
         "de_mas": max(pagado - q["parte_empleada"], 0),
         "correcciones": [{"fecha": hora_argentina(c.fecha).strftime("%d/%m %H:%M") if c.fecha else "",
                           "usuario": c.usuario, "detalle": c.detalle,
                           "antes": c.parte_antes, "despues": c.parte_despues}
                          for c in correcciones_de_sesion(db, ses.id)],
-        # Lo que arrastra de otras sesiones, para avisarlo ANTES de cerrar: el
-        # cierre lo descuenta solo y el egreso sale más chico.
-        "deuda_previa": [d for d in deuda_de_sesiones(db, ses.empleado_id)
-                         if d["sesion_id"] != ses.id] if ses.empleado_id else [],
         "otras_abiertas": otras,
     }
 
@@ -2518,6 +2466,10 @@ def cerrar_depilacion(datos: CerrarDepiIn, user = Depends(usuario_actual),
     que no iba, no había forma de cerrarla y se quedaba abierta tragándose la
     jornada siguiente.
 
+    Cada sesión se salda sola, en su propio cierre: si al corregirla le tocaba
+    menos de lo que ya cobró, la diferencia vuelve al cajón como un ajuste de
+    HOY. Las sesiones no se miran entre sí.
+
     La foto queda fija —`recaudado` es lo que la sesión facturó de depilación y
     `gastos` lo que se restó—: corregir un ticket de una sesión ya pagada no
     puede cambiar lo que se pagó.
@@ -2532,7 +2484,7 @@ def cerrar_depilacion(datos: CerrarDepiIn, user = Depends(usuario_actual),
     cierres = cierres_de_sesion(db, ses.id)
     pagado = sum(l.total or 0 for l in cierres)
     pendiente = q["parte_empleada"] - pagado
-    if pendiente <= 0:
+    if pendiente == 0:
         if ses.cerrada: raise HTTPException(409, "Esa sesión ya está cerrada")
         ses.cerrada = fecha_hora_now_utc().replace(tzinfo=None)
         db.commit()
@@ -2552,58 +2504,44 @@ def cerrar_depilacion(datos: CerrarDepiIn, user = Depends(usuario_actual),
         depilacion=True, sesion_id=ses.id, recaudado=q["base"], gastos=q["gastos"])
     db.add(liq); db.flush()
 
-    # Lo que quedó debiendo de sesiones anteriores se le descuenta acá, que es
-    # como se arregla en el local: la próxima jornada cobra de menos. Cada
-    # descuento queda como una liquidación NEGATIVA contra la sesión de la que
-    # salió, así esa sesión se salda sola y no hay forma de cobrarlo dos veces.
-    descontado = []
-    resta = liq.total
-    for d in deuda_de_sesiones(db, emp.id):
-        if resta <= 0: break
-        saca = min(d["monto"], resta)
-        db.add(models.Liquidacion(
-            empleado_id=emp.id, desde=None, hasta=None,
-            valor_hora=0, comision_pct=0,
-            minutos_total=0, minutos_comision=0, minutos_pagados=0,
-            total_comisiones=0, total_horas=0,
-            total=-saca, parcial=False, depilacion=True, sesion_id=d["sesion_id"],
-            recaudado=0, gastos=0,
-            notas=f"Se le había pagado de más; se descontó al cerrar la sesión {ses.numero}"))
-        descontado.append({"numero": d["numero"], "monto": saca})
-        resta -= saca
-    a_pagar = resta
-
     # El egreso lo anota el cierre, como el del sueldo: si hubiera que cargarlo a
     # mano, el día que se olvide la caja dice que hay más plata de la que hay.
-    # Sale por lo que REALMENTE se le da, ya con el descuento: es la plata que
-    # sale del cajón.
+    #
+    # El monto va FIRMADO, y en negativo es plata que vuelve al cajón: la sesión
+    # se corrigió después de pagarla y le tocaba menos. Caja lo muestra del lado
+    # de los movimientos, no de los egresos. Sale firmado y no como una tabla
+    # aparte porque el arqueo, los reportes, el Excel y los gráficos ya suman
+    # los egresos: con el signo salen bien los cuatro sin tocar ninguno.
     #
     # Privado solo si lo cerró la dueña: lo que cobra una no es asunto de las
     # demás, pero un egreso que cargó el empleado y no puede ver le deja el
     # arqueo pidiendo plata que no está, sin nada que lo explique.
     rango = (f"{dias[0]} a {dias[-1]}" if len(dias) > 1 else (dias[0] if dias else "sin días"))
-    eg = None
-    if a_pagar > 0:
-        detalle = ", ".join(f"#{d['numero']}" for d in descontado)
-        eg = models.Egreso(
-            numero=siguiente_numero_egreso(db), tipo=tipo_de_sueldo(db).nombre,
-            concepto=(f"Depilación {emp.nombre} ({rango})"
-                      + (" · diferencia" if pagado else "")
-                      + (f" · menos lo de más de {detalle}" if descontado else "")),
-            monto=a_pagar, forma_pago=datos.forma_pago, notas=datos.notas,
-            privado=es_dueno(user),
-            fecha=fecha_del_servicio(datos.fecha_pago,
-                                     fecha_hora_now_utc().replace(tzinfo=None), "un pago"))
-        db.add(eg); db.flush()
-        liq.egreso_id = eg.id
+    # Lo que no es el primer pago de la sesión es un ajuste, y se llama así en la
+    # caja: el egreso del cierre viejo no se toca —esa plata salió de verdad— y
+    # este dice qué la movió.
+    ajuste = bool(cierres)
+    eg = models.Egreso(
+        numero=siguiente_numero_egreso(db), tipo=tipo_de_sueldo(db).nombre,
+        concepto=(f"Ajuste sesión #{ses.numero}" if ajuste
+                  else f"Depilación {emp.nombre} ({rango})"),
+        # Sin forma de pago el egreso no entra en el arqueo de efectivo y la caja
+        # pide más plata de la que hay, sin nada que lo explique. La pantalla
+        # siempre la manda; esto es para el que cierre por la API.
+        monto=pendiente, forma_pago=datos.forma_pago or "Efectivo", notas=datos.notas,
+        privado=es_dueno(user),
+        fecha=fecha_del_servicio(datos.fecha_pago,
+                                 fecha_hora_now_utc().replace(tzinfo=None), "un pago"))
+    db.add(eg); db.flush()
+    liq.egreso_id = eg.id
     # La sesión queda cerrada. Si después se factura algo suyo, el reparto sube y
     # esa diferencia se cobra con otro cierre de la misma sesión: cerrada no
     # quiere decir que la cuenta murió, quiere decir que no es la de hoy.
     ses.cerrada = fecha_hora_now_utc().replace(tzinfo=None)
     db.commit()
-    return {"id": liq.id, "total": a_pagar, "le_tocaba": liq.total,
-            "egreso_numero": eg.numero if eg else None,
-            "diferencia": bool(pagado), "descontado": descontado}
+    return {"id": liq.id, "total": pendiente, "le_tocaba": liq.total,
+            "egreso_numero": eg.numero, "ajuste": ajuste,
+            "diferencia": bool(pagado)}
 
 @app.put("/api/sueldos/horas")
 def cargar_horas(h: HorasIn, user = Depends(usuario_actual),
@@ -3546,7 +3484,7 @@ def listar_comprobantes(tipo: str | None = None,
                         q: str | None = None, numero: str | None = None,
                         estado: str = "todos",
                         orden: str = "fecha", desc: bool = True,
-                        de: str = "pelu",
+                        de: str = "pelu", sesion_id: int | None = None,
                         limite: int = 60, offset: int = 0,
                         _ = Depends(usuario_actual), db: Session = Depends(get_db)):
     limite = max(1, min(limite, TOPE_PAGINA))
@@ -3559,6 +3497,7 @@ def listar_comprobantes(tipo: str | None = None,
     # tiene que seguir mostrando lo de siempre y nada más.
     if de == "depi": base = base.filter(models.Comprobante.depilacion == True)
     elif de != "todo": base = base.filter(_no_depi(models.Comprobante.depilacion))
+    if sesion_id is not None: base = base.filter(models.Comprobante.sesion_id == sesion_id)
     if tipo: base = base.filter(models.Comprobante.tipo == tipo)
     # Cuántos hay en total sin ningún filtro de los de la pantalla: es el "de N"
     # del resumen ("23 de 1.412"), y se cuenta acá porque después la query se
@@ -3669,6 +3608,7 @@ def _pagina_comprobantes(db, comps, total, total_sin_filtros, deuda, precalculad
                     "total_lista": comp.total_lista, "extra_dificultad": comp.extra_dificultad,
                     "convertido_a": conv, "forma_pago": forma_comprobante(db, comp, pagos_map),
                     "forma_origen": comp.forma_pago, "anotado_despues": anotado_despues(comp),
+                    "depilacion": bool(comp.depilacion),
                     "sesion_id": comp.sesion_id, "sesion_cerrada": comp.sesion_id in cerradas,
                     **est})
     return {"comprobantes": out, "total": total, "total_sin_filtros": total_sin_filtros,
@@ -4267,15 +4207,24 @@ def caja_dia(fecha: str | None = None, user = Depends(usuario_actual), db: Sessi
     # plata que no puede ver de dónde, que es peor que no mostrarlos.
     if not es_dueno(user):
         q_eg = q_eg.filter(_no_privado(models.Egreso.privado))
-    egresos = q_eg.all()
-    ing = sum(p.monto for p in pagos) + sum(s.monto for s in senas)
+    todos_eg = q_eg.all()
+    # Un egreso de monto NEGATIVO es plata que VUELVE al cajón: el ajuste de una
+    # sesión de depilación que al corregirla resultó pagada de más. Va del lado
+    # de los movimientos y no del de los egresos, que es lo que es; listado como
+    # un egreso en rojo se lee exactamente al revés de lo que pasó.
+    egresos = [e for e in todos_eg if (e.monto or 0) >= 0]
+    ajustes = [e for e in todos_eg if (e.monto or 0) < 0]
+    ing = (sum(p.monto for p in pagos) + sum(s.monto for s in senas)
+           + sum(-(e.monto or 0) for e in ajustes))
     egr = sum((e.monto or 0) for e in egresos)
     por_pago = {}; por_tipo = {}
     for p in pagos: por_pago[p.forma_pago] = por_pago.get(p.forma_pago, 0) + p.monto
     for s in senas: por_pago[s.forma_pago] = por_pago.get(s.forma_pago, 0) + s.monto
+    for e in ajustes: por_pago[e.forma_pago] = por_pago.get(e.forma_pago, 0) - (e.monto or 0)
     for e in egresos: por_tipo[e.tipo] = por_tipo.get(e.tipo, 0) + (e.monto or 0)
     efectivo_ventas = (sum(p.monto for p in pagos if p.forma_pago == "Efectivo")
-                       + sum(s.monto for s in senas if s.forma_pago == "Efectivo"))
+                       + sum(s.monto for s in senas if s.forma_pago == "Efectivo")
+                       + sum(-(e.monto or 0) for e in ajustes if e.forma_pago == "Efectivo"))
     efectivo_egresos = sum((e.monto or 0) for e in egresos if e.forma_pago == "Efectivo")
     # Cuánto de lo que entró es depilación. La plata está en el cajón igual que
     # cualquier otra —la clienta paga en el mostrador— así que NO se saca de la
@@ -4287,7 +4236,7 @@ def caja_dia(fecha: str | None = None, user = Depends(usuario_actual), db: Sessi
     ing_depi = sum(p.monto for p in pagos if p.comprobante_id in ids_depi)
     fondo = get_fondo_dia(db, d)
     return {"fecha": d.isoformat(), "ingresos": ing, "egresos": egr, "neto": ing - egr,
-            "ventas": len(pagos) + len(senas) + len(egresos), "ingresos_por_pago": por_pago, "egresos_por_tipo": por_tipo,
+            "ventas": len(pagos) + len(senas) + len(ajustes) + len(egresos), "ingresos_por_pago": por_pago, "egresos_por_tipo": por_tipo,
             "ingresos_depilacion": ing_depi,
             "fondo": fondo, "efectivo_ventas": efectivo_ventas, "efectivo_egresos": efectivo_egresos,
             "efectivo_esperado": fondo + efectivo_ventas - efectivo_egresos,
@@ -4301,7 +4250,12 @@ def caja_dia(fecha: str | None = None, user = Depends(usuario_actual), db: Sessi
                         + (f" · {s.cliente.nombre}" if s.cliente else ""),
                  "total": s.monto, "forma_pago": s.forma_pago, "alias": s.alias,
                  "es_sena": True}
-                for s in senas],
+                for s in senas] + [
+                {"id": f"a{e.id}", "hora": hora_argentina(e.fecha).strftime("%H:%M"),
+                 "ref": e.concepto or "Ajuste", "total": -(e.monto or 0),
+                 "forma_pago": e.forma_pago, "alias": None,
+                 "es_ajuste": True, "privado": bool(e.privado)}
+                for e in ajustes],
             "egresos_detalle": [{"id": e.id, "numero": e.numero,
                                  "hora": hora_argentina(e.fecha).strftime("%H:%M"), "tipo": e.tipo,
                                  "concepto": e.concepto, "monto": e.monto, "forma_pago": e.forma_pago,
@@ -4409,7 +4363,13 @@ def rep_resumen(dias: int = 30, desde: str | None = None, hasta: str | None = No
     # Ingresos = plata que entró (igual que caja)
     pagos, senas = plata_que_entro(db, ini, fin)
     egresos = _filtrar(db.query(models.Egreso), models.Egreso.fecha, ini, fin).all()
-    ing = sum(p.monto for p in pagos) + sum(s.monto for s in senas)
+    # El egreso en negativo es plata que volvió al cajón: cuenta de ingreso, como
+    # en la caja y en el registro. Con el neto solo alcanzaba, pero el renglón de
+    # egresos decía menos de lo que salió.
+    vuelta = [e for e in egresos if (e.monto or 0) < 0]
+    egresos = [e for e in egresos if (e.monto or 0) >= 0]
+    ing = (sum(p.monto for p in pagos) + sum(s.monto for s in senas)
+           + sum(-(e.monto or 0) for e in vuelta))
     egr = sum((e.monto or 0) for e in egresos)
     # desglose por forma de pago (mismo formato que /api/caja/dia)
     por_pago = {}
@@ -4417,6 +4377,8 @@ def rep_resumen(dias: int = 30, desde: str | None = None, hasta: str | None = No
         por_pago[p.forma_pago] = por_pago.get(p.forma_pago, 0) + p.monto
     for x in senas:
         por_pago[x.forma_pago] = por_pago.get(x.forma_pago, 0) + x.monto
+    for e in vuelta:
+        por_pago[e.forma_pago] = por_pago.get(e.forma_pago, 0) - (e.monto or 0)
     # Ventas = tickets emitidos (no presupuestos, no anulados)
     q = db.query(models.Comprobante).filter(
         models.Comprobante.tipo == "ticket",
@@ -4472,10 +4434,15 @@ def _movimientos(db, ini, fin):
         # con el egreso de la caja. Va con "#" y no con "N-": el "N-" es el
         # prefijo de los tickets y en una tabla que mezcla los dos se leía como si
         # el egreso fuera un comprobante de venta. Es el mismo "#47" de la caja.
-        movs.append({"fecha": e.fecha, "clase": "egreso",
+        # En negativo es plata que volvió al cajón —el ajuste de una sesión de
+        # depilación pagada de más—, así que entra como ingreso y con el monto
+        # dado vuelta. Listado como un egreso negativo, la columna se lee al
+        # revés y el Excel suma para el otro lado.
+        vuelve = (e.monto or 0) < 0
+        movs.append({"fecha": e.fecha, "clase": "ingreso" if vuelve else "egreso",
                      "comprobante": f"#{e.numero}" if e.numero else "",
                      "cliente": "", "detalle": det,
-                     "forma_pago": e.forma_pago or "", "monto": e.monto or 0})
+                     "forma_pago": e.forma_pago or "", "monto": abs(e.monto or 0)})
     movs.sort(key=lambda m: m["fecha"], reverse=True)
     return movs
 
@@ -4624,7 +4591,11 @@ def serie_caja(dias: int = 30, desde: str | None = None, hasta: str | None = Non
                     break
         return serie
 
-    ingresos = acumular(pagos,   lambda p: p.monto)
+    # Lo mismo que en el resumen: un egreso negativo es plata que entró.
+    vuelta   = [e for e in egresos if (e.monto or 0) < 0]
+    egresos  = [e for e in egresos if (e.monto or 0) >= 0]
+    ingresos = acumular(pagos, lambda p: p.monto)
+    for i, v in enumerate(acumular(vuelta, lambda e: -(e.monto or 0))): ingresos[i] += v
     egr      = acumular(egresos, lambda e: e.monto)
     return {"buckets": [b[2] for b in buckets], "granularidad": gran,
             "series": [{"nombre": "Ingresos", "valores": ingresos},

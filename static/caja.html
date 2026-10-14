@@ -165,11 +165,20 @@ async function cargarDia(){
   // detalle de cada venta y egreso del dia (editable por el dueño)
   let html = "";
   if(d.ventas_detalle && d.ventas_detalle.length){
-    html += '<b class="sub-titulo">Cobros del día</b><table style="margin-top:6px;"><thead><tr><th>Hora</th><th>Servicio</th><th>Pago</th><th>Monto</th><th></th></tr></thead><tbody>';
+    html += '<b class="sub-titulo">Lo que entró</b><table style="margin-top:6px;"><thead><tr><th>Hora</th><th>Servicio</th><th>Pago</th><th>Monto</th><th></th></tr></thead><tbody>';
     d.ventas_detalle.forEach(v=>{
       const al=v.alias?` (${v.alias})`:"";
-      html+=`<tr><td>${v.hora}</td><td>${v.ref||'—'}${v.depilacion?' <span class="tag">depilación</span>':''}</td><td>${v.forma_pago}${al}</td><td class="money">${money(v.total)}</td>
-             <td><button class="mini b-del" onclick="anularPagoCaja(${v.id})">Anular</button></td></tr>`;
+      /* Solo un cobro se anula desde acá. Una seña se devuelve desde la ficha de
+         la clienta y un ajuste sale de cerrar la sesión: los dos tienen el id en
+         texto ("s12", "a7") y el botón tiraba un error de JavaScript sin avisar
+         de nada. */
+      const marca = v.depilacion ? ' <span class="tag">depilación</span>'
+                  : v.es_ajuste  ? ' <span class="tag">ajuste</span>'
+                                 + (v.privado ? ' <span class="tag-privado" title="El empleado no ve este movimiento">privado</span>' : '')
+                  : '';
+      const puedeAnular = !v.es_sena && !v.es_ajuste;
+      html+=`<tr><td>${v.hora}</td><td>${esc(v.ref||'—')}${marca}</td><td>${esc(v.forma_pago||'')}${esc(al)}</td><td class="money">${money(v.total)}</td>
+             <td>${puedeAnular ? `<button class="mini b-del" onclick="anularPagoCaja('${v.id}')">Anular</button>` : ''}</td></tr>`;
     });
     html += '</tbody></table>';
   }

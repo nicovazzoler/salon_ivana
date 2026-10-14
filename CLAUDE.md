@@ -40,11 +40,12 @@ static/
                  que es donde se toman; la ficha del cliente solo las lista. El
                  CSS vive en components.css: estando en una sola pantalla, en la
                  otra salía sin estilo
-  depilacion.html Depilación entera: cuatro solapas —cobrar, la sesión con su
-                 reparto y su cierre, el historial de comprobantes y el de
-                 sesiones, que tiene la suya para no pasar de largo dos meses de
-                 tickets—. No se mezcla con peluquería. Las tablas van adentro de
-                 un `.tabla-scroll`: las columnas de plata no se parten, así que
+  depilacion.html Depilación entera: tres solapas —cobrar, la sesión en curso
+                 con su reparto y su cierre, y el historial, que es la lista de
+                 sesiones con los tickets de cada una adentro—. El reparto lo
+                 dibuja `repartoHTML()`, que usan la solapa y el cartel del
+                 resumen: con dos, un día el cartel diría otra cosa. Las tablas
+                 van adentro de un `.tabla-scroll`: las de plata no se parten, así que
                  abajo de 600px desbordaban la PÁGINA y en el celular el botón de
                  la última columna quedaba fuera de la pantalla
   escpos.js      Generador del papel de la comandera (ticket.html y facturar.js)
@@ -144,10 +145,15 @@ marcado `es_depilacion`, y de ahí sale todo lo demás:
 - El catálogo se parte en dos: `/api/catalogo?de=pelu` (el default, sin
   depilación) lo usa Facturar, `?de=depi` la pantalla de depilación y `?de=todo`
   la agenda, que anota turnos de cualquier cosa.
-- Un comprobante nace marcado `depilacion` cuando TODAS sus líneas lo son, y el
-  historial se parte con el mismo `de=`. Se guarda en el comprobante y no se
-  deduce de las líneas: de esa marca cuelga cada lista paginada, y preguntarlo
-  con un join por fila es la diferencia entre que el historial abra o no.
+- Un comprobante nace marcado `depilacion` cuando TODAS sus líneas lo son. Se
+  guarda en el comprobante y no se deduce de las líneas: de esa marca cuelga
+  cada lista paginada, y preguntarlo con un join por fila es la diferencia entre
+  que el historial abra o no. `/api/comprobantes` la parte con `de=`, pero
+  **Historial pide `de=todo`**: es el historial del local, y lo de depilación va
+  marcado al lado de la forma de pago. El `de=depi` lo usa la pantalla de
+  depilación, que no lista comprobantes sueltos sino SESIONES, con sus tickets
+  adentro (`sesion_id` en el mismo endpoint). Se busca "lo del lunes pasado", no
+  "lo del 13".
 - **La plata SÍ está en la caja del local.** La clienta paga en el mostrador y el
   efectivo queda en el cajón, así que sacarla de la caja dejaría el arqueo
   pidiendo menos plata de la que hay. Caja la cuenta y la marca; el resumen
@@ -199,14 +205,18 @@ Lo que hay que respetar:
   la de después), la sesión se marca "Corregida" y listo. El cartel de alarma
   decía un número suelto que no explicaba nada; el historial dice qué ticket
   salió, cuál entró y cuánto movió cada uno.
-- **Y lo pagado de más se descuenta solo del próximo cierre**, que es como se
-  arregla en el local: la jornada siguiente cobra de menos. El descuento queda
-  como una liquidación NEGATIVA contra la sesión de la que salió, así esa sesión
-  se salda sola y `deuda_de_sesiones()` —que cuenta en vivo— deja de verla: no
-  hay forma de cobrarlo dos veces. El egreso sale por lo que realmente se le da.
-  Lo que NO se toca es el egreso del cierre viejo: esa plata salió del cajón de
-  verdad, y bajarlo dejaría el arqueo de ese día pidiendo más de lo que hay.
-  Se avisa antes de cerrar, con la cuenta hecha.
+- **Cada sesión se salda en su propio cierre, y las sesiones no se miran entre
+  sí.** Si al corregirla le toca menos de lo que ya cobró, cerrarla deja un
+  **"Ajuste sesión #N"** en la caja de hoy: un egreso de monto NEGATIVO, que es
+  plata que vuelve al cajón. Al revés —le toca más— sale otro egreso con el
+  mismo nombre y en positivo. Lo que NO se toca es el egreso del cierre viejo:
+  esa plata salió del cajón de verdad, y bajarlo dejaría el arqueo de ese día
+  pidiendo más de lo que hay. Se avisa antes de cerrar, con la cuenta hecha.
+  El monto va firmado y no en una tabla aparte porque el arqueo, los reportes,
+  el Excel y los gráficos ya suman los egresos: con el signo salen bien los
+  cuatro sin tocar ninguno. Lo único que cambia es de qué lado se LISTA, y eso
+  lo deciden `caja_dia()` y `_movimientos()`: un egreso negativo en la columna
+  de egresos se lee exactamente al revés de lo que pasó.
 - **La base son las LÍNEAS de depilación, no los comprobantes enteros.** Una
   sesión que además tuvo peluquería no se reparte por eso, y esa peluquería se
   paga por comisión como cualquier otro día. Por lo mismo, la comisión se excluye
@@ -250,13 +260,7 @@ Lo que hay que respetar:
   que tenga alguna línea", la ayudante que atendió algo vería el reparto entero y
   el número aparecería dos veces. `empleada_del_dia()` quedó solo para la
   migración: es la regla con la que se liquidó lo viejo, día por día.
-- **Las horas de los días de su sesión no se pagan aparte**: las paga el reparto.
-  Lo mismo las del día que alguien trabajó de ayudante, que ya cobró por el día
-  entero. Sus
-  comisiones de lo que no fue depilación sí se pagan: antes se iba el día entero
-  del ciclo y se las llevaba puestas, y andaba porque el día de depilación era un
-  lunes en el que no se hacía otra cosa.
-- La sesión se mira y se cierra en la solapa "La sesión". **Ahí adentro la
+- La sesión se mira y se cierra en la solapa "Sesión actual". **Ahí adentro la
   empleada hace todo**: cobra, carga los gastos, devuelve una seña y la cierra.
   Se trabaja entre dos con una sola tablet y un código en el medio sería pedirlo
   diez veces por día. Por eso el egreso del cierre es
@@ -272,12 +276,11 @@ Lo que hay que respetar:
   SESIÓN —que no esté cerrada— y no con las de Caja, donde el empleado solo
   puede tocar lo de hoy: una sesión se cierra días después y para entonces ya no
   podría corregir nada.
-- Un día de una sesión suya no paga ni comisiones ni horas: lo paga el reparto.
-  En Sueldos se ve igual, marcado "las paga el día de depilación" y sin casillero
-  de horas. Esconderlo era mejor cuando en Sueldos estaban solo los días con
-  movimiento; ahora están los siete, y un día en blanco se lee como "no vine":
-  ahí cargaría las horas de un día que ya cobró entero. La peluquería de ese día,
-  si la hubo, se paga por comisión como cualquier otra.
+**En Sueldos la depilación no existe.** Un día de su sesión se dibuja y se paga
+como cualquier otro día: la pantalla no sabe nada de sesiones ni de repartos.
+Lo que se le pagó por una jornada queda anotado en el egreso de ese cierre, que
+es donde se busca. Un día con horas y sin ningún trabajo detrás queda marcado
+`sin_respaldo`, que es el control que importa.
 
 **Sueldos es la pantalla de la empleada, no un informe que se le muestra.**
 Están TODOS los días del ciclo hasta hoy, y el ciclo en curso aparece siempre,

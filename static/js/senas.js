@@ -171,14 +171,22 @@ function panelSena(clienteId, nombre, alGuardar){
 }
 
 /* La lista de señas de una clienta, para la ficha. Las usadas se ven igual: es
-   la prueba de que esa plata ya se descontó, y sin ellas parecería que se perdió. */
-function pintarSenas(cont, senas, alAnular){
+   la prueba de que esa plata ya se descontó, y sin ellas parecería que se perdió.
+
+   Se ven las tres últimas y el resto se pide: una clienta de años tiene veinte,
+   y lo que se viene a mirar es si tiene algo a favor HOY. */
+const _TOPE_SENAS = 3;
+function pintarSenas(cont, senas, alAnular, todas){
   if(!senas.length){
     cont.innerHTML = `<p class="muted" style="margin:0;">Sin señas.</p>`;
     return;
   }
+  // /api/senas ya las da de la más nueva a la más vieja, que es el orden en el
+  // que se miran: lo primero que se busca es lo último que dejó.
+  const sobran = senas.length - _TOPE_SENAS;
+  const visibles = todas ? senas : senas.slice(0, _TOPE_SENAS);
   cont.innerHTML = "";
-  senas.forEach(s => {
+  visibles.forEach(s => {
     const fila = document.createElement("div");
     fila.className = "sena-fila" + (s.usada ? " usada" : "") + (s.anulada ? " anulada" : "");
     fila.innerHTML = `
@@ -203,4 +211,11 @@ function pintarSenas(cont, senas, alAnular){
     }
     cont.appendChild(fila);
   });
+  if(!todas && sobran > 0){
+    const mas = document.createElement("button");
+    mas.className = "b-out btn-mini ver-mas-senas";
+    mas.textContent = sobran === 1 ? "Ver la otra" : `Ver las ${sobran} restantes`;
+    mas.onclick = () => pintarSenas(cont, senas, alAnular, true);
+    cont.appendChild(mas);
+  }
 }

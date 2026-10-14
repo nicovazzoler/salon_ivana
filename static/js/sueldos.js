@@ -433,18 +433,17 @@ function dibujarDia(d, c){
   // se le agrega una comisión con esa fecha. No le falta nada, así que no se
   // pide ni se ofrece el casillero: cargarlas sería pagarlas dos veces, y el
   // servidor las rebota igual.
-  const falta = !d.minutos && d.trabajos.length && !d.horas_pagadas && !d.horas_aparte;
-  const vacio = !d.minutos && !d.trabajos.length && !d.horas_aparte;
+  const falta = !d.minutos && d.trabajos.length && !d.horas_pagadas;
+  const vacio = !d.minutos && !d.trabajos.length;
   const esHoy = d.fecha === hoyArg();
   const minTrabajos = d.trabajos.reduce((a, t) => a + (t.minutos || 0), 0);
   const comisiones = d.trabajos.reduce((a, t) => a + (t.minutos ? t.comision : 0), 0);
-  const horasBoton = d.horas_pagadas || d.horas_aparte ? ""
+  const horasBoton = d.horas_pagadas ? ""
     : `<button class="b-out btn-mini editar-horas" data-fecha="${d.fecha}"
                data-min="${d.minutos}">${d.minutos ? "✎" : "Poner horas"}</button>`;
   const horas = `<span class="dia-horas${falta ? " falta" : ""}">
       <span class="rot-horas">Horas trabajadas:</span>
-      <span class="valor">${d.horas_aparte ? "las paga el día de depilación"
-        : d.horas_pagadas ? "ya cobradas"
+      <span class="valor">${d.horas_pagadas ? "ya cobradas"
         : d.minutos ? hhmm(d.minutos)
         // Hoy todavía no terminó: en blanco no quiere decir que no vino.
         : vacio ? (esHoy ? "todavía sin cargar" : "no viniste") : "sin horas"}</span>
@@ -466,8 +465,7 @@ function dibujarDia(d, c){
     <div class="dia-cab">
       <b>${diaDe(d.fecha)} ${fechaCorta(d.fecha)}${esHoy ? " · hoy" : ""}</b>
       ${horas}
-      <span class="plata">${d.horas_aparte ? "—"
-        : fmt(Math.round(Math.max(d.minutos - minTrabajos, 0) * D.valor_hora / 60))}</span>
+      <span class="plata">${fmt(Math.round(Math.max(d.minutos - minTrabajos, 0) * D.valor_hora / 60))}</span>
     </div>
     <div class="dia-resumen">
       ${d.trabajos.length
