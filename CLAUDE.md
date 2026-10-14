@@ -578,6 +578,25 @@ cuando el que se equivocó fue el test.
 Todo en castellano rioplatense: los nombres de las variables y funciones, los
 comentarios, los mensajes de commit y lo que se le muestra al usuario.
 
+### Cómo se le escribe al usuario
+
+**La pantalla no explica: se usa.** Un renglón de texto solo se gana el lugar si
+evita una equivocación en el momento de hacer algo —que unificar dos empleados
+no se deshace, que un día suelto se carga desde la agenda y no desde Admin— y
+entra en una línea. Todo lo demás se va: lo que describe qué es una pantalla
+("Lo que entró, lo que salió y cuántos tickets se emitieron" arriba de un
+resumen), lo que cuenta cómo está armada la app por dentro, y lo que los
+rótulos, los números o el botón ya dicen.
+
+Dos lugares donde el texto sí rinde, y son los únicos: el **confirm** antes de
+algo que mueve plata, con la cuenta hecha, y el **estado vacío**, que contesta
+por qué no hay nada. Un aviso dice las excepciones que hay, no que no hay
+ninguna: "Menos Carolina, que cobra la suya" sirve; "ninguna tiene una hora
+propia" es un renglón para decir que no pasa nada.
+
+Lo que hay que explicar va en un comentario, que lo lee el que toca el código, o
+en el mensaje de commit. En la pantalla no.
+
 ### Cómo se comenta
 
 **Una línea que diga qué hace esto, y después solo lo que no se deduce leyendo.**
