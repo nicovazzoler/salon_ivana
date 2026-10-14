@@ -41,6 +41,48 @@
   .col-tipo .celda-input{ width:10rem; }
   .col-conc .celda-input{ width:100%; }
   .mini{ padding:6px 9px; font-size:var(--fs-sm); border-radius:7px; }
+
+  /* ----- El detalle en el celular -----
+     Cada fila deja de ser una fila y pasa a ser un bloque de dos renglones: lo
+     que importa arriba y el resto abajo, con el botón al final. Como tabla no
+     entra, y deslizarla de costado para llegar al botón de la última columna
+     no se ve que se pueda: se lee como si el botón estuviera cortado. */
+  @media (max-width:560px){
+    #detalle table, #detalle tbody, #detalle tr, #detalle td{ display:block; }
+    #detalle thead{ display:none; }
+    #detalle table{ width:100%; }
+    #detalle tr{
+      display:grid;
+      grid-template-columns:auto auto minmax(0,1fr) auto;
+      gap:2px var(--sp-2);
+      align-items:center;
+      padding:var(--sp-2) 0;
+      border-top:1px solid var(--border-sutil);
+    }
+    #detalle td{ border:none; padding:0; text-align:left; }
+    /* Las dos tablas tienen distinta cantidad de columnas, así que cada una
+       coloca las suyas. El `:not()` no es cosmético: sin él, la regla del monto
+       de la primera —que es la columna 4— le cae encima al CONCEPTO de la otra,
+       que también es la 4, y lo manda a la derecha. */
+    /* Lo que entró: servicio y monto arriba, hora · pago y el botón abajo. */
+    #detalle table:not(.t-egresos) tr > td:nth-child(1){ grid-area:2/1; color:var(--text-tenue); font-size:var(--fs-sm); }
+    #detalle table:not(.t-egresos) tr > td:nth-child(2){ grid-area:1/1/auto/4; }
+    #detalle table:not(.t-egresos) tr > td:nth-child(3){ grid-area:2/2; color:var(--text-tenue); font-size:var(--fs-sm); }
+    #detalle table:not(.t-egresos) tr > td:nth-child(4){ grid-area:1/4; text-align:right; white-space:nowrap; }
+    #detalle table:not(.t-egresos) tr > td:nth-child(5){ grid-area:2/4; text-align:right; }
+    /* Egresos: el concepto arriba con su monto, y abajo el número, la hora, el
+       tipo y los botones. */
+    #detalle .t-egresos tr > td:nth-child(1){ grid-area:2/1; }
+    #detalle .t-egresos tr > td:nth-child(2){ grid-area:2/2; color:var(--text-tenue); font-size:var(--fs-sm); }
+    #detalle .t-egresos tr > td:nth-child(3){ grid-area:2/3; }
+    #detalle .t-egresos tr > td:nth-child(4){ grid-area:1/1/auto/4; width:auto; }
+    #detalle .t-egresos tr > td:nth-child(5){ grid-area:1/4; text-align:right; white-space:nowrap; }
+    #detalle .t-egresos tr > td:nth-child(6){ grid-area:2/4; text-align:right; white-space:nowrap; }
+    /* Editando, el casillero se queda con el ancho del renglón: con el ancho
+       fijo de la tablet no entra ni el tipo. */
+    #detalle .celda-input{ width:100%; }
+    .col-tipo{ white-space:normal; }
+  }
   .sub-titulo{ display:block; margin-top:14px; color:var(--text-titulo); }
   /* Egreso que el empleado no ve. Solo aparece en la caja de la dueña: el
      backend ni siquiera se los manda a los demás. */
