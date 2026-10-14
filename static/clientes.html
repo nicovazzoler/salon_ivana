@@ -10,7 +10,10 @@
   /* Grilla de la lista. Las mismas columnas para la cabecera y para las filas */
   .grid-cli{
     display:grid;
-    grid-template-columns:64px 1.4fr 1fr 1fr 90px;
+    /* minmax(0,…) y no fr a secas: `1fr` es minmax(auto,1fr) y ese `auto` es
+       min-content, así que un nombre largo no deja achicar su columna y la
+       grilla entera se corre para afuera. */
+    grid-template-columns:64px minmax(0,1.4fr) minmax(0,1fr) minmax(0,1fr) 90px;
     gap:10px;
     align-items:center;
   }
