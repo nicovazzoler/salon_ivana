@@ -744,8 +744,7 @@ function panelAbrirDia(){
   pan.innerHTML = `
     <div class="form-turno">
       <div class="ancho"><label>Abrir este día</label>
-        <p class="muted" style="margin:0;">Para el lunes de depilación o el día suelto que se trabaja
-          fuera del horario de siempre. Lo que marques reemplaza lo que haya cargado para esta fecha.</p></div>
+        <p class="muted" style="margin:0;">Reemplaza el horario de siempre, solo para esta fecha.</p></div>
       <div class="campo chico"><label>Desde</label><input type="time" class="aDesde" value="11:00"></div>
       <div class="campo chico"><label>Hasta</label><input type="time" class="aHasta" value="17:00"></div>
       <div class="campo"><label>Motivo (opcional)</label><input class="aMotivo" placeholder="Depilación"></div>
@@ -807,9 +806,7 @@ function panelAusencia(){
   pan.innerHTML = `
     <div class="form-turno">
       <div class="ancho"><label>Ausencia</label>
-        <p class="muted" style="margin:0;">Los días que alguien no viene, o que viene
-          a otra hora. Le gana al horario de siempre y se deshace día por día
-          desde “Hoy distinto”.</p></div>
+        <p class="muted" style="margin:0;">Le gana al horario de siempre. Se deshace desde “Hoy distinto”.</p></div>
       <div class="campo"><label>Quién</label><select class="auQuien"></select></div>
       <div class="campo chico"><label>Desde</label><input type="date" class="auDesde" value="${fechaActual}"></div>
       <div class="campo chico"><label>Hasta</label><input type="date" class="auHasta" value="${fechaActual}"></div>

@@ -249,7 +249,6 @@
     <div class="card-head con-datos">
       <div class="titulo">
         <h2>💰 A pagar</h2>
-        <p>Lo que se debe hasta hoy. Al cerrar, esos números quedan fijos y arranca un ciclo nuevo.</p>
       </div>
       <div class="kpis" id="kpisDueno"></div>
     </div>
@@ -258,9 +257,7 @@
 
   <div class="card" data-dueno>
     <div class="card-head"><div class="titulo"><h2>⚙️ Cómo se calcula</h2>
-      <p>Los números con los que se arma el sueldo. Cambiarlos no toca lo ya pagado.
-      El porcentaje de un servicio en particular se pone en el catálogo, en
-      <a href="/admin">Admin</a>.</p></div></div>
+      <p>Cambiarlos no toca lo ya pagado.</p></div></div>
     <div id="cfgGenerales"></div>
     <div id="cfgArranque"></div>
 
@@ -271,7 +268,6 @@
     <div class="card-head con-datos">
       <div class="titulo">
         <h2 id="tituloDetalle">👛 Sueldos</h2>
-        <p id="bajadaDetalle">Cargá tus horas y cuánto duró cada trabajo. El total se actualiza solo.</p>
       </div>
       <div class="quien">
         <label for="quien" id="rotuloQuien">Quién sos</label>
@@ -287,8 +283,8 @@
   <!-- Lo ya pagado lo miran las dos: la dueña todos los cierres, la empleada los
        suyos (el servidor no le contesta otra cosa). -->
   <div class="card" id="cardLiquidaciones" style="display:none;">
-    <div class="card-head con-datos"><div class="titulo"><h2 id="tituloPagado">🧾 Ya pagado</h2>
-      <p id="bajadaPagado">Los cierres anteriores, con los números tal como estaban ese día.</p></div>
+    <div class="card-head con-datos">
+      <div class="titulo"><h2 id="tituloPagado">🧾 Ya pagado</h2></div>
       <button class="b-out" id="verPagado">Ver</button></div>
     <div id="listaLiq" style="display:none;"></div>
   </div>

@@ -40,7 +40,7 @@
   <div class="card" id="catalogo">
     <div class="card-head">
       <h2>✂️ Servicios y productos</h2>
-      <p>Los ítems que aparecen al facturar. El precio de transferencia se calcula solo.</p>
+      <p>El precio de transferencia se calcula solo.</p>
     </div>
     <div style="margin-bottom:12px;">
       <input id="buscarItem" placeholder="🔎 Buscar por nombre (en todas las categorías)..." style="width:100%;">
@@ -101,7 +101,6 @@
   <div class="card" id="miclave" data-empleado>
     <div class="card-head">
       <h2>🔑 Mi contraseña</h2>
-      <p>La de tu propio usuario. Nadie más la ve, ni siquiera desde acá.</p>
     </div>
     <div class="fila">
       <div style="max-width:280px;"><label>Nueva contraseña</label>
@@ -117,12 +116,8 @@
   <div class="card" id="empleados" data-dueno>
     <div class="card-head">
       <h2>✂️ Empleados</h2>
-      <p>Los nombres que se eligen en “Atendió” al facturar y en la agenda. De
-         acá sale el sueldo, así que un nombre tipeado distinto es plata que no
-         le llega a nadie. Dar de baja no borra nada: deja de ofrecerse.</p>
-      <p>El <b>código</b> es con el que cada una abre su sueldo desde el usuario
-         empleado. Sin código no puede entrar, y el que no tiene código no le
-         aparece a nadie para elegir.</p>
+      <p>Dar de baja no borra nada: deja de ofrecerse. Sin <b>código</b> no puede
+         abrir su sueldo.</p>
     </div>
     <div id="listaEmpleados"></div>
     <div id="crearEmpleado"></div>
@@ -132,9 +127,8 @@
          limpieza de una vez, no algo de todos los días, así que va abajo y
          aparte de la lista. -->
     <div class="sub-h" style="margin-top:var(--sp-4);">Unificar dos nombres</div>
-    <p class="muted" style="margin:0 0 var(--sp-2);">Si la misma persona quedó
-       cargada dos veces, elegí cuál sobra y con cuál se junta. Sus comprobantes,
-       turnos, horas y sueldos pasan al nombre que queda.</p>
+    <p class="muted" style="margin:0 0 var(--sp-2);">Todo lo del que sacás pasa
+       al otro. No se puede deshacer.</p>
     <div class="fila fila-agregar" id="fusionEmpleados">
       <div><label for="fusOrigen">Sacar</label><select id="fusOrigen"></select></div>
       <div><label for="fusDestino">y pasarlo a</label><select id="fusDestino"></select></div>
@@ -149,9 +143,7 @@
   <div class="card" id="horarios" data-dueno>
     <div class="card-head">
       <h2>🕗 Horarios</h2>
-      <p>El horario de siempre de cada una, que es lo que la agenda dibuja como
-         su columna del día. Un día suelto —se cambió con otra, o el lunes de
-         depilación— se carga desde la agenda, no acá.</p>
+      <p>Un día suelto se carga desde la agenda, no acá.</p>
     </div>
     <div id="barraHorario"></div>
     <div id="grillaHorario"></div>
@@ -165,7 +157,6 @@
   <div class="card" id="usuarios" data-dueno>
     <div class="card-head">
       <h2>👥 Usuarios</h2>
-      <p>Quién entra a la app. Hay uno por rol: una dueña y un empleado.</p>
     </div>
     <div id="listaUsuarios"></div>
     <div id="crearUsuario"></div>
@@ -174,9 +165,7 @@
   <div class="card" id="backup" data-dueno>
     <div class="card-head">
       <h2>💾 Backup completo</h2>
-      <p>Un archivo JSON con todos los datos de la app: catálogo, ventas, egresos,
-         usuarios y configuración. Guardalo en un lugar seguro por si algún día
-         necesitás recuperar datos.</p>
+      <p>Guardalo en un lugar seguro.</p>
     </div>
     <button class="b-tinta" id="btnBackup">Descargar backup</button>
   </div>

@@ -43,7 +43,6 @@ const esDuena = () => localStorage.getItem("pelu_rol") === "dueno";
 const LISTAS = {
   formas: {
     titulo: "Formas de pago",
-    ayuda: "Las opciones que se ofrecen al cobrar un ticket.",
     ruta: "/api/formas",
     vacio: "Todavía no hay formas de pago.",
     campos: [{k:"nombre", etiqueta:"Forma de pago", placeholder:"Ej: Cuenta DNI"}],
@@ -56,7 +55,6 @@ const LISTAS = {
 
   tipos: {
     titulo: "Tipos de egreso",
-    ayuda: "Las categorías con las que se clasifica lo que sale de la caja.",
     ruta: "/api/tipos-egreso",
     vacio: "Todavía no hay tipos de egreso.",
     // La marca de privado solo la ve y la toca la dueña: es lo que esconde el
@@ -68,7 +66,7 @@ const LISTAS = {
     // "Sueldos" viene trabado del servidor, por lo mismo que "Efectivo": el
     // cierre de sueldo anota el egreso con ese nombre exacto, y con dos nombres
     // para lo mismo la caja muestra los sueldos partidos en dos renglones.
-    trabada: t => t.fijo ? "Los cierres de sueldo anotan el egreso con este nombre: no se cambia ni se borra." : null,
+    trabada: t => t.fijo ? "No se cambia ni se borra: lo usan los cierres de sueldo." : null,
     aCuerpo: v => v.nombre ? v : (avisar("Falta el nombre"), null),
   },
 
