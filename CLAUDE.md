@@ -23,7 +23,11 @@ seed_datos.py    Siembra inicial, idempotente
 config_extra.py  Datos del negocio. main.py lo importa EN VIVO, no está en la base
 static/
   *.html         Una por pantalla, solo estructura
-  css/           tokens → base → layout → components → app  (el orden importa)
+  css/           tokens → base → layout → components → app  (el orden importa).
+                 Ojo con los nombres sueltos: `.num` era a la vez la tarjeta de
+                 KPI de Caja, la columna de números de una tabla y el número de
+                 un comprobante, así que las celdas se dibujaban con el fondo y
+                 las esquinas de una tarjeta. Va acotada a su grilla (`.nums .num`)
   js/            El JS de facturar y admin, que son las grandes
   auth.js        Sesión, menú y helpers compartidos
   js/listas.js   Las cinco listas configurables (formas de pago, tipos de egreso,
@@ -36,8 +40,13 @@ static/
                  que es donde se toman; la ficha del cliente solo las lista. El
                  CSS vive en components.css: estando en una sola pantalla, en la
                  otra salía sin estilo
-  depilacion.html Depilación entera: cobrar, la sesión con su reparto y su cierre,
-                 y su propio historial. No se mezcla con peluquería
+  depilacion.html Depilación entera: cuatro solapas —cobrar, la sesión con su
+                 reparto y su cierre, el historial de comprobantes y el de
+                 sesiones, que tiene la suya para no pasar de largo dos meses de
+                 tickets—. No se mezcla con peluquería. Las tablas van adentro de
+                 un `.tabla-scroll`: las columnas de plata no se parten, así que
+                 abajo de 600px desbordaban la PÁGINA y en el celular el botón de
+                 la última columna quedaba fuera de la pantalla
   escpos.js      Generador del papel de la comandera (ticket.html y facturar.js)
 ```
 
@@ -185,7 +194,11 @@ Lo que hay que respetar:
   `POST /api/depilacion/reabrir` la vuelve a abrir —una sola abierta por vez, así
   que la otra tiene que estar cerrada—. Los cierres no se tocan: lo pagado,
   pagado está. Si al corregirla la cuenta queda por debajo de lo cobrado, la
-  pantalla lo dice con `de_mas`: se le pagó de más.
+  pantalla no lo grita: cada cosa que se le toca después de cerrarla queda en su
+  **historial de correcciones** (`anotar_correccion()`, con la parte de antes y
+  la de después), la sesión se marca "Corregida" y listo. El cartel de alarma
+  decía un número suelto que no explicaba nada; el historial dice qué ticket
+  salió, cuál entró y cuánto movió cada uno.
 - **Y lo pagado de más se descuenta solo del próximo cierre**, que es como se
   arregla en el local: la jornada siguiente cobra de menos. El descuento queda
   como una liquidación NEGATIVA contra la sesión de la que salió, así esa sesión
