@@ -1,0 +1,43 @@
+{
+ "tipo": "ticket",
+ "numero": 561,
+ "fecha": "2026-08-27T16:20:00",
+ "cliente_nombre": "Marcela Ferreyra",
+ "lineas": [
+  {
+   "cantidad": 1,
+   "nombre": "Depilación 5 zonas",
+   "precio_unit_final": 20000,
+   "precio_efectivo_final": 18000
+  }
+ ],
+ "extra_dificultad": 0,
+ "desc_efectivo": 2000,
+ "desc_jubilado": 0,
+ "total_transfer": 20000,
+ "total_final": 18000,
+ "extras": [],
+ "pagos": [
+  {
+   "monto": 4500,
+   "saldado": 4500,
+   "desc_aplicado": 0,
+   "fecha": "2026-08-20T10:00:00",
+   "forma_pago": "Seña",
+   "es_sena": true,
+   "sena_forma": "Efectivo"
+  },
+  {
+   "monto": 13500,
+   "saldado": 13500,
+   "desc_aplicado": 0,
+   "fecha": "2026-08-27T16:25:00",
+   "forma_pago": "Efectivo",
+   "es_sena": false,
+   "sena_forma": null
+  }
+ ],
+ "ingresado": 18000,
+ "cobrado": 13500,
+ "saldo": 0
+}

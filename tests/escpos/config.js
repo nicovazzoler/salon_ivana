@@ -35,14 +35,17 @@ const CASOS = [
   { fixture: "presupuesto-con-descuento.json", golden: "presupuesto-con-descuento.bin", fn: "deComprobante" },
   { fixture: "pago-parcial.json", golden: "pago-parcial.bin", fn: "deComprobante" },
   { fixture: "sin-cliente.json", golden: "sin-cliente.bin", fn: "deComprobante" },
-  /* Los tres casos de la seña. La cuenta se lee de arriba a abajo —subtotal, la
+  /* Los cuatro casos de la seña. La cuenta se lee de arriba a abajo —subtotal, la
      seña que ya dejó, subtotal otra vez y recién al final el 10%— y el total es
      lo que la clienta pone sobre el mostrador, no lo que salió el trabajo. Las
      dos primeras son las dos puntas de sena_saldado(), que se rompieron las
-     dos; la tercera es una seña que tapa también los extras. */
+     dos; la tercera es una seña que tapa también los extras, y la cuarta es la
+     combinación de todos los días —seña en efectivo y la clienta paga en
+     efectivo—, que es la que más se imprime y era la única sin golden. */
   { fixture: "sena-transfer-cuenta-efectivo.json", golden: "sena-transfer-cuenta-efectivo.bin", fn: "deComprobante" },
   { fixture: "sena-efectivo-cuenta-transfer.json", golden: "sena-efectivo-cuenta-transfer.bin", fn: "deComprobante" },
   { fixture: "sena-tapa-los-extras.json", golden: "sena-tapa-los-extras.bin", fn: "deComprobante" },
+  { fixture: "sena-efectivo-cuenta-efectivo.json", golden: "sena-efectivo-cuenta-efectivo.bin", fn: "deComprobante" },
   { fixture: "cuenta-tres-comprobantes.json", golden: "cuenta-tres-comprobantes.bin", fn: "deCuenta" },
 ];
 
