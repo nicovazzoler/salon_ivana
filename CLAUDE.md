@@ -149,12 +149,15 @@ marcado `es_depilacion`, y de ahí sale todo lo demás:
 - Un comprobante nace marcado `depilacion` cuando TODAS sus líneas lo son. Se
   guarda en el comprobante y no se deduce de las líneas: de esa marca cuelga
   cada lista paginada, y preguntarlo con un join por fila es la diferencia entre
-  que el historial abra o no. `/api/comprobantes` la parte con `de=`, pero
-  **Historial pide `de=todo`**: es el historial del local, y lo de depilación va
-  marcado al lado de la forma de pago. El `de=depi` lo usa la pantalla de
-  depilación, que no lista comprobantes sueltos sino SESIONES, con sus tickets
-  adentro (`sesion_id` en el mismo endpoint). Se busca "lo del lunes pasado", no
-  "lo del 13".
+  que el historial abra o no. `/api/comprobantes` la parte con `de=`, y de ahí
+  cuelgan dos pantallas. **Historial arranca en `de=todo`** —es el historial del
+  local, y lo de depilación va marcado al lado de la forma de pago— con una fila
+  de pastillas para acotarlo a uno de los dos; la marca de la fila se esconde
+  cuando ya se está filtrando por depilación, que ahí la dice el filtro. Se
+  combina con los otros filtros, así que "la deuda de depilación" son dos
+  pastillas. El `de=depi` lo usa además la pantalla de depilación, que no lista
+  comprobantes sueltos sino SESIONES, con sus tickets adentro (`sesion_id` en el
+  mismo endpoint). Se busca "lo del lunes pasado", no "lo del 13".
 - **La plata SÍ está en la caja del local.** La clienta paga en el mostrador y el
   efectivo queda en el cajón, así que sacarla de la caja dejaría el arqueo
   pidiendo menos plata de la que hay. Caja la cuenta y la marca; el resumen
