@@ -429,7 +429,8 @@ function crearFila(comp){
       ? ` · <span style="color:var(--warn);">Pendiente ${fmt(comp.saldo)}</span>`
       : "";
     const formas = { efectivo:"Efectivo", transfer:"Transferencia", mixto:"Mixto", cuenta:"A cuenta" };
-    const formaTxt = formas[comp.forma_origen] || comp.forma_origen;
+    const {monto, soloSena} = EscPos.montoDeTarjeta(comp);
+    const formaTxt = soloSena ? "Seña" : (formas[comp.forma_origen] || comp.forma_origen);
     /* Un servicio de otro día se marca acá: la fecha que se lista es la del
        servicio, así que sin esta aclaración parecería cargado ese mismo día. */
     const anotado = comp.anotado_despues
@@ -442,7 +443,7 @@ function crearFila(comp){
             <div class="sub">${fecha} · <span class="num">${numComp(comp.tipo,comp.numero)}</span> · ${titulo(quien)}${anotado}${
               /* Filtrando por depilación la dice el filtro: en las 60 filas es ruido. */
               comp.depilacion && deFiltro !== "depi" ? ` <span class="tag">depilación</span>` : ""}</div>
-            <div class="comp-total">${fmt(comp.cobrado + Math.max(comp.saldo,0))} <span class="fp">· ${formaTxt}</span></div>
+            <div class="comp-total">${fmt(monto)} <span class="fp">· ${formaTxt}</span></div>
           </div>
           <span class="badge ${comp.estado}">${comp.estado}</span>
         </div>

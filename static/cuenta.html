@@ -295,13 +295,14 @@ function renderComprobantes(){
     const div=document.createElement("div"); div.className="comp card";
     const fecha=fechaHoraComp(comp);
     const efvoTodo = comp.desc_efectivo>0 ? comp.saldo : Math.ceil(comp.saldo * 0.9/100)*100;
+    const {monto, soloSena} = EscPos.montoDeTarjeta(comp);
     div.innerHTML=`
       <div class="comp-head">
         <div class="comp-datos">
           <div>
             <div class="sub">${fecha} · <span class="num">${numComp(comp)}</span>${
               comp.depilacion ? ` <span class="tag">depilación</span>` : ""}</div>
-            <div class="comp-total">${fmt(comp.cobrado + Math.max(comp.saldo,0))} ${esPresu?'':`<span class="fp">· ${ORIGEN[comp.forma_origen]||comp.forma_origen}${comp.forma_pago!==ORIGEN[comp.forma_origen]?` → ${comp.forma_pago}`:''}</span>`}</div>
+            <div class="comp-total">${fmt(monto)} ${esPresu?'':`<span class="fp">· ${soloSena?"Seña":`${ORIGEN[comp.forma_origen]||comp.forma_origen}${comp.forma_pago!==ORIGEN[comp.forma_origen]?` → ${comp.forma_pago}`:''}`}</span>`}</div>
           </div>
           <span class="badge ${comp.estado}">${comp.estado}</span>
         </div>

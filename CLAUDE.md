@@ -418,7 +418,12 @@ papel que sale al cobrar diría otra cosa que la ficha.
 Los abonos de seña no se repiten abajo, en lo recibido: ya se restaron arriba, y
 listados otra vez lo recibido sumaba más que el total. Por lo mismo la tarjeta
 del historial y la de la ficha muestran `cobrado`, que es lo que entró sin
-contar señas, y no `ingresado`.
+contar señas, y no `ingresado`. Con una excepción: la seña que tapó la cuenta
+ENTERA deja la fila en $0, que en una lista se lee como un ticket vacío; ahí va
+el total del ticket y la forma de pago dice "Seña". Lo decide `montoDeTarjeta()`
+en `escpos.js`, uno solo para las dos pantallas, y `_monto_tarjeta()` en
+`main.py` lo repite para ordenar por monto: con otro número, el orden manda al
+fondo de la lista un ticket que la lista misma muestra entero.
 
 **Y lo que se MUESTRA de una seña es siempre el valor de la lista de
 transferencia**, no la plata que entró al cajón: es el número que se le dijo al

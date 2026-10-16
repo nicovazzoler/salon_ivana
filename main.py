@@ -3554,8 +3554,9 @@ def listar_comprobantes(tipo: str | None = None,
     clave = {
         "fecha":   lambda f: f[0].fecha,
         "numero":  lambda f: f[0].numero,
-        # El mismo número que muestra la tarjeta: la seña no es plata de mostrador.
-        "monto":   lambda f: f[1]["cobrado"] + max(f[1]["saldo"], 0),
+        # El mismo número que muestra la tarjeta (montoDeTarjeta en escpos.js): la
+        # seña no es plata de mostrador, salvo que haya tapado la cuenta entera.
+        "monto":   lambda f: _monto_tarjeta(f[0], f[1]),
         "cliente": lambda f: _sin_acentos(f[0].cliente_nombre or "Mostrador"),
     }.get(orden, lambda f: f[0].fecha)
     # Dos pasadas en vez de una clave compuesta: el desempate por número va
@@ -3571,6 +3572,14 @@ def listar_comprobantes(tipo: str | None = None,
     recorte = filas[offset:offset + limite]
     return _pagina_comprobantes(db, [f[0] for f in recorte], total, total_sin_filtros, deuda,
                                 precalculado={f[0].id: (f[1], f[2]) for f in recorte})
+
+def _monto_tarjeta(comp, est) -> int:
+    """Lo que muestra la tarjeta del historial. Gemelo de montoDeTarjeta() en escpos.js:
+    con otro número, ordenar por monto pondría arriba un ticket que la lista muestra en $0."""
+    mostrador = est["cobrado"] + max(est["saldo"], 0)
+    if mostrador == 0 and est["total_final"] > 0 and comp.tipo == "ticket":
+        return est["total_final"]
+    return mostrador
 
 def _convertidos_de(db, ids) -> dict:
     """{id del presupuesto: número del ticket en que se convirtió}."""

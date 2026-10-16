@@ -438,6 +438,19 @@ function deCuenta(cuenta, negocio){
   return pie(h, false);
 }
 
+/* Lo que muestra la tarjeta de un comprobante en el historial y en la ficha.
+
+   Es la plata de MOSTRADOR: la seña ya había entrado antes y no se cuenta dos
+   veces. Pero una seña que tapó la cuenta entera deja la fila en $0, que en una
+   lista se lee como un ticket vacío; ahí va el total del ticket y la forma dice
+   quién lo pagó. */
+function montoDeTarjeta(comp){
+  const mostrador = comp.cobrado + Math.max(comp.saldo, 0);
+  if(mostrador === 0 && comp.total_final > 0 && comp.tipo === "ticket")
+    return {monto: comp.total_final, soloSena: true};
+  return {monto: mostrador, soloSena: false};
+}
+
 /* La comandera se maneja con la app RawBT (Play Store): recibe los bytes
    ESC/POS por el esquema rawbt: y los manda por Bluetooth a la impresora. */
 function urlRawbt(bytes){
@@ -450,7 +463,7 @@ global.EscPos = {
   ANCHO, LEGAL_TXT,
   deComprobante, deCuenta, deSena, urlRawbt,
   numComp, fechaLocal, fechaSolo, pu, pe, hayAjuste, textoAjuste,
-  cuentaDeComprobante,
+  cuentaDeComprobante, montoDeTarjeta,
 };
 
 })(window);
