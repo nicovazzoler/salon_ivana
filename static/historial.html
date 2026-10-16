@@ -163,6 +163,16 @@
 
   <div class="nota-periodo" id="notaPeriodo" style="display:none;"></div>
 
+  <!-- Peluquería y depilación son dos negocios, y acá se miran juntos o por
+       separado. Va en su propia fila y no con "Con deuda": son dos preguntas
+       distintas y se combinan —la deuda de depilación necesita las dos—. -->
+  <div class="periodo" id="filtroDe">
+    <span class="eti">Negocio</span>
+    <button class="pill on" data-de="todo">Todo</button>
+    <button class="pill" data-de="pelu">Peluquería</button>
+    <button class="pill" data-de="depi">Depilación</button>
+  </div>
+
   <div class="pills" id="filtroEstado">
     <button class="pill on" data-f="todos">Todos</button>
     <button class="pill" data-f="deuda">Con deuda</button>
@@ -193,6 +203,7 @@ const $=s=>document.querySelector(s);
 const fmt=n=>"$"+(n||0).toLocaleString("es-AR");
 let tipo="ticket";
 let estadoFiltro="todos";   // todos | deuda | convertidos | sinconvertir
+let deFiltro="todo";        // todo | pelu | depi
 
 /* Orden. Por defecto fecha de la más nueva a la más vieja: eso es lo que hace
    que esta pantalla sea un historial y no una lista suelta. Ordenar por otra
@@ -295,9 +306,9 @@ async function traer(reiniciar){
   const p = new URLSearchParams({
     tipo, estado: estadoFiltro, orden: orden.campo,
     desc: orden.desc ? "true" : "false",
-    // Todo, peluquería y depilación: es el historial del local. La depilación
-    // tiene además el suyo, agrupado por sesión, que es otra pregunta.
-    de: "todo",
+    // El default es todo: es el historial del local. La depilación tiene además
+    // el suyo, agrupado por sesión, que es otra pregunta.
+    de: deFiltro,
     limite: POR_TRAMO, offset: desdeFila,
   });
   const w = ventana();
@@ -343,11 +354,16 @@ function pintar(tanda, reiniciar){
   }
 
   if(CARGADOS.length === 0){
-    const porQue = estadoFiltro==="deuda" ? "con deuda"
-                 : estadoFiltro==="convertidos" ? "pasados a ticket"
-                 : estadoFiltro==="sinconvertir" ? "sin convertir" : "";
-    const acotado = periodo !== "todo" ? " en este período" : "";
-    cont.innerHTML = `<p class="muted">No hay ${tipo==="ticket"?"tickets":"presupuestos"} ${porQue}${acotado} para mostrar.`
+    // La frase se arma con lo que hay: pegando los pedazos salía un agujero de
+    // dos espacios cada vez que alguno estaba vacío.
+    const partes = [tipo==="ticket" ? "tickets" : "presupuestos"];
+    if(deFiltro==="depi") partes.push("de depilación");
+    if(deFiltro==="pelu") partes.push("de peluquería");
+    if(estadoFiltro==="deuda") partes.push("con deuda");
+    if(estadoFiltro==="convertidos") partes.push("pasados a ticket");
+    if(estadoFiltro==="sinconvertir") partes.push("sin convertir");
+    if(periodo !== "todo") partes.push("en este período");
+    cont.innerHTML = `<p class="muted">No hay ${partes.join(" ")} para mostrar.`
       + (periodo !== "todo" ? ` <a href="#" id="verTodo">Buscar en todo el historial</a>.` : "") + `</p>`;
     const a = $("#verTodo");
     // Se limpian también las fechas: si no, la pastilla queda en "Todo" y los dos
@@ -425,7 +441,7 @@ function crearFila(comp){
           <div>
             <div class="sub">${fecha} · <span class="num">${numComp(comp.tipo,comp.numero)}</span> · ${titulo(quien)}${anotado}</div>
             <div class="comp-total">${fmt(comp.cobrado + Math.max(comp.saldo,0))} <span class="fp">· ${formaTxt}${
-              comp.depilacion ? " · Depilación" : ""}</span></div>
+              comp.depilacion && deFiltro !== "depi" ? " · Depilación" : ""}</span></div>
           </div>
           <span class="badge ${comp.estado}">${comp.estado}</span>
         </div>
@@ -590,6 +606,14 @@ document.querySelectorAll("#periodo .pill").forEach(b=>{
   $(sel).onchange = () => {
     periodo = ($("#desde").value || $("#hasta").value) ? "rango" : "todo";
     pintarPeriodo(); traer(true);
+  };
+});
+
+document.querySelectorAll("#filtroDe .pill").forEach(b=>{
+  b.onclick=()=>{
+    deFiltro=b.dataset.de;
+    document.querySelectorAll("#filtroDe .pill").forEach(x=>x.classList.toggle("on", x===b));
+    traer(true);
   };
 });
 
