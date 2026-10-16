@@ -3249,6 +3249,7 @@ def cuenta_cliente(cliente_id: int, _ = Depends(usuario_actual), db: Session = D
                     "subtotal": est["subtotal"], "desc_jubilado": est["desc_jubilado"],
                     "total_final": est["total_final"], "pagado": est["pagado"],
                     "ingresado": est["ingresado"], "cobrado": est["cobrado"], "convertido_a": conv,
+                    "depilacion": bool(comp.depilacion),
                     "forma_pago": forma_comprobante(db, comp, pagos_map), "forma_origen": comp.forma_pago,
                     "saldo": est["saldo"], "estado": est["estado"]})
     return {"cliente": _cliente_json(cli),
