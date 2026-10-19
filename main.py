@@ -4863,7 +4863,13 @@ def agenda_dia(fecha: str | None = None, _ = Depends(usuario_actual), db: Sessio
     cierre = cierre_crudo if cierre_crudo.endswith(":00") else f"{min(int(cierre_crudo[:2]) + 1, 23):02d}:00"
     if cierre <= apertura: cierre = f"{min(int(apertura[:2]) + 1, 23):02d}:00"
 
+    # Si no hay NINGÚN horario cargado, todos los días salen vacíos y la pantalla
+    # diría "este día no trabaja nadie", que manda a abrir esa fecha sola cuando
+    # lo que falta es la semana entera.
+    sin_horarios = db.query(models.HorarioEmpleado).first() is None
+
     return {"fecha": fecha, "apertura": apertura, "cierre": cierre,
+            "sin_horarios": sin_horarios,
             "empleados": filas, "turnos": salida_turnos}
 
 # ---------- agenda de turnos ----------
