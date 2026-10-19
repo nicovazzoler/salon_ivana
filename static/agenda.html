@@ -588,7 +588,7 @@ async function renderColumnas(){
 
   cont.innerHTML="";
   const abierto = d.empleados.some(e => e.excepcion && e.tramos.length);
-  const av = bloqueAbrirDia(nadie, abierto);
+  const av = bloqueAbrirDia(nadie, abierto, d.sin_horarios);
   if(av) cont.appendChild(av);
   cont.appendChild(wrap);
 }
@@ -605,9 +605,17 @@ async function renderColumnas(){
 
    Cualquier día, no solo domingos y lunes: la depilación se mudó de día más de
    una vez y el botón escondido dejaba sin forma de decir quién lleva el día. */
-function bloqueAbrirDia(nadie, abierto){
+function bloqueAbrirDia(nadie, abierto, sinHorarios){
   const av = document.createElement("div");
   av.className = "sin-turnos";
+  /* Sin ningún horario cargado TODOS los días salen vacíos, así que "este día no
+     trabaja nadie" manda a abrir esa fecha sola —que es para el día de
+     depilación— cuando lo que falta es la semana entera, que se carga una vez. */
+  if(sinHorarios && nadie){
+    av.innerHTML = `<b>Todavía no está cargado el horario de la semana.</b><br>
+      Se carga una vez por persona, en <a href="/admin">Admin</a>.`;
+    return av;
+  }
   if(abierto){
     av.innerHTML = `<span class="det">Este día está abierto fuera del horario de siempre.</span> `;
     const b = document.createElement("button");
@@ -995,7 +1003,7 @@ async function renderDia(){
   // poder abrir el día.
   const d = await (await authFetch("/api/agenda/dia?fecha="+fechaActual)).json();
   const nadie = d.empleados.every(e => !e.tramos.length) && !d.turnos.length;
-  const av = bloqueAbrirDia(nadie, d.empleados.some(e => e.excepcion && e.tramos.length));
+  const av = bloqueAbrirDia(nadie, d.empleados.some(e => e.excepcion && e.tramos.length), d.sin_horarios);
   if(av) cont.appendChild(av);
 }
 
