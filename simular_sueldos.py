@@ -1,22 +1,14 @@
 """Carga un ciclo entero de trabajo para probar la pantalla de sueldos.
 
-Factura POR LA API, igual que el local: así los comprobantes, los precios y las
-comisiones son exactamente los que hubiera generado un cobro de verdad, y no una
-segunda versión de la cuenta escrita acá.
+Factura POR LA API, así los precios y las comisiones son los de un cobro de verdad.
 
     python3 simular_sueldos.py                    # el último ciclo cerrado
     python3 simular_sueldos.py --ciclo actual     # la semana en curso
     python3 simular_sueldos.py --empleadas 3      # cuántas (default 3)
     python3 simular_sueldos.py --borrar           # deshace lo que cargó
 
-La duración de cada trabajo sale del precio del ítem: el más caro del catálogo
-son 80 minutos y el más barato 15, con el resto repartido en el medio y una
-variación chica para que no salgan todos iguales. Es una regla inventada para
-la prueba, no una del negocio.
-
-Después de cargar, el valor hora y la comisión se cambian donde se cambian
-siempre —Admin, arriba de la lista de empleados, o Sueldos— y los totales se
-recalculan solos: lo pendiente se calcula en vivo y recién se congela al cerrar.
+La duración de cada trabajo sale del precio del ítem (el más caro, 80 minutos).
+Es una regla inventada para la prueba, no una del negocio.
 
 OJO: esto CREA comprobantes y pagos, así que solo trabaja contra una base local.
 """
@@ -68,9 +60,8 @@ class Api:
 def hoy_argentina() -> date:
     """El "hoy" del local, no el del servidor.
 
-    Argentina es UTC−3 todo el año, así que después de las 21 el reloj de la
-    máquina ya está en el día siguiente. Sin esto, la simulación intenta
-    facturar mañana y la app la frena por fecha futura, con razón.
+    Argentina es UTC−3, así que después de las 21 el reloj de la máquina ya está
+    en el día siguiente y la app frena el cobro por fecha futura.
     """
     return (datetime.now(timezone.utc) - timedelta(hours=3)).date()
 
@@ -78,9 +69,7 @@ def hoy_argentina() -> date:
 def ciclo_de(f: date) -> tuple[date, date]:
     """El mismo corte que usa la app: de sábado a viernes.
 
-    El día de depilación es su propio ciclo de un día, pero eso no sale del
-    almanaque: lo decide haber facturado depilación. Acá no hace falta, porque
-    la simulación no factura depilación.
+    Alcanza con el almanaque porque la simulación no factura depilación.
     """
     dow = f.weekday()
     if dow == 5: return f, f + timedelta(days=6)
@@ -106,8 +95,8 @@ def items_a_comision(api):
 def minutos_por_precio(precio, barato, caro, rnd):
     """Del precio del ítem a cuánto duró: el más caro del catálogo son 80 minutos.
 
-    Con una variación de ±8 minutos para que no salgan todos iguales, que es lo
-    que se quiere mirar en la pantalla. Nunca pasa de 80 ni baja de 15.
+    Con ±8 minutos de variación para que no salgan todos iguales. Nunca pasa de
+    80 ni baja de 15.
     """
     if caro <= barato:
         base = (MIN_MINUTOS + MAX_MINUTOS) // 2
@@ -222,7 +211,7 @@ def resumen(api, empleadas, desde):
     """Lo que la pantalla propone para ESTE ciclo.
 
     Por ciclo y no por empleada: el total de una puede arrastrar semanas viejas
-    sin pagar, y entonces no cierra contra las comisiones y las horas de acá.
+    sin pagar y no cerraría contra las comisiones de acá.
     """
     cfg = api.pedir("/api/config")
     print(f"\nCon valor hora ${cfg.get('valor_hora', 0):,} y comisión {cfg.get('comision_pct', 0)}%, "

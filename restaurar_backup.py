@@ -1,16 +1,10 @@
 """Restaura un backup JSON de /api/backup dentro de una base vacía.
 
-El backup existía desde siempre, pero no había con qué volver a meterlo: era un
-archivo, no un respaldo. Esto es la otra mitad.
-
     python3 restaurar_backup.py backup_pelu_20260905_2130.json \
         --destino sqlite:///revisado.db
 
-Por qué pide el destino a mano y por qué se planta si la base tiene datos: la
-forma de restaurar sin miedo es levantar una base nueva al lado, mirarla, y
-recién ahí decidir. Que el default sea "no piso nada" es a propósito; el día que
-haga falta de verdad va a ser un día de nervios y no es momento de descubrir que
-el comando por descuido apuntaba a producción.
+Pide el destino a mano y se planta si la base tiene datos: el default es "no
+piso nada", para que un comando por descuido no pueda apuntar a producción.
 """
 import argparse
 import json
@@ -26,11 +20,9 @@ import models
 def _a_utc_naive(iso, version):
     """Deja la fecha como la base la quiere: UTC y sin tzinfo.
 
-    Los backups versión 1 guardaban la fecha ya pasada a hora argentina y sin
-    offset, así que hay que devolverle las 3 horas. Si esto se saltea, todo lo
-    cargado después de las 21:00 argentinas cae en el día anterior y la caja de
-    cada día cierra con los números de otro. Del 2 en adelante viene el
-    '+00:00' escrito y no hay nada que adivinar.
+    Los backups versión 1 la guardaban ya en hora argentina y sin offset, así
+    que hay que devolverle las 3 horas o la caja de cada día cierra con los
+    números de otro. Del 2 en adelante viene el '+00:00' escrito.
     """
     if not iso:
         return None
@@ -127,10 +119,9 @@ def _insertar(db, modelo, filas):
 def _revisar_esquema(engine):
     """Corta si al destino le faltan columnas, antes de escribir nada.
 
-    `create_all` crea las tablas que no están, pero a una que ya está no le
-    agrega una columna nueva: eso lo hace `migrar()` al arrancar la app. Un
-    destino de una versión anterior revienta recién a mitad de la carga, con un
-    error de SQLite que no dice qué hacer y la base por la mitad.
+    `create_all` crea las tablas que faltan pero no agrega columnas a las que ya
+    están: eso lo hace `migrar()`. Sin este corte, un destino viejo revienta a
+    mitad de la carga y deja la base por la mitad.
     """
     from sqlalchemy import inspect
     insp = inspect(engine)
@@ -159,12 +150,8 @@ def _todas_las_tablas():
     """Todo lo que toca una restauración, en orden de carga.
 
     Una sola lista para vaciar y para reiniciar las secuencias: con dos, una
-    tabla que se agregue entra en una y no en la otra, y lo que falla no es la
-    restauración sino la de después.
-
-    Las que no salen de ORDEN van al final porque se insertan aparte: las líneas
-    van anidadas adentro del comprobante, y los trabajos a comisión después de
-    ellas, que es a lo que apuntan.
+    tabla nueva entra en una y no en la otra. Las que no salen de ORDEN se
+    insertan aparte, anidadas adentro del comprobante.
     """
     return ([m for _, m, _, _ in ORDEN]
             + [models.VentaLinea, models.ComprobanteLinea,
@@ -181,8 +168,8 @@ def _vaciar(db):
 def _reiniciar_secuencias(db, engine):
     """En PostgreSQL la secuencia no se entera de los id que insertamos a mano.
 
-    Sin esto la base restaurada arranca dando id 1 y el primer ticket que se
-    cobre revienta por clave duplicada. En SQLite no hace falta.
+    Sin esto arranca dando id 1 y el primer ticket revienta por clave
+    duplicada. En SQLite no hace falta.
     """
     if not engine.url.get_backend_name().startswith("postgres"):
         return

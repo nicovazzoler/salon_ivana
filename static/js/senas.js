@@ -1,24 +1,16 @@
 /* Señas: plata que la clienta deja adelantada, sin atarla a ningún ticket.
 
-   Son de DEPILACIÓN: se toman en su pantalla o en la ficha de la clienta, y
-   solo saldan un ticket de depilación. Un solo dibujante para las dos, igual
-   que las listas de Admin. Si fueran dos, el día que se agregue un campo acá
-   una de las dos se queda sin pedirlo.
-
-   La plata entra a la caja el día que se cobra la seña. Al aplicarla a un ticket
-   no vuelve a entrar: ese abono salda la cuenta y nada más. */
+   Son de DEPILACIÓN y solo saldan depilación. Un solo dibujante para las dos
+   pantallas que las toman. La plata entra a la caja el día que se cobra la
+   seña; al aplicarla a un ticket, ese abono salda la cuenta y nada más. */
 
 const _escSena = s => String(s ?? "").replace(/[&<>"']/g,
   c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const _plataSena = n => "$" + (n || 0).toLocaleString("es-AR");
 
-/* Cuánto vale una seña contra cada una de las dos listas.
-
-   Lo guardado es la plata que ENTRÓ, que en efectivo es el 10% menos. Lo que la
-   clienta tiene a favor es el otro número —el que se le dijo, el de la lista de
-   transferencia— y es el que va en los carteles y en las listas. Tiene que dar
-   igual que sena_saldado() en el backend: lo que la pantalla le dice es lo que
-   se le va a cobrar. */
+/* Lo que vale una seña contra la lista de transferencia, que es el número que
+   se le dijo al tomarla y el que va en los carteles. Lo GUARDADO es la plata que
+   entró, un 10% menos en efectivo. Tiene que dar igual que sena_saldado(). */
 const valorSena = s => (s.forma_pago || "") === "Efectivo"
   ? Math.ceil((s.monto / 0.9) / 100) * 100 : s.monto;
 const valorSenaEfectivo = s => (s.forma_pago || "") === "Efectivo"
@@ -35,12 +27,9 @@ async function formasParaSena(){
   return _FORMAS_SENA;
 }
 
-/* El formulario para tomar una seña. `alGuardar` recibe la seña creada, para que
-   cada pantalla refresque lo suyo sin que este archivo sepa cómo.
-
-   El monto es el monto, se pague como se pague: la cuenta de cuánto tapa de una
-   factura se hace al facturar y no acá. Los tres botones son los montos de
-   siempre, para no tipearlos. */
+/* El formulario para tomar una seña. `alGuardar` recibe la seña creada, así cada
+   pantalla refresca lo suyo sin que este archivo sepa cómo. Cuánto tapa de una
+   factura se calcula al facturar, no acá. */
 const MONTOS_SENA = [5000, 10000, 15000];
 
 function panelSena(clienteId, nombre, alGuardar){
@@ -78,13 +67,9 @@ function panelSena(clienteId, nombre, alGuardar){
     cuenta();
   });
 
-  /* Lo que la clienta entrega y lo que le queda a favor.
-
-     El monto que se pone es de cuánto es la seña, en los precios de la lista
-     —los de transferencia, que son a los que se ancla el comprobante—. Pagando
-     en efectivo entrega el 10% menos, igual que cualquier cosa en este local, y
-     esa plata es la que entra a la caja: lo que se guarda es lo que entró.
-     Mostrar los dos números es lo que evita la pregunta de todos los días. */
+  /* Lo que la clienta entrega y lo que le queda a favor. El monto que se pone es
+     de cuánto es la seña, en los precios de transferencia; pagando en efectivo
+     entrega el 10% menos, y eso es lo que entra a la caja y lo que se guarda. */
   const enEfectivo = () => pan.querySelector(".sForma").value === "Efectivo";
   const valor = () => parseInt(pan.querySelector(".sMonto").value, 10) || 0;
   const entra = () => enEfectivo() ? Math.round(valor() * 0.9) : valor();

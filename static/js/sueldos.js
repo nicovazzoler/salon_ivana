@@ -1,13 +1,7 @@
-/* Sueldos, la pantalla de la empleada.
-
-   Entra, elige su nombre y ve lo que se le debe hoy. Lo único que carga a mano
-   son dos cosas: cuántas horas hizo cada día y cuánto duró cada trabajo a
-   comisión. Todo lo demás —qué trabajos hizo, cuánto valen, la cuenta— sale de
-   los comprobantes.
-
-   El ciclo no es la semana: es "lo que todavía no se pagó". Por eso acá no hay
-   fechas de corte ni navegación entre semanas. Lo que aparece es lo pendiente, y
-   desaparece cuando la dueña cierra y paga. */
+/* Sueldos, la pantalla de la empleada: entra, elige su nombre y ve lo que se le
+   debe. A mano carga dos cosas, las horas de cada día y cuánto duró cada
+   trabajo; el resto sale de los comprobantes. El ciclo no es la semana sino lo
+   que todavía no se pagó, así que no hay navegación entre semanas. */
 requireLogin(); pintarNav(); ajustarPorRol();
 
 const $=s=>document.querySelector(s);
@@ -15,15 +9,10 @@ const fmt=n=>"$"+(n||0).toLocaleString("es-AR");
 const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 function toast(m){const t=$("#toast");t.textContent=m;t.classList.add("show");setTimeout(()=>t.classList.remove("show"),2200);}
 
-/* Con el usuario empleado, la pantalla se abre con un código por persona.
-
-   El permiso vive acá, en memoria, y no en localStorage: se pide cada vez que se
-   entra a la pantalla, que es lo que se pidió, y así el que agarra la tablet
-   después no encuentra la sesión de la otra abierta. Esto es comodidad y orden;
-   el candado de verdad lo pone el servidor, que sin este permiso no contesta el
-   sueldo de nadie.
-
-   La dueña no pasa por acá: es la que paga y ve a todas. */
+/* Con el usuario empleado, la pantalla se abre con un código por persona. El
+   permiso vive en memoria y no en localStorage: se pide en cada entrada, así el
+   que agarra la tablet después no encuentra la sesión de la otra. El candado de
+   verdad lo pone el servidor. La dueña no pasa por acá. */
 let PERMISO = null, YO = null;
 
 async function pedir(url, opts){
@@ -50,15 +39,10 @@ let TODAS = [];
 // para decidir a quién sigue mostrando.
 let PENDIENTE = {};
 
-/* A quién se le paga sueldo.
-
-   La dueña está en la lista de empleadas —atiende— pero no se paga sueldo a sí
-   misma, y sin código de sueldo es un nombre de más en todos los desplegables de
-   esta pantalla. El código es la señal: el que cobra acá tiene uno para entrar a
-   ver lo suyo.
-
-   Si igual le quedó algo pendiente, aparece. Esconder plata que se debe es peor
-   que mostrar un nombre de más. */
+/* A quién se le paga sueldo. El código es la señal: el que cobra acá tiene uno
+   para entrar a ver lo suyo, y la dueña atiende pero no se paga a sí misma. Si
+   igual le quedó algo pendiente aparece: esconder plata que se debe es peor que
+   un nombre de más. */
 const seLePaga = e => e.tiene_pin !== false || (PENDIENTE[e.id] || 0) > 0;
 const DUENO = esDueno();
 /* La misma tarjeta la miran dos personas distintas: la empleada mira lo suyo y
@@ -421,13 +405,10 @@ function dibujarCiclo(c){
   </div>`;
 }
 
-/* El día, que es donde la empleada se gestiona: pone sus horas y mira lo que
-   hizo. Están TODOS los días del ciclo hasta hoy, así que uno en blanco quiere
-   decir "no vine" y no "falta cargarlo": el que vino y no facturó nada tiene
-   dónde declararse sin pedirle nada a nadie.
-
-   Las horas se muestran escritas y se editan con el lapicito: con el casillero
-   siempre abierto, un número tipeado sin querer es plata. */
+/* El día, donde la empleada pone sus horas y mira lo que hizo. Están TODOS los
+   del ciclo hasta hoy, así que uno en blanco es "no vine" y no "falta cargarlo".
+   Las horas van escritas y se editan con el lapicito: con el casillero siempre
+   abierto, un número tipeado sin querer es plata. */
 function dibujarDia(d, c){
   // Un día cuyas horas ya se pagaron en un cierre anterior vuelve a aparecer si
   // se le agrega una comisión con esa fecha. No le falta nada, así que no se
@@ -506,16 +487,10 @@ function dibujarTrabajo(t){
   </div>`;
 }
 
-/* Cerrar antes de que termine la semana NO es cerrar la semana.
-
-   El viernes es el final del ciclo y el día de pago. Si se paga un miércoles, lo
-   que se paga es lo que va hasta ahí: el ciclo sigue abierto y lo que se trabaje
-   el jueves y el viernes cae en el mismo. Por eso el botón dice "pago parcial" y
-   no "cerrar".
-
-   Al lado queda el cierre anticipado, para el caso en el que la semana sí se
-   terminó antes —el viernes cae feriado, se paga el jueves—: ahí la da por
-   cerrada igual. Son dos cosas distintas y por eso son dos botones. */
+/* Cerrar antes de que termine la semana NO es cerrar la semana: pagar un
+   miércoles paga lo que va, y lo del jueves y el viernes cae en el mismo ciclo,
+   de ahí que el botón diga "pago parcial". Al lado va el cierre anticipado, para
+   la semana que sí terminó antes. Son dos cosas y por eso son dos botones. */
 function filaCerrar(c, listo){
   // El viernes mismo YA es cerrar la semana: es el último día y el de pago. Con
   // ">" el cierre normal de todas las semanas salía como "pago parcial".
@@ -698,18 +673,10 @@ async function mandar(url, metodo, cuerpo){
 
 /* ---------- cerrar la puerta sola ---------- */
 
-/* La tablet queda prendida arriba del mostrador y pasa de mano en mano. Que el
-   permiso se pierda al navegar o recargar no alcanza: si la empleada deja la
-   pantalla abierta y se va a atender, su sueldo queda ahí para el que la agarre.
-
-   Así que se cierra sola en tres casos:
-     - cuando la pantalla deja de estar a la vista (cambió de app, de pestaña,
-       bloqueó la tablet),
-     - cuando pasan unos minutos sin que nadie la toque,
-     - y cuando el servidor contesta que el permiso ya no vale.
-
-   Cerrar es tirar el permiso Y esconder lo que está dibujado: si solo se tirara
-   el permiso, los números seguirían en pantalla hasta que alguien tocara algo. */
+/* La tablet pasa de mano en mano, así que la pantalla se cierra sola: cuando
+   deja de estar a la vista, cuando pasan unos minutos sin que nadie la toque y
+   cuando el servidor dice que el permiso ya no vale. Cerrar es tirar el permiso
+   Y esconder lo dibujado, o los números siguen en pantalla. */
 const MINUTOS_QUIETA = 3;
 let relojQuieta = null;
 
@@ -742,14 +709,9 @@ function vigilarPantalla(){
 /* ---------- la puerta ---------- */
 
 /* Con el usuario empleado no se muestra nada hasta que alguien dice quién es y
-   pone su código. Se pide en CADA entrada a la pantalla: en el local la tablet
-   queda prendida y pasando de mano en mano, así que una sesión que quedara
-   abierta es el sueldo de una a la vista de la siguiente.
-
-   Sin ningún código cargado no se entra. Es a propósito: si se dejara pasar
-   "mientras no haya códigos", el día que la dueña carga el primero recién ahí
-   empieza a proteger, y hasta entonces la pantalla estuvo abierta sin que nadie
-   se enterara. */
+   pone su código, y se pide en CADA entrada. Sin ningún código cargado no se
+   entra: dejando pasar "mientras no haya códigos", la pantalla queda abierta
+   hasta el día que la dueña cargue el primero. */
 async function abrirPuerta(motivo){
   const puerta = $("#puerta"), cuerpo = $("#puertaCuerpo");
   $("#todo").hidden = true;
@@ -802,12 +764,9 @@ async function abrirPuerta(motivo){
     PERMISO = d.token; YO = d.empleado.id;
     localStorage.setItem(RECUERDO, String(YO));   // solo para preseleccionar el nombre
     puerta.hidden = true; $("#todo").hidden = false;
-    // El desplegable de "quién sos" no tiene sentido cuando ya se dijo con el
-    // código: queda el nombre y un botón para que entre la otra. El select sigue
-    // existiendo escondido porque es de donde el resto de la pantalla lee de
-    // quién es lo que muestra.
-    // display:none y no [hidden]: la clase .quien pone display:flex y le gana al
-    // hidden del navegador, así que el bloque quedaría a la vista igual.
+    // El select sigue existiendo escondido porque es de donde el resto de la
+    // pantalla lee de quién es lo que muestra. Va con display:none y no con
+    // [hidden]: la clase .quien pone display:flex y le gana.
     const caja = $("#quien").closest(".quien");
     caja.style.display = "none";
     caja.innerHTML = `<select id="quien" hidden></select>`;

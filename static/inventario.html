@@ -40,11 +40,9 @@
   .gasto .cual{ flex:1 1 220px; min-width:0; }
   .gasto .cual select{ width:100%; }
   .gasto .cuanto input{ width:80px; text-align:right; }
-  /* El "para qué" se lleva el sobrante: es texto libre y con 78px no entraba ni
-     el ejemplo del placeholder. El width y el text-align tienen que decirse acá
-     porque más abajo está `.campo input{ width:78px; text-align:right }`, que es
-     para los casilleros numéricos de cada producto y le pegaba también a este.
-     Los botones se van al fondo con el margin-left. */
+  /* El "para qué" se lleva el sobrante: es texto libre y con 78px no entra ni el
+     placeholder. El width y el text-align van acá porque abajo está
+     `.campo input{ width:78px }`, que es para los casilleros numéricos. */
   .gasto .porque{ flex:2 1 260px; min-width:0; }
   .gasto .porque input{ width:100%; text-align:left; }
   .gasto #gGuardar{ margin-left:auto; }
@@ -198,14 +196,9 @@
 <div class="toast" id="toast"></div>
 <script src="/static/auth.js"></script>
 <script>
-/* El empleado entra a ver, no a corregir.
-
-   Necesita saber si queda shampoo antes de vendérselo a alguien, y preguntarlo
-   por WhatsApp no es una forma de consultar el stock. Pero el número del
-   inventario es plata: uno mal contado se arrastra hasta que alguien hace el
-   recuento entero de nuevo. Así que para el empleado la pantalla queda de solo
-   lectura —sin los campos, sin los botones y sin el log de movimientos— y el
-   backend rebota igual el PUT si alguien lo prueba a mano. */
+/* El empleado entra a ver, no a corregir: necesita saber si queda shampoo, pero
+   un número mal contado se arrastra hasta el próximo recuento entero. La
+   pantalla le queda de solo lectura y el backend rebota el PUT igual. */
 requireLogin(); pintarNav(); ajustarPorRol();
 const DUENO = esDueno();
 const $=s=>document.querySelector(s);
@@ -311,15 +304,9 @@ function render(){
 }
 
 /* ----- Descontar un insumo -----
-
-   El desplegable se llena de PRODS, así que no hay que escribir el nombre a
-   mano: un nombre tipeado distinto sería un producto que no existe y el
-   descuento se perdería.
-
-   El aviso de abajo aparece antes de apretar, no después: si el conteo dice 3 y
-   se ponen 5, el stock queda en -2. Se deja pasar igual —lo que se usó, se usó—
-   pero se avisa, porque un número abajo de cero quiere decir que el conteo está
-   atrasado y alguien tiene que mirarlo. */
+   El desplegable se llena de PRODS: un nombre tipeado distinto sería un producto
+   que no existe y el descuento se perdería. El aviso de abajo aparece ANTES de
+   apretar: deja pasar el stock negativo, pero avisa que el conteo está atrasado. */
 function opcionesGasto(){
   const sel=$("#gProd"); if(!sel) return;
   const elegido=sel.value;

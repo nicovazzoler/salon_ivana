@@ -1,13 +1,9 @@
 "use strict";
 
-/* Regenera los .bin de referencia en tests/escpos/golden/ a partir de los
- * fixtures. Se corre a mano cuando un cambio en escpos.js cambia el papel a
- * propósito: node tests/escpos/generar-golden.js
- *
- * Usa el mismo instante congelado que el test (FECHA_CONGELADA, en
- * config.js): así el .bin que se genera acá es exactamente el que
- * escpos.test.js espera encontrar, sin importar qué día se corra este
- * script. */
+/* Regenera los .bin de referencia a partir de los fixtures, a mano, cuando un
+ * cambio en escpos.js mueve el papel a propósito:
+ *     node tests/escpos/generar-golden.js
+ * Usa el mismo FECHA_CONGELADA que el test, así el .bin no depende del día. */
 const fs = require("node:fs");
 const path = require("node:path");
 const { mock } = require("node:test");

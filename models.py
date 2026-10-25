@@ -24,16 +24,13 @@ class Item(Base):
     # ajuste de línea. Va en el ítem y no en el comprobante porque es una
     # propiedad del trabajo ("un corte se paga a comisión"), no de la venta.
     es_comision = Column(Boolean, default=False)
-    # Porcentaje propio de este ítem. NULL = el general de config. Existe porque
-    # no todos los trabajos pagan lo mismo: un color lleva tres horas y un
-    # flequillo diez minutos, y con un solo porcentaje para todo la única forma
-    # de emparejarlo era no marcar la mitad de los ítems.
+    # Porcentaje propio de este ítem; NULL = el general de config. No todos los
+    # trabajos pagan lo mismo: un color lleva tres horas y un flequillo diez
+    # minutos.
     comision_pct = Column(Integer)
-    # Trabajo de depilación. El día que se hace depilación no se paga por
-    # comisión: se reparte lo que dejaron ESAS líneas, así que hay que poder
-    # reconocerlas una por una. Va en el ítem y no en el nombre de la categoría
-    # porque la categoría se renombra desde Admin y la cuenta de la plata no
-    # puede depender de un texto que alguien puede escribir distinto.
+    # Trabajo de depilación: esas líneas no pagan comisión, se reparten. Va en el
+    # ítem y no en el nombre de la categoría, que se renombra desde Admin: la
+    # cuenta de la plata no puede depender de un texto.
     es_depilacion = Column(Boolean, default=False)
     stock_actual = Column(Integer, default=0)   # solo aplica a productos
     stock_minimo = Column(Integer, default=0)
@@ -66,10 +63,8 @@ class VentaLinea(Base):
 class Egreso(Base):
     __tablename__ = "egresos"
     id = Column(Integer, primary_key=True)
-    # Correlativo propio, como el de los comprobantes: sirve para nombrar un
-    # egreso en voz alta ("el 47") sin leer el id de la base, que no significa
-    # nada para nadie. Es nullable porque los que ya estaban cargados no lo
-    # tienen: se los numera una vez en migrar().
+    # Correlativo para nombrar un egreso en voz alta ("el 47"). Nullable porque
+    # los que ya estaban se numeran una vez en migrar().
     numero = Column(Integer, index=True)
     fecha = Column(DateTime, default=fecha_hora_now_utc)
     tipo = Column(String)
@@ -81,20 +76,16 @@ class Egreso(Base):
     # la misma pantalla que todo lo demás, pero eso no es asunto de quien atiende:
     # ni aparece en su lista ni entra en los totales de su caja.
     privado = Column(Boolean, default=False)
-    # El egreso que es el pago a la ayudante del lunes de depilación. `ayudante`
-    # lo marca como tal —es el renglón fijo de la tarjeta del lunes, el gasto que
-    # más se olvida y el único que le baja la parte a la que lleva el día— y
-    # `empleado_id` lo ata a la persona cuando es del salón, para que el aviso le
-    # aparezca en su sueldo sin ir a buscarla por el nombre escrito.
+    # El pago a la ayudante de la jornada de depilación. `empleado_id` lo ata a
+    # la persona cuando es del salón, para que el aviso le aparezca en su sueldo
+    # sin buscarla por el nombre escrito.
     ayudante = Column(Boolean, default=False)
-    # El egreso que es el alquiler de la máquina de depilar. Misma idea que
-    # `ayudante`: es el otro renglón fijo de la tarjeta del día, y marcarlo por
-    # el texto del tipo haría que renombrarlo lo multiplique —la pantalla
-    # ofrecería cargarlo de nuevo y el reparto saldría con la máquina dos veces—.
+    # El alquiler de la máquina de depilar. Marcado acá y no por el texto del
+    # tipo: renombrarlo haría que la pantalla ofrezca cargarlo de nuevo y el
+    # reparto saldría con la máquina dos veces.
     maquina = Column(Boolean, default=False)
-    # Gasto de la depilación: solo estos entran en la resta del reparto. Antes
-    # entraba cualquier egreso no privado del día, y un gasto de peluquería de
-    # ese mismo día le bajaba la mitad a quien lleva la depilación.
+    # Gasto de la depilación: solo estos entran en la resta del reparto, no los
+    # egresos del día. Uno de peluquería le bajaría la mitad a quien la lleva.
     depilacion = Column(Boolean, default=False)
     empleado_id = Column(Integer, ForeignKey("empleados.id"), index=True)
     # De qué sesión es este gasto. La fecha sigue siendo la del día en que salió
@@ -104,14 +95,9 @@ class Egreso(Base):
 class SesionDepilacion(Base):
     """Una jornada de depilación: se abre, se trabaja uno o varios días, se cierra.
 
-    La unidad de la plata es la sesión y no el día. Con el día, los gastos
-    cargados todos juntos caían sobre uno solo: ese quedaba en negativo —y en
-    negativo no se puede cerrar, así que no se arrastraba a ningún lado— y el
-    otro se repartía entero. La máquina desaparecía del reparto.
-
-    Lo que entra se marca al cargarlo (`sesion_id` en el comprobante y en el
-    egreso) y no se deduce de la fecha: la máquina se paga el viernes anterior y
-    un trabajo se anota al otro día, y los dos son de esta sesión igual.
+    La unidad de la plata es la sesión y no el día: con el día, los gastos
+    cargados todos juntos caen sobre uno solo y la máquina desaparece del reparto.
+    Lo que entra se MARCA al cargarlo (`sesion_id`) y no se deduce de la fecha.
     """
     __tablename__ = "sesiones_depilacion"
     id = Column(Integer, primary_key=True)
@@ -123,9 +109,8 @@ class SesionDepilacion(Base):
     abierta = Column(DateTime, default=fecha_hora_now_utc)
     cerrada = Column(DateTime)                        # NULL = sigue abierta
     # El reparto de esta sesión se cuenta sobre la lista de efectivo, que es la
-    # regla con la que se liquidó. Solo lo llevan las que ya estaban pagadas
-    # cuando el reparto pasó a contar todo lo facturado: una cuenta ya cobrada
-    # no se vuelve a calcular con otra fórmula.
+    # regla con la que se liquidó: una cuenta ya cobrada no se vuelve a calcular
+    # con otra fórmula.
     reparto_efectivo = Column(Boolean, default=False)
     notas = Column(String)
     empleado = relationship("Empleado")
@@ -133,11 +118,9 @@ class SesionDepilacion(Base):
 class CorreccionSesion(Base):
     """Lo que se le tocó a una sesión DESPUÉS de haberla cerrado.
 
-    Una sesión cerrada es una cuenta repartida: si se reabre para sacarle un
-    ticket que no iba, la mitad que le toca a la empleada cambia y lo que ya
-    cobró no. Cada movimiento queda acá con la parte de antes y la de después,
-    que es lo que se mira cuando tres semanas más tarde alguien pregunta por qué
-    esa jornada pagó distinto.
+    Reabrirla para sacarle un ticket cambia la mitad que le toca a la empleada,
+    y lo que ya cobró no. Cada movimiento queda acá con la parte de antes y la
+    de después.
     """
     __tablename__ = "correcciones_sesion"
     id = Column(Integer, primary_key=True)
@@ -165,13 +148,9 @@ class Usuario(Base):
 class Empleado(Base):
     """Quién trabaja en el local.
 
-    Sale del texto libre que había en `peluquero`: escrito a mano, "Carla",
-    "carla" y "Carla " son tres personas distintas, y el sueldo de cada una sale
-    mal sin que nada avise. Es una tabla y no una de las listas configurables
-    porque de acá cuelga plata: las horas y las comisiones apuntan a un empleado.
-
-    No se borran, se desactivan: un empleado que se fue sigue teniendo
-    liquidaciones viejas que tienen que poder leerse.
+    Es una tabla y no una de las listas configurables porque de acá cuelga
+    plata: las horas y las comisiones apuntan a un empleado. No se borran, se
+    desactivan: las liquidaciones viejas tienen que poder leerse.
     """
     __tablename__ = "empleados"
     id = Column(Integer, primary_key=True)
@@ -180,10 +159,8 @@ class Empleado(Base):
     # Lo que cobra la hora. NULL = el general de Sueldos, y es nullable y no 0
     # porque 0 es válido: alguien que cobra solo comisión.
     valor_hora = Column(Integer)
-    # El código con el que abre su sueldo. Guardado como hash y con sal, igual
-    # que las contraseñas: la base entera se descarga en cada backup, y un código
-    # en texto plano ahí es el código de todas para siempre. Sin código no puede
-    # entrar, y quién tiene y quién no lo maneja solo la dueña.
+    # El código con el que abre su sueldo, con hash y sal como las contraseñas:
+    # la base entera se descarga en cada backup.
     pin_salt = Column(String)
     pin_hash = Column(String)
 
@@ -247,10 +224,7 @@ class HorarioEmpleado(Base):
     """El horario fijo de cada quien, por día de la semana.
 
     Una fila por tramo: la que corta al mediodía lleva dos del mismo día, y sin
-    fila ese día no trabaja.
-
-    No es lo que se PAGA: acá dice a qué hora se la espera, y en Sueldos se
-    declara lo que realmente trabajó. Un horario teórico propone, nunca liquida.
+    fila ese día no trabaja. No es lo que se PAGA: eso se declara en Sueldos.
     """
     __tablename__ = "horarios_empleado"
     id = Column(Integer, primary_key=True)
@@ -309,10 +283,8 @@ class Comprobante(Base):
     numero = Column(Integer, nullable=False)
     # Cuándo se HIZO el servicio. Es la fecha que manda para la caja y los reportes.
     fecha = Column(DateTime, default=fecha_hora_now_utc)
-    # Cuándo se CARGÓ en el sistema. Normalmente es el mismo momento que `fecha`;
-    # solo difiere cuando se anota un servicio de un día anterior que se pasó por
-    # alto. Que sean dos campos distintos es lo que permite decir en el papel
-    # "servicio anotado el 30/8" sin mentir sobre el día en que se atendió.
+    # Cuándo se CARGÓ. Solo difiere de `fecha` cuando se anota un servicio de un
+    # día anterior, y de ahí sale el "Anotado el x/x" del papel.
     cargado = Column(DateTime, default=fecha_hora_now_utc)
     cliente_id = Column(Integer, ForeignKey("clientes.id"))  # opcional (puede ser None: mostrador)
     cliente_nombre = Column(String)               # snapshot del nombre al momento
@@ -324,11 +296,9 @@ class Comprobante(Base):
     forma_pago = Column(String)                      # snapshot de la forma de pago
     mostrar_motivo = Column(Boolean, default=False)  # si se imprime el motivo
     convertido_de = Column(Integer, ForeignKey("comprobantes.id"))  # si vino de un presupuesto
-    # Comprobante de depilación: todas sus líneas son de depilación. Se guarda en
-    # el comprobante y no se deduce de las líneas cada vez porque de esto cuelga
-    # TODO lo que separa una cosa de la otra —el historial, el resumen del día,
-    # el reparto— y preguntarlo con un join por cada fila de una lista paginada
-    # es la diferencia entre que el historial abra o no abra.
+    # Comprobante de depilación: TODAS sus líneas lo son. Se guarda acá y no se
+    # deduce de las líneas porque de esta marca cuelga cada lista paginada, y
+    # preguntarlo con un join por fila es la diferencia entre que abra o no.
     depilacion = Column(Boolean, default=False)
     # La sesión de depilación a la que pertenece, puesta al crearlo.
     sesion_id = Column(Integer, ForeignKey("sesiones_depilacion.id"), index=True)
@@ -346,11 +316,9 @@ class ComprobanteLinea(Base):
     cantidad = Column(Integer, default=1)
     precio_unit = Column(Integer)      # snapshot del precio transferencia (precio de referencia)
     precio_efectivo = Column(Integer)  # snapshot del precio efectivo de catálogo (para el descuento)
-    # Ajuste de ESTA línea, POR UNIDAD y con signo. Dos formas excluyentes:
-    #   ajuste_pct:   -10 = 10% de descuento, +15 = 15% de recargo
-    #   ajuste_monto: -2000 = $2000 de descuento, +1500 = $1500 de recargo
-    # Los precios de arriba quedan como el catálogo los tenía, así el ticket puede
-    # mostrar "precio de lista → precio ajustado" por unidad.
+    # Ajuste de ESTA línea, POR UNIDAD y con signo. Porcentaje O monto, nunca los
+    # dos. Los precios de arriba quedan como el catálogo los tenía, así el ticket
+    # muestra "precio de lista → precio ajustado".
     ajuste_pct = Column(Integer, default=0)
     ajuste_monto = Column(Integer, default=0)
     ajuste_nombre = Column(String)     # snapshot del motivo ("Fidelidad", "Pelo largo"...)
@@ -391,12 +359,9 @@ class Pago(Base):
 class Sena(Base):
     """Plata que la clienta deja adelantada, sin atarla a ningún ticket.
 
-    No es un pago de un comprobante: es un saldo a su favor. Por eso no se pierde
-    si no viene ni obliga a saber qué servicio se va a hacer —los dos problemas
-    que aparecían si la seña nacía como ticket—.
-
-    Entra a la caja del día en que se cobra. Cuando se usa, queda apuntando al
-    comprobante y ese abono NO vuelve a contar como plata del día: ya entró.
+    No es un pago de un comprobante sino un saldo a su favor, así que no se
+    pierde si no viene. Entra a la caja del día en que se cobra, y el abono que
+    deja al usarla NO vuelve a contar como plata del día: ya entró.
     """
     __tablename__ = "senas"
     id = Column(Integer, primary_key=True)
@@ -427,16 +392,9 @@ class Descuento(Base):
 class Liquidacion(Base):
     """Un ciclo de sueldo ya cerrado y pagado.
 
-    El período NO es una semana fija: es "todo lo que estaba pendiente hasta que
-    se cerró". Con ventanas de fechas siempre hay algo que queda afuera —se pagó
-    un día tarde, alguien cargó las horas del jueves el martes siguiente— y eso,
-    en un sueldo, es plata que se pierde sin que nadie se entere. Acá cada hora y
-    cada trabajo está pendiente o está adentro de una liquidación, y lo que se
-    carga después cae solo en el ciclo que viene.
-
-    Los totales se guardan calculados. Es una foto: si mañana se anula un ticket
-    de la semana pasada, el sueldo que ya se pagó no cambia solo. La corrección va
-    como ajuste en el ciclo siguiente, que es como funciona un sueldo de verdad.
+    El período NO es una semana fija: es todo lo que estaba pendiente al cerrar,
+    así que nada queda afuera de una ventana de fechas. Los totales se guardan
+    calculados: anular un ticket viejo no cambia un sueldo ya pagado.
     """
     __tablename__ = "liquidaciones"
     id = Column(Integer, primary_key=True)
@@ -455,22 +413,17 @@ class Liquidacion(Base):
     total_horas = Column(Integer, default=0)
     total = Column(Integer, default=0)
     notas = Column(String)
-    # Un pago que se hizo antes de que la semana terminara: se paga lo que va
-    # hasta ahí y lo que se trabaje después sigue cayendo en el mismo ciclo. No es
-    # lo mismo que cerrar la semana, y la diferencia importa para leer el
-    # historial: dos pagos del mismo rango son un adelanto y su saldo, no dos
-    # semanas iguales ni un error.
+    # Un pago hecho antes de que la semana termine: lo que se trabaje después
+    # sigue cayendo en el mismo ciclo. Dos pagos del mismo rango son un adelanto
+    # y su saldo, no dos semanas iguales.
     parcial = Column(Boolean, default=False)
-    # El egreso que sale de este cierre. Pagar un sueldo es plata que sale del
-    # local, así que el cierre lo anota solo: si hubiera que cargarlo a mano, el
-    # día que se olvide la caja de ese día dice que hay más plata de la que hay.
-    # Se guarda el id para no anotarlo dos veces y para poder mostrarlo después.
+    # El egreso que sale de este cierre, anotado solo: a mano, el día que se
+    # olvide la caja dice que hay más plata de la que hay. Se guarda el id para
+    # no anotarlo dos veces.
     egreso_id = Column(Integer, ForeignKey("egresos.id"))
-    # El día de depilación se reparte el día en vez de pagar comisiones, así que
-    # la foto necesita los dos números de esa cuenta: sin ellos, el historial
-    # muestra un total que no se puede explicar. `recaudado` es lo que ese día
-    # facturó de depilación en efectivo, que es la base del reparto; se llama así
-    # desde cuando el reparto era de lo cobrado.
+    # La depilación se reparte en vez de pagar comisiones, así que la foto
+    # necesita los dos números de esa cuenta. `recaudado` es la base del reparto,
+    # no lo que se cobró.
     depilacion = Column(Boolean, default=False)
     sesion_id = Column(Integer, ForeignKey("sesiones_depilacion.id"), index=True)
     recaudado = Column(Integer)
@@ -496,19 +449,15 @@ class HoraTrabajada(Base):
 class TrabajoComision(Base):
     """Un trabajo a comisión, atado a la línea del comprobante de donde salió.
 
-    La línea es la fuente: el trabajo aparece solo en la lista de la empleada
-    porque el comprobante la nombra como peluquera y el ítem está marcado a
-    comisión. Acá se guarda lo que la línea no sabe —cuánto duró, que lo carga
-    ella— y, al cerrar, la foto de la plata.
+    La línea es la fuente: el trabajo entra en su lista porque el comprobante la
+    nombra y el ítem está a comisión. Acá va lo que la línea no sabe —cuánto
+    duró— y, al cerrar, la foto de la plata.
     """
     __tablename__ = "trabajos_comision"
     id = Column(Integer, primary_key=True)
-    # Nullable: un trabajo puede no tener comprobante. Pasa —se atendió a alguien
-    # y no se facturó— y si no se pudiera cargar, la empleada trabajaría gratis o
-    # tendría que reclamarlo de memoria. Se marca en la pantalla para que la dueña
-    # vea cuál no tiene respaldo antes de pagarlo.
-    # El unique sigue valiendo para los que SÍ tienen línea: ni SQLite ni
-    # PostgreSQL cuentan los NULL como repetidos.
+    # Nullable: se atendió a alguien y no se facturó, y la empleada tiene que
+    # poder cargarlo igual. El unique sigue valiendo para los que SÍ tienen
+    # línea, que ni SQLite ni PostgreSQL cuentan los NULL como repetidos.
     linea_id = Column(Integer, ForeignKey("comprobante_lineas.id"), unique=True, index=True)
     empleado_id = Column(Integer, ForeignKey("empleados.id"), nullable=False, index=True)
     # Solo para los sueltos: de dónde sale la plata cuando no hay línea.
@@ -518,8 +467,8 @@ class TrabajoComision(Base):
     fecha = Column(String)                   # 'YYYY-MM-DD' argentino
     minutos = Column(Integer, default=0)
     liquidacion_id = Column(Integer, ForeignKey("liquidaciones.id"), index=True)
-    # Se llenan al cerrar. Antes son None: lo pendiente se calcula en vivo, así
-    # que si se corrige el comprobante el número se corrige solo hasta que se paga.
+    # Se llenan al cerrar; hasta entonces son None y lo pendiente se calcula en
+    # vivo, así que corregir el comprobante corrige el número.
     base = Column(Integer)          # precio efectivo con ajuste, por la cantidad
     comision = Column(Integer)      # el porcentaje de esa base
 

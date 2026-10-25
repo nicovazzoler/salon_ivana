@@ -609,36 +609,38 @@ propia" es un renglón para decir que no pasa nada.
 Lo que hay que explicar va en un comentario, que lo lee el que toca el código, o
 en el mensaje de commit. En la pantalla no.
 
-### Cómo se comenta
+## Comentarios en el código
 
-**Una línea que diga qué hace esto, y después solo lo que no se deduce leyendo.**
-Un comentario largo se saltea, así que el largo hay que gastarlo donde rinde: en
-la decisión rara, la que alguien va a querer "arreglar" sin saber qué rompía.
+Regla: el código se explica solo. Un comentario existe solo si dice algo que el
+código no dice.
 
-Lo que NO va en un comentario:
-- **La historia.** "Antes pasaba X y ahora pasa Y" es para el mensaje de commit,
-  que es donde se lee cuando se busca por qué cambió algo. En el código, el
-  "antes" es ruido: el que lee tiene adelante el "ahora".
-- **Repetir el código en castellano.** Si el nombre de la función ya lo dice, el
-  comentario sobra.
-- **El caso de prueba.** Los números del ejemplo con el que se encontró un bug
-  van en el commit, no arriba de la función.
+Permitido:
+- Una línea arriba de una función que no es obvia, diciendo qué hace.
+- El porqué de algo que parece un error o una decisión rara.
+- Un caso borde que no se ve leyendo.
 
-Un docstring de cinco párrafos casi siempre son dos frases y un commit. Si la
-explicación no entra en tres o cuatro renglones, es señal de que la función hace
-dos cosas: partirla explica más que el comentario.
+Prohibido:
+- Historia: "antes pasaba X", "se arregló porque", "ahora usamos Y en vez de Z".
+  Eso va en el commit.
+- Repetir lo que dice el nombre de la función o la línea de abajo.
+- Comentarios de más de 3 líneas. Si hace falta más, la función hace dos cosas:
+  partila.
+- Comentar cada paso de una función.
 
-    # Bien
-    def ciclo_de(f):
-        """A qué semana de pago pertenece un día: de sábado a viernes.
+Mal:
 
-        Ojo: el ciclo ARRANCA el sábado, y con weekday() el sábado cae después
-        del viernes en el número pero antes en el ciclo; de ahí el `dow + 2`.
-        """
+    # Antes el descuento se aplicaba en los pagos y daba mal el total,
+    # por eso ahora lo calculamos acá sobre el comprobante completo.
+    # Calculamos el descuento del 10%
+    descuento = total * 0.10
 
-    # Mal
-    # Antes el ciclo era de martes a sábado, pero resulta que en el local pagan
-    # el viernes lo que se hizo desde el sábado, así que ahora... (12 renglones)
+Bien:
+
+    # El descuento va sobre el comprobante, no sobre cada pago
+    descuento = total * 0.10
+
+Antes de terminar una tarea, revisá los comentarios que agregaste y borrá los
+que no cumplan esto.
 
 ## Seguridad
 

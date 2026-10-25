@@ -13,11 +13,9 @@ NEGOCIO = {
     "instagram": "",      # ej: "@ivana.salon"
 }
 
-# Días en los que el local no abre, con weekday() de Python (0=lunes … 6=domingo).
-# Sueldos no dibuja esos días: la semana de la empleada son los días que viene, y
-# dos renglones fijos que siempre dicen "no viniste" son dos renglones de ruido.
-# Un día de estos aparece igual si pasó algo —el lunes de depilación, o un
-# trabajo cargado a mano—: lo que no se dibuja es el día vacío.
+# Días que el local no abre, con weekday() de Python (0=lunes … 6=domingo).
+# Sueldos no dibuja esos días, salvo que haya pasado algo: lo que no se agrega
+# es el día en blanco.
 DIAS_CERRADO = {6, 0}          # domingo y lunes
 
 def calcular_transfer(precio_efectivo: int) -> int:

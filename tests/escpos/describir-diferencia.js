@@ -1,10 +1,7 @@
 "use strict";
 
-/* Convierte bytes a texto legible para el mensaje de error del test: lo
- * imprimible en ASCII se muestra tal cual, el resto (comandos ESC/POS,
- * acentos en CP850) se muestra en hexadecimal. No hace falta que sea
- * perfecto -es un mensaje de diagnóstico, no el papel real- alcanza con que
- * se pueda leer dónde cae la diferencia. */
+/* Bytes a texto legible para el mensaje de error del test: lo imprimible en
+ * ASCII tal cual, el resto en hexadecimal. Es diagnóstico, no el papel real. */
 function aTextoLegible(bytes){
   let out = "";
   for(const b of bytes){

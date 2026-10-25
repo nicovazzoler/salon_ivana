@@ -66,11 +66,9 @@ def migrar():
             # todos los comprobantes viejos parecerían "anotados después".
             con.execute(text("UPDATE comprobantes SET cargado = fecha WHERE cargado IS NULL"))
     ecols = [c["name"] for c in insp.get_columns("egresos")]
-    # trabajos_comision cambió de forma antes de salir a producción: linea_id pasó
-    # a poder ser NULL, para los trabajos sin comprobante. En SQLite sacar un NOT
-    # NULL es rehacer la tabla, y como todavía está vacía en todos lados, se la
-    # borra y create_all la vuelve a crear bien. El guard de filas es para que
-    # esto no toque nada si alguna vez tuviera datos.
+    # En SQLite sacarle el NOT NULL a linea_id es rehacer la tabla, así que se la
+    # borra y create_all la crea bien. El guard de filas la deja intacta si
+    # alguna vez tuviera datos.
     if insp.has_table("trabajos_comision"):
         tcols = [c["name"] for c in insp.get_columns("trabajos_comision")]
         if "item_id" not in tcols:
@@ -91,11 +89,9 @@ def migrar():
                 con.execute(text("ALTER TABLE empleados ADD COLUMN valor_hora INTEGER"))
     if insp.has_table("horarios_empleado"):
         hcols = [c["name"] for c in insp.get_columns("horarios_empleado")]
-        # El horario mensual ("el 2º lunes") se sacó: ahora el día suelto se marca
-        # por fecha desde la agenda. Las filas que tenían semana quedarían valiendo
-        # TODOS los lunes, que es lo contrario de lo que se cargó, así que se
-        # borran. Con marca en config para que corra una sola vez: si no, cada
-        # reinicio le borraría un lunes recién cargado a mano.
+        # Una fila con semana del mes valdría para TODOS los lunes, que es lo
+        # contrario de lo que se cargó. Con marca en config para que corra una
+        # sola vez: si no, cada reinicio borra un lunes recién cargado a mano.
         if "semana_del_mes" in hcols:
             with engine.begin() as con:
                 ya = con.execute(text("SELECT 1 FROM config WHERE clave = :k"),
@@ -172,10 +168,8 @@ def migrar():
             # todavía), pero igual quedan a la vista: esconder de golpe egresos
             # viejos le cambiaría la caja de días ya cerrados a quien la mire.
             con.execute(text("UPDATE egresos SET privado = FALSE WHERE privado IS NULL"))
-    # El pago a la ayudante del día de depilación. Sin UPDATE que las ponga en
-    # FALSE a propósito: acá el NULL de los egresos viejos significa lo mismo que
-    # el FALSE —no son el pago a nadie— y el filtro pregunta por `== True`, que
-    # los deja afuera igual.
+    # Sin UPDATE que las ponga en FALSE a propósito: el NULL de los egresos
+    # viejos significa lo mismo, y el filtro pregunta por `== True`.
     for col, tipo in (("ayudante", "BOOLEAN"), ("empleado_id", "INTEGER"),
                       ("maquina", "BOOLEAN")):
         if col not in ecols:
@@ -184,10 +178,9 @@ def migrar():
     if "depilacion" not in ecols:
         with engine.begin() as con:
             con.execute(text("ALTER TABLE egresos ADD COLUMN depilacion BOOLEAN DEFAULT FALSE"))
-            # Los que ya estaban cargados como pago a la ayudante o alquiler de
-            # la máquina son de depilación por definición. Va acá y no con una
-            # marca en config porque la condición ya es la marca: si la columna
-            # existía, esto no corre.
+            # El pago a la ayudante y el alquiler de la máquina son de
+            # depilación por definición. No necesita marca en config: si la
+            # columna existía, esto no corre.
             con.execute(text("UPDATE egresos SET depilacion = TRUE "
                              "WHERE ayudante = TRUE OR maquina = TRUE"))
     if insp.has_table("excepciones_horario"):
@@ -239,13 +232,9 @@ MARCA_DEPI = "sembro_depilacion"
 def sembrar_depilacion():
     """Carga la lista de precios de depilación la primera vez que arranca con ella.
 
-    El script existe para cargarla a mano, pero en producción no hay consola: se
-    deploya haciendo push y listo. Sin esto, la pantalla de depilación arranca
-    vacía y la lista habría que tipearla en la tablet.
-
-    Con marca en config para que corra UNA sola vez: si no, cada reinicio le
-    pisaría a la dueña los precios que haya corregido desde Admin. Por eso
-    tampoco toca nada si ya hay zonas cargadas.
+    En producción no hay consola —se deploya haciendo push—, así que sin esto la
+    lista habría que tipearla en la tablet. Con marca en config para que corra
+    UNA sola vez: si no, le pisa a la dueña los precios que haya corregido.
     """
     from sqlalchemy.orm import Session as _S
     from cargar_depilacion import leer_lista, efectivo_de   # un solo lector de la lista
@@ -276,19 +265,9 @@ except Exception as _e:
 app = FastAPI(title="Pelu App")
 
 # ---------- caché del navegador ----------
-# Sin una cabecera Cache-Control, el navegador NO pregunta si el archivo cambió:
-# adivina cuánto sigue fresco (suele ser una fracción del tiempo desde la última
-# modificación) y hasta entonces sirve lo que tiene guardado. En la tablet del
-# local, que queda abierta días entre reinicios, eso significa seguir usando el
-# HTML, el CSS y el JS de la versión anterior aunque el servidor ya tenga otra.
-#
-# Se responde distinto según el archivo:
-#   - páginas, CSS y JS: "no-cache" NO quiere decir "no lo guardes", quiere decir
-#     "guardalo pero preguntá siempre". Con el ETag que ya manda StaticFiles, esa
-#     pregunta se contesta con un 304 vacío: es barato y garantiza que un deploy
-#     se ve enseguida.
-#   - tipografías e ícono: no cambian nunca, así que se guardan un año y no se
-#     vuelven a pedir. Si alguna vez cambian, cambia el nombre del archivo.
+# Sin Cache-Control el navegador no pregunta si el archivo cambió: adivina, y la
+# tablet queda días con el JS viejo. Páginas, CSS y JS van con "no-cache";
+# tipografías e ícono, un año, y si cambian cambia el nombre del archivo.
 CACHE_LARGO = ("/static/fonts/", "/static/favicon")
 
 @app.middleware("http")
@@ -296,16 +275,9 @@ async def cabeceras_de_cache(request, call_next):
     resp = await call_next(request)
     ruta = request.url.path
     if ruta.startswith("/api/"):
-        # La API no se guarda NUNCA. Hoy no pasaba nada porque estas respuestas
-        # tampoco mandan Last-Modified, que es de lo que se agarra el navegador
-        # para adivinar cuánto sigue fresco algo sin instrucciones. Pero
-        # "no pasa nada porque falta otra cosa" no es una garantía: alcanza con
-        # que un día se agregue esa cabecera, o que haya un proxy en el medio,
-        # para que la tablet muestre la caja de ayer. En esta app la caché ya
-        # explicó dos quejas que parecían bugs distintos.
-        #
-        # no-store y no no-cache: acá no hay nada que revalidar, son datos que
-        # cambian con cada cobro.
+        # La API no se guarda NUNCA: alcanza un proxy en el medio para que la
+        # tablet muestre la caja de ayer. Va no-store y no no-cache, que acá no
+        # hay nada que revalidar.
         resp.headers["Cache-Control"] = "no-store"
         return resp
     if ruta.startswith(CACHE_LARGO):
@@ -315,9 +287,8 @@ async def cabeceras_de_cache(request, call_next):
     return resp
 
 # ---------- esquemas ----------
-# Nota: la tabla `ventas` es del diseño viejo, anterior a los comprobantes. Ya no se
-# escribe y sus endpoints se sacaron, pero los modelos quedan para que el backup
-# siga levantando las filas históricas si alguna base todavía las tiene.
+# La tabla `ventas` ya no se escribe: los modelos quedan para que el backup
+# levante las filas históricas de una base que todavía las tenga.
 class ClienteIn(BaseModel):
     nombre: str; telefono: str | None = None; alias: str | None = None; notas: str | None = None; direccion: str | None = None; dni: str | None = None
 class ClienteEdit(BaseModel):
@@ -373,9 +344,8 @@ class DescuentoEdit(BaseModel):
     nombre: str | None = None; porcentaje: int | None = None
     mostrar_motivo: bool | None = None; activo: bool | None = None
 class EgresoIn(BaseModel):
-    # Sin 'privado': lo decide el TIPO al momento de cargar. Antes venía como una
-    # casilla y eran dos formas de decir lo mismo, que tarde o temprano se
-    # contradicen entre sí.
+    # Sin 'privado': lo decide el TIPO al cargar. Con los dos, son dos formas de
+    # decir lo mismo que tarde o temprano se contradicen.
     tipo: str; concepto: str | None = None; monto: int; forma_pago: str | None = None; notas: str | None = None
     fecha: str | None = None              # 'YYYY-MM-DD' argentino: para anotar un gasto de otro día
 class EgresoEdit(BaseModel):
@@ -423,9 +393,9 @@ class MinutosTrabajoIn(BaseModel):
 class CerrarIn(BaseModel):
     empleado_id: int; notas: str | None = None
     desde: str | None = None             # qué ciclo se cierra; None = el más viejo
-    # Cerrar la semana aunque todavía no haya terminado: el viernes cae feriado, o
-    # se decide pagar el jueves. Sin esto, un cierre antes de tiempo es un pago
-    # parcial y el resto de la semana se sigue acumulando en el mismo ciclo.
+    # Cerrar la semana aunque no haya terminado: el viernes cae feriado, o se
+    # paga el jueves. Sin esto el cierre es un pago parcial y el resto de la
+    # semana se sigue acumulando en el mismo ciclo.
     anticipado: bool = False
     # Con qué fecha queda el egreso del sueldo. Sin esto es el día del cierre, y
     # cerrar hoy una semana que se pagó el viernes le mueve la plata de día a las
@@ -479,10 +449,9 @@ class HorarioIn(BaseModel):
 class ExcepcionIn(BaseModel):
     empleado_id: int; fecha: str
     desde: str | None = None; hasta: str | None = None   # los dos en None = no viene
-    # El segundo tramo, para el día que corta al mediodía. Son dos campos y no
-    # una lista porque dos es lo que el local hace y lo que la pantalla ofrece;
-    # con una lista habría que validar solapamientos de N tramos para un caso
-    # que no existe.
+    # El segundo tramo, para el día que corta al mediodía. Dos campos y no una
+    # lista: con una lista habría que validar solapamientos de N tramos para un
+    # caso que no existe.
     desde2: str | None = None; hasta2: str | None = None
     motivo: str | None = None
     # Una ausencia dura varios días: vacaciones, una licencia. Sin esto habría
@@ -493,15 +462,11 @@ class NotaIn(BaseModel):
 
 # ---------- Huso horario ----------
 
-"""Zona horaria.
+"""Zona horaria. Todo se guarda en UTC, pero "hoy" es el día ARGENTINO.
 
-   Todo se guarda en UTC, pero el negocio vive en Argentina: cuando el local
-   dice "hoy", habla del día argentino. Argentina está en UTC-3 todo el año
-   (no tiene horario de verano), así que alcanza con un corrimiento fijo.
-
-   Esto importa más de lo que parece: el servidor corre en UTC, así que a
-   partir de las 21:00 argentinas el servidor YA está en el día siguiente. Un
-   egreso cargado a las 21:23 de un martes se contaba en la caja del miércoles.
+   Argentina es UTC−3 todo el año, así que alcanza un corrimiento fijo. El
+   servidor corre en UTC: a partir de las 21:00 argentinas ya está en el día
+   siguiente, y lo cargado de noche cae en la caja del día que viene.
 """
 HORAS_ARG = 3
 # El huso, para cuando hay que ESCRIBIR una fecha argentina con su offset a la
@@ -522,10 +487,7 @@ def hoy_argentina():
 def _rango_dia(d):
     """Ventana en UTC que cubre el día argentino `d`.
 
-    Las fechas se guardan en UTC, así que el día del local —de 00:00 a 24:00 en
-    Argentina— es de 03:00 a 03:00 UTC. Antes esta ventana arrancaba a la
-    medianoche UTC, o sea a las 21:00 argentinas: todo lo cargado de noche caía
-    en el día siguiente."""
+    El día del local —00:00 a 24:00 en Argentina— es de 03:00 a 03:00 UTC."""
     ini = datetime(d.year, d.month, d.day) + timedelta(hours=HORAS_ARG)
     return ini, ini + timedelta(days=1)
 
@@ -540,14 +502,9 @@ _PARTICULAS = {"de", "del", "la", "las", "los", "y", "e", "da", "das", "do",
 def nombre_propio(s: str) -> str:
     """Cada palabra con la inicial en mayúscula, salvo las partículas.
 
-    Se normaliza al GUARDAR, no solo al mostrar: los nombres se tipean apurado
-    entre cliente y cliente y quedaban como "MARIA lopez" o "maria LOPEZ", y
-    después el mismo cliente aparecía escrito de tres formas distintas.
-
-    No se usa str.title() de Python porque parte también en los apóstrofos:
-    "o'brien" saldría "O'Brien" (bien) pero cualquier palabra con apóstrofo
-    interno queda cortada. Acá se parte solo por letras, así que los guiones y
-    apóstrofos no rompen nada.
+    Se normaliza al GUARDAR y no solo al mostrar, o el mismo cliente queda
+    escrito de tres formas. No usa str.title(), que parte también en los
+    apóstrofos: acá se parte solo por letras.
     """
     if not s:
         return s
@@ -567,8 +524,8 @@ def nombre_propio(s: str) -> str:
 # Un paréntesis AL FINAL del nombre: "Mónica (mamá de Sofía)" → "Mónica" + "mamá de Sofía".
 _COLA_PARENTESIS = re.compile(r"\s*\(([^()]*)\)\s*$")
 
-# Vive acá arriba y no al lado de los endpoints que lo usan porque la
-# migración de peluqueros, que corre al importar el módulo, lo necesita antes.
+# Vive acá arriba porque la migración de peluqueros, que corre al importar el
+# módulo, lo necesita antes que los endpoints que lo usan.
 def _renombrar_en(db, columna, viejo: str, nuevo: str) -> int:
     """Cambia el nombre copiado en los movimientos ya cargados."""
     if viejo == nuevo: return 0
@@ -578,34 +535,26 @@ def _renombrar_en(db, columna, viejo: str, nuevo: str) -> int:
 def migrar_peluqueros_a_empleados():
     """Los nombres que ya se escribieron a mano pasan a ser empleados.
 
-    Antes `peluquero` era texto libre y en la base hay meses de nombres tipeados.
-    Si la lista arrancara vacía, la dueña tendría que volver a cargarlos a mano y,
-    peor, los comprobantes viejos quedarían apuntando a nombres que no existen en
-    ninguna lista.
-
-    Corre UNA vez, con marca en config: si no, cada reinicio le devolvería los
-    empleados que la dueña desactivó a propósito.
+    Sin esto los comprobantes viejos apuntan a nombres que no están en ninguna
+    lista. Corre UNA vez, con marca en config: si no, cada reinicio le devuelve
+    los empleados que la dueña desactivó a propósito.
     """
     MARCA_EMPLEADOS = "migro_peluqueros_a_empleados"
     from sqlalchemy.orm import Session as _S
     with _S(engine) as db:
-        # Corte de arranque de los sueldos. Sin esto, el día que la dueña marque
-        # "Corte" como trabajo a comisión le aparecerían como pendientes todos los
-        # cortes de la historia del local, y el primer sueldo saldría absurdo.
-        # Va ANTES de la marca y con su propia condición: si dependiera de la
-        # marca, una base que ya había migrado los nombres con una versión
-        # anterior se quedaría sin corte para siempre y arrancaría con toda la
-        # historia adentro.
+        # Corte de arranque de los sueldos: sin esto, marcar un ítem a comisión
+        # deja pendientes todos los de la historia del local. Con su propia
+        # condición y no con la marca, que una base ya migrada se quedaría sin
+        # corte para siempre.
         if not db.query(models.Config).filter_by(clave="sueldos_desde").first():
             db.add(models.Config(clave="sueldos_desde",
                                  valor=fecha_hora_now_utc().replace(tzinfo=None).isoformat()))
             db.commit()
         if db.query(models.Config).filter_by(clave=MARCA_EMPLEADOS).first():
             return
-        # Cada nombre crudo se lleva a su forma canónica con nombre_propio(), que
-        # es la misma que usa el alta. Sin esto "Carla", "carla " y "CARLA" serían
-        # tres empleadas distintas y el sueldo de Carla saldría partido en tres,
-        # que es exactamente lo que esta tabla viene a evitar.
+        # A la forma canónica con nombre_propio(), la misma que usa el alta: si
+        # no, "Carla", "carla " y "CARLA" son tres empleadas y el sueldo sale
+        # partido en tres.
         canonico = {}
         for tabla in (models.Comprobante.peluquero, models.Turno.peluquero, models.Venta.peluquero):
             for (n,) in db.query(tabla).filter(tabla.isnot(None)).distinct():
@@ -635,14 +584,9 @@ def migrar_peluqueros_a_empleados():
 def migrar_notas_entre_parentesis():
     """Saca del nombre el aclarador entre paréntesis y lo pasa a las notas.
 
-    Hasta que existió el campo de notas, la única forma de anotar "es la mamá de
-    Sofía" era meterlo adentro del nombre. Eso ensucia el buscador, el historial y
-    el papel impreso, que terminan diciendo "Mónica (mamá de Sofía)".
-
-    Corre UNA sola vez y deja la marca en config: si después alguien escribe un
-    paréntesis a propósito, el próximo reinicio no se lo borra. Solo mueve el
-    paréntesis que está al final y solo si no está ya en las notas, así que
-    volver a correrla no duplica nada.
+    Un aclarador adentro del nombre ensucia el buscador, el historial y el papel.
+    Corre UNA vez, con marca en config, para no borrarle un paréntesis que
+    alguien escriba a propósito; solo mueve el del final y no duplica nada.
     """
     MARCA = "migro_notas_parentesis"
     from sqlalchemy.orm import Session as _S
@@ -671,13 +615,9 @@ def migrar_notas_entre_parentesis():
 def migrar_nombres_a_capitalizados():
     """Capitaliza los nombres de clientes ya cargados, una sola vez.
 
-    `nombre_propio()` corre al guardar desde hace rato, pero lo anterior quedó
-    como se tipeó apurado: "abigail cuello" en la ficha y también en el papel.
-
-    Se toca el nombre copiado en el comprobante además del de la ficha, porque
-    es el que sale impreso y el del ticket viejo no se regenera. Va por nombres
-    distintos y no por fila: con mil tickets de la misma clienta son mil filas y
-    un solo nombre que arreglar.
+    Toca también el nombre copiado en el comprobante, que es el que sale impreso
+    y no se regenera. Va por nombres distintos y no por fila: mil tickets de la
+    misma clienta son un solo nombre que arreglar.
     """
     MARCA = "capitalice_nombres"
     from sqlalchemy.orm import Session as _S
@@ -735,22 +675,18 @@ def solo_dueno(user = Depends(usuario_actual)):
 def es_dueno(user) -> bool:
     """Si el que pide es la dueña.
 
-    Casi todo lo de Admin lo maneja también el empleado (el catálogo, las formas
-    de pago, los descuentos): es la parte que cambia sola con el día a día y
-    esperar a que la dueña la toque era el cuello de botella. Lo que queda
-    reservado es lo que no tiene vuelta atrás o no es asunto suyo: los usuarios,
-    el backup, el fondo de caja, los reportes y el stock.
+    Casi todo lo de Admin lo maneja también el empleado: es la parte que cambia
+    con el día a día. Queda reservado lo que no tiene vuelta atrás o no es asunto
+    suyo: usuarios, backup, fondo de caja, reportes y stock.
     """
     return (user or {}).get("rol") == "dueno"
 
 def _no_privado(col):
     """Condición SQL para "esto NO es privado", contando el NULL como que no.
 
-    No alcanza con `col != True`: en SQL, NULL != True da NULL, o sea que la fila
-    no entra. Y filas con NULL las hay: `restaurar_backup.py` levantando un
-    backup viejo, de antes de que la columna existiera, escribe None. Con el
-    filtro ingenuo, esos egresos desaparecían de la caja del empleado sin que
-    nadie los hubiera marcado privados, y la cuenta le daba mal.
+    No alcanza con `col != True`: en SQL NULL != True da NULL y la fila no entra.
+    Filas con NULL las escribe `restaurar_backup.py` levantando un backup viejo,
+    y esos egresos desaparecían de la caja del empleado sin que nada avisara.
     """
     return or_(col == False, col.is_(None))
 
@@ -758,26 +694,16 @@ def _no_depi(col):
     """Condición SQL para "esto NO es depilación", con el mismo cuidado del NULL.
 
     Los ítems cargados antes de que existiera la columna la tienen en NULL, y con
-    `col != True` a secas ninguno de ellos entra: todo el catálogo viejo dejaría
-    de pagar comisión de un día para el otro.
+    `col != True` a secas ninguno entra: el catálogo viejo dejaría de pagar
+    comisión.
     """
     return or_(col == False, col.is_(None))
 
-"""Buscar sin depender de los acentos.
+"""Buscar sin depender de los acentos: "nunez" encuentra a "Núñez".
 
-   El nombre se guarda como se escribe —"Núñez", "María"— pero se busca como se
-   tipea, apurado y en una tablet: "nunez", "maria". Antes eso no encontraba
-   nada, y no era un detalle: el buscador del historial y el de clientes son la
-   forma de llegar a la ficha de alguien.
-
-   Se comparan las dos puntas sin acentos. Del lado de Python es una línea; del
-   lado de la base hay que armar la misma transformación con REPLACE anidados,
-   que es feo pero es lo único que anda IGUAL en SQLite y en PostgreSQL: unaccent
-   es una extensión de Postgres que en SQLite no existe, y el lower() de SQLite
-   no toca la Ú.
-
-   No se pierde velocidad: un LIKE con % adelante nunca podía usar un índice, con
-   acentos o sin ellos.
+   Se sacan los acentos de las dos puntas. Del lado de la base van REPLACE
+   anidados, que es feo pero es lo único que anda igual en SQLite y en
+   PostgreSQL: unaccent es de Postgres y el lower() de SQLite no toca la Ú.
 """
 _ACENTOS = {"á":"a","é":"e","í":"i","ó":"o","ú":"u","ü":"u","ñ":"n",
             "Á":"a","É":"e","Í":"i","Ó":"o","Ú":"u","Ü":"u","Ñ":"n"}
@@ -808,14 +734,9 @@ def calcular_transfer(precio_efectivo: int) -> int:
 def precio_con_ajuste(base: int, pct: int | None, monto: int | None = 0) -> int:
     """Precio unitario con el ajuste de la línea aplicado.
 
-    El ajuste es POR UNIDAD y viene de dos formas, con signo en las dos:
-      - porcentaje: -10 descuenta un 10%, +15 recarga un 15%
-      - monto fijo: -2000 descuenta $2000, +1500 recarga $1500
-
-    Son excluyentes; si por lo que sea vinieran los dos, manda el monto fijo,
-    que es el que alguien escribió a mano. El monto se resta igual de las dos
-    listas (efectivo y transferencia): son $2000 de descuento, no un porcentaje
-    disfrazado, así que la diferencia entre listas no se mueve. Nunca baja de 0.
+    POR UNIDAD, con signo y excluyentes: porcentaje O monto fijo, y si vinieran
+    los dos manda el monto. El monto se resta igual de las dos listas, así que
+    la diferencia entre ellas no se mueve. Nunca baja de 0.
     """
     base = base or 0
     if monto:
@@ -938,10 +859,8 @@ DIAS_ATRAS_MAX = 60
 def fecha_del_servicio(iso: str | None, ahora, que: str = "un servicio"):
     """Instante UTC que hay que guardar para un servicio hecho el día `iso`.
 
-    Sin `iso` (el caso normal) es simplemente ahora. Con `iso`, se guarda el
-    mediodía argentino de ese día: cae con holgura adentro de la ventana que la
-    caja usa para agrupar (03:00 a 03:00 UTC), así que no hay forma de que por
-    un par de horas la venta termine contada en el día de al lado.
+    Sin `iso` es ahora. Con `iso` se guarda el mediodía argentino de ese día,
+    que cae con holgura adentro de la ventana de la caja (03:00 a 03:00 UTC).
     """
     if not iso:
         return ahora
@@ -993,27 +912,11 @@ def _puede_modificar(user, fecha) -> bool:
     # el dueño puede modificar cualquier fecha; el empleado solo lo de hoy
     return user.get("rol") == "dueno" or hora_argentina(fecha).date() == hoy_argentina()
 
-"""Freno a la prueba de contraseñas por fuerza bruta.
+"""Freno a la prueba de contraseñas por fuerza bruta. Vive en memoria.
 
-   Sin esto, /api/login contesta tan rápido como se le pida: una contraseña de
-   ocho caracteres en minúscula se agota en un rato desde una sola máquina, y no
-   queda registro de que alguien lo intentó.
-
-   Se cuentan los fallos por IP y por usuario a la vez, porque tapan agujeros
-   distintos: por IP frena a uno que prueba contra muchos usuarios, y por
-   usuario frena a muchas IPs probando contra el mismo. Los aciertos limpian el
-   contador, así que a quien se le escapó el dedo una vez no le pasa nada.
-
-   Los dos topes NO son iguales, y la diferencia importa: en el local la tablet,
-   el celular y la computadora salen todos por la misma IP. Con un tope de IP
-   bajo, la empleada que se olvidó su contraseña y probó ocho veces dejaría
-   afuera también a la dueña, que no hizo nada. Así que el tope por usuario es
-   bajo (protege esa cuenta y solo esa) y el de IP es alto: sigue cortando la
-   fuerza bruta, que necesita miles de intentos, sin castigar al de al lado.
-
-   Vive en memoria: se borra al reiniciar y no se comparte si algún día hay más
-   de una instancia. No es un candado perfecto, es sacarle al que prueba la
-   posibilidad de hacer miles de intentos por minuto, que es lo que importa.
+   Se cuenta por IP y por usuario a la vez, que tapan agujeros distintos. Los
+   topes NO son iguales: en el local todos los aparatos salen por la misma IP,
+   así que uno bajo dejaría afuera a la dueña porque la empleada se equivocó.
 """
 TOPE = {"ip": 25, "us": 8, "pin": 8}
 ESPERA_SEG = 300          # 5 minutos de castigo
@@ -1082,16 +985,11 @@ def yo(user = Depends(usuario_actual), db: Session = Depends(get_db)):
             "password_de_fabrica": mias,
             "usuarios_sin_cambiar": flojos if user.get("rol") == "dueno" else []}
 
-"""Un usuario por rol.
+"""Un usuario por rol: con varias cuentas del mismo, "lo que anotó el empleado"
+   deja de querer decir algo.
 
-   El local es uno solo: hay una dueña y hay una persona atendiendo. Con varias
-   cuentas del mismo rol, "lo que anotó el empleado" deja de querer decir algo
-   —¿cuál de los tres?— y la contraseña termina siendo la misma para todos, que
-   es peor que tener una cuenta compartida y saberlo.
-
-   El tope se controla al crear y al cambiar el rol, no al arrancar: si alguna
-   base quedó con dos, nadie pierde el acceso de golpe; simplemente no se puede
-   sumar otro hasta borrar uno.
+   El tope se controla al crear y al cambiar el rol, no al arrancar: una base que
+   quedó con dos no pierde el acceso de golpe.
 """
 ROLES = ("dueno", "empleado")
 
@@ -1110,14 +1008,9 @@ def _chequear_rol_libre(db, rol: str, salvo_id: int | None = None):
         raise HTTPException(400, f"Ya hay un usuario {comose} ({ya.usuario}). "
                                  f"Cambiale la contraseña a ese, o borralo antes de crear otro.")
 
-# Largo mínimo de una contraseña nueva.
-#
-# Ocho no es un número mágico, es el piso donde probar todas las combinaciones
-# deja de ser gratis. Se pide al PONERLA, no al usarla: las que ya están siguen
-# andando aunque sean más cortas. Y no es que se dejen pasar por comodidad —es
-# que la app no puede saber cuánto miden. Guarda el hash, no la contraseña, y de
-# un hash no se saca el largo: la única forma de "revisarlas" sería obligar a
-# todas a cambiarla, que es peor que el problema.
+# Largo mínimo de una contraseña NUEVA: se pide al ponerla y no al usarla. Las
+# que ya están siguen andando aunque sean más cortas, y no por comodidad: lo
+# guardado es el hash y de un hash no se saca el largo.
 LARGO_MINIMO_PASS = 8
 
 def _validar_password(p: str):
@@ -1171,10 +1064,8 @@ def items_all(_ = Depends(usuario_actual), db: Session = Depends(get_db)):
 def catalogo(de: str = "pelu", _ = Depends(usuario_actual), db: Session = Depends(get_db)):
     """Todo el catálogo activo de una sola vez (para buscador y agrupado en Facturación).
 
-    `de` parte el catálogo en los dos mundos que el local maneja por separado:
-    "pelu" (el default, sin depilación) es lo que se factura en Facturar, "depi"
-    es la lista de depilación y "todo" junta los dos, que es lo que necesita la
-    agenda para poder anotar un turno de cualquier cosa.
+    `de`: "pelu" (el default, sin depilación) lo usa Facturar, "depi" la pantalla
+    de depilación y "todo" la agenda, que anota turnos de cualquier cosa.
     """
     q = (db.query(models.Item).filter(models.Item.activo == True)
            .order_by(models.Item.categoria, models.Item.nombre))
@@ -1243,10 +1134,9 @@ def recalcular_transfer(_ = Depends(solo_dueno), db: Session = Depends(get_db)):
     return {"recalculados": len(items)}
 
 # tipos de egreso
-# El tipo de egreso con el que el cierre anota el sueldo en la caja. El nombre
-# tiene que ser SIEMPRE el mismo: los tipos son una clasificación, y si un cierre
-# dice "Sueldo" y el siguiente "Sueldos", la caja muestra dos renglones para lo
-# mismo. Por eso queda guardado en config la primera vez y después no se mueve.
+# El tipo con el que el cierre anota el sueldo en la caja. Queda guardado en
+# config la primera vez: si un cierre dice "Sueldo" y el siguiente "Sueldos", la
+# caja muestra dos renglones para lo mismo.
 CLAVE_TIPO_SUELDO = "tipo_egreso_sueldo"
 TIPO_SUELDO_DEFECTO = "Sueldo"
 
@@ -1257,13 +1147,9 @@ def nombre_tipo_sueldo(db) -> str:
 def tipo_de_sueldo(db):
     """El tipo con el que se anota un sueldo, buscándolo o creándolo.
 
-    La primera vez NO crea uno nuevo si ya hay alguno que sirva: esta base viene
-    andando desde antes de que existieran los sueldos y el tipo "Sueldo" ya está,
-    con meses de egresos cargados a mano encima. Crear otro al lado partiría los
-    sueldos en dos renglones de la caja, que es justo lo que se quiere evitar.
-
-    Si no hay ninguno se crea privado: lo que se le paga a la empleada no es
-    asunto de la empleada.
+    No crea uno nuevo si ya hay alguno que sirva: al lado del "Sueldo" que la
+    dueña venía usando a mano, los sueldos quedarían partidos en dos renglones
+    de la caja. Si no hay ninguno se crea privado.
     """
     fila = db.query(models.Config).filter_by(clave=CLAVE_TIPO_SUELDO).first()
     if fila and fila.valor:
@@ -1280,11 +1166,9 @@ def tipo_de_sueldo(db):
         # nombre igual, y un tipo inactivo lo dejaría fuera de la lista donde se
         # lo va a ir a buscar.
         t.activo = True
-    # Y queda privado sí o sí. No es una preferencia: mientras no lo sea, "Sueldo"
-    # le aparece al empleado en el desplegable de egresos, y ahí ya se deduce lo
-    # que se quiso esconder. No toca nada hacia atrás: cada egreso guarda su
-    # propia marca del día que se cargó, así que lo que el empleado ya vio en su
-    # caja no desaparece de golpe.
+    # Privado sí o sí: mientras no lo sea, "Sueldo" le aparece al empleado en el
+    # desplegable de egresos y ahí ya se deduce lo que se quiso esconder. No toca
+    # nada hacia atrás, que cada egreso guarda su propia marca.
     t.privado = True
     if fila: fila.valor = t.nombre
     else: db.add(models.Config(clave=CLAVE_TIPO_SUELDO, valor=t.nombre))
@@ -1413,11 +1297,9 @@ def comision_pct(db) -> int:
 def arranque_sueldos(db) -> str | None:
     """Desde qué día cuentan los sueldos, o None si desde siempre.
 
-    Es el borrón y cuenta nueva: lo anterior se pagó a mano, por fuera de la
-    app, y no tiene que volver a aparecer como pendiente. No borra nada —los
-    trabajos y las horas siguen ahí— así que correr el corte para atrás los
-    devuelve. Mira la fecha del SERVICIO y no cuándo se anotó, que es lo que
-    significa "de este sábado en adelante".
+    El borrón y cuenta nueva de lo que se pagó a mano antes de la app. No borra
+    nada, así que correr el corte para atrás devuelve lo que dejó afuera. Mira
+    la fecha del SERVICIO, no cuándo se anotó.
     """
     fila = db.query(models.Config).filter_by(clave="sueldos_arranque").first()
     valor = (fila.valor or "")[:10] if fila else ""
@@ -1429,10 +1311,9 @@ def arranque_sueldos(db) -> str | None:
 def depi_por_defecto(db) -> str | None:
     """Quién lleva el día de depilación cuando nadie lo eligió para ese día.
 
-    En el local siempre es la misma, así que decirlo una vez ahorra elegirlo todos
-    los meses y —lo que importa— deja de depender de que se acuerde de ponerse
-    como peluquera en los tickets. Se guarda el NOMBRE y no el id, que es con lo
-    que el comprobante guarda al peluquero y con lo que compara empleada_del_dia().
+    Decirlo una vez saca la cuenta de que se acuerde de ponerse como peluquera en
+    los tickets. Se guarda el NOMBRE y no el id, que es con lo que el comprobante
+    guarda al peluquero.
     """
     fila = db.query(models.Config).filter_by(clave="depi_a_cargo").first()
     return (fila.valor or "").strip() or None if fila else None
@@ -1450,9 +1331,7 @@ def vh_de(empleado, general: int) -> int:
     """Lo que cobra la hora esta persona.
 
     Mismo criterio que el porcentaje por ítem: el propio si lo tiene, el general
-    si no. Se resuelve acá y no en cada cuenta para que haya UN solo lugar donde
-    dice cuál gana, y para que el día que alguien cobre distinto no haya que
-    acordarse de tocar tres funciones.
+    si no. En un solo lugar, que lo usan tres cuentas distintas.
     """
     propio = getattr(empleado, "valor_hora", None) if empleado else None
     return propio if propio is not None else general
@@ -1460,10 +1339,8 @@ def vh_de(empleado, general: int) -> int:
 def pct_de(item, pct_general: int) -> int:
     """El porcentaje que le toca a un ítem: el suyo si tiene, si no el general.
 
-    Se resuelve en un solo lugar porque lo usan tres caminos distintos (la línea
-    de un comprobante, el trabajo suelto y la pantalla), y con la cuenta escrita
-    en cada uno, el día que se agregue una regla más queda arreglada en dos de
-    los tres.
+    En un solo lugar porque lo usan tres caminos: la línea de un comprobante, el
+    trabajo suelto y la pantalla.
     """
     propio = getattr(item, "comision_pct", None) if item else None
     return propio if propio is not None else pct_general
@@ -1477,12 +1354,9 @@ def base_suelto(t, item) -> int:
 def base_comision(linea, comp=None) -> int:
     """Sobre cuánta plata se calcula la comisión de una línea.
 
-    Lo que la clienta terminó pagando por ESE trabajo: el precio efectivo, con
-    el ajuste de la línea y con el descuento del comprobante.
-
-    La diferencia entre la lista de transferencia y la de efectivo NO baja la
-    base, y por eso se arranca del precio efectivo: no es un descuento que se le
-    hizo a nadie, son las dos listas de precios del local.
+    Lo que la clienta terminó pagando por ESE trabajo: precio efectivo, con el
+    ajuste de la línea y el descuento del comprobante. La diferencia entre las
+    dos listas NO baja la base: no es un descuento que se le hizo a nadie.
     """
     unidad = precio_con_ajuste(linea.precio_efectivo or 0,
                                linea.ajuste_pct, linea.ajuste_monto)
@@ -1496,21 +1370,14 @@ def comision_de(linea, pct: int, comp=None) -> int:
 def lineas_a_comision_pendientes(db, empleado):
     """Las líneas a comisión de esa empleada que todavía no se pagaron.
 
-    Pendiente no es "de esta semana": es "no está en ninguna liquidación". Por eso
-    algo cargado tarde, o de un día viejo, entra igual en el próximo cierre en vez
-    de perderse en una ventana que ya cerró.
-
-    El corte de arranque existe solo para el primer cierre: sin él, el día que se
-    prende la función aparecerían como pendientes todos los trabajos de la
-    historia del local.
+    Pendiente no es "de esta semana" sino "no está en ninguna liquidación": algo
+    cargado tarde entra igual en el próximo cierre. El corte de arranque es solo
+    para el primero, que si no entra toda la historia del local.
     """
     desde = db.query(models.Config).filter_by(clave="sueldos_desde").first()
-    # Ojo con el NULL, que acá es la misma trampa que la del `privado != True`:
-    # los trabajos SUELTOS no tienen línea, así que su linea_id es NULL, y en SQL
-    # `x NOT IN (1, 2, NULL)` no es verdadero NUNCA. Sin el isnot(None), bastaba
-    # que se pagara UN trabajo suelto para que a partir de ahí no le apareciera
-    # como pendiente ninguna comisión a nadie: el sueldo bajaba solo y en la
-    # pantalla no había nada que mirar para darse cuenta.
+    # El isnot(None) es imprescindible: los trabajos sueltos tienen linea_id en
+    # NULL y en SQL `x NOT IN (1, 2, NULL)` no es verdadero NUNCA. Sin él, un
+    # suelto pagado deja a todas sin ninguna comisión pendiente.
     ya = db.query(models.TrabajoComision.linea_id).filter(
         models.TrabajoComision.liquidacion_id.isnot(None),
         models.TrabajoComision.linea_id.isnot(None))
@@ -1521,11 +1388,9 @@ def lineas_a_comision_pendientes(db, empleado):
                    models.Comprobante.tipo == "ticket",
                    models.Comprobante.peluquero == empleado.nombre,
                    models.Item.es_comision == True,
-                   # La depilación no se paga por comisión: lo que dejaron esas
-                   # líneas se reparte mitad y mitad, así que pagarlas además por
-                   # comisión sería pagar el mismo trabajo dos veces. Se filtra la
-                   # LÍNEA y no el día: un día con depilación a la mañana y
-                   # peluquería a la tarde paga la peluquería como cualquier otro.
+                   # La depilación se reparte mitad y mitad, así que pagarla
+                   # también por comisión sería pagar dos veces. Se filtra la
+                   # LÍNEA y no el día: la peluquería de ese día cobra igual.
                    _no_depi(models.Item.es_depilacion),
                    models.ComprobanteLinea.id.notin_(ya)))
     if desde and desde.valor:
@@ -1546,15 +1411,8 @@ def lineas_a_comision_pendientes(db, empleado):
 def ciclo_de(f: date) -> tuple[date, date]:
     """A qué semana de pago pertenece un día: de sábado a viernes.
 
-    Es la unidad con la que se paga, no una ventana para filtrar: un ciclo sin
-    cerrar sigue apareciendo entero al lado del nuevo.
-
-    El domingo se lo lleva el sábado que acaba de arrancar. Ojo con el `dow + 2`:
-    el ciclo ARRANCA el sábado, que con weekday() cae después del viernes en el
-    número pero antes en el ciclo.
-
-    El día de depilación es su propio ciclo de un día, pero eso no se decide acá:
-    depende de lo que se facturó, no de la fecha. Lo aparta resumen_pendiente().
+    Ojo con el `dow + 2`: el ciclo ARRANCA el sábado, que con weekday() cae
+    después del viernes en el número pero antes en el ciclo.
     """
     dow = f.weekday()                                  # 0=lunes … 5=sábado, 6=domingo
     if dow == 5: return f, f + timedelta(days=6)       # sábado: arranca la semana
@@ -1620,19 +1478,9 @@ def dias_de_sesion(db, sesion_id: int) -> list[str]:
 def empleada_del_dia(db, f: date) -> str | None:
     """De quién era un día de depilación, para la migración a sesiones.
 
-    La unidad de la plata es la sesión, y de la sesión cuelga de quién es la
-    mitad. Esto queda para repartir lo VIEJO, que se trabajó por día: es la
-    regla con la que se liquidó entonces, así que agrupado así ningún número
-    cambia. Para lo nuevo no se deduce nada, se elige al abrir la sesión.
-
-    De quién es el día: la que más facturó ese día.
-
-    Tiene que dar UNA sola: el reparto es entero, así que si se lo mostrara a
-    todas las que atendieron algo, el mismo número aparecería dos veces. La
-    ayudante no entra acá —cobra un monto fijo, que es un egreso del día—.
-
-    Va por lo facturado y no por lo cobrado para que no se mueva: quién llevó el
-    día no cambia porque una clienta pague la semana que viene.
+    La que más facturó ese día, y tiene que dar UNA sola: el reparto es entero.
+    Queda solo para la migración, que es la regla con la que se liquidó lo
+    viejo; para lo nuevo se elige al abrir la sesión.
     """
     # Si al abrir el día se eligió quién lo lleva, manda eso. Deducirlo de quién
     # facturó más alcanza para el día que nadie marcó, pero el día que la que
@@ -1673,37 +1521,18 @@ def base_lista(linea, comp=None) -> int:
 def base_facturada(linea, comp) -> int:
     """Lo que la línea facturó, en la lista con la que se cobró el comprobante.
 
-    Es la base del reparto de la depilación, que se hace sobre todo lo facturado
-    y no sobre una sola de las dos listas: la que pagó por transferencia dejó
-    esos pesos en el local, no los de la lista de efectivo.
-
-    Ojo que esto NO es base_comision(): la comisión de peluquería se paga
-    siempre en efectivo, porque la diferencia entre listas no es un descuento
-    que se le hizo a nadie. El reparto de la sesión es otra cuenta: ahí lo que
-    se parte es la plata que entró.
+    Es la base del reparto de la depilación: la que pagó por transferencia dejó
+    esos pesos en el local, no los de la lista de efectivo. NO es base_comision(),
+    que se paga siempre en efectivo.
     """
     return base_comision(linea, comp) if comp.forma_pago == "efectivo" else base_lista(linea, comp)
 
 def cuenta_depilacion(db, ses) -> dict:
     """El reparto de la sesión: todo lo facturado − los gastos, mitad y mitad.
 
-    La unidad es la SESIÓN y no el día. Con el día, los gastos cargados todos
-    juntos caían sobre uno solo: ese quedaba en negativo y en negativo no se
-    reparte nada —ni se puede cerrar—, así que el otro día se repartía entero y
-    la máquina no se la descontaba nadie. Con dos días de $27.000 y $81.000 y una
-    máquina de $50.000 cargada en el primero, le tocaban $40.500 en vez de
-    $29.000.
-
-    La base son las LÍNEAS de depilación, no los comprobantes enteros: una
-    sesión que además tuvo peluquería no se reparte por eso.
-
-    Cada línea entra por lo que facturó, en la lista con la que se cobró: no
-    importa si fue en efectivo o por transferencia, lo que se parte es la plata
-    que entró al local.
-
-    Va por lo FACTURADO y no por lo cobrado: lo que se reparte es el trabajo
-    hecho. Lo que todavía no entró se dice aparte y a la vista, porque esa plata
-    no está en el cajón todavía.
+    La unidad es la SESIÓN y no el día: con el día los gastos cargados juntos
+    caen sobre uno solo y la máquina no se la descuenta nadie. La base son las
+    LÍNEAS, por lo FACTURADO y en la lista con la que se cobró.
     """
     filas = lineas_de_sesion(db, ses.id)
     # `reparto_efectivo` lo llevan las sesiones que ya estaban pagadas cuando el
@@ -1754,16 +1583,9 @@ MARCA_SESIONES = "migro_sesiones_depi"
 def migrar_dias_a_sesiones():
     """Cada día de depilación que ya estaba pasa a ser una sesión de un día.
 
-    La unidad de la plata pasó a ser la sesión, pero lo viejo se trabajó y se
-    liquidó por día: agrupado así, ningún número cambia.
-
-    Todas quedan CERRADAS, incluso las que no se pagaron: cerrada quiere decir
-    que no recibe trabajo nuevo, no que esté saldada. Una jornada vieja sin pagar
-    sigue a la vista en el historial y se paga desde ahí; dejarla abierta haría
-    que lo que se facture mañana caiga adentro de un día de hace tres meses.
-
-    Con marca en config para que corra UNA vez. Sin eso, cada reinicio volvería
-    a armar sesiones de lo que ya está repartido.
+    Lo viejo se liquidó por día, así que agrupado así ningún número cambia. Todas
+    quedan CERRADAS, pagadas o no, o lo que se facture mañana cae adentro de un
+    día de hace tres meses. Con marca en config para que corra UNA vez.
     """
     from sqlalchemy.orm import Session as _S
     with _S(engine) as db:
@@ -1784,11 +1606,9 @@ def migrar_dias_a_sesiones():
                 models.Liquidacion.depilacion == True,
                 models.Liquidacion.desde == iso).all()
 
-        # La jornada que están trabajando AHORA no se parte: los días seguidos sin
-        # pagar que terminan hoy o ayer son una sola sesión, y queda abierta.
-        # Una jornada va de lunes a martes y se cierra después; cortada en dos, la
-        # máquina de los dos días caería sobre uno solo, que es justo el problema
-        # que las sesiones vienen a arreglar.
+        # La jornada que están trabajando AHORA no se parte: los días seguidos
+        # sin pagar que terminan hoy o ayer son una sola sesión, y queda abierta.
+        # Partida en dos, la máquina caería sobre uno solo de los días.
         hoy = hoy_argentina()
         ordenados = sorted(dias)
         cola = []
@@ -1836,15 +1656,9 @@ MARCA_REPARTO = "reparto_por_lo_facturado"
 def migrar_reparto_de_lo_pagado():
     """Las sesiones que ya se habían pagado se siguen contando en efectivo.
 
-    El reparto pasó a contar todo lo facturado, cada línea en la lista con la
-    que se cobró. Recalcular con esa fórmula una sesión ya liquidada la deja
-    debiendo plata sola: con dos trabajos por transferencia de $20.000 de lista,
-    la parte pasaba de $18.000 a $20.000 y la pantalla ofrecía cerrarla otra vez
-    por la diferencia, con un egreso de verdad. Una cuenta ya cobrada no se
-    vuelve a calcular con otra fórmula.
-
-    Se marca UNA sola vez: lo que se liquide de acá en adelante ya nace con la
-    regla nueva, incluida la sesión que está abierta.
+    Una cuenta ya cobrada no se vuelve a calcular con otra fórmula: una sesión
+    vieja con tickets por transferencia aparecería debiendo plata sola. Se marca
+    UNA vez; lo que se liquide de acá en adelante nace con la regla nueva.
     """
     from sqlalchemy.orm import Session as _S
     with _S(engine) as db:
@@ -1868,15 +1682,9 @@ except Exception as _e:
 def resumen_pendiente(db, empleado) -> dict:
     """Lo que se le debe a una empleada, partido en ciclos.
 
-    En vivo y no guardado porque mientras está pendiente todavía puede cambiar:
-    si se corrige un comprobante, el número se corrige solo. Recién al cerrar se
-    saca la foto.
-
-    Un trabajo SIN duración cargada no suma todavía. No es un descuido: la
-    duración es lo único que la empleada tiene que poner, y mientras falte, el
-    total sería mentira para los dos lados —se le pagaría la comisión y además
-    las horas que ese trabajo se comió—. Aparece igual, marcado, y el ciclo no se
-    puede cerrar hasta que estén todos completos.
+    En vivo y no guardado: mientras está pendiente puede cambiar, y recién al
+    cerrar se saca la foto. Un trabajo SIN duración no suma, aparece marcado y
+    frena el cierre.
     """
     pct = comision_pct(db)
     # El de la persona si lo tiene; si no, el general. La foto que se guarda al
@@ -1949,20 +1757,10 @@ def resumen_pendiente(db, empleado) -> dict:
             dias[f] = {"id": None, "fecha": f, "minutos": 0, "trabajos": []}
         dias[f]["trabajos"].append(t)
 
-    # Y el ciclo se completa con TODOS sus días, hasta hoy.
-    #
-    # Antes existían solo los días con movimiento, y un día que trabajó sin que
-    # quedara ningún ticket a su nombre no tenía dónde declararse: no aparecía, y
-    # agregarlo era de la dueña. De los que faltan no se acuerda nadie.
-    #
-    # Hasta hoy y no la semana entera: los días que todavía no pasaron no se
-    # declaran, y un casillero de horas en un día que no existe es plata.
-    #
-    # Y los días que el local no abre no se dibujan vacíos (DIAS_CERRADO): dos
-    # renglónes fijos diciendo "no viniste" son ruido en la pantalla que se mira
-    # todos los días. Si en uno de esos días pasó algo —el lunes de depilación,
-    # un trabajo cargado a mano— el día ya está arriba y no se toca: lo que no se
-    # agrega es el día en blanco.
+    # El ciclo se completa con TODOS sus días hasta hoy: es donde ella carga sus
+    # horas, y el día que vino sin facturar nada necesita dónde declararse. Los
+    # que no pasaron no se dibujan, que un casillero de horas en un día que no
+    # existe es plata. Los de DIAS_CERRADO tampoco, salvo que pasara algo.
     hoy = hoy_argentina()
     # El ciclo en curso está siempre, aunque no haya pasado nada: es la pantalla
     # donde la empleada carga sus horas, y vacía no se podría ni empezar.
@@ -1976,14 +1774,9 @@ def resumen_pendiente(db, empleado) -> dict:
                     and not (arranque and iso < arranque)):
                 dias[iso] = {"id": None, "fecha": iso, "minutos": 0, "trabajos": []}
             f += timedelta(days=1)
-    # Sueldos es de peluquería y la depilación no entra de ninguna forma: se
-    # cobra, se mira y se cierra en su propia pantalla, y lo que se le pagó por
-    # una sesión queda anotado en el egreso de ese cierre. Acá un día es un día.
-    # Días cuyas horas YA se pagaron en un cierre anterior. El día puede volver a
-    # aparecer —una comisión nueva con fecha de esa semana— y su casillero de
-    # horas está vacío, pero ahí no falta nada: esas horas ya se cobraron y el
-    # servidor no deja volver a cargarlas. Sin esta marca, el ciclo pedía horas
-    # que era imposible poner y no se podía cerrar nunca.
+    # Días cuyas horas YA se pagaron en un cierre anterior. El día puede volver
+    # a aparecer con el casillero vacío, y ahí no falta nada: sin esta marca el
+    # ciclo pide horas que es imposible poner y no se cierra nunca.
     ya_pagadas = {f for (f,) in db.query(models.HoraTrabajada.fecha).filter(
         models.HoraTrabajada.empleado_id == empleado.id,
         models.HoraTrabajada.liquidacion_id.isnot(None)).distinct()}
@@ -2029,11 +1822,9 @@ def resumen_pendiente(db, empleado) -> dict:
             "minutos_pagados": min_pagados,
             "total_comisiones": total_com, "total_horas": total_horas,
             "total": total_com + total_horas,
-            # Frena el cierre un día CON trabajos y sin horas: ese día vino
-            # seguro, y en cero se paga solo la comisión, sin las horas que
-            # trabajó aparte. Un día vacío es un día que no vino y no frena
-            # nada: ahora están todos los días de la semana, y pidiendo horas
-            # en todos no se podría cerrar nunca.
+            # Frena el cierre un día CON trabajos y sin horas: ese vino seguro
+            # y en cero se le paga la comisión sin las horas. Un día vacío es un
+            # día que no vino y no frena nada.
             "sin_horas": sum(1 for d in c["dias"] if not d["minutos"] and d["trabajos"]
                              and not d["horas_pagadas"]),
             "sin_respaldo": sum(1 for d in c["dias"] if d["sin_respaldo"]),
@@ -2097,12 +1888,9 @@ def entrar_a_sueldos(datos: EntrarSueldoIn, request: Request, db: Session = Depe
                      _ = Depends(usuario_actual)):
     """Abre la pantalla de sueldos de una empleada con su código.
 
-    Se pide cada vez que se entra: en el local hay una sola tablet y un solo
-    login, así que sin esto el sueldo de una queda a la vista de la otra y de
-    cualquiera que agarre el aparato. El código no se guarda en el navegador —el
-    permiso vive en memoria mientras la pantalla está abierta— y se frena por
-    intentos, como el login: cuatro dígitos se adivinan a mano si se puede probar
-    sin límite.
+    Se pide cada vez: hay una sola tablet y un solo login, así que sin esto el
+    sueldo de una queda a la vista de la otra. El permiso vive en memoria
+    mientras la pantalla está abierta, y se frena por intentos como el login.
     """
     ip = request.client.host if request.client else "?"
     claves = [f"ip:{ip}", f"pin:{datos.empleado_id}"]
@@ -2155,11 +1943,8 @@ def _sesion_para_tocar(db, sesion_id: int | None = None):
     """La sesión sobre la que se está trabajando, o un error.
 
     Sin id, la que está abierta. Una cerrada no se toca: mover un gasto después
-    de pagado le cambiaría la cuenta a un reparto ya liquidado.
-
-    No pide código: en una sesión de depilación trabajan dos personas con una
-    sola tablet y todo —cobrar, cargar los gastos, cerrarla— lo hacen las dos.
-    Un código en el medio sería pedirlo diez veces por día.
+    de pagado le cambia la cuenta a un reparto ya liquidado. No pide código, que
+    se trabaja entre dos con una sola tablet.
     """
     ses = db.get(models.SesionDepilacion, sesion_id) if sesion_id else sesion_actual(db)
     if not ses: raise HTTPException(404, "No hay ninguna sesión abierta")
@@ -2171,15 +1956,9 @@ def gasto_depilacion(g: GastoDepiIn, user = Depends(usuario_actual),
                      db: Session = Depends(get_db)):
     """Un gasto de la sesión de depilación, cargado desde su pantalla.
 
-    Lo carga la que lleva la sesión, que en Caja no entra: son los costos de SU
-    reparto y son los únicos que le bajan la parte, así que si tuviera que
-    pedirlos, la cuenta sale mal el día que la dueña no esté. Nunca es privado:
-    un gasto que baja el reparto tiene que estar a la vista de la que lo cobra.
-
-    La fecha del egreso es cuándo salió la plata del cajón, que es lo que mira la
-    caja, y por defecto es hoy. De qué reparto se resta no lo decide esa fecha
-    sino la sesión: la máquina se paga el viernes anterior y es de esta sesión
-    igual.
+    Lo carga la que lleva la sesión y nunca es privado: son los costos de SU
+    reparto. El egreso conserva su propia fecha, que es cuándo salió la plata
+    del cajón; de qué reparto se resta lo dice la sesión y no esa fecha.
     """
     ses = _sesion_para_tocar(db, g.sesion_id) if g.sesion_id else sesion_para_cobrar(db)
     if g.monto <= 0: raise HTTPException(400, "El monto tiene que ser mayor que cero")
@@ -2224,12 +2003,10 @@ def _gasto_de_sesion_abierta(db, egreso_id: int):
 @app.put("/api/depilacion/gasto/{egreso_id}")
 def corregir_gasto_depilacion(egreso_id: int, datos: MontoGastoIn,
                               _ = Depends(usuario_actual), db: Session = Depends(get_db)):
-    """Corrige el monto de un gasto. Equivocarse tipeando es lo más común, y
-    borrarlo y volver a cargarlo le cambia el número y la hora.
+    """Corrige el monto de un gasto, sin cambiarle el número ni la hora.
 
     Pasa por las reglas de la SESIÓN —que no esté cerrada— y no por las de Caja,
-    donde el empleado solo puede tocar lo de hoy: una sesión se cierra días
-    después y para entonces ya no podría corregir nada.
+    donde el empleado solo toca lo de hoy: una sesión se cierra días después.
     """
     if datos.monto <= 0: raise HTTPException(400, "El monto tiene que ser mayor que cero")
     e = _gasto_de_sesion_abierta(db, egreso_id)
@@ -2307,23 +2084,17 @@ def cambiar_quien_lleva(sesion_id: int, datos: CambiarSesionIn, _ = Depends(usua
 def _sesion_payload(db, ses) -> dict:
     """Todo lo de una sesión: lo facturado, lo cobrado, los gastos y el reparto.
 
-    Es el "cierre de caja" de la depilación y vive acá y no en Caja a propósito:
-    son dos negocios distintos y la sesión se mira y se cierra por separado. Ojo
-    que la plata sí está en la caja del local —la clienta paga en el mostrador—,
-    así que esto no la reemplaza: la explica.
+    Es el cierre de caja de la depilación, que se mira aparte por ser otro
+    negocio. No reemplaza a Caja: la plata sí está en el cajón del local.
     """
     comps = (db.query(models.Comprobante)
                .filter(models.Comprobante.sesion_id == ses.id,
                        models.Comprobante.activo == True)
                .order_by(models.Comprobante.fecha, models.Comprobante.numero).all())
     por_comp = pagos_por_comprobante(db, comps)
-    # Lo cobrado, en efectivo y en transferencia. Dos renglones y no tres: la
-    # seña no es una forma de pago, es plata que entró antes con la suya, así
-    # que cuenta en la columna con la que se cobró.
-    #
-    # Va lo que cada pago TAPA de la factura y no la plata que trajo, para que
-    # las dos columnas sumen lo facturado: una seña en efectivo tapa más de lo
-    # que entró, y sumando lo que entró el total no cerraba con los tickets.
+    # Dos renglones y no tres: la seña no es una forma de pago, cuenta en la
+    # columna con la que se cobró. Va lo que cada pago TAPA y no lo que trajo,
+    # para que las dos columnas sumen lo facturado.
     senas = {s.id: s for s in db.query(models.Sena).filter(models.Sena.comprobante_id.in_(
         [c.id for c in comps]))} if comps else {}
     cobrado = {}
@@ -2400,14 +2171,9 @@ def reabrir_depilacion(datos: ReabrirDepiIn, user = Depends(solo_dueno),
                        db: Session = Depends(get_db)):
     """Vuelve a abrir una sesión cerrada, para corregirla.
 
-    Cerrada no acepta más nada: ni un trabajo, ni un gasto, ni anular un ticket
-    que no iba. Es lo que protege un reparto ya pagado, pero deja sin salida el
-    error que se descubre después —un ticket cargado de más que nadie borró
-    antes de cerrar—, así que la salida es esta y es de la dueña.
-
-    Los cierres no se tocan: lo que ya se pagó, pagado está. Al reabrirla la
-    cuenta vuelve a calcularse sola, y si queda por debajo de lo cobrado la
-    pantalla lo dice.
+    Cerrada no acepta nada —ni trabajo, ni gasto, ni anular un ticket—, que es
+    lo que protege un reparto ya pagado, pero deja sin salida el error que se
+    descubre después. Los cierres no se tocan: lo pagado, pagado está.
     """
     ses = db.get(models.SesionDepilacion, datos.sesion_id)
     if not ses: raise HTTPException(404, "Esa sesión no existe")
@@ -2460,19 +2226,9 @@ def cerrar_depilacion(datos: CerrarDepiIn, user = Depends(usuario_actual),
                       db: Session = Depends(get_db)):
     """Paga la sesión: guarda la foto del reparto, anota el egreso y la cierra.
 
-    Sin nada para pagar la cierra igual y nada más, sin liquidación ni egreso:
-    cerrada es que no recibe más trabajo, no que esté saldada. Si no, una sesión
-    en la que solo se tomó una seña, o una que se reabrió para sacarle un ticket
-    que no iba, no había forma de cerrarla y se quedaba abierta tragándose la
-    jornada siguiente.
-
-    Cada sesión se salda sola, en su propio cierre: si al corregirla le tocaba
-    menos de lo que ya cobró, la diferencia vuelve al cajón como un ajuste de
-    HOY. Las sesiones no se miran entre sí.
-
-    La foto queda fija —`recaudado` es lo que la sesión facturó de depilación y
-    `gastos` lo que se restó—: corregir un ticket de una sesión ya pagada no
-    puede cambiar lo que se pagó.
+    Sin nada para pagar la cierra igual: cerrada es que no recibe más trabajo,
+    no que esté saldada. Cada sesión se salda en su propio cierre, y si le tocaba
+    menos de lo que cobró la diferencia vuelve al cajón como un ajuste de HOY.
     """
     ses = db.get(models.SesionDepilacion, datos.sesion_id) if datos.sesion_id else sesion_actual(db)
     if not ses: raise HTTPException(404, "No hay ninguna sesión para cerrar")
@@ -2504,18 +2260,9 @@ def cerrar_depilacion(datos: CerrarDepiIn, user = Depends(usuario_actual),
         depilacion=True, sesion_id=ses.id, recaudado=q["base"], gastos=q["gastos"])
     db.add(liq); db.flush()
 
-    # El egreso lo anota el cierre, como el del sueldo: si hubiera que cargarlo a
-    # mano, el día que se olvide la caja dice que hay más plata de la que hay.
-    #
-    # El monto va FIRMADO, y en negativo es plata que vuelve al cajón: la sesión
-    # se corrigió después de pagarla y le tocaba menos. Caja lo muestra del lado
-    # de los movimientos, no de los egresos. Sale firmado y no como una tabla
-    # aparte porque el arqueo, los reportes, el Excel y los gráficos ya suman
-    # los egresos: con el signo salen bien los cuatro sin tocar ninguno.
-    #
-    # Privado solo si lo cerró la dueña: lo que cobra una no es asunto de las
-    # demás, pero un egreso que cargó el empleado y no puede ver le deja el
-    # arqueo pidiendo plata que no está, sin nada que lo explique.
+    # El monto va FIRMADO —en negativo es plata que vuelve al cajón— y no en una
+    # tabla aparte, que el arqueo, los reportes, el Excel y los gráficos ya suman
+    # egresos. Privado solo si lo cerró la dueña.
     rango = (f"{dias[0]} a {dias[-1]}" if len(dias) > 1 else (dias[0] if dias else "sin días"))
     # Lo que no es el primer pago de la sesión es un ajuste, y se llama así en la
     # caja: el egreso del cierre viejo no se toca —esa plata salió de verdad— y
@@ -2556,11 +2303,9 @@ def cargar_horas(h: HorasIn, user = Depends(usuario_actual),
               .filter(models.HoraTrabajada.empleado_id == h.empleado_id,
                       models.HoraTrabajada.fecha == h.fecha,
                       models.HoraTrabajada.liquidacion_id.is_(None)).first())
-    # Un día que ya se pagó no se vuelve a declarar. Pasa solo, sin mala fe: se
-    # cierra la semana, después se factura un ticket con fecha de esa semana, el
-    # día reaparece pendiente (por la comisión, que sí falta pagar) y con el
-    # casillero de horas vacío. Cargarlas ahí es pagar dos veces las mismas
-    # horas, y en la pantalla se ve igual que un día normal.
+    # Un día que ya se pagó no se vuelve a declarar: reaparece pendiente por una
+    # comisión nueva, con el casillero de horas vacío, y cargarlas ahí es pagar
+    # dos veces las mismas horas.
     if not fila:
         pagado = (db.query(models.HoraTrabajada)
                     .filter(models.HoraTrabajada.empleado_id == h.empleado_id,
@@ -2573,11 +2318,9 @@ def cargar_horas(h: HorasIn, user = Depends(usuario_actual),
             raise HTTPException(400,
                 f"Las horas de ese día ya se pagaron en el cierre del {pagado[0]}. "
                 "La comisión de un trabajo nuevo sí se paga; las horas no se cargan de nuevo.")
-    # Un día que todavía no pasó no se declara. Es el único límite que queda:
-    # las horas de cualquier día ya vivido las carga ella, tenga o no un ticket
-    # detrás. Un día sin ningún trabajo sale marcado en la pantalla de la dueña,
-    # que es la que paga; el candado estaba antes de eso y dejaba sin declarar el
-    # día que vino y no facturó nada.
+    # Un día que todavía no pasó no se declara, y es el único límite: las horas
+    # de cualquier día vivido las carga ella, tenga o no un ticket detrás. El
+    # día sin ningún trabajo sale marcado en la pantalla de la dueña.
     try:
         cuando = date.fromisoformat(h.fecha)
     except ValueError:
@@ -2650,18 +2393,9 @@ def cerrar_liquidacion(datos: CerrarIn, _ = Depends(solo_dueno), db: Session = D
         raise HTTPException(400, "Ese ciclo no tiene nada para pagar")
 
     trabajos = [t for d in ciclo["dias"] for t in d["trabajos"]]
-    # Cerrar un miércoles no es cerrar la semana: es pagar lo que va. Mientras el
-    # ciclo no haya terminado, el cierre es PARCIAL y lo que se trabaje después
-    # sigue cayendo en el mismo ciclo, que vuelve a aparecer con el saldo. Para
-    # el caso de que la semana sí terminó antes —el viernes es feriado, se paga
-    # el jueves y se cierra— está `anticipado`, que la da por cerrada igual.
-    #
-    # El día del cierre normal NO es parcial. Antes decía `<=` y el viernes es el
-    # último día del ciclo Y el día de pago, así que el cierre de todas las
-    # semanas quedaba etiquetado "pago parcial": el cartel dejaba de significar
-    # algo justo cuando aparecía siempre. Si después de cobrar se sigue
-    # trabajando ese mismo viernes, eso vuelve a aparecer como pendiente igual;
-    # el rótulo dice con qué intención se cerró, no adivina el futuro.
+    # Cerrar un miércoles es pagar lo que va, y el ciclo sigue abierto; para la
+    # semana que terminó antes está `anticipado`. Con `<=` todos los cierres
+    # saldrían parciales: el viernes es el último día Y el día de pago.
     parcial = hoy_argentina() < date.fromisoformat(ciclo["hasta"]) and not datos.anticipado
     liq = models.Liquidacion(
         empleado_id=emp.id, desde=ciclo["desde"], hasta=ciclo["hasta"],
@@ -2683,11 +2417,9 @@ def cerrar_liquidacion(datos: CerrarIn, _ = Depends(solo_dueno), db: Session = D
                                           minutos=t["minutos"], fecha=t["fecha"],
                                           nombre=t["nombre"], cantidad=t["cantidad"])
             db.add(fila)
-        # La foto se completa SIEMPRE, no solo cuando la fila es nueva: una que
-        # ya existía porque le habían cargado los minutos guarda el id de la
-        # línea y nada más, y sin esto la liquidación cerrada se leería con el
-        # trabajo en blanco. El nombre y la fecha son los de hoy: si mañana se
-        # renombra el ítem, lo que se pagó tiene que seguir diciendo lo que decía.
+        # La foto se completa SIEMPRE y no solo cuando la fila es nueva: una que
+        # ya existía guarda el id de la línea y nada más, y la liquidación
+        # cerrada se leería con el trabajo en blanco.
         fila.liquidacion_id = liq.id
         fila.fecha = t["fecha"]; fila.nombre = t["nombre"]; fila.cantidad = t["cantidad"]
         fila.base = t["base"]; fila.comision = t["comision"]
@@ -2714,11 +2446,9 @@ def cerrar_liquidacion(datos: CerrarIn, _ = Depends(solo_dueno), db: Session = D
             notas=datos.notas,
             fecha=fecha_del_servicio(datos.fecha,
                                      fecha_hora_now_utc().replace(tzinfo=None), "un sueldo"),
-            # Privado siempre, y no según cómo esté marcado el tipo: esto lo
-            # crea la dueña desde la pantalla de sueldos, y lo que le paga a la
-            # empleada no es asunto de la empleada. Si dependiera de la marca del
-            # tipo, el día que alguien la saque el sueldo aparecería en la caja
-            # de ella.
+            # Privado siempre y no según la marca del tipo: lo que se le paga a
+            # la empleada no es asunto de la empleada, y si dependiera del tipo
+            # alcanzaría con sacarle la marca.
             privado=True)
         db.add(egreso); db.flush()
         liq.egreso_id = egreso.id
@@ -2755,10 +2485,8 @@ def que_deja_afuera(fecha: str, _ = Depends(solo_dueno), db: Session = Depends(g
 def set_arranque_sueldos(datos: ArranqueIn, _ = Depends(solo_dueno), db: Session = Depends(get_db)):
     """Mueve el borrón y cuenta nueva de los sueldos.
 
-    No borra nada: lo de antes del corte deja de aparecer como pendiente y ya.
-    Por eso equivocarse no cuesta caro —se corre el corte para atrás y vuelve
-    todo—, y por eso es preferible a borrar ciclos viejos, que sí sería para
-    siempre.
+    No borra nada: lo anterior al corte deja de aparecer como pendiente y ya, así
+    que correrlo para atrás lo devuelve.
     """
     valor = (datos.fecha or "").strip()[:10]
     if valor:
@@ -2777,13 +2505,9 @@ def crear_trabajo_suelto(t: TrabajoSueltoIn, user = Depends(usuario_actual),
                          quien = Depends(token_sueldo), db: Session = Depends(get_db)):
     """Un trabajo a comisión que no quedó en ningún comprobante.
 
-    Pasa: se atendió a alguien y no se facturó. Si no se pudiera cargar, la
-    empleada trabajaría gratis o tendría que reclamarlo de memoria. Queda marcado
-    para que la dueña vea, antes de pagar, cuál no tiene respaldo.
-
-    El monto no se tipea: sale del precio del ítem, igual que los que vienen de un
-    comprobante. Así la comisión se calcula siempre sobre la misma base y nadie
-    puede escribir el número que le conviene.
+    Se atendió a alguien y no se facturó. Queda marcado para que la dueña vea
+    cuál no tiene respaldo antes de pagar. El monto no se tipea: sale del precio
+    del ítem, así nadie escribe el número que le conviene.
     """
     permitir_sueldo(db, user, quien, t.empleado_id)
     _empleado_o_404(db, t.empleado_id)
@@ -2962,17 +2686,9 @@ def editar_empleado(emp_id: int, cambios: EmpleadoEdit, _ = Depends(solo_dueno),
 def fusionar_empleados(datos: FusionIn, _ = Depends(solo_dueno), db: Session = Depends(get_db)):
     """Dos nombres que son la misma persona pasan a ser uno.
 
-    Los nombres viejos se escribieron a mano durante meses: quedaron "Agus",
-    "Agustina" y "Agustina R" para la misma chica. Normalizar mayúsculas y
-    espacios no alcanza —son textos distintos de verdad— así que hay que poder
-    decir a mano cuál es cuál. Sin esto, su sueldo sale partido en tres y el
-    desplegable de facturar tiene tres opciones para elegir una sola persona.
-
-    Se mueve TODO lo que colgaba del que se va: los comprobantes, turnos y ventas
-    pasan a decir el nombre que queda, y sus horas, trabajos y liquidaciones
-    pasan a apuntar al que queda. Recién ahí se borra la fila, que ya no es la
-    fila de nadie: es un nombre repetido, no una persona que se fue (para eso
-    está dar de baja, que no borra nada).
+    "Agus" y "Agustina R" son textos distintos, así que hay que decir a mano cuál
+    es cuál. Se mueve TODO lo que colgaba del que se va y recién ahí se borra la
+    fila: es un nombre repetido, no una persona que se fue.
     """
     if datos.origen_id == datos.destino_id:
         raise HTTPException(400, "Son el mismo empleado")
@@ -3013,13 +2729,10 @@ def fusionar_empleados(datos: FusionIn, _ = Depends(solo_dueno), db: Session = D
 
 @app.delete("/api/empleados/{emp_id}")
 def borrar_empleado(emp_id: int, _ = Depends(solo_dueno), db: Session = Depends(get_db)):
-    """Da de baja, no borra. Un empleado que se fue sigue teniendo comprobantes y
-    liquidaciones que tienen que poder leerse, y su nombre sigue escrito en los
-    tickets que hizo. Es el mismo criterio que el resto de las listas: dejan de
-    ofrecerse, no desaparecen.
+    """Da de baja, no borra: sus comprobantes y liquidaciones tienen que poder leerse.
 
-    Volver a darlo de alta es cargarlo de nuevo con el mismo nombre: el POST lo
-    reactiva en vez de chocar con el nombre repetido.
+    Volver a darlo de alta es cargarlo de nuevo con el mismo nombre, que el POST
+    lo reactiva en vez de chocar con el repetido.
     """
     e = _empleado_o_404(db, emp_id)
     # Si nunca hizo nada, se borra de verdad: un nombre mal tipeado, o alguien
@@ -3043,10 +2756,9 @@ def borrar_empleado(emp_id: int, _ = Depends(solo_dueno), db: Session = Depends(
 def set_config_sueldos(datos: SueldosConfigIn, _ = Depends(solo_dueno), db: Session = Depends(get_db)):
     """El valor hora y el porcentaje de comisión.
 
-    Cambiarlos NO toca lo ya cerrado: la liquidación guarda los dos números con
-    los que se pagó. Sí cambia lo pendiente, que todavía se está calculando en
-    vivo, y eso es a propósito: un aumento acordado a mitad de ciclo se paga en
-    el ciclo, no al siguiente.
+    Cambiarlos NO toca lo ya cerrado, que guarda los dos números con los que se
+    pagó. Sí cambia lo pendiente, a propósito: un aumento de mitad de ciclo se
+    paga en ese ciclo.
     """
     def guardar(clave, valor):
         fila = db.query(models.Config).filter_by(clave=clave).first()
@@ -3270,10 +2982,9 @@ def proximo_turno(cliente_id: int, _ = Depends(usuario_actual), db: Session = De
 def _no_es_sena(nombre: str):
     """Una seña no es un ítem del catálogo.
 
-    Cargada como ítem, SUMA al ticket en vez de descontar: el trabajo quedaba
-    $5.000 más caro y después la seña de verdad descontaba otros $5.000, así que
-    al cliente se le cobraban $4.500 de más. Se toma con "+ Agregar seña", que es
-    lo que la deja como plata a favor.
+    Cargada como ítem SUMA al ticket en vez de descontar, y después la seña de
+    verdad descuenta aparte. Se toma con "+ Agregar seña", que es lo que la deja
+    como plata a favor.
     """
     if _plano(nombre).strip().rstrip("s") == "sena":
         raise HTTPException(400, "La seña no es un ítem: cargá el trabajo que se hizo y "
@@ -3349,22 +3060,11 @@ def renombrar_categoria(datos: RenombrarCat, _ = Depends(usuario_actual), db: Se
     db.commit(); return {"actualizados": n}
 
 # ---------- formas de pago ----------
-"""Las dos formas de pago que no se tocan.
+"""Las dos formas de pago que no se renombran ni se borran.
 
-   "Efectivo" y "Transferencia" no son dos opciones más de una lista: son los
-   dos nombres con los que la app hace cuentas. El arqueo suma "lo que entró en
-   efectivo" comparando `pago.forma_pago == "Efectivo"`, y al cobrar se guarda
-   ese texto exacto. Si alguien las renombra o las borra desde Admin, el
-   desplegable de cobro se queda sin la opción, los pagos salen con la forma
-   vacía y el arqueo empieza a decir que hay más plata en el cajón de la que
-   hay. Y no avisa: la app sigue andando perfecto.
-
-   Se podían borrar desde antes de que existiera este candado. Se agrega ahora
-   porque a la lista se le suma poder renombrar, que es la misma trampa con un
-   botón más a mano.
-
-   Agregar formas nuevas ("Cuenta DNI", "Débito") sigue siendo libre: esas no
-   entran en ninguna cuenta, solo se muestran.
+   Son los nombres con los que la app hace cuentas: el arqueo compara
+   `pago.forma_pago == "Efectivo"`. Sin ellas los pagos salen con la forma vacía
+   y el arqueo miente sin avisar. Agregar formas nuevas sigue siendo libre.
 """
 FORMAS_FIJAS = ("Efectivo", "Transferencia")
 
@@ -3410,22 +3110,11 @@ def borrar_forma(forma_id: int, _ = Depends(usuario_actual), db: Session = Depen
         raise HTTPException(400, f'"{f.nombre}" no se puede eliminar: sin ella el arqueo de caja deja de dar.')
     f.activo = False; db.commit(); return {"ok": True}
 
-"""Renombrar una de estas listas: ¿qué pasa con lo ya cargado?
+"""Renombrar arrastra o no hacia atrás según qué sea el nombre.
 
-   Los nombres se guardan copiados en cada movimiento (`egresos.tipo`,
-   `pagos.alias`, `comprobantes.descuento_nombre`...), así que renombrar en la
-   lista no cambia el pasado por sí solo. Hay que decidir caso por caso, y la
-   respuesta no es la misma para todos:
-
-     - Los tipos de egreso y los alias son una CLASIFICACIÓN. Si "Gasto /
-       insumo" pasa a llamarse "Insumos", uno espera que la caja diga "Insumos"
-       en todo, no que aparezcan dos renglones para lo mismo. Se arrastra, igual
-       que ya hacía renombrar una categoría del catálogo.
-
-     - Los descuentos y los ajustes por ítem son lo que se le DIJO al cliente.
-       El papel que se imprimió el año pasado decía "Jubilado 10%", y volver a
-       imprimirlo tiene que seguir diciendo eso. No se arrastra: el nombre nuevo
-       vale para lo que se cobre de acá en adelante.
+   Los tipos de egreso, los alias y las formas de pago son una CLASIFICACIÓN y
+   se arrastran, o la caja muestra dos renglones para lo mismo. Los descuentos y
+   los ajustes por ítem salieron impresos, así que no se tocan hacia atrás.
 """
 # ---------- log de stock ----------
 def log_stock(db, item, tipo, cambio, motivo, usuario="sistema"):
@@ -3436,33 +3125,11 @@ def log_stock(db, item, tipo, cambio, motivo, usuario="sistema"):
         motivo=motivo, usuario=usuario))
 
 # ---------- comprobantes ----------
-"""Historial paginado.
+"""Historial paginado: el recorte lo hace la base, en dos caminos.
 
-   Antes esta ruta devolvía TODOS los comprobantes activos y la pantalla se
-   arreglaba sola: filtraba, ordenaba y dibujaba de a 60. Con un año de trabajo
-   eso son más de mil, y el costo no estaba en dibujarlos sino antes: cada vez
-   que se abría el historial se traían las mil filas con sus líneas, sus extras y
-   sus pagos, y se calculaba el estado de cada una, para mostrar sesenta.
-
-   Ahora el recorte lo hace la base. Pero hay una parte que NO se puede mover a
-   SQL: el saldo de un comprobante sale de estado_comprobante(), que recorre las
-   líneas aplicando precio_con_ajuste() y los redondeos de las dos listas.
-   Escribir esa misma cuenta en SQL sería tener dos versiones de la cuenta de la
-   plata, y el día que se toca una y no la otra el historial dice una cosa y la
-   caja otra. Así que hay dos caminos:
-
-     - El de todos los días (ordenar por fecha o por número, con o sin búsqueda):
-       filtra, ordena y corta en SQL, y solo calcula el estado de los que entran
-       en la página. Es el que hace que la pantalla abra rápido.
-
-     - El de los filtros que dependen del saldo (con deuda, convertidos, sin
-       convertir) y el orden por monto: ahí no queda otra que traer lo que pasó
-       los filtros de SQL y calcular en Python, como antes. Sale lo mismo que
-       salía siempre, pero solo cuando lo pedís, y ya recortado por fecha y por
-       lo que hayas buscado.
-
-   Buscar por cliente o por número sigue mirando el historial entero: la pantalla
-   pasa el período a "Todo" cuando escribís, y se ve que lo hizo.
+   Ordenar por fecha o por número se resuelve en SQL. Los filtros que dependen
+   del saldo y el orden por monto no: esa cuenta sale de estado_comprobante(), y
+   escribirla también en SQL serían dos versiones de la cuenta de la plata.
 """
 TOPE_PAGINA = 200          # techo por si alguien pide una página enorme a mano
 
@@ -3631,9 +3298,7 @@ def proximo_numero(tipo: str = "ticket", _ = Depends(usuario_actual), db: Sessio
     Va antes de /{comp_id}: FastAPI prueba las rutas en orden, y con esa primero
     "proximo-numero" se lee como un id y revienta al convertirlo a número.
 
-    Es informativo: el número definitivo se asigna al guardar. En el local hay
-    una sola tablet, así que en los hechos coincide, pero no se guarda nada acá
-    ni se reserva el número.
+    Es informativo: el definitivo se asigna al guardar y acá no se reserva nada.
     """
     return {"numero": siguiente_numero(db, tipo)}
 
@@ -3683,12 +3348,9 @@ def crear_comprobante(c: ComprobanteIn, user = Depends(usuario_actual), db: Sess
         # aparece escrito distinto en el historial y en el papel impreso
         nombre_cli = nombre_propio(c.cliente_nombre) or None
     ahora = fecha_hora_now_utc().replace(tzinfo=None)
-    # Anotar un servicio con fecha de otro día mueve plata de una caja a otra:
-    # el cobro sale del día en que se atendió y no del día en que se cargó. Eso
-    # lo decide la dueña; el empleado factura siempre en el día.
-    #
-    # Se compara la fecha YA validada y no el texto que llegó: fecha_del_servicio
-    # es la que rebota un "2026-13-40" con un 400 en vez de reventar acá.
+    # Anotar un servicio con fecha de otro día mueve plata de una caja a otra,
+    # así que es de la dueña. Se compara la fecha YA validada y no el texto que
+    # llegó: fecha_del_servicio rebota un "2026-13-40" con un 400.
     fecha_serv = fecha_del_servicio(c.fecha, ahora)
     if not es_dueno(user) and hora_argentina(fecha_serv).date() != hoy_argentina():
         raise HTTPException(403, "Solo la dueña puede anotar un servicio de otro día")
@@ -3805,19 +3467,9 @@ def registrar_pago(comp_id: int, pago: PagoIn, _ = Depends(usuario_actual), db: 
 
     """Qué día de caja le toca a esta plata.
 
-    La caja se arma con la fecha de los PAGOS, no con la del comprobante, y eso
-    está bien: son dos preguntas distintas y hay que poder contestar las dos.
-
-      - Un abono que CIERRA la venta pertenece al día del servicio. Si se anota
-        un servicio del martes que se había pasado por alto, esa plata entró el
-        martes y en la caja del martes tiene que aparecer.
-      - Un abono que SALDA una deuda vieja pertenece a hoy. El servicio fue hace
-        dos semanas, pero la plata entra hoy y hoy hay que arquearla.
-
-    Cuál de los dos es lo dice quien cobra, con del_servicio. La fecha sale
-    después de `comp.fecha`, nunca de algo que mande el cliente: así no hay
-    forma de mandar plata a un día arbitrario ni de errarle por pasar mal una
-    fecha desde una pantalla.
+    Un abono que CIERRA la venta pertenece al día del servicio; uno que SALDA una
+    deuda vieja, al día en que entra la plata. Lo dice la pantalla con
+    `del_servicio`; la fecha sale de `comp.fecha` y nunca del cliente.
     """
     fecha_pago = comp.fecha if pago.del_servicio else fecha_hora_now_utc().replace(tzinfo=None)
     db.add(models.Pago(comprobante_id=comp.id, monto=pago.monto, saldado=saldado,
@@ -3925,21 +3577,11 @@ def convertir_a_ticket(comp_id: int, user = Depends(usuario_actual), db: Session
 
 
 # ---------- egresos ----------
-"""Egresos privados.
+"""Egresos privados: no salen en la lista del empleado ni suman en SU caja.
 
-   La dueña anota el alquiler y los sueldos en la misma pantalla que el resto de
-   los egresos, pero eso no es asunto de quien atiende: un egreso privado no
-   aparece en la lista del empleado ni suma en los totales de SU caja. En la de
-   la dueña sale todo, con la marca de que es privado.
-
-   Qué es privado se decide en dos lugares que se complementan:
-     - la casilla al cargarlo, que la dueña puede tildar y destildar;
-     - el tipo marcado como privado, que la tilda solo y no deja destildarla
-       (si "Alquiler" es privado, no hay alquiler que no lo sea).
-
-   Un egreso cargado POR el empleado nunca es privado, aunque le haya puesto un
-   nombre de tipo reservado: esconderle lo que él mismo acaba de anotar le
-   dejaría el arqueo sin explicación.
+   Se marcan por la casilla al cargarlos o porque el tipo está marcado privado.
+   Uno cargado POR el empleado nunca es privado, aunque tipee un nombre
+   reservado: esconderle lo que él mismo anotó le deja el arqueo sin explicación.
 """
 def _tipo_privado(db, nombre: str | None) -> bool:
     if not nombre: return False
@@ -4017,10 +3659,9 @@ def anular_egreso(egreso_id: int, user = Depends(usuario_actual), db: Session = 
 def plata_que_entro(db, ini, fin):
     """Todo lo que entró en el período: los abonos más las señas cobradas.
 
-    Los abonos que vienen de una seña NO cuentan: esa plata entró el día que se
-    cobró la seña y contarla otra vez infla la caja y el arqueo sin avisar. Está
-    en una sola función para que la caja, los reportes, el Excel y los gráficos
-    no puedan contestar distinto.
+    Los abonos con `sena_id` NO cuentan: esa plata entró el día que se cobró la
+    seña. En una sola función para que la caja, los reportes, el Excel y los
+    gráficos no puedan contestar distinto.
     """
     pagos = (db.query(models.Pago)
                .filter(models.Pago.fecha >= ini, models.Pago.fecha < fin,
@@ -4105,12 +3746,10 @@ def ver_sena(sena_id: int, _ = Depends(usuario_actual), db: Session = Depends(ge
 
 @app.delete("/api/senas/{sena_id}")
 def anular_sena(sena_id: int, _ = Depends(usuario_actual), db: Session = Depends(get_db)):
-    """Se devolvió la plata. Una seña ya usada no se anula: hay que anular el
-    comprobante, que es donde quedó aplicada.
+    """Se devolvió la plata. Una seña ya usada no se anula: se anula el comprobante.
 
-    La devuelve cualquiera de las dos: la toma el que atiende y el error se
-    arregla en el momento. Queda anulada, no borrada, así que el número sigue
-    estando y la devolución se ve.
+    Queda anulada y no borrada, así que el número sigue estando y la devolución
+    se ve.
     """
     s = db.get(models.Sena, sena_id)
     if not s: raise HTTPException(404, "Esa seña no existe")
@@ -4121,19 +3760,9 @@ def anular_sena(sena_id: int, _ = Depends(usuario_actual), db: Session = Depends
 def sena_saldado(sena, comp, saldo: int) -> tuple[int, int]:
     """De una seña: cuánta se usa y cuánto de la cuenta salda.
 
-    El 10% es de la plata que entra en EFECTIVO, no del trabajo, y la seña entró
-    antes: lo que tapa depende de en qué lista está escrita cada cosa.
-
-      - seña en efectivo y cuenta en transferencia → tapa monto ÷ 0,9: esos
-        pesos valen más contra una cuenta que no tiene el descuento adentro;
-      - seña por transferencia y cuenta en efectivo → tapa monto × 0,9: la
-        cuenta ya viene con el 10% sacado y esa plata entró sin descuento, así
-        que descontársela otra vez es regalarle el 10% de la seña;
-      - las dos en la misma lista → el monto, tal cual.
-
-    Y una seña más grande que lo que falta se usa hasta ahí, que el resto le queda
-    a favor en otra fila: más simple que inventar un vuelto que después nadie sabe
-    de dónde salió.
+    El 10% es de la plata que entra en EFECTIVO, no del trabajo, así que lo que
+    tapa sale de en qué lista está escrita cada cosa: efectivo contra cuenta en
+    transferencia tapa monto ÷ 0,9; transferencia contra efectivo, monto × 0,9.
     """
     en_efectivo = (sena.forma_pago or "") == "Efectivo"
     cuenta_en_efectivo = comp.forma_pago == "efectivo"
@@ -4150,13 +3779,9 @@ def sena_saldado(sena, comp, saldo: int) -> tuple[int, int]:
 def _aplicar_senas(db, comp) -> tuple[int, int]:
     """Usa las señas libres del cliente como abono. No hace commit.
 
-    Solo en depilación, que es donde se señan los turnos: una seña puesta en un
-    ticket de peluquería le gasta a la clienta, en un corte, la plata que había
-    dejado para la jornada de dentro de un mes.
-
-    Separado del endpoint porque el cobro de depilación lo hace en el mismo
-    pedido que crea el comprobante: en tres llamadas, la que no llega deja el
-    ticket cobrado a medias.
+    Solo en depilación, que es donde se señan los turnos: puesta en un ticket de
+    peluquería le gasta a la clienta la plata de la jornada que viene. Separado
+    del endpoint porque el cobro de depilación va en el mismo pedido que lo crea.
     """
     if not comp.depilacion: return 0, 0
     aplicadas, total = 0, 0
@@ -4320,13 +3945,9 @@ def set_stock(item_id: int, s: StockIn, user = Depends(solo_dueno), db: Session 
 def descontar_insumo(c: ConsumoIn, user = Depends(usuario_actual), db: Session = Depends(get_db)):
     """Descuenta lo que se gastó en el local y no salió por una venta.
 
-    Lo puede cargar el empleado: corregir el conteo sigue siendo de la dueña,
-    pero anotar lo que se usó lo hace la que lo usa. Por eso el movimiento es
-    "consumo" y no "manual": en el historial hay que distinguir "usé 2 tinturas"
-    de "conté mal, eran 8".
-
-    Deja el stock en negativo a propósito, igual que una venta: abajo de cero
-    dice que el conteo está atrasado, y frenarlo en cero lo escondería.
+    Lo puede cargar el empleado, y el movimiento es "consumo" y no "manual":
+    "usé 2 tinturas" y "conté mal, eran 8" son dos cosas distintas. Deja el
+    stock en negativo a propósito: frenarlo en cero escondería el atraso.
     """
     item = db.get(models.Item, c.item_id)
     if not item or not item.es_producto: raise HTTPException(404, "Producto no existe")
@@ -4439,15 +4060,10 @@ def _movimientos(db, ini, fin):
     for e in egresos:
         det = (e.tipo or "")
         if e.concepto: det += f" — {e.concepto}"
-        # El egreso tiene su propio correlativo y hasta acá no llegaba: el registro
-        # mostraba la columna vacía y no había forma de atar un renglón del reporte
-        # con el egreso de la caja. Va con "#" y no con "N-": el "N-" es el
-        # prefijo de los tickets y en una tabla que mezcla los dos se leía como si
-        # el egreso fuera un comprobante de venta. Es el mismo "#47" de la caja.
-        # En negativo es plata que volvió al cajón —el ajuste de una sesión de
-        # depilación pagada de más—, así que entra como ingreso y con el monto
-        # dado vuelta. Listado como un egreso negativo, la columna se lee al
-        # revés y el Excel suma para el otro lado.
+        # El correlativo va con "#" y no con "N-", que es el prefijo de los
+        # tickets. En negativo es plata que volvió al cajón, así que entra como
+        # ingreso y con el monto dado vuelta: listado como egreso negativo, la
+        # columna se lee al revés y el Excel suma para el otro lado.
         vuelve = (e.monto or 0) < 0
         movs.append({"fecha": e.fecha, "clase": "ingreso" if vuelve else "egreso",
                      "comprobante": f"#{e.numero}" if e.numero else "",
@@ -4646,11 +4262,9 @@ def registro_movimientos(desde: str | None = None, hasta: str | None = None,
             for m in _movimientos(db, ini, fin)[:1000]]
 
 # ---------- horarios del personal ----------
-#
-# Son dos capas distintas y conviene no mezclarlas: la DISPONIBILIDAD dice cuándo
-# está cada una, y la OCUPACIÓN —los turnos— qué está haciendo. Sin esa
-# separación, un hueco a las 15:00 en la grilla puede querer decir "está libre" o
-# "hoy no vino", que son cosas opuestas y se ven igual.
+# Dos capas que no se mezclan: la DISPONIBILIDAD dice cuándo está cada una y la
+# OCUPACIÓN —los turnos— qué está haciendo. Sin eso, un hueco a las 15:00 puede
+# querer decir "está libre" o "hoy no vino".
 
 def _hhmm_ok(t: str) -> bool:
     try:
@@ -4668,10 +4282,9 @@ def _valida_tramo(desde: str, hasta: str):
 def disponibilidad(db, empleado_id: int, fecha: str) -> dict:
     """Cuándo está esta persona ese día.
 
-    Una regla y en un solo lugar: si hay excepciones para esa fecha mandan ellas,
-    si no el horario fijo de ese día de la semana. Una excepción sin horas es "no
-    viene" —cero tramos con `excepcion` puesto—, para que la pantalla pueda decir
-    por qué está vacío en vez de mostrar un hueco mudo.
+    Si hay excepciones para esa fecha mandan ellas; si no, el horario fijo de ese
+    día de la semana. Una excepción sin horas es "no viene" —cero tramos con
+    `excepcion` puesto—, para que la pantalla diga por qué está vacío.
     """
     exc = (db.query(models.ExcepcionHorario)
              .filter(models.ExcepcionHorario.empleado_id == empleado_id,
@@ -4781,13 +4394,9 @@ def borrar_excepcion(emp_id: int, fecha: str, _ = Depends(usuario_actual), db: S
 def abrir_dia(datos: AbrirDiaIn, _ = Depends(usuario_actual), db: Session = Depends(get_db)):
     """Abre una fecha suelta con el mismo horario para varias: el día de depilación.
 
-    Deja la fecha EXACTA como se manda, en vez de ir sumando: las que se mandan
-    quedan con esas horas y a las que no se les saca la excepción, así que
-    destildar a alguien y volver a guardar la deja afuera. Sin eso, corregir a
-    quién se le puso significaría borrar a mano una por una.
-
-    No es una regla del calendario a propósito: el día que abren lo deciden ellas,
-    y un "cada 2º lunes" diría que trabajan un día que nadie eligió.
+    Deja la fecha EXACTA como se manda: a las que no vienen en la lista se les
+    saca la excepción, así que destildar a alguien y guardar la deja afuera. No
+    es una regla del calendario a propósito.
     """
     try:
         date.fromisoformat(datos.fecha)
@@ -5033,12 +4642,9 @@ def borrar_ajuste_item(aj_id: int, _ = Depends(usuario_actual), db: Session = De
     a.activo = False; db.commit(); return {"ok": True}
 
 # ---------- backup completo (solo dueño) ----------
-# Versión del formato del JSON. La 1 guardaba las fechas ya convertidas a hora
-# argentina y sin offset, así que al restaurarla había que acordarse de sumarle
-# las 3 horas: si alguien se olvidaba, la caja de todos los días quedaba corrida
-# (los servicios de después de las 21:00 se iban al día siguiente). Desde la 2
-# las fechas salen en UTC con el "+00:00" escrito, que es como están guardadas.
-# `restaurar_backup.py` mira este número para saber cuál de las dos leyó.
+# Versión del formato del JSON, que `restaurar_backup.py` mira para saber cuál
+# leyó: la 1 guardaba las fechas en hora argentina y sin offset, la 2 en UTC con
+# el "+00:00" escrito.
 BACKUP_VERSION = 2
 
 def _iso_utc(dt):

@@ -267,15 +267,10 @@ const money=n=>"$"+(n||0).toLocaleString("es-AR");
 const fmtNum=n=>(n||0).toLocaleString("es-AR");
 const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 
-/* Colores de las series. NO son tokens a propósito: son los dos únicos colores de
-   la app que tienen que funcionar igual con el tema claro y con el oscuro, y este
-   par lo hace (contraste, banda de luminosidad y separación con daltonismo, medido
-   contra papel #fffdf9 y contra carbón #201b14). Aclararlos para el oscuro los
-   saca de la banda y les come la separación entre sí, así que quedan fijos.
-   El dorado de marca (#c9a84c) tampoco entra en la banda. Para egresos NO sirve
-   el naranja de --warn: contra el dorado quedan casi indistinguibles (y peor
-   todavía con daltonismo). El rojo separa bien y además es el color que la app ya
-   usa para lo que sale de la caja. */
+/* Colores de las series. NO son tokens a propósito: tienen que funcionar igual
+   en claro y en oscuro, y aclararlos para el oscuro les come la separación entre
+   sí. Para egresos no sirve el naranja de --warn, que contra el dorado queda
+   casi indistinguible; el rojo separa bien y ya es el color de lo que sale. */
 const COLOR_ING = "#b08f3a";
 const COLOR_EGR = "#c0392b";
 
@@ -533,12 +528,9 @@ async function descargarExcel(){
   const root=$("#cFiltro");
   const selMes=root.querySelector(".mes");
 
-  /* Los últimos 13 meses, del actual para atrás.
-
-     Las fechas se arman a mano con getFullYear/getMonth/getDate y NO con
-     toISOString(), que pasa a UTC: a la noche argentina eso devuelve el día
-     siguiente, y el mes de la lista arrancaría un día corrido. Es el mismo
-     UTC-3 de siempre, pero del lado del navegador. */
+  /* Los últimos 13 meses, del actual para atrás. Las fechas se arman a mano y NO
+     con toISOString(), que pasa a UTC: a la noche argentina devuelve el día
+     siguiente y el mes arrancaría corrido. */
   const MESES=["enero","febrero","marzo","abril","mayo","junio","julio",
                "agosto","septiembre","octubre","noviembre","diciembre"];
   const iso=(a,m,d)=>`${a}-${String(m+1).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
