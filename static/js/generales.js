@@ -1,29 +1,10 @@
-/* Los números con los que se paga cuando alguien no tiene el suyo.
+/* El valor hora y la comisión generales: lo que se paga cuando alguien no tiene
+   el suyo. Un solo dibujante para Admin y para Sueldos.
 
-   Un solo dibujante para las dos pantallas que los muestran —Admin, arriba de
-   la lista de empleados, y Sueldos, que es donde se liquida—, igual que las
-   cinco listas de listas.js. Si fueran dos, el día que se agregue un número más
-   una de las dos se queda sin pedirlo.
-
-   Se miran mucho más de lo que se tocan —se cambian una vez cada varios meses—,
-   así que están escritos, no en casilleros. Un casillero siempre abierto arriba
-   de la pantalla que se abre todos los días es un número que se puede pisar sin
-   querer, y este le cambia el sueldo a todo el mundo. Para editar hay que
-   pedirlo.
-
-   Adentro del modo edición va el valor hora de cada una. Es donde tiene que
-   estar: la pregunta "¿esto a quién le llega?" se contesta mirando la lista, y
-   la lista solo importa en el momento de tocar el general. Cada renglón se
-   guarda solo, con su lapicito: un Guardar que escriba el general y tres
-   excepciones a la vez deja de decir qué se cambió.
-
-   El bloque por persona se apaga con `porPersona: false` para Admin, donde cada
-   empleada ya tiene su renglón con su valor hora adentro.
-
-   Con `soloDepi: true` dibuja los dos números de la depilación en vez de los del
-   sueldo. Es el mismo dibujante porque es la misma tarjeta —escrita, con su
-   botón de Editar— y porque los dos escriben en la misma config; lo que cambia
-   es dónde se mira cada cosa: el sueldo en Sueldos y la depilación en la suya. */
+   Van escritos y no en casilleros, con un botón de Editar: uno abierto arriba de
+   la pantalla que se mira todos los días le cambia el sueldo a todo el mundo.
+   `porPersona: false` saca el bloque de excepciones y `soloDepi: true` dibuja
+   los dos números de la depilación. */
 
 const _escGral = s => String(s ?? "").replace(/[&<>"']/g,
   c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
@@ -50,12 +31,9 @@ function panelGenerales(cont, alGuardar, opciones){
 
   const activas = () => emps.filter(e => e.activo !== false);
 
-  /* Quién queda afuera de estos números.
-
-     Solo las excepciones: las que hay, no las que no. Las excepciones NO se
-     pisan —vh_de() y pct_de() usan el general solo como respaldo— pero eso no
-     se ve por ningún lado, y no verlo lleva a las dos equivocaciones opuestas:
-     creer que se pisó lo de alguien, o creer que no se le cambió a nadie. */
+  /* Quién queda afuera de estos números: dice las excepciones que hay, no que no
+     hay ninguna. Que el general NO pisa lo propio no se ve por ningún lado, y
+     sin decirlo se cree que se pisó lo de alguien o que no se cambió nada. */
   function aviso(){
     const propias = cfg.hora_propia || [];
     const partes = [];
@@ -243,23 +221,11 @@ function panelGenerales(cont, alGuardar, opciones){
   }
 }
 
-/* El borrón y cuenta nueva de los sueldos, con el mismo criterio que los dos
-   números de arriba: un solo dibujante para Admin y para Sueldos.
+/* El borrón y cuenta nueva de los sueldos, un solo dibujante para Admin y para
+   Sueldos. NO borra nada: correrlo para atrás devuelve los trabajos y las horas.
 
-   Lo de antes del corte se pagó a mano, por fuera de la app, y no tiene que
-   volver a aparecer como pendiente. NO borra nada: los trabajos y las horas
-   siguen guardados, así que correr el corte para atrás los devuelve enteros.
-   Por eso es esto y no un botón de borrar ciclos viejos, que sí sería para
-   siempre y con la plata de otro.
-
-   Y es UNO para todo el local, no por empleada: lo dice el renglón y lo dice el
-   cartel de confirmación, que nombra a quiénes deja afuera. El cartel lo arma
-   el backend, que es el que sabe lo que cada una tiene pendiente: contándolo en
-   la pantalla salía el número de la empleada que estaba abierta.
-
-   Se pone UNA vez en la vida del local, así que puesto se achica a un renglón
-   gris: un casillero de fecha y dos botones arriba de la pantalla que se mira
-   todos los días es algo que se mueve sin querer. */
+   Es UNO para todo el local y no por empleada. El cartel lo arma el backend, que
+   es el que sabe lo que cada una tiene pendiente. */
 function panelCorteSueldos(cont, alGuardar){
   if(!cont) return;
   cargar();

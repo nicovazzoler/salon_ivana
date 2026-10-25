@@ -1,13 +1,8 @@
 /* Quién atendió, adentro del detalle de un comprobante ya emitido.
 
-   Es lo único editable de un comprobante cobrado, y a propósito: los importes no
-   se tocan nunca después de emitido. Pero el peluquero se olvida seguido, y sin
-   él la comisión de ese trabajo no le llega a nadie: el sueldo se arma
-   comparando este nombre con la lista de empleados.
-
-   Un solo dibujante, usado por el detalle de Cuenta y por el de Historial. Si
-   fueran dos, el día que se agregue algo acá una de las dos pantallas se
-   quedaría sin ello, que es lo que ya pasó con las listas de Admin. */
+   Es lo único editable de un comprobante cobrado: los importes no se tocan, pero
+   sin el peluquero la comisión de ese trabajo no le llega a nadie. Un solo
+   dibujante para el detalle de Cuenta y el de Historial. */
 
 let _EMPLEADOS = null;
 // Propio y no el de la pantalla: este archivo lo usan dos, y no todas tienen un

@@ -2,26 +2,9 @@ import hashlib, hmac, os, json, base64, time, secrets
 
 TOKEN_HORAS = 12
 
-# Clave con la que se firman los tokens de sesión.
-#
-# Con esta clave se puede FABRICAR un token válido: no hace falta usuario ni
-# contraseña, alcanza con firmar {"usuario": "x", "rol": "dueno"} y ya se entra
-# como dueño a todo, backup de la base incluido. O sea que la clave es, en los
-# hechos, la contraseña maestra del sistema.
-#
-# Antes acá había un valor por defecto escrito en el código. Como el repositorio
-# es público, ese valor está publicado: cualquiera que encontrara la dirección
-# de la app entraba sin saber ninguna contraseña. Y no era un descuido evidente,
-# porque la app arrancaba y funcionaba perfecto sin la variable de entorno.
-#
-# Ahora no hay valor por defecto. La clave sale de:
-#   1. la variable de entorno SECRET_KEY, si está;
-#   2. si no, una al azar que se guarda en la base la primera vez y se reusa
-#      siempre (por eso los tokens sobreviven a los reinicios).
-#
-# La opción 2 hace que la app sea segura sin que haya que configurar nada. La 1
-# sigue existiendo porque es la única forma de compartir la misma clave entre
-# varias instancias, si algún día se corre más de una.
+# Con esta clave se fabrica un token de dueño sin saber ninguna contraseña, así
+# que es la contraseña maestra: NUNCA un valor por defecto en el código, que el
+# repositorio es público. Sale de SECRET_KEY o de una al azar guardada en la base.
 _CLAVE_EN_BASE = "secret_key"
 _cache = None
 
@@ -73,11 +56,9 @@ def verificar_token(token: str):
         payload = json.loads(base64.urlsafe_b64decode(raw.encode()))
         if payload["exp"] < time.time():
             return None
-        # Los tokens que no son de sesión llevan "t" y NO valen para entrar a la
-        # app: los firma la misma clave, así que sin esto el código de sueldos
-        # —que no sabe ni de usuario ni de rol— pasaría como una sesión válida y
-        # el que lo tuviera entraría a todo lo demás. Los de sesión no llevan "t"
-        # para que los que ya están dando vueltas sigan andando.
+        # Los tokens que no son de sesión llevan "t": los firma la misma clave, así
+        # que sin esto el código de sueldos pasaría como sesión válida y el que lo
+        # tuviera entraría a todo lo demás.
         if payload.get("t"):
             return None
         return payload
@@ -85,11 +66,9 @@ def verificar_token(token: str):
         return None
 
 # ---------- el código de la pantalla de sueldos ----------
-# Es otra cosa que la sesión: dice QUIÉN de las empleadas abrió su sueldo, no
-# quién entró a la app. El navegador lo guarda solo en memoria y lo tira al salir
-# de la pantalla, así que este vencimiento es el último techo: lo que dura, como
-# mucho, un permiso que se hubiera escapado. Media hora alcanza de sobra para
-# cargar las horas del día; si se pasa, la pantalla vuelve a pedir el código.
+# Dice QUIÉN de las empleadas abrió su sueldo, no quién entró a la app. El
+# navegador lo guarda en memoria y lo tira al salir, así que el vencimiento es
+# el último techo de un permiso que se hubiera escapado.
 SUELDO_MINUTOS = 30
 
 def crear_token_sueldo(empleado_id: int) -> str:

@@ -1,27 +1,10 @@
 "use strict";
 
-/* Instante congelado para los golden tests de escpos.js.
+/* Instante congelado para los golden: deCuenta() imprime la fecha de hoy, así
+ * que sin congelar el reloj el golden falla todos los días.
  *
- * deCuenta() imprime la fecha de "hoy" con new Date().toLocaleDateString(),
- * sin argumento: si no se congela el reloj, ese renglón cambia todos los días
- * y el golden falla aunque el código no se haya tocado.
- *
- * Elegimos mediodía en Argentina (15:00 UTC = 12:00 ART, UTC-3) a propósito,
- * no una hora cercana a la medianoche. toLocaleDateString() no recibe un
- * timeZone explícito en escpos.js, así que resuelve la fecha con la zona
- * horaria del proceso que lo ejecuta (ver cargar-escpos.js). Si el instante
- * congelado cayera cerca de la medianoche, un desfasaje de zona horaria -sea
- * de la máquina que corre el test, sea un futuro bug de UTC contra ART en el
- * código bajo prueba- podría correr la fecha impresa al día siguiente o
- * anterior, y el test podría seguir pasando por pura casualidad en unas
- * corridas y fallar en otras. A mediodía, un desfasaje razonable de un par de
- * horas para cualquier lado no cruza la línea de cambio de día: si el test
- * llegara a fallar por esto, sería un fallo limpio y reproducible, no uno
- * intermitente. Es el mismo tipo de trampa horaria que ya afectó a este
- * proyecto una vez (los egresos cargados a las 21:23 cayendo en la caja del
- * día siguiente, ver CLAUDE.md), así que elegimos alejarnos de esa zona de
- * riesgo a propósito.
- */
+ * Va al MEDIODÍA argentino y no cerca de la medianoche: la fecha se resuelve con
+ * la zona del proceso, y así un desfasaje de un par de horas no cambia el día. */
 const FECHA_CONGELADA = new Date("2026-08-30T15:00:00Z").getTime();
 
 /* Cada caso: qué fixture cargar, contra qué golden compararlo, y con cuál
@@ -35,13 +18,9 @@ const CASOS = [
   { fixture: "presupuesto-con-descuento.json", golden: "presupuesto-con-descuento.bin", fn: "deComprobante" },
   { fixture: "pago-parcial.json", golden: "pago-parcial.bin", fn: "deComprobante" },
   { fixture: "sin-cliente.json", golden: "sin-cliente.bin", fn: "deComprobante" },
-  /* Los cuatro casos de la seña. La cuenta se lee de arriba a abajo —subtotal, la
-     seña que ya dejó, subtotal otra vez y recién al final el 10%— y el total es
-     lo que la clienta pone sobre el mostrador, no lo que salió el trabajo. Las
-     dos primeras son las dos puntas de sena_saldado(), que se rompieron las
-     dos; la tercera es una seña que tapa también los extras, y la cuarta es la
-     combinación de todos los días —seña en efectivo y la clienta paga en
-     efectivo—, que es la que más se imprime y era la única sin golden. */
+  /* Los cuatro casos de la seña: las dos puntas de sena_saldado(), una seña que
+     tapa también los extras, y la combinación de todos los días —seña en
+     efectivo y la clienta paga en efectivo—, que es la que más se imprime. */
   { fixture: "sena-transfer-cuenta-efectivo.json", golden: "sena-transfer-cuenta-efectivo.bin", fn: "deComprobante" },
   { fixture: "sena-efectivo-cuenta-transfer.json", golden: "sena-efectivo-cuenta-transfer.bin", fn: "deComprobante" },
   { fixture: "sena-tapa-los-extras.json", golden: "sena-tapa-los-extras.bin", fn: "deComprobante" },

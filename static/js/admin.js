@@ -1,11 +1,7 @@
-/* Admin ya no es una pantalla de dueña.
-
-   El empleado entra y maneja las listas con las que factura todos los días
-   —catálogo, formas de pago, tipos de egreso, descuentos, ajustes por ítem y
-   alias—, que es la parte que se desactualiza sola y por la que había que
-   esperar a que la dueña se sentara. Lo que no ve ni de casualidad son los
-   usuarios y el backup: eso se saca del documento con ajustarPorRol(), y el
-   backend lo rebota igual si alguien prueba el endpoint a mano. */
+/* Admin no es una pantalla de dueña: el empleado maneja las listas con las que
+   factura todos los días, que son las que se desactualizan solas. Lo que no ve
+   son los usuarios y el backup, que ajustarPorRol() saca del documento y el
+   backend rebota igual. */
 requireLogin(); pintarNav(); ajustarPorRol();
 const DUENO = esDueno();
 const $=s=>document.querySelector(s);
@@ -14,18 +10,12 @@ const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&
 /* La categoría que se está mirando, con tres estados y no dos:
    - un nombre  → esa categoría, que es lo que se le pide al servidor;
    - null       → "Todas", que es una VISTA y no una categoría;
-   - undefined  → todavía no se eligió nada (la primera carga elige la primera).
-   El "Todas" no se podía representar y por eso el botón no hacía nada: caía en
-   `cargarItems()`, que pedía los ítems de la categoría en la que estabas parado
-   y volvía a dibujar exactamente lo mismo. */
+   - undefined  → todavía no se eligió nada (la primera carga elige la primera). */
 let catActual;
-/* La categoría elegida MIENTRAS hay un filtro puesto, que no es lo mismo que
-   `catActual`. Sin filtro, la categoría ES la vista: se le piden al servidor los
-   ítems de esa y nada más. Con el filtro de comisión prendido la vista es el
-   catálogo entero filtrado, y la categoría pasa a ser un recorte de arriba de
-   eso —"de los que van a comisión, los de color"—. Son dos cosas distintas y
-   guardarlas en la misma variable dejaba la pantalla mostrando una y el rail
-   marcando la otra. null = todas. */
+/* La categoría elegida MIENTRAS hay un filtro puesto, que no es `catActual`:
+   sin filtro la categoría ES la vista, y con el filtro de comisión prendido pasa
+   a ser un recorte de arriba de él. En la misma variable, la pantalla muestra
+   una y el rail marca la otra. null = todas. */
 let catFiltro=null;
 let ITEMS_ALL=[];
 /* El porcentaje general de comisión, el que rige cuando el ítem no tiene el
@@ -38,15 +28,10 @@ let VALOR_HORA_GENERAL = 0;
 /* El mismo mínimo que pide el servidor. Se chequea acá para avisar antes de
    mandar, no en lugar de allá: el que frena de verdad es el backend. */
 const LARGO_MINIMO_PASS = 8;
-/* Dos modos para la misma lista.
-
-   Leyendo, que es como se entra casi siempre —a mirar un precio—, la fila no
-   tiene ni un casillero abierto: un campo abierto invita a escribir, y un precio
-   cambiado sin querer se cobra.
-
-   Editando, que es cuando hay que actualizar precios y son veinte de una
-   sentada, se abren todos juntos como estaban antes. Ir de a uno ahí es abrir y
-   cerrar veinte paneles. */
+/* Dos modos para la misma lista. Leyendo, que es como se entra casi siempre, la
+   fila no tiene ni un casillero abierto: un campo abierto invita a escribir y un
+   precio cambiado sin querer se cobra. Editando se abren todos juntos, que ahí
+   son veinte de una sentada. */
 let modoEdicion=false;
 
 function toast(m){const t=$("#toast");t.textContent=m;t.classList.add("show");setTimeout(()=>t.classList.remove("show"),2200);}
@@ -127,16 +112,10 @@ async function cargarItems(){
   renderItems(items, false);
 }
 
-/* El catálogo se dibuja igual que en facturar: el rail de categorías al costado
-   y los ítems en tarjetas. Es la misma lista y se busca de la misma manera, así
-   que se ve igual; lo único que cambia es qué pasa al tocar uno —allá se agrega
-   al ticket, acá se abre para editar—.
-
-   Para LEER y no para editar: la tarjeta no tiene ni un casillero abierto. Antes
-   cada renglón tenía el nombre y el precio habilitados, con Guardar y Eliminar
-   al lado: cuarenta campos abiertos en una pantalla a la que casi siempre se
-   entra a mirar un precio. Y un campo abierto invita a escribir, que en un
-   precio se cobra. */
+/* El catálogo se dibuja igual que en facturar —el rail al costado y los ítems en
+   tarjetas— porque es la misma lista y se busca igual; lo único que cambia es
+   qué pasa al tocar uno. Para LEER: la tarjeta no tiene ni un casillero
+   abierto. */
 function renderItems(items, mostrarCat){
   const cont=$("#listaItems");
   cerrarPaneles();
@@ -216,16 +195,10 @@ function pintarRail(){
     agregar(c, c, cuentas.get(c), buscando ? c === catFiltro : c === catActual));
 }
 
-/* La lista entera abierta: nombre, precio y comisión de cada ítem.
-
-   Se guarda con un solo botón al final, no con uno por renglón: la razón de
-   estar acá es cambiar varios, y veinte Guardar es veinte viajes al servidor y
-   veinte chances de dejar uno sin apretar. Lo que se tocó queda marcado hasta
-   que se guarda, porque mirando la lista ya no se puede saber qué está en la
-   base y qué está solo tipeado.
-
-   Eliminar y la categoría no están acá: van en el panel de Editar, de a uno.
-   Borrar un ítem entre veinte casilleros abiertos se aprieta sin mirar. */
+/* La lista entera abierta: nombre, precio y comisión de cada ítem, con UN botón
+   al final. Lo tocado queda marcado hasta que se guarda, porque mirando la lista
+   ya no se sabe qué está en la base. Eliminar y la categoría van en el panel de
+   Editar, de a uno: entre veinte casilleros se aprieta sin mirar. */
 function renderItemsEditables(items, mostrarCat){
   const cont=$("#listaItems");
   if(items.length===0){ cont.innerHTML='<p class="muted">Sin ítems para mostrar.</p>'; return; }
@@ -289,16 +262,11 @@ function renderItemsEditables(items, mostrarCat){
     const marcar=()=>{
       const ahora=leer();
       const sucia = JSON.stringify(ahora)!==original;
-      /* Lo tocado vive en CAMBIOS y no en la fila. La fila se destruye al
-         cambiar de categoría —se redibuja la lista entera— y con ella se perdía
-         lo tipeado: había que acordarse de guardar antes de moverse, o se perdía
-         sin aviso. Así se pueden recorrer todas las categorías y guardar una vez
-         al final. */
+      /* Lo tocado vive en CAMBIOS y no en la fila, que se destruye al cambiar de
+         categoría: así se recorren todas y se guarda una vez al final. */
       /* `catOriginal` es de DÓNDE salió la fila, no a dónde va: sirve para contar
-         cuántas categorías se tocaron. Antes se guardaba como `categoria` y le
-         pisaba a la de `ahora`, así que mover un ítem se veía en pantalla —el
-         chip, la fila marcada, la cuenta— pero al guardar se mandaba la
-         categoría vieja y no se movía nada. */
+         cuántas categorías se tocaron, y no puede llamarse `categoria` porque
+         le pisaría la de `ahora`, que es a dónde se la manda. */
       if(sucia) CAMBIOS.set(it.id, {...ahora, catOriginal:it.categoria, nombreViejo:it.nombre});
       else CAMBIOS.delete(it.id);
       row.classList.toggle("sucia", sucia);
@@ -334,13 +302,10 @@ function renderItemsEditables(items, mostrarCat){
     cont.appendChild(row);
   });
 
-  /* El botón se crea UNA vez y después solo se le cambia el texto.
-
-     Redibujando la barra entera en cada tecla, el click se perdía: al apretar
-     Guardar, el casillero pierde el foco y dispara su `change`, eso rehacía la
-     barra, y el botón desaparecía entre el mousedown y el mouseup. El navegador
-     entonces no manda ningún click y no pasa nada — había que apretar dos veces
-     para que guardara. */
+  /* El botón se crea UNA vez y después solo se le cambia el texto: redibujando
+     la barra en cada tecla, al apretar Guardar el casillero pierde el foco y
+     dispara su `change`, el botón desaparece entre el mousedown y el mouseup y
+     el navegador no manda ningún click. */
   const barra=document.createElement("div");
   barra.className="barra-guardar";
   const btn=Object.assign(document.createElement("button"),
@@ -353,17 +318,11 @@ function renderItemsEditables(items, mostrarCat){
   pintarSeleccion();
 }
 
-/* Ponerle el mismo porcentaje a varios de una.
+/* Ponerle el mismo porcentaje a varios de una: tipear quince veces el mismo
+   número es una en la que se tipea otro sin darse cuenta.
 
-   Cambiar el porcentaje de una categoría entera era tipear el mismo número
-   quince veces, y quince veces es una en la que se tipea otro sin darse cuenta.
-   Acá se eligen —todos los que están a la vista, o los que se marquen a mano— y
-   se pone una sola vez.
-
-   No guarda: escribe en los mismos casilleros por los que se hubiera pasado
-   tipeando, y de ahí sigue el camino de siempre —queda marcado como tocado y se
-   guarda con el botón de abajo—. Así se ve qué va a pasar antes de que pase, y
-   si se erró el número se sale del modo edición y no quedó nada. */
+   No guarda: escribe en los mismos casilleros y de ahí sigue el camino de
+   siempre, así se ve qué va a pasar antes de que pase. */
 function barraSeleccion(){
   const barra=document.createElement("div");
   barra.className="barra-sel";
@@ -418,11 +377,9 @@ function barraSeleccion(){
   };
   barra.querySelector(".general").onclick = () => aplicar("");
 
-  /* Mover de categoría, que es la otra cosa que se hace de a varios: entrás a
-     una categoría, ves los tres que no van ahí y los mandás juntos. Tampoco
-     guarda solo —queda como cambio pendiente, con el chip diciendo a dónde van—
-     porque mover veinte ítems sin poder mirarlos antes es de las cosas que se
-     arreglan de a una. */
+  /* Mover de categoría, la otra cosa que se hace de a varios. Tampoco guarda
+     solo: queda como cambio pendiente, con el chip diciendo a dónde van, que
+     mover veinte sin mirarlos antes se arregla de a uno. */
   barra.querySelector(".mover").onclick = () => {
     const destino = barra.querySelector(".cat-todos").value.trim();
     if(!destino){ toast("Escribí o elegí la categoría destino"); barra.querySelector(".cat-todos").focus(); return; }
@@ -525,15 +482,9 @@ function cerrarPaneles(){
   document.querySelectorAll(".btn-item.abierto").forEach(b=>b.classList.remove("abierto"));
 }
 
-/* La ficha de un ítem: la misma para editar y para cargar uno nuevo.
-
-   Todo junto y un solo Guardar. El precio y la marca de comisión son del mismo
-   ítem, y con un botón por campo se guarda uno y se pierde el otro sin que nada
-   avise.
-
-   Las dos marcas son interruptores y no casillas sueltas: son dos preguntas de
-   sí o no que cambian cómo se comporta el ítem al vender, no dos ajustes de un
-   formulario. Y el porcentaje aparece recién cuando la comisión está prendida,
+/* La ficha de un ítem, la misma para editar y para cargar uno nuevo. Todo junto
+   y un solo Guardar: con un botón por campo se guarda uno y se pierde el otro
+   sin que nada avise. El porcentaje aparece recién con la comisión prendida,
    porque hasta entonces no significa nada. */
 function fichaItem(it){
   const nuevo = !it;
@@ -863,28 +814,14 @@ if(DUENO) $("#btnBackup").onclick=async()=>{
   finally{$("#btnBackup").textContent="Descargar backup";$("#btnBackup").disabled=false;}
 };
 /* ---- Listas largas ----
-
-   Admin creció: con veintipico de categorías, más los tipos de egreso, los
-   usuarios y el resto, había que barrer media pantalla con el dedo para llegar
-   de una tarjeta a la siguiente. Pasando las 5 filas, la lista se queda de ese
-   alto y el resto se desliza adentro.
-
-   El alto NO es un número fijo: se mide dónde arranca la fila 6 y se corta ahí.
-   Las filas no miden todas lo mismo (la de un usuario tiene inputs, la de un
-   alias es un renglón), así que un max-height a ojo mostraría 4 filas y media
-   en una lista y 7 en otra.
-
-   Se deja el encadenado del scroll como viene de fábrica: con el dedo sobre la
-   lista se mueve la lista, y cuando llega al final sigue la página. Cortarlo
-   (overscroll-behavior: contain) obligaría a sacar el dedo de la lista para
-   poder seguir bajando, que es justo lo molesto. */
+   Pasando las 5 filas, la lista se queda de ese alto y el resto se desliza
+   adentro. El alto NO es fijo: se mide dónde arranca la fila 6, que las filas no
+   miden todas lo mismo y un max-height a ojo muestra 4 y media o 7. */
 const TOPE_FILAS = 5;
 
-/* Se corta unos píxeles DESPUÉS de la fila 5, así asoma el principio de la 6.
-   Con el corte justo al ras, en las listas de filas altas (usuarios, ajustes)
-   la última entraba completa y el degradé caía sobre el espacio en blanco de
-   abajo: la lista parecía terminar ahí y nadie iba a probar deslizarla. Ver un
-   pedazo de la fila siguiente no se puede malinterpretar. */
+/* Se corta unos píxeles DESPUÉS de la fila 5, así asoma el principio de la 6:
+   al ras, el degradé cae sobre el espacio en blanco y la lista parece terminar
+   ahí. Ver un pedazo de la fila siguiente no se puede malinterpretar. */
 const ASOMO = 18;
 
 function acotar(cont){
@@ -922,23 +859,17 @@ window.acotarLista = cont => { acotar(cont); cont.addEventListener("scroll", () 
 // dibujar y no se pide nada al servidor.
 /* Empleados. Tiene su propio dibujante y no el de las listas configurables
    porque además del nombre hay un código, y un código no se muestra: se pone o
-   se saca. Es la misma forma que la tarjeta de usuarios —fila de lectura, panel
-   que se abre al pedirlo— por la misma razón.
-
-   Todo esto es solo de la dueña: la tarjeta tiene data-dueno y ajustarPorRol()
-   ya la sacó del documento cuando entra el empleado, así que acá no hay nada que
-   dibujar ni nada que pedirle al servidor. */
+   se saca. Es solo de la dueña: ajustarPorRol() ya sacó la tarjeta del documento
+   cuando entra el empleado, así que acá no hay nada que pedirle al servidor. */
 /* Los dados de baja quedan escondidos detrás de un botón. Siguen existiendo
    —sus comprobantes dicen su nombre— pero no tienen por qué estar en la lista
    que se lee todos los días. */
 let VER_BAJAS = false;
 
-/* De lo general a lo particular: arriba los dos números que valen para todas, y
-   después una línea por persona con un solo botón.
-
-   Antes cada empleada traía cinco botones —renombrar, código, valor hora,
-   horario, sacar—. Con cuatro personas eran veinte, que en la tablet no entran
-   en una línea y dejan el nombre como lo más chico del renglón. */
+/* De lo general a lo particular: arriba los dos números que valen para todas y
+   después una línea por persona, con UN solo botón. Con cinco por empleada son
+   veinte en la tablet, que no entran en una línea y dejan el nombre como lo más
+   chico del renglón. */
 let HORARIOS = {};
 
 async function cargarEmpleados(){
@@ -1391,13 +1322,9 @@ function dibujarCrearEmpleado(){
 }
 
 /* La semana del local en una grilla: filas las empleadas, columnas los días.
-
-   Se mira, no se edita: para cambiar están la barra de arriba —ponerle el mismo
-   horario a varias de una— y el panel de cada persona. Una celda que fuera un
-   formulario se toca sin querer con el dedo, que es con lo que se usa esto.
-
-   Sirve para lo que antes había que reconstruir abriendo panel por panel: quién
-   abre el sábado, qué días no viene nadie, a qué hora hay una sola persona. */
+   Contesta quién abre el sábado, qué días no viene nadie y a qué hora hay una
+   sola persona. Se mira y no se edita —para eso están la barra de arriba y el
+   panel de cada una—: una celda que fuera formulario se toca sin querer. */
 function pintarGrillaHorarios(emps){
   const caja = $("#grillaHorario");
   if(!caja) return;
@@ -1437,13 +1364,10 @@ function pintarGrillaHorarios(emps){
   });
 }
 
-/* Ponerle el mismo horario a varias de una. Es el "para todas" del horario, y
-   está arriba por lo mismo que el valor hora general: lo que alcanza a más
-   gente va primero.
-
-   Solo pisa los días elegidos: el resto de la semana de cada una queda como
-   estaba. Mandar la semana entera con un solo tramo le borraría a Agustina el
-   corte del mediodía sin avisar. */
+/* Ponerle el mismo horario a varias de una: va arriba por lo mismo que el valor
+   hora general, que lo que alcanza a más gente va primero. Solo pisa los días
+   elegidos; la semana entera con un solo tramo le borraría a alguna el corte del
+   mediodía sin avisar. */
 function pintarBarraHorario(emps){
   const caja = $("#barraHorario");
   if(!caja) return;
@@ -1521,14 +1445,10 @@ async function refrescarEmpleados(){ await cargarEmpleados(); }
 
 if($("#listaEmpleados")) cargarEmpleados();
 
-/* Unificar dos empleados en uno.
-
-   Se elige a mano y no se adivina: "Agus" y "Agustina" pueden ser la misma
-   persona o dos distintas, y juntar a dos que no eran la misma le pasa el sueldo
-   de una a la otra. Por eso pide confirmación diciendo los dos nombres.
-
-   Se listan también las dadas de baja: una duplicada muchas veces está
-   justamente ahí, desactivada para sacarla del medio. */
+/* Unificar dos empleados en uno. Se elige a mano y no se adivina: juntar a dos
+   que no eran la misma le pasa el sueldo de una a la otra, y por eso el cartel
+   dice los dos nombres. Se listan también las dadas de baja, que una duplicada
+   muchas veces está justamente ahí. */
 async function cargarFusion(){
   const caja = $("#fusionEmpleados");
   if(!caja) return;

@@ -1,18 +1,8 @@
-/* Tema claro / oscuro.
+/* Tema claro / oscuro. Va en el <head> y SIN defer: tiene que estampar el tema
+   antes de que el navegador pinte, o se ve un fogonazo blanco.
 
-   Este archivo se carga en el <head> y SIN defer a propósito: tiene que estampar
-   el tema antes de que el navegador pinte, o al abrir cada pantalla se ve un
-   fogonazo blanco antes de que aparezca el oscuro.
-
-   La elección se guarda por dispositivo: la tablet del mostrador puede quedar en
-   claro y el celular en oscuro, sin pisarse. Pero dentro del MISMO dispositivo
-   todas las pestañas tienen que mostrar lo mismo, y esa es la parte que hay que
-   trabajar: cada pestaña estampa el tema una sola vez al abrirse, así que si
-   tocás el botón en una, las que ya estaban abiertas se quedan con el anterior
-   hasta que las recargues. Por eso abajo se escucha "storage" (avisa a las otras
-   pestañas), "pageshow" (el navegador puede devolver la página congelada tal
-   como estaba al salir, sin volver a correr esto) y "visibilitychange" (red de
-   seguridad al volver a una pestaña). */
+   Se guarda por dispositivo y cada pestaña lo estampa una sola vez al abrirse:
+   de ahí los tres eventos de abajo, que avisan a las que ya estaban. */
 (function(){
   var CLAVE = "pelu_tema";
 
@@ -33,12 +23,9 @@
     return document.documentElement.getAttribute("data-tema");
   }
 
-  /* Al cambiar de tema cambian de color TODOS los elementos de la pantalla a la
-     vez. Los botones y los renglones tienen una transición de 150ms para el
-     hover, y sin esto se animan todos juntos: en una lista larga eso es medio
-     segundo de tirones. La transición sirve para el mouse encima de UN botón,
-     no para repintar la pantalla entera, así que la apagamos mientras dura el
-     cambio y la devolvemos en el cuadro siguiente. */
+  /* La transición de 150ms es para el mouse encima de UN botón, no para
+     repintar la pantalla entera: al cambiar de tema se animan todos juntos y en
+     una lista larga eso es medio segundo de tirones. */
   function sinTransiciones(){
     var d = document.documentElement;
     d.setAttribute("data-cambiando-tema", "");

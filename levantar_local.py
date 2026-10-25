@@ -9,16 +9,12 @@ sí sabés, y arranca el servidor.
     python3 levantar_local.py --puerto 8001
     python3 levantar_local.py --solo-restaurar    # sin levantar el servidor
 
-Dos caminos para lo mismo. Con --dump hace falta PostgreSQL instalado, y la base
-local sale de la variable POSTGRES_LOCAL o de
-postgresql://postgres:postgres@127.0.0.1:5432. Con --json alcanza con Python:
-SQLite viene adentro, que es lo que salva a una PC donde no se puede instalar
-nada. El .json se baja de la app, en Admin, con el usuario de la dueña.
+Con --dump hace falta PostgreSQL (la base local sale de POSTGRES_LOCAL o de
+postgresql://postgres:postgres@127.0.0.1:5432); con --json alcanza con Python,
+que SQLite viene adentro. El .json se baja de la app, en Admin.
 
-OJO: esto BORRA y recrea la base local en cada corrida. Por eso se niega a
-apuntar a cualquier cosa que no sea 127.0.0.1: el día que alguien corra esto con
-la URL de Railway pegada por error, tiene que dar un error y no borrar la base
-del local.
+OJO: esto BORRA y recrea la base local en cada corrida, y por eso se niega a
+apuntar a algo que no sea 127.0.0.1.
 """
 import argparse
 import glob
@@ -30,10 +26,8 @@ import sys
 from pathlib import Path
 from urllib.parse import urlparse
 
-# Contraseña del usuario local. Es pública a propósito y no importa: esta base
-# vive en tu PC y es una copia descartable. Lo que NO se puede es quedarse con
-# los usuarios de producción, porque sus contraseñas no las sabe nadie acá y no
-# habría forma de entrar a la app.
+# Pública a propósito: la base vive en tu PC y es descartable. Hace falta porque
+# el backup trae los usuarios de producción y sus contraseñas no las sabe nadie.
 USUARIO_LOCAL, PASS_LOCAL = "local", "local1234"
 
 SOLO_LOCAL = {"127.0.0.1", "localhost", "::1"}
@@ -46,11 +40,9 @@ def es_local(url: str) -> bool:
 def buscar_binario(nombre: str) -> str:
     """Encuentra psql / pg_restore aunque no estén en el PATH.
 
-    El instalador de PostgreSQL en Windows NO agrega su carpeta bin al PATH, así
-    que llamarlos por nombre revienta con un "WinError 2: el sistema no puede
-    encontrar el archivo especificado" que no menciona a PostgreSQL por ningún
-    lado. Se busca igual que en backup_salon.ps1: la versión más alta instalada,
-    porque pg_restore puede con dumps más viejos pero no al revés.
+    El instalador de Windows NO agrega su bin al PATH y el error que sale no
+    menciona a PostgreSQL. Se toma la versión más alta instalada: pg_restore
+    puede con dumps más viejos, no al revés.
     """
     ruta = shutil.which(nombre)
     if ruta:
@@ -133,9 +125,8 @@ def desde_dump(a) -> str:
 def desde_json(a) -> str:
     """El camino sin PostgreSQL: el backup de /api/backup entra en un SQLite.
 
-    SQLite viene adentro de Python, así que en una PC donde no se puede instalar
-    nada esto es lo único que hay. La app ya corre contra SQLite cuando no hay
-    DATABASE_URL: es lo mismo que se usa para desarrollar.
+    Es lo único que se puede en una PC donde no se instala nada, y es contra lo
+    que la app corre igual cuando no hay DATABASE_URL.
     """
     if not a.json.exists():
         sys.exit(f"No existe {a.json}")
@@ -145,12 +136,9 @@ def desde_json(a) -> str:
     print(f"Destino: {archivo}  (SQLite, sin PostgreSQL)\n")
     revisar_dependencias(a)
 
-    # El archivo se borra y se hace de nuevo, no se vacía: uno de una versión
-    # anterior tiene las tablas con menos columnas, y `create_all` crea las que
-    # falten enteras pero no le agrega una columna a una tabla que ya está. Con
-    # vaciarlo, la restauración muere a mitad de camino con un "table empleados
-    # has no column named valor_hora". Y no se pierde nada: acá lo que vale es
-    # el backup, no lo que hubiera en la copia.
+    # Se borra y se hace de nuevo, no se vacía: `create_all` no le agrega una
+    # columna a una tabla que ya está, así que una copia vieja moriría a mitad de
+    # la restauración.
     if archivo.exists():
         print(f"Esto BORRA {archivo} y lo hace de nuevo con el backup.")
         if input("Escribí BORRAR para seguir: ").strip() != "BORRAR":
@@ -189,8 +177,7 @@ def donde_escribir(salida: Path) -> Path:
 def escribir_json(salida: Path):
     """Pasa la base local a un backup JSON, que es lo que se puede llevar.
 
-    Un .dump solo lo abre pg_restore, así que en una PC donde no se puede
-    instalar PostgreSQL no vale nada. El JSON lo lee cualquier Python.
+    Un .dump sin pg_restore no se abre; el JSON lo lee cualquier Python.
     """
     import json
     import main                      # importarlo corre migrar() sobre la copia
@@ -209,10 +196,8 @@ def escribir_json(salida: Path):
 def apuntar_la_app_a(url: str):
     """Deja la copia como base de la app, y tiene que correr ANTES de importarla.
 
-    `database.py` lee DATABASE_URL una sola vez, cuando se lo importa, y a partir
-    de ahí el motor ya está armado. Cualquier `import models` anterior a esto
-    —el de restaurar_backup, sin ir más lejos— deja la app apuntando al SQLite
-    de desarrollo, y lo que se exporte después sale de ahí y no de la copia.
+    `database.py` lee DATABASE_URL una sola vez, al importarlo. Cualquier
+    `import models` anterior deja la app apuntando al SQLite de desarrollo.
     """
     os.environ["DATABASE_URL"] = url
 
@@ -220,8 +205,8 @@ def apuntar_la_app_a(url: str):
 def revisar_dependencias(a):
     """Todo lo que puede faltar se comprueba ANTES de tocar la base.
 
-    Con un requirements sin instalar, el paso destructivo ya corrió y el que
-    avisa del problema viene después: te quedás sin la copia local y sin la app.
+    Si no, el paso destructivo ya corrió cuando aparece el error: te quedás sin
+    la copia local y sin la app.
     """
     if a.solo_restaurar:
         return
@@ -250,8 +235,8 @@ def main():
 
     if a.json and a.dump:
         sys.exit("--dump y --json son dos caminos distintos para lo mismo: pasá uno solo.")
-    # Antes de restaurar: si el nombre no sirve, que se entere ahora y no después
-    # de veinte minutos de restauración.
+    # Se valida el nombre acá para no descubrirlo después de veinte minutos de
+    # restauración.
     salida_json = donde_escribir(a.a_json) if a.a_json is not None else None
 
     url_base = desde_json(a) if a.json else desde_dump(a)
@@ -302,11 +287,8 @@ def main():
         return
 
     print(f"Servidor en http://127.0.0.1:{a.puerto}   (Ctrl+C para cortar)\n")
-    # uvicorn se levanta DENTRO de este proceso, no como hijo. Con un proceso
-    # hijo, en Windows el Ctrl+C queda repartido entre los dos y no corta ni uno
-    # ni el otro: hay que cerrar la ventana. Con os.execvpe tampoco servía, que
-    # en Windows no reemplaza el proceso y devuelve la consola antes de tiempo.
-    # Corriéndolo acá adentro hay un solo proceso y el Ctrl+C llega derecho.
+    # uvicorn se levanta DENTRO de este proceso, no como hijo: en Windows el
+    # Ctrl+C de un hijo queda repartido entre los dos y no corta ninguno.
     import uvicorn
     uvicorn.run("main:app", host="127.0.0.1", port=a.puerto)
 

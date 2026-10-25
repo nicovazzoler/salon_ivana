@@ -112,11 +112,9 @@
   .lineas{ margin:0 0 var(--sp-3); padding:var(--sp-2) var(--sp-3) var(--sp-3);
            border:1px solid var(--border-sutil); border-radius:var(--r-md);
            background:var(--bg-sutil); }
-  /* La línea de un ítem, entera en un renglón: la cantidad adelante, el nombre,
-     el precio a la derecha con el de efectivo abajo y el quitar al final.
-     Facturar la parte en dos renglones porque ahí hay seis controles por línea;
-     acá son tres y, partida, la tira quedaba sola con medio renglón vacío al
-     lado y cada zona ocupaba el doble de alto. */
+  /* La línea de un ítem, entera en un renglón. Facturar la parte en dos porque
+     ahí hay seis controles por línea; acá son tres y partida cada zona ocupaba
+     el doble de alto con medio renglón vacío al lado. */
   .lin{ display:grid; grid-template-columns:auto minmax(0,1fr) auto auto;
         align-items:center; gap:var(--sp-2) var(--sp-3); padding:var(--sp-2) 0;
         border-bottom:1px solid var(--border-sutil); }
@@ -419,12 +417,10 @@ function pintarCatalogo(){
   });
 }
 
-/* Agregar una zona desde acá, sin pasar por Admin.
-
-   El precio que se pone es el de TRANSFERENCIA, que es el de la lista impresa
-   en el local; el de efectivo lo saca el backend con la misma cuenta que el
-   script de la lista. Es la peluquería al revés, y es el único orden en el que
-   la chica puede copiar un renglón del papel sin hacer ninguna cuenta. */
+/* Agregar una zona desde acá, sin pasar por Admin. El precio que se pone es el
+   de TRANSFERENCIA, que es el de la lista impresa, y el de efectivo lo saca el
+   backend: es la peluquería al revés, y el único orden en el que se copia un
+   renglón del papel sin hacer ninguna cuenta. */
 function abrirAlta(cat){
   const caja = document.querySelector(`.alta[data-alta="${CSS.escape(cat)}"]`);
   if(!caja) return;
@@ -508,13 +504,9 @@ function pintar(){
   });
 
   /* La cuenta se lee de arriba a abajo y toda en la lista de transferencia, que
-     es a la que se ancla el comprobante: subtotal, la seña que ya dejó, y recién
-     al final el 10% de pagar en efectivo. Puesto al revés —la seña ya
-     descontada— el renglón de la seña mostraba un número más chico del que la
-     clienta tiene a favor y no había forma de explicarlo en el mostrador.
-
-     El descuento sale de restar, no de multiplicar por 0,9: así el total de
-     acá es exactamente el que va a cobrar el backend. */
+     es a la que se ancla el comprobante: subtotal, la seña que ya dejó y recién
+     al final el 10% de pagar en efectivo. El descuento sale de restar y no de
+     multiplicar por 0,9, así el total es exactamente el que cobra el backend. */
   const trans = TICKET.reduce((a, l) => a + l.transfer * l.cantidad, 0);
   const efvo  = TICKET.reduce((a, l) => a + l.precio * l.cantidad, 0);
   const enEfvo = FORMA === "efectivo";
@@ -603,12 +595,9 @@ document.addEventListener("click", e => {
     $("#cliDrop").style.display = "none";
 });
 
-/* Todas las señas sin usar, de quien sean.
-
-   La lista no es de la clienta que se está facturando: es el pizarrón de lo que
-   el local debe trabajo. Se señan todos los turnos y la clienta que viene hoy
-   puede no ser la que señó ayer; con la lista atada a la de arriba, esa plata no
-   se veía hasta que alguien la buscaba cliente por cliente. */
+/* Todas las señas sin usar, de quien sean: es el pizarrón de lo que el local
+   debe trabajo, no la lista de la clienta que se está facturando. La que viene
+   hoy puede no ser la que señó ayer. */
 let TODAS_SENAS = [];
 
 async function mostrarSenas(avisar){
@@ -664,13 +653,10 @@ document.querySelectorAll("#formas button").forEach(b => {
 
 $("#btnVaciar").onclick = () => { TICKET = []; pintar(); };
 
-/* Cobrar es el mismo camino que Facturar: se crea el comprobante, se aplican las
-   señas y recién después se paga lo que falta. En ese orden, porque la seña baja
-   el saldo: cobrando primero, la plata que ya dejó le queda a favor para siempre.
-
-   Nada de la cuenta se hace acá: el total, el descuento en efectivo y lo que
-   tapa la seña los calcula el backend. Lo de esta pantalla es lo que se le
-   muestra, y sale de pedirle el comprobante después de cada paso. */
+/* Se crea el comprobante, se aplican las señas y recién después se paga lo que
+   falta: en ese orden porque la seña baja el saldo, y cobrando primero la plata
+   que ya dejó le queda a favor para siempre. Nada de la cuenta se hace acá: el
+   total, el descuento y lo que tapa la seña los calcula el backend. */
 $("#btnCobrar").onclick = async () => {
   const nombre = $("#cliente").value.trim();
   if(!nombre){ toast("Falta el nombre del cliente"); $("#cliente").focus(); return; }
@@ -692,13 +678,9 @@ $("#btnCobrar").onclick = async () => {
             + `${SENAS.length ? "\n\nSe le aplican las señas que tiene a favor." : ""}`
             + `\n\n¿Lo cobramos?`)){ b.disabled = false; return; }
 
-  /* Crear, aplicar las señas y cobrar, todo en UN pedido.
-
-     Eran tres: si la segunda o la tercera no llegaba —internet del local, la
-     tablet que se duerme— el ticket quedaba cobrado a medias. Con seña quedaba
-     cobrado SOLO con la seña y el resto como deuda, y si lo que fallaba era la
-     consulta del saldo ni siquiera avisaba. Ahora o queda cobrado o no queda
-     nada. */
+  /* Crear, aplicar las señas y cobrar, todo en UN pedido: en tres llamadas, la
+     que no llega —internet del local, la tablet que se duerme— deja el ticket
+     cobrado a medias y sin avisar. O queda cobrado o no queda nada. */
   const cuerpo = {tipo: "ticket", cliente_id: CLI.id, cliente_nombre: null,
                   peluquero: $("#atiende").value || null,
                   forma_pago: FORMA, descuento_pct: 0, mostrar_motivo: false,
@@ -743,13 +725,9 @@ document.querySelectorAll(".solapas button").forEach(b => {
 });
 
 /* ---------- el día ----------
-
-   El cierre de caja de la depilación: lo que se facturó, lo que entró, los
-   gastos y el reparto. Está acá y no en Sueldos porque son dos negocios
-   distintos: en Sueldos se paga la peluquería y acá se paga el día.
-
-   Todo lo de esta pantalla lo hacen las dos, sin código en el medio: el día de
-   depilación se trabaja entre dos con una sola tablet. */
+   El cierre de caja de la depilación: lo facturado, lo que entró, los gastos y
+   el reparto. Está acá y no en Sueldos porque son dos negocios distintos. Todo
+   lo de esta pantalla lo hacen las dos, sin código: hay una sola tablet. */
 let DIA = null;              // la sesión que se está mirando
 let SESION_VISTA = null;     // null = la abierta; un id = una del historial
 
@@ -1142,12 +1120,10 @@ function verHistorial(){
   cargarSesiones();
 }
 
-/* Se anula lo de una sesión que todavía está abierta, no solo lo de hoy: una
-   jornada dura dos días y el error se encuentra al otro, cuando se cierra la
-   cuenta. Cerrada sí frena —el reparto ya se liquidó y sacarle un ticket le
-   cambiaría la cuenta a lo que se pagó—, que es la misma regla de los gastos.
-   El que frena de verdad es el backend; esto es para no ofrecer un botón que
-   va a fallar. */
+/* Se anula lo de una sesión abierta y no solo lo de hoy: la jornada dura dos
+   días y el error se encuentra al otro. Cerrada sí frena, que el reparto ya se
+   liquidó. El que frena de verdad es el backend; esto es para no ofrecer un
+   botón que va a fallar. */
 const anulable = c => c.sesion_id ? !c.sesion_cerrada : (c.fecha || "").slice(0,10) === hoyArg();
 
 let SESIONES = [];

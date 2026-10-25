@@ -17,11 +17,9 @@
   .navbar .lbl::after{ content:""; flex:1; height:1px; background:var(--oro-a25); }
 
   /* --- formulario de turno --- */
-  /* Los formularios de esta pantalla —agendar, abrir el día, la ausencia, el
-     horario de una— van todos en la misma grilla: columnas de ancho parejo que
-     se acomodan solas. Con flex y `flex:1 1 130px` cada campo crecía distinto
-     según lo que tuviera adentro, y los rótulos quedaban a distancias distintas
-     unos de otros: eso era lo que se veía torcido. */
+  /* Los formularios de esta pantalla van todos en la misma grilla, con columnas
+     de ancho parejo. Con flex cada campo crece según lo que tenga adentro y los
+     rótulos quedan a distancias distintas: eso es lo que se ve torcido. */
   .form-turno{
     display:grid; grid-template-columns:repeat(auto-fit, minmax(11rem, 1fr));
     align-items:end; gap:var(--sp-3);
@@ -66,12 +64,9 @@
   .btn-cancelar{ background:transparent; border:1px solid var(--danger); color:var(--danger); }
   .sin-turnos{ padding:var(--sp-5); text-align:center; color:var(--text-tenue); }
 
-  /* La lista del día: una tabla por franja, lado a lado. Cada turno era una
-     tarjeta con su marco y su relleno —cinco turnos llenaban la pantalla y lo
-     que más había era espacio en blanco—, y apiladas una debajo de la otra las
-     franjas seguían haciendo scrollear con media pantalla vacía al costado.
-     En columnas, el día entero entra de una y se compara mañana contra tarde sin
-     moverse. En el celular vuelven a apilarse, que es lo único que entra. */
+  /* La lista del día: una tabla por franja, lado a lado, así el día entero entra
+     de una y se compara mañana contra tarde sin moverse. En el celular vuelven
+     a apilarse, que es lo único que entra. */
   .franjas{ display:grid; grid-template-columns:repeat(auto-fit, minmax(22rem, 1fr));
             gap:var(--sp-4); align-items:start; }
   .franja{ min-width:0; }
@@ -109,15 +104,9 @@
 
   /* --- vista DÍA por COLUMNAS: una columna por empleada ---
 
-     El día como grilla: las horas a la izquierda y cada empleada en su columna.
-     Con cuatro o seis personas es la única forma de ver los huecos de un vistazo;
-     en una lista ordenada por hora hay que reconstruir mentalmente quién está
-     libre, que es justo lo que no se quiere hacer con una clienta esperando.
-
-     Se dibujan DOS capas encima de la misma columna: la franja clara es cuándo
-     está disponible, y los bloques adentro son los turnos. Un hueco es
-     "disponible y sin turno". Sin la capa de abajo, un espacio vacío a las 15:00
-     podría ser "está libre" o "hoy no vino", que son cosas opuestas. */
+     Las horas a la izquierda y cada empleada en su columna. Son DOS capas: la
+     franja clara es cuándo está disponible y los bloques son los turnos, así un
+     hueco es "disponible y sin turno" y no "hoy no vino". */
   .vista-dia{ display:none; gap:6px; margin-bottom:var(--sp-3); }
   .vista-dia.hay{ display:flex; }
   .vista-dia .chip{
@@ -427,11 +416,9 @@ async function init(){
     $("#serviciosList").innerHTML=SERVICIOS.map(s=>`<option value="${s}">`).join("");
     CLIENTES=await (await authFetch("/api/clientes")).json();
     $("#clientesList").innerHTML=CLIENTES.map(c=>`<option value="${c.nombre}">`).join("");
-    /* Quién atiende sale de la lista de empleados, igual que en facturar. Acá
-       sigue siendo opcional —un turno se agenda muchas veces sin saber todavía
-       quién lo va a tomar—, pero elegido de la lista y no tipeado: si acá se
-       escribe "Karla" y en el ticket dice "Carla", el turno y el trabajo no se
-       pueden juntar. */
+    /* Quién atiende sale de la lista de empleados. Acá es opcional —un turno se
+       agenda sin saber quién lo va a tomar— pero elegido y no tipeado: con
+       "Karla" acá y "Carla" en el ticket no se pueden juntar. */
     const emps = await (await authFetch("/api/empleados")).json();
     $("#fPeluquero").innerHTML = `<option value="">Sin asignar</option>`
       + emps.map(e=>`<option>${e.nombre}</option>`).join("");
@@ -512,12 +499,9 @@ function ajustarAltoNotas(){
 window.addEventListener("resize", ajustarAltoNotas);
 
 /* ---------- VISTA DÍA por COLUMNAS ----------
-
-   Todo se posiciona por MINUTOS desde la apertura, no por celdas: un turno de 45
-   o de 90 no entra en una grilla de casilleros de 30 sin mentir sobre dónde
-   empieza y dónde termina, y ahí el hueco que se ve deja de ser el hueco que hay.
-   La ventana del día (apertura y cierre) la decide el servidor mirando los
-   horarios y los turnos, así que un turno afuera de hora no desaparece. */
+   Todo se posiciona por MINUTOS desde la apertura y no por celdas: un turno de
+   45 o de 90 en casilleros de 30 miente sobre dónde empieza, y ahí el hueco que
+   se ve deja de ser el hueco que hay. La ventana la decide el servidor. */
 /* Los nombres los escribe una persona: cliente, servicio, motivo. Van por
    innerHTML así que hay que escaparlos, y esta pantalla no lo tenía porque hasta
    ahora todo lo escribía con textContent. */
@@ -593,18 +577,12 @@ async function renderColumnas(){
   cont.appendChild(wrap);
 }
 
-/* Abrir el día tiene UN botón, y está acá en el medio y no arriba en la barra.
+/* Abrir el día va acá en el medio y no arriba en la barra: pasa una vez por mes
+   y aparece donde se ve el problema, que es el día vacío.
 
-   Arriba era un botón más al lado de "Ausencia", del mismo tamaño y con el
-   mismo peso que algo que se usa todas las semanas; abrir el día pasa una vez
-   por mes. Acá aparece donde se ve el problema —el día vacío— y explica qué es.
-
-   Aparece igual cuando el día YA está abierto, como un renglón chico: si no, la
-   única forma de corregir quién viene o quién lo lleva sería sacar a todas
-   primero, que no se puede hacer desde ninguna pantalla.
-
-   Cualquier día, no solo domingos y lunes: la depilación se mudó de día más de
-   una vez y el botón escondido dejaba sin forma de decir quién lleva el día. */
+   Con el día YA abierto queda igual, como un renglón chico, o corregir quién
+   viene sería sacar a todas primero. Y en cualquier día, no solo domingos y
+   lunes: la depilación se mudó de día más de una vez. */
 function bloqueAbrirDia(nadie, abierto, sinHorarios){
   const av = document.createElement("div");
   av.className = "sin-turnos";
@@ -736,14 +714,10 @@ function dibujarColumna(c, ini, fin, alto){
   return col;
 }
 
-/* Abrir un día suelto: el lunes de depilación, o el feriado que igual se trabaja.
-
-   Se marca la fecha y quiénes vienen, y queda cargado para todas de una. No es
-   una regla del calendario —"cada 2º lunes"— a propósito: el lunes que abren lo
-   deciden ellas, y una regla diría que trabajan un día que nadie eligió.
-
-   Lo que se guarda es el estado exacto del día: destildar a alguien y volver a
-   guardar la saca. */
+/* Abrir un día suelto: el lunes de depilación, o el feriado que igual se
+   trabaja. No es una regla del calendario a propósito —el día que abren lo
+   deciden ellas— y lo que se guarda es el estado exacto: destildar a alguien y
+   volver a guardar la saca. */
 function panelAbrirDia(){
   document.querySelectorAll(".panel-exc").forEach(p=>p.remove());
   const pan = document.createElement("div");
@@ -795,15 +769,10 @@ function panelAbrirDia(){
     renderDia();
   };
 }
-/* Una ausencia: vacaciones, una licencia, un turno médico, un trámite.
-
-   Es el mismo dato que "Hoy distinto" —una excepción de horario— pero se carga
-   al revés: ahí se arranca del día y se corrige a una persona; acá se arranca de
-   la persona y se marcan los días que falta. Una licencia son dos semanas, y
-   cargarla día por día no se hace nunca.
-
-   Sin tramo es "no viene". Con tramo es el caso del turno médico: viene, pero
-   solo una parte del día. */
+/* Una ausencia: vacaciones, licencia, turno médico, trámite. Es el mismo dato
+   que "Hoy distinto" cargado al revés —de la persona y no del día—, porque una
+   licencia son dos semanas y día por día no se carga nunca. Sin tramo es "no
+   viene"; con tramo viene solo una parte del día. */
 const MOTIVOS = ["Vacaciones", "Licencia", "Turno médico", "Trámite", "Franco"];
 
 function panelAusencia(){
@@ -930,15 +899,9 @@ function panelExcepcion(c){
   pan.querySelector(".eCerrar").onclick = () => pan.remove();
 }
 
-/* La lista del día, partida en mañana y tarde.
-
-   Cada turno era una tarjeta con su marco y su relleno: cinco turnos llenaban la
-   pantalla y lo que más había era espacio en blanco. Acá son renglones de una
-   línea, agrupados en las dos mitades en que el local piensa el día, y cada
-   grupo dice cuántos tiene.
-
-   Los cancelados van al final, apagados y en su propio grupo: son los que menos
-   se miran y mezclados hacían dudar de si un turno seguía en pie. */
+/* La lista del día, en renglones de una línea y partida en las dos mitades en
+   que el local piensa el día, con la cuenta de cada grupo. Los cancelados van al
+   final, apagados y aparte: mezclados hacen dudar de si un turno sigue en pie. */
 const CORTE_TARDE = 14 * 60;                    // las 14:00
 
 function pintarLista(turnos, cont){

@@ -14,16 +14,11 @@ function requireLogin(){ if(!getToken()){location.href="/login";} }
 function requireDueno(){ requireLogin(); if(getRol()!=="dueno"){location.href="/";} }
 function esDueno(){ return getRol()==="dueno"; }
 
-/* Deja en la pantalla lo que le corresponde a quien entró.
+/* Deja en la pantalla lo que le corresponde a quien entró: se marca el elemento
+   con data-dueno o data-empleado y acá se BORRA, no se esconde.
 
-   Un solo lugar en vez de un `if(getRol()...)` por bloque: se marca el elemento
-   con data-dueno (solo la dueña) o data-empleado (solo el empleado) en el HTML.
-   Se BORRA y no se esconde, así lo que quedó afuera no aparece por un cambio de
-   estilo ni sigue estando para el que abra el inspector.
-
-   Es ADEMÁS del control del backend, nunca en lugar de él: esto es para que a
-   cada uno no le aparezca algo que no le sirve. Lo que de verdad no puede hacer,
-   lo frena el servidor. */
+   Es ADEMÁS del control del backend y nunca en lugar de él: lo que de verdad no
+   se puede hacer lo frena el servidor. */
 function ajustarPorRol(raiz){
   const doc = raiz || document;
   const sobra = esDueno() ? "[data-empleado]" : "[data-dueno]";
@@ -47,11 +42,9 @@ function pintarNav(){
     {href:"/clientes",   txt:"Clientes"},
     {href:"/historial",  txt:"Historial"},
     {href:"/agenda",     txt:"Agenda"},
-    // Inventario y Admin también son del empleado, pero recortados: en
-    // inventario ve las cantidades sin poder tocarlas, y en admin ve las listas
-    // con las que factura (catálogo, formas de pago, descuentos) y no los
-    // usuarios ni el backup. Reportes sigue siendo solo de la dueña: ahí está
-    // cuánto factura el local, que no es asunto de quien atiende.
+    // Inventario y Admin son también del empleado, recortados: lee las
+    // cantidades sin tocarlas y maneja las listas con las que factura, no los
+    // usuarios ni el backup. Reportes es solo de la dueña.
     {href:"/inventario", txt:"Inventario"},
     // Sueldos lo usan los dos, pero para cosas distintas: la empleada carga sus
     // horas y la dueña mira lo que debe y cierra el ciclo.
@@ -66,11 +59,9 @@ function pintarNav(){
     html+=`<a href="${l.href}"${esActual?' class="actual"':''}>${l.txt}</a>`;
   }
   html+=`<a href="#" onclick="logout();return false;">Salir</a>`;
-  /* En el celular los diez links no entran en una fila: se parten en tres y le
-     comen media pantalla a todas las pantallas, tapando además lo que quedó
-     arriba al scrollear. Acá van adentro de un cajón que abre el botón de las
-     tres rayas; de tablet para arriba el cajón es la fila de siempre y el botón
-     no existe. */
+  /* En el celular los diez links se parten en tres filas y comen media
+     pantalla, así que van adentro de un cajón que abre el botón de las tres
+     rayas. De tablet para arriba el cajón es la fila de siempre. */
   html=`<div class="links">${html}</div>`;
   /* Interruptor, no botón: se ven los dos destinos a la vez y la perilla marca
      en cuál estás. role="switch" para que un lector de pantalla lo anuncie como
@@ -110,16 +101,10 @@ function engancharHamburguesa(nav){
   document.addEventListener("keydown", ev => { if(ev.key === "Escape") cerrar(); });
 }
 
-/* Aviso de contraseña sin cambiar.
-
-   Las contraseñas con las que se crean los usuarios están escritas en
-   seed_datos.py, y el repositorio es público: mientras alguien siga usando una,
-   entrar a la app es cuestión de saber la dirección. El backend lo detecta y lo
-   dice en /api/yo.
-
-   El cartel va arriba de todo, en todas las pantallas, y no se puede cerrar:
-   un aviso que se puede tapar se tapa el primer día y no se lo ve nunca más.
-   Desaparece solo cuando la contraseña se cambia de verdad. */
+/* Aviso de contraseña sin cambiar. Las de fábrica están en seed_datos.py y el
+   repositorio es público: mientras alguien use una, entrar es cuestión de saber
+   la dirección. El cartel va en todas las pantallas y NO se puede cerrar: uno
+   que se tapa se tapa el primer día y no se ve nunca más. */
 async function avisarPasswordDeFabrica(){
   if(!getToken() || document.getElementById("avisoSeguridad")) return;
   let yo;
@@ -143,15 +128,10 @@ async function avisarPasswordDeFabrica(){
   document.body.insertBefore(barra, document.body.firstChild);
 }
 
-/* Cuánto vive un ticket a medio cargar antes de descartarse solo.
-
-   Una hora: el borrador existe para el ida y vuelta de un rato —se va a fijar
-   algo a la agenda y vuelve— y no para retomar mañana. Pasado ese rato, lo que
-   quedó en pantalla es casi siempre basura de otro cobro, y ofrecerlo como si
-   fuera el ticket de la clienta que está adelante es peor que perderlo.
-
-   Vive acá, en el archivo que cargan las once pantallas, para que la marca del
-   menú y la pantalla de facturar no puedan quedar con dos plazos distintos. */
+/* Cuánto vive un ticket a medio cargar antes de descartarse solo. El borrador
+   es para el ida y vuelta de un rato, no para retomar mañana: pasado eso,
+   ofrecerlo como si fuera el ticket de la clienta que está adelante es peor que
+   perderlo. Vive acá para que el menú y facturar no usen dos plazos. */
 const BORRADOR_HORAS = 1;
 window.BORRADOR_HORAS = BORRADOR_HORAS;
 

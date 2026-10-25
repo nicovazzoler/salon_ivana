@@ -1,10 +1,5 @@
 """Carga la lista de precios de depilación en el catálogo, sin pasar por la app.
 
-Existe porque la lista entera son veinte zonas y cargarlas a mano desde Admin, en
-la tablet, es media hora de tipear precios: justo lo que no se quiere hacer a
-mano cuando un número mal puesto se le cobra a una persona. Y porque hace falta
-poder cargarla sin tener el usuario de producción.
-
     python3 cargar_depilacion.py zonas.txt --dry        # mira y no toca nada
     DATABASE_URL=postgresql://... python3 cargar_depilacion.py zonas.txt
 
@@ -19,16 +14,12 @@ entre corchetes:
     [DEPILACION MASCULINO]
     Espalda           25000
 
-De ahí sale el precio de efectivo, que es el que guarda el catálogo: la base
-guarda el efectivo y el de transferencia se calcula con calcular_transfer(). Como
-la lista impresa es la de transferencia y tiene un 10% de descuento en efectivo,
-el camino es al revés: efectivo = transferencia − 10%, y después se CONTROLA que
-calcular_transfer() de ese efectivo devuelva exactamente el precio impreso. Si
-alguno no cierra, lo dice y no escribe nada: un ítem cuyo transfer no es el de la
-lista imprime en el ticket un precio distinto del que se le dijo a la clienta.
+El catálogo guarda el EFECTIVO, así que se va al revés: efectivo = transferencia
+− 10%, y se controla que calcular_transfer() de ese efectivo devuelva el precio
+impreso. Si alguno no cierra no escribe nada.
 
-Se puede correr muchas veces: lo que falta lo crea, lo que cambió lo actualiza,
-lo que ya está igual lo deja. Nunca borra ni desactiva nada.
+Se puede correr muchas veces: crea lo que falta, actualiza lo que cambió y nunca
+borra ni desactiva nada.
 """
 import argparse
 import math
@@ -43,9 +34,8 @@ from database import engine
 def calcular_transfer(precio_efectivo: int) -> int:
     """La misma cuenta que main.py: efectivo × 1,1111 para arriba a múltiplo de 100.
 
-    Copiada a propósito y no importada: importar main.py levanta la app entera,
-    con sus migraciones y su siembra, que es justo lo que un script que apunta a
-    producción no tiene que hacer de costado.
+    Copiada y no importada: importar main.py levanta la app entera, con sus
+    migraciones y su siembra, contra la base de producción.
     """
     return math.ceil(precio_efectivo * 1.1111 / 100) * 100
 
@@ -77,11 +67,8 @@ def leer_lista(ruta):
 def efectivo_de(transfer: int) -> int:
     """El precio de efectivo que hay que guardar para que salga ESE transfer.
 
-    El 10% de descuento en efectivo es el camino de ida; la vuelta la hace
-    calcular_transfer() con el 1,1111, y las dos cuentas no son inversas exactas.
-    Por eso se prueba el valor de al lado: con la lista del local los veinte dan
-    justo, pero el día que entre un precio nuevo que no cierre, mejor que lo
-    arregle el script que descubrirlo en el papel.
+    El −10% y el ×1,1111 no son inversas exactas, así que se prueba también el
+    valor de al lado.
     """
     base = round(transfer * 0.9)
     for cand in sorted(range(base - 60, base + 61), key=lambda c: (abs(c - base), c)):

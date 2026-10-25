@@ -150,14 +150,9 @@ function parseISO2(s){ const [y,m,d]=s.split("-").map(Number); return new Date(y
 
 /* Fecha y hora de facturación de un comprobante.
 
-   La "Z" no es un detalle: el backend guarda UTC sin marcar la zona, y sin ella
-   el navegador lee "2026-09-07T23:40" como si ya fuera hora argentina. La fecha
-   salía corrida para todo lo facturado después de las 21:00 y la hora habría
-   salido tres horas adelantada. Es el mismo truco que usa escpos.js.
-
-   Un servicio anotado de otro día lleva las 12:00 puestas por el backend para
-   que caiga en la caja correcta, así que ahí va la fecha sola: mostrar esa hora
-   sería inventar a qué hora se atendió. */
+   La "Z" no es un detalle: el backend guarda UTC sin marcar la zona y sin ella
+   el navegador lo lee como hora argentina. Un servicio anotado de otro día lleva
+   las 12:00 puestas, así que ahí va la fecha sola. */
 function fechaHoraComp(comp){
   const iso = comp.fecha.endsWith("Z") ? comp.fecha : comp.fecha + "Z";
   const d = new Date(iso);

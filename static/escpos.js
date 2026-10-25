@@ -1,32 +1,17 @@
 /* Generador ESC/POS para la comandera de 80mm (48 columnas).
  *
- * Vive acá y no adentro de ticket.html porque lo usan dos pantallas: la vista
- * de impresión, donde se toca el botón, y facturar, que manda el papel sola
- * apenas se termina de cobrar. Tener dos copias del generador sería garantía
- * de que un día el papel que sale al cobrar diga algo distinto del que sale al
- * reimprimir desde el historial.
- *
- * Todo lo que la comandera necesita saber entra por parámetro (el comprobante y
- * los datos del negocio): el archivo no lee nada del documento ni de la red.
- */
+ * Uno solo para la vista de impresión y para facturar: con dos copias, un día
+ * el papel que sale al cobrar dice algo distinto del que sale al reimprimir.
+ * Todo entra por parámetro; no lee nada del documento ni de la red. */
 (function(global){
 "use strict";
 
 const ANCHO = 48;
 
 /* ---------- acentos en la comandera ----------
-
-   La comandera no habla UTF-8: trabaja con una tabla de 256 caracteres, y la
-   que trae de fábrica es ASCII. Si le mandás la "ó" de "Salón" en crudo,
-   imprime un símbolo cualquiera; por eso antes se mandaba todo sin tildes.
-
-   ESC/POS permite cambiarle la tabla: "ESC t 2" selecciona CP850
-   (multilingüe), que tiene todos los acentos del español. Es la tabla más
-   estándar y la soportan tanto las Epson como los clones genéricos.
-
-   Si esta unidad no la soportara, las palabras con tilde saldrían con
-   símbolos raros. En ese caso poné ACENTOS en false: vuelve a imprimir sin
-   tildes, que es más feo pero se lee siempre. */
+   La comandera no habla UTF-8: "ESC t 2" le selecciona CP850, que tiene los
+   acentos del español y la soportan las Epson y los clones. Si esta unidad no
+   la soportara, poner ACENTOS en false: imprime sin tildes. */
 const ACENTOS = true;
 const CP850 = { "á":0xA0,"é":0x82,"í":0xA1,"ó":0xA2,"ú":0xA3,
                 "Á":0xB5,"É":0x90,"Í":0xD6,"Ó":0xE0,"Ú":0xE9,
@@ -80,20 +65,9 @@ const hayAjuste = l => !!(l.ajuste_pct || l.ajuste_monto);
 
 /* ---------- la cuenta de un comprobante, renglón por renglón ----------
 
-   Se lee igual que la pantalla de facturar, y toda en la lista de
-   transferencia, que es a la que se ancla el comprobante: subtotal, la seña que
-   la clienta ya había dejado, y recién al final el descuento por pagar en
-   efectivo. El total es lo que pone sobre el mostrador HOY; la seña ya la pagó.
-
-   Un solo cálculo para las cuatro pantallas que dibujan esta cuenta (el papel,
-   la vista de impresión, la ficha del cliente y el historial). El descuento
-   sale de RESTAR y no de multiplicar: así la columna cierra siempre y el total
-   de acá es exactamente el que cobró el backend, que es el único que importa.
-
-   La seña se muestra por lo que vale contra la lista de transferencia —el
-   número que se le dijo al tomarla— y no por la plata que entró al cajón, que
-   en efectivo es el 10% menos. Tiene que dar igual que valorSena() de senas.js
-   y que sena_saldado() en el backend. */
+   Se lee de arriba a abajo y toda en la lista de transferencia: subtotal, la
+   seña que ya dejó y al final el 10% de pagar en efectivo. Uno solo para las
+   cuatro pantallas, y el descuento sale de RESTAR: así la columna cierra. */
 const senaTransfer = p => (p.sena_forma || "") === "Efectivo"
   ? Math.ceil((p.monto / 0.9) / 100) * 100 : p.monto;
 
@@ -203,17 +177,10 @@ function textoAjuste(l){
   return (l.ajuste_nombre || (neg ? "Descuento" : "Recargo")) + " " + cuanto;
 }
 
-/* Renglón del ajuste de una línea, para la comandera.
-
-   El porcentaje NO se puede recortar. Con fila2, que corta por la derecha lo de
-   la izquierda, un nombre de ajuste medianamente largo se comía el número:
-   "Cliente frecuente -10%" salía "Cliente frecuente -1" y el ticket del cliente
-   decía 1% en vez de 10%. Un nombre cortado se ve; un porcentaje cortado se lee
-   como si fuera otro.
-
-   filaItem envuelve la etiqueta y baja los precios a un renglón propio si no
-   entran, sin recortar nada. Se sangra 2 para que el "> " marque que el ajuste
-   es de la línea de arriba, y por eso se envuelve contra ANCHO-2. */
+/* Renglón del ajuste de una línea. El porcentaje NO se puede recortar: un
+   nombre cortado se ve, pero "Cliente frecuente -10%" cortado dice 1% en vez de
+   10%. filaItem envuelve la etiqueta sin recortar nada; se sangra 2 para que el
+   "> " marque que es de la línea de arriba, de ahí el ANCHO-2. */
 function lineaAjuste(l){
   const precios = fmtP(l.precio_unit)+" > "+fmtP(pu(l))+" c/u";
   return filaItem("> "+textoAjuste(l), precios, ANCHO-2).map(x => "  "+x);
@@ -239,18 +206,10 @@ function fechaSinAnio(fecha){        // 27/8
   return f.getDate()+"/"+(f.getMonth()+1);
 }
 
-/* Cuánto mide cada columna de la cuenta corriente.
-
-   Los importes NO se recortan nunca: un número mal impreso en la cuenta de un
-   cliente es mucho peor que una fecha corta. Así que se miden los importes de
-   ESTA cuenta, las tres columnas de plata se llevan lo que necesitan y el
-   comprobante se queda con el resto. Se calcula una sola vez para toda la
-   tabla; si se hiciera por renglón, las columnas bailarían.
-
-   Si no entra, se cede de a poco y siempre del lado de la etiqueta: primero el
-   "N-" (la columna ya se llama "Servicio" y son todos del mismo tipo) y
-   final el año. Con el año entero "A-00024 27/8/2026" mide 17 contra 16 de
-   columna, y el ticket del cliente salía diciendo "27/8/202". */
+/* Cuánto mide cada columna de la cuenta corriente. Los importes NO se recortan
+   nunca, así que las tres columnas de plata se llevan lo que necesitan y el
+   comprobante se queda con el resto. Se calcula una vez para toda la tabla, que
+   por renglón las columnas bailarían; si no entra, cede la etiqueta. */
 function anchosCuenta(comps){
   const montos = comps.flatMap(c=>[fmtP(c.total_final), fmtP(c.pagado), fmtP(c.saldo)]);
   const monto = Math.max(9, ...montos.map(m=>m.length+1));   // +1 de aire entre columnas
@@ -440,10 +399,9 @@ function deCuenta(cuenta, negocio){
 
 /* Lo que muestra la tarjeta de un comprobante en el historial y en la ficha.
 
-   Es la plata de MOSTRADOR: la seña ya había entrado antes y no se cuenta dos
-   veces. Pero una seña que tapó la cuenta entera deja la fila en $0, que en una
-   lista se lee como un ticket vacío; ahí va el total del ticket y la forma dice
-   quién lo pagó. */
+   Es la plata de MOSTRADOR: la seña ya había entrado antes. Pero una que tapó
+   la cuenta entera deja la fila en $0, que se lee como un ticket vacío: ahí va
+   el total del ticket y la forma dice "Seña". */
 function montoDeTarjeta(comp){
   const mostrador = comp.cobrado + Math.max(comp.saldo, 0);
   if(mostrador === 0 && comp.total_final > 0 && comp.tipo === "ticket")

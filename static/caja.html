@@ -16,19 +16,15 @@
   th:first-child,
   td:first-child{ text-align:left; }
   /* Las cuatro en fila solo donde entran; abajo manda el auto-fit de
-     components.css, que baja las que no.
-
-     Ojo con el minmax(0,…): `1fr` es minmax(auto,1fr) y ese `auto` es
-     min-content, así que la columna no achica abajo del número que tiene
-     adentro y un día de $472.500 desborda la tarjeta igual. */
+     components.css. Ojo con el minmax(0,…): `1fr` es minmax(auto,1fr) y ese
+     `auto` es min-content, así que la columna no achica abajo del número que
+     tiene adentro y un día de seis cifras desborda la tarjeta igual. */
   @media (min-width:561px){
     .nums{ grid-template-columns:repeat(4, minmax(0, 1fr)); }
   }
   /* El tipo y el concepto se muestran como TEXTO y solo se vuelven casilleros al
-     tocar el lapicito. Adentro de un input el texto no crece con la columna: un
-     concepto largo —"Sueldo Cristina (2026-09-26 a 2026-10-02)"— salía cortado a
-     la mitad, y encima el casillero ocupaba su ancho fijo aunque el egreso
-     dijera dos palabras. */
+     tocar el lapicito: adentro de un input el texto no crece con la columna, así
+     que un concepto largo sale cortado y uno corto ocupa el ancho fijo igual. */
   /* Las columnas de texto se leen de izquierda a derecha; solo el monto se
      alinea a la derecha, que es donde se compara una cifra con la de arriba.
      Con todo a la derecha, el tipo y el concepto quedaban pegados al monto y
@@ -43,10 +39,9 @@
   .mini{ padding:6px 9px; font-size:var(--fs-sm); border-radius:7px; }
 
   /* ----- El detalle en el celular -----
-     Cada fila deja de ser una fila y pasa a ser un bloque de dos renglones: lo
-     que importa arriba y el resto abajo, con el botón al final. Como tabla no
-     entra, y deslizarla de costado para llegar al botón de la última columna
-     no se ve que se pueda: se lee como si el botón estuviera cortado. */
+     Cada fila pasa a ser un bloque de dos renglones, con el botón al final. Como
+     tabla no entra, y que se deslice de costado para llegar al botón de la
+     última columna no se ve: se lee como si estuviera cortado. */
   @media (max-width:560px){
     #detalle table, #detalle tbody, #detalle tr, #detalle td{ display:block; }
     #detalle thead{ display:none; }
@@ -181,10 +176,8 @@ const hoyISO=new Date().toLocaleDateString("en-CA"); // YYYY-MM-DD local
    lugar hay un cartel con el día de hoy. */
 const HOY_SOLO = !$("#fecha");
 /* Con el empleado NO se manda fecha: el que decide qué día es hoy es el
-   servidor. La tablet dice la hora del aparato, y el día argentino no siempre
-   coincide con el del navegador —después de las 21 el servidor ya está en el día
-   siguiente en UTC— así que mandar la fecha de acá terminaba pidiendo un día que
-   para el servidor no era hoy, y contestaba 403. */
+   servidor. La del navegador no siempre coincide con el día argentino, y
+   mandarla termina pidiendo un día que para el servidor no es hoy: 403. */
 function fechaElegida(){ return HOY_SOLO ? "" : $("#fecha").value; }
 if(!HOY_SOLO) $("#fecha").value=hoyISO;
 

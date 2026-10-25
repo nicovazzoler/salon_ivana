@@ -1,24 +1,9 @@
-/* Las listas configurables de la app, en un solo lugar.
+/* Las cinco listas configurables: formas de pago, tipos de egreso, descuentos,
+ * ajustes por ítem y alias de transferencia.
  *
- * Son cinco: formas de pago, tipos de egreso, descuentos, ajustes por ítem y
- * alias de transferencia. (Empleados también es una lista, pero tiene la suya en
- * admin.js: además del nombre hay un código, y un código no se muestra.)
- *
- * Este archivo hace dos cosas y las usan dos pantallas:
- *
- *   - Listas.dibujar(): pinta una lista editable adentro de un contenedor. Es
- *     lo que usa Admin, donde las cinco están una abajo de la otra.
- *   - Listas.abrir(): abre esa misma lista en un panel, sin salir de donde
- *     estás. Es lo que usa Facturar desde el lapicito que hay al lado de cada
- *     desplegable: si al cobrar falta un descuento, se carga ahí y se sigue,
- *     en vez de irse a Admin y volver con el ticket a medio hacer.
- *
- * Que sea el MISMO dibujante importa: si fueran dos, un día se agrega un campo
- * en Admin y el panel de facturar sigue sin pedirlo.
- *
- * No lee nada del documento ni depende de las pantallas: los helpers que
- * necesita están acá adentro.
- */
+ * `dibujar()` las pinta en un contenedor (Admin) y `abrir()` las pone en un panel
+ * sin salir de la pantalla (el lapicito de Facturar). El MISMO dibujante: con
+ * dos, un día se agrega un campo en Admin y el panel sigue sin pedirlo. */
 (function(global){
 "use strict";
 
@@ -133,11 +118,9 @@ const LISTAS = {
 };
 
 /* ---------- El dibujante ----------
-
-   Una fila por elemento, editable donde está, y arriba de todo la fila para
-   cargar uno nuevo. Los rótulos van SOLO en esa primera fila y hacen de
-   encabezado de las columnas de abajo, que se alinean con ella: un solo lugar
-   donde dice qué es cada campo. */
+   Una fila por elemento, editable donde está, y arriba de todo la de cargar uno
+   nuevo. Los rótulos van SOLO en esa primera fila y hacen de encabezado de las
+   columnas de abajo. */
 function dibujar(cont, nombreLista, alCambiar){
   if(typeof cont === "string") cont = document.querySelector(cont);
   const cfg = LISTAS[nombreLista];
@@ -145,11 +128,9 @@ function dibujar(cont, nombreLista, alCambiar){
 
   const campos = typeof cfg.campos === "function" ? cfg.campos() : cfg.campos;
 
-  /* La grilla se arma con los anchos que declara cada campo. Van en píxeles y no
-     en "auto" a propósito: cada fila tiene su propia grilla, así que una columna
-     "auto" mide distinto arriba (donde está el rótulo "Mostrar motivo") que
-     abajo (donde está solo la casilla), y las columnas dejarían de alinearse.
-     La última es la de los botones, que reserva su ancho desde el CSS. */
+  /* Los anchos van en píxeles y no en "auto": cada fila tiene su propia grilla,
+     así que una columna "auto" mide distinto en la del rótulo que en las de
+     abajo y dejarían de alinearse. */
   const cols = campos.map(c => c.ancho || "minmax(0,1fr)").join(" ") + " auto";
 
   function control(campo, valor){
@@ -226,11 +207,8 @@ function dibujar(cont, nombreLista, alCambiar){
       return;
     }
 
-    /* Las que ya están van en su propio contenedor y no sueltas en la tarjeta.
-       Es lo que permite que, cuando la lista es larga, se deslice SOLO esta
-       parte y la fila de "agregar" se quede fija arriba: si el corte fuera
-       sobre la tarjeta entera, cargar algo nuevo con veinte tipos de egreso
-       cargados obligaría a subir hasta arriba de todo primero. */
+    /* Las que ya están van en su propio contenedor para que con la lista larga
+       se deslice SOLO esta parte y la fila de "agregar" quede fija arriba. */
     const caja = document.createElement("div");
     caja.className = "filas";
     cont.appendChild(caja);
@@ -241,11 +219,9 @@ function dibujar(cont, nombreLista, alCambiar){
       const fila = document.createElement("div");
       fila.className = "fila-lista" + (trabada ? " trabada" : "");
       fila.style.gridTemplateColumns = cols;
-      /* El rótulo va también en las filas de abajo, aunque en pantalla ancha esté
-         escondido: ahí alcanza con el encabezado de la fila de arriba, pero en
-         angosto la grilla se desarma en un campo por renglón y sin rótulo
-         quedaría "Jubilado / 15 / [ ]" sin decir qué es cada cosa. Se decide en
-         el CSS y no acá, así la misma fila sirve para los dos anchos. */
+      /* El rótulo va también en las filas de abajo aunque en ancho esté escondido:
+         en angosto la grilla se desarma en un campo por renglón y sin él queda
+         "Jubilado / 15 / [ ]". Lo decide el CSS, así la fila sirve para los dos. */
       fila.innerHTML = campos.map(c =>
           `<span class="celda"><label>${esc(c.etiqueta)}</label>${control(c, vals[c.k])}</span>`).join("")
         + `<span class="acc">`
@@ -257,15 +233,10 @@ function dibujar(cont, nombreLista, alCambiar){
       if(trabada){
         fila.querySelectorAll("input,select").forEach(el => el.disabled = true);
       } else {
-        /* Marca de "esto todavía no se guardó".
-
-           Hace falta por dos motivos. Uno: con las filas editables, mirar la
-           lista ya no alcanza para saber qué hay guardado, porque lo que se ve
-           es lo que uno tipeó. Y dos: si el guardado se rechaza —un nombre
-           repetido, por ejemplo— el campo se queda con el texto nuevo para poder
-           corregirlo, y sin esta marca la lista mostraría dos renglones iguales
-           como si los dos estuvieran así en la base. Es el mismo gesto que usa
-           el inventario cuando se toca una cantidad. */
+        /* Marca de "esto todavía no se guardó": con las filas editables, lo que se
+           ve es lo que uno tipeó. Y si el guardado se rechaza el campo se queda
+           con el texto nuevo, que sin la marca se lee como si estuviera en la
+           base. */
         const original = JSON.stringify(leer(fila));
         const marcarSucia = () => fila.classList.toggle("sucia", JSON.stringify(leer(fila)) !== original);
         fila.querySelectorAll("input,select").forEach(el => {
@@ -303,14 +274,9 @@ function dibujar(cont, nombreLista, alCambiar){
 }
 
 /* ---------- El panel ----------
-
-   La misma lista, pero encima de la pantalla en la que estás. Existe para un
-   caso concreto: estás cobrando, falta un descuento o un alias, y la única
-   forma de cargarlo era irse a Admin, buscarlo entre seis tarjetas y volver.
-
-   Se cierra con la X, con Escape o tocando afuera, y al cerrar avisa para que
-   la pantalla vuelva a leer sus desplegables: si cargaste algo y el select
-   sigue mostrando lo de antes, el viaje no sirvió de nada. */
+   La misma lista encima de la pantalla en la que estás, para cargar un descuento
+   o un alias sin irse de un cobro. Se cierra con la X, con Escape o tocando
+   afuera, y al cerrar avisa para que la pantalla relea sus desplegables. */
 let abierto = null;
 
 function abrir(nombreLista, alCerrar){

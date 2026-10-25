@@ -1,15 +1,8 @@
-"""Tests de la aritmética de plata: calcular_transfer, precio_con_ajuste y
-estado_comprobante.
+"""La aritmética de plata del backend, llamando las funciones de main.py derecho.
 
-No levantan el servidor ni usan TestClient: llaman las funciones de main.py
-directo. Para estado_comprobante se arman los comprobantes con SimpleNamespace
-(no hace falta que sean instancias reales de SQLAlchemy, alcanza con que
-tengan los mismos atributos) y siempre se pasa pagos_precargados, así la
-función no dispara ninguna consulta a la base.
-
-Los valores esperados salen de aplicar la regla a mano, no de correr la
-función y copiar lo que devuelve — así el test sirve para agarrar un cambio
-en la fórmula, no solo un cambio accidental en el resultado.
+Los comprobantes se arman con SimpleNamespace y siempre con pagos_precargados,
+así no se toca la base. Los valores esperados salen de aplicar la regla a mano:
+copiar lo que devuelve la función haría que el test no agarre un cambio de fórmula.
 """
 from types import SimpleNamespace
 
@@ -45,8 +38,7 @@ def test_calcular_transfer(efectivo, transfer_esperado):
 
 
 # ---------------------------------------------------------------------------
-# precio_con_ajuste: ajuste por línea, porcentaje O monto fijo (si vienen los
-# dos manda el monto), con signo en los dos, nunca baja de 0.
+# precio_con_ajuste: porcentaje O monto fijo (si vienen los dos manda el monto).
 # ---------------------------------------------------------------------------
 
 @pytest.mark.parametrize(
@@ -182,9 +174,7 @@ def test_estado_comprobante_pago_parcial():
 def test_estado_comprobante_la_sena_no_es_plata_de_mostrador():
     """`cobrado` deja afuera los abonos que vienen de una seña.
 
-    Es el número que muestran el papel y las tarjetas: la seña ya había entrado
-    al cajón antes, así que sumarla otra vez decía que la clienta puso más plata
-    de la que puso.
+    Es el número del papel y de las tarjetas: esa plata ya había entrado al cajón.
     """
     comp = _comprobante(forma_pago="efectivo")  # total_final = 2000
     # Una seña de 500 tomada por transferencia tapa 450 de una cuenta en
@@ -199,9 +189,8 @@ def test_estado_comprobante_la_sena_no_es_plata_de_mostrador():
 
 
 # ---------------------------------------------------------------------------
-# sena_saldado: cuánto tapa una seña depende de en qué lista está escrita cada
-# cosa. El 10% es de la plata que entra en EFECTIVO, no del trabajo, y la seña
-# entró antes. Las dos puntas se rompieron alguna vez.
+# sena_saldado: cuánto tapa una seña sale de en qué lista está escrita cada cosa.
+# El 10% es de la plata que entra en EFECTIVO, no del trabajo.
 # ---------------------------------------------------------------------------
 
 def _sena(monto, forma_pago):
@@ -238,7 +227,7 @@ def test_sena_saldado_mas_grande_que_la_cuenta_se_usa_hasta_ahi():
 
 # ---------------------------------------------------------------------------
 # base_facturada: con qué lista entra cada línea al reparto de la depilación.
-# NO es base_comision: la comisión de peluquería se paga siempre en efectivo.
+# NO es base_comision, que se paga siempre en efectivo.
 # ---------------------------------------------------------------------------
 
 def test_base_facturada_usa_la_lista_con_la_que_se_cobro():
@@ -254,8 +243,7 @@ def test_base_facturada_usa_la_lista_con_la_que_se_cobro():
 def test_la_sena_no_toca_un_ticket_de_peluqueria():
     """Las señas son de depilación: es donde se señan los turnos.
 
-    Se corta antes de tocar la base —por eso `db` puede ser None—, así la que
-    quedó sin usar sigue libre para la jornada que venga.
+    Se corta antes de tocar la base, de ahí que `db` pueda ser None.
     """
     assert _aplicar_senas(None, _comprobante(depilacion=False)) == (0, 0)
 

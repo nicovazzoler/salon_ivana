@@ -43,17 +43,10 @@ if($("#egOtroDiaBox")){
   $("#egBtnHoy").onclick = () => { campo.value = ""; caja.open = false; pintar(); };
 }
 
-/* Aviso del arqueo.
-
-   Un egreso privado en EFECTIVO le deja el arqueo mal al empleado: la plata sale
-   del cajón, pero como él no ve el egreso, la app le va a decir que tendría que
-   haber más de lo que hay. No se prohíbe —a veces el alquiler se paga con la
-   plata del cajón y listo—, pero tiene que estar dicho antes de guardarlo, no
-   descubrirse al cerrar la caja.
-
-   Que sea privado ahora sale del TIPO y de ningún otro lado, así que el aviso se
-   recalcula al tocar el tipo o la forma de pago. TIPOS_PRIVADOS llega vacío para
-   el empleado: para él este aviso no existe, como el resto del asunto. */
+/* Un egreso privado en EFECTIVO le deja el arqueo mal al empleado: la plata sale
+   del cajón y él no ve el egreso. No se prohíbe, pero tiene que estar dicho
+   antes de guardarlo. Sale del TIPO, así que se recalcula al tocar el tipo o la
+   forma de pago; TIPOS_PRIVADOS llega vacío para el empleado. */
 function avisoEgresoPrivado(){
   const caja = $("#egAvisoPrivado");
   if(!caja) return;
@@ -116,16 +109,11 @@ async function init(){
   if(cliParam){ $("#cliente").value=cliParam; }
 }
 
-/* Quién atendió dejó de ser texto libre: es la lista de empleados.
+/* Quién atendió sale de la lista de empleados y es obligatorio: de este nombre
+   sale la comisión, y un ticket sin él es un trabajo que no se le paga a nadie.
 
-   Escrito a mano salían "Carla", "carla " y "Karla", y el sueldo de una persona
-   quedaba partido en tres nombres que el sistema no puede juntar. Y es
-   obligatorio, porque de este nombre sale la comisión: un ticket sin él es un
-   trabajo que no se le paga a nadie y que después hay que reconstruir de memoria.
-
-   Si todavía no hay nadie cargado en la lista, no frena el cobro: el local tiene
-   que poder facturar igual, y ese ticket se completa después desde el detalle
-   del comprobante. */
+   Con la lista vacía no frena el cobro: el local tiene que poder facturar igual
+   y ese ticket se completa después desde el detalle. */
 async function cargarEmpleados(){
   try{ EMPLEADOS = await (await authFetch("/api/empleados")).json(); }
   catch(e){ EMPLEADOS = []; }
@@ -138,14 +126,9 @@ async function cargarEmpleados(){
 }
 
 /* ---------- Las listas configurables ----------
-
-   Formas de pago, tipos de egreso, descuentos, ajustes por ítem y alias salen
-   de listas que se editan. Se cargan de una acá, y se vuelven a cargar cuando
-   alguien las toca desde el panel del lapicito: si cargaste un descuento nuevo
-   y el desplegable sigue mostrando los de antes, el viaje no sirvió de nada.
-
-   Se guarda y se repone lo que estaba elegido. Cambiar la lista no tiene por
-   qué cambiar el ticket que estás armando. */
+   Se cargan de una y se releen cuando alguien las toca desde el panel del
+   lapicito. Se guarda y se repone lo que estaba elegido: cambiar la lista no
+   tiene por qué cambiar el ticket que estás armando. */
 async function cargarListas(cfg){
   if(!cfg) cfg = await (await authFetch("/api/config")).json();
   const eraPago   = $("#egPago").value;
@@ -178,16 +161,11 @@ async function cargarListas(cfg){
   }
 }
 
-/* El lapicito al lado de cada desplegable que sale de una lista.
+/* El lapicito al lado de cada desplegable que sale de una lista: abre la lista
+   ahí mismo, para no irse a Admin con el ticket a medio hacer.
 
-   Es la respuesta a algo que pasaba todos los días: estás cobrando, falta un
-   descuento o el alias de una cuenta nueva, y la única forma de cargarlo era
-   irse a Admin, buscarlo entre seis tarjetas y volver con el ticket a medio
-   hacer. Ahora se abre la lista ahí mismo.
-
-   Se ponen desde acá y no en el HTML para no repetir seis veces la misma
-   envoltura, y porque el campo tiene que quedar adentro de un contenedor
-   flexible junto al botón. */
+   Se ponen desde acá y no en el HTML para no repetir seis veces la envoltura, y
+   porque el campo tiene que quedar en un contenedor flexible junto al botón. */
 function ponerLapiz(selCampo, cualLista){
   const campo = $(selCampo);
   if(!campo || campo.parentElement.classList.contains("con-lapiz")) return;
@@ -226,14 +204,10 @@ function categorias(){
   return set.sort((a,b)=>a.localeCompare(b,'es'));
 }
 
-/* "A comisión" no es una categoría: es un atajo.
-
-   Los trabajos que se le pagan a quien los hace están repartidos en cortes, en
-   color, en reflejos. Para cargarlos hay que acordarse de en cuál cayó cada uno,
-   y son los que más se buscan. Esta pastilla los junta a todos sin sacarlos de
-   su categoría —cada ítem sigue donde estaba, esto es otra puerta para llegar—.
-   El nombre empieza con caracteres que ninguna categoría real puede tener, para
-   que nunca choque con una que alguien escriba a mano. */
+/* "A comisión" no es una categoría sino un atajo: junta los trabajos que se
+   pagan a quien los hace, que están repartidos en cortes, color y reflejos, sin
+   sacarlos de la suya. El nombre empieza con caracteres que ninguna categoría
+   real puede tener, para que nunca choque con una escrita a mano. */
 const CAT_COMISION = "\u0000comision";
 function itemsDe(cat){
   return cat === CAT_COMISION ? CATALOGO.filter(i => i.es_comision)
@@ -347,11 +321,9 @@ function agregar(it){
 }
 
 // --- Ajuste por línea ---------------------------------------------------
-// Va POR UNIDAD y con signo, de dos formas excluyentes:
-//   porcentaje: -10 descuenta un 10%, +15 recarga un 15%
-//   monto fijo: -2000 descuenta $2000, +1500 recarga $1500
-// Mismo criterio que precio_con_ajuste() en el backend: si hay monto, manda el
-// monto; el mismo importe se resta de las dos listas y nunca baja de 0.
+// POR UNIDAD, con signo y excluyentes: porcentaje O monto fijo. Mismo criterio
+// que precio_con_ajuste() en el backend: si hay monto manda el monto, el mismo
+// importe se resta de las dos listas y nunca baja de 0.
 const conAjuste = (base, pct, monto) => {
   base = base || 0;
   if(monto) return Math.max(base + monto, 0);
@@ -590,11 +562,9 @@ function renderTicket(){
       row.querySelector(".u-pct").onclick = () => cambiarUnidad("%");
       row.querySelector(".u-mon").onclick = () => cambiarUnidad("$");
 
-      /* Editar la lista de ajustes desde el propio renglón. Acá ya se podía
-         tipear un ajuste suelto con "Otro…", así que esto es para el otro caso:
-         el que vas a volver a usar y querés dejar cargado. Lo que la línea ya
-         tiene no se toca —el ajuste está aplicado y su nombre quedó copiado en
-         ella—; lo que se refresca es el desplegable. */
+      /* Editar la lista de ajustes desde el propio renglón, para el que vas a
+         volver a usar; el suelto se tipea con "Otro…". Lo que la línea ya tiene
+         no se toca: su nombre quedó copiado ahí. */
       row.querySelector(".aj-editar").onclick = () => Listas.abrir("ajustes", async hubo => {
         if(!hubo) return;
         await cargarListas();
@@ -851,13 +821,9 @@ let compActual=null;
 let compEsDeOtroDia=false;   // el servicio en curso es de un día anterior (no se imprime)
 
 /* ---- Servicio de otro día ----
-
-   Cuando se olvidan de cargar algo, se anota con la fecha en que se hizo: así
-   la venta y la plata caen en la caja de ESE día, que es donde tienen que
-   estar. El comprobante guarda además cuándo se lo cargó, y con eso el papel
-   puede decir "anotado el 30/8" sin mentir sobre el día que se atendió.
-
-   Un servicio de otro día NO se imprime: el cliente ya se fue. */
+   Se anota con la fecha en que se hizo, así la venta y la plata caen en la caja
+   de ESE día; el comprobante guarda además cuándo se lo cargó, y de ahí sale el
+   "anotado el 30/8" del papel. Uno de otro día NO se imprime: el cliente se fue. */
 function fechaHoyLocal(){
   // el input date quiere AAAA-MM-DD en hora local, no el ISO en UTC
   const d = new Date();
@@ -899,16 +865,9 @@ if(hayOtroDia()){
 }
 
 /* ---- Impresión ----
-
-   Antes había que crear el comprobante, encontrar el botón de imprimir y
-   tocarlo. Ahora sale solo al terminar de cobrar: el papel se arma con el
-   MISMO generador que usa la pantalla de impresión (/static/escpos.js), así
-   que lo que sale al cobrar y lo que sale al reimprimir son idénticos.
-
-   Se llama SIEMPRE después de limpiar la pantalla. El esquema rawbt: es una
-   navegación: si el celular no tiene RawBT instalado, se va de la página. Con
-   el ticket ya guardado y la pantalla limpia, eso no cuesta nada; al revés,
-   costaría el borrador. */
+   Sale sola al terminar de cobrar, con el MISMO generador que la pantalla de
+   impresión. Se llama SIEMPRE después de limpiar: el esquema rawbt: es una
+   navegación y sin RawBT instalado se va de la página. */
 async function imprimirComprobante(id){
   try{
     const r = await authFetch("/api/comprobantes/"+id);
@@ -1153,12 +1112,10 @@ async function abrirCobro(){
   if(compActual){
     const c=await (await authFetch("/api/comprobantes/"+compActual)).json();
     const totalEf = totalEfectivoComp(c);            // deuda total en efectivo, lista real
-    /* Lo que falta lo dice el backend y no una resta de lo que entró: este panel
-       cobra 1 a 1 (monto y saldado son el mismo número), así que lo que hay que
-       pedir es el saldo de la cuenta. Restando la plata que trajo cada abono, una
-       seña por transferencia sobre una cuenta en efectivo —que tapa el 10% menos
-       de lo que entró— hacía pedir $13.000 cuando el saldo era $13.500, y cobrar
-       lo sugerido dejaba $500 de deuda sin que nada avisara. */
+    /* Lo que falta lo dice el backend y no una resta de lo que entró: una seña
+       por transferencia sobre una cuenta en efectivo tapa el 10% menos de lo que
+       entró, así que restando se pide de menos y queda deuda sin que nada
+       avise. */
     total = esEf ? totalEf : c.total_final;
     saldo = Math.max(c.saldo, 0);
     pagos = c.pagos;
@@ -1186,15 +1143,10 @@ async function abrirCobro(){
   actualizarAcciones();   // bloquea los botones de arriba mientras hay cobro en curso
 }
 
-/* Total efectivo REAL de un comprobante.
-
-   Tiene que dar exactamente lo mismo que estado_comprobante() en el backend, o
-   el panel de cobro pide una plata distinta de la que el servidor va a aceptar.
-   Dos cosas que hay que respetar y antes no se respetaban:
-     - se usa precio_efectivo_final, que ya trae el ajuste de la línea; con
-       precio_efectivo pelado, un ítem con "−10%" se cobraba sin el descuento;
-     - los extras se suman al final, DESPUÉS del descuento, igual que allá; sin
-       eso, un ticket con un extra cargado mostraba de menos. */
+/* Total efectivo REAL de un comprobante. Tiene que dar lo mismo que
+   estado_comprobante(), o el panel pide una plata que el servidor no acepta: va
+   con precio_efectivo_final, que ya trae el ajuste de la línea, y los extras se
+   suman al final, DESPUÉS del descuento, igual que allá. */
 function totalEfectivoComp(c){
   const base = c.lineas.reduce((a,l)=>a + (l.precio_efectivo_final ?? l.precio_efectivo)*l.cantidad, 0)
              + (c.extra_dificultad||0);          // el extra solo existe en comprobantes viejos
@@ -1314,16 +1266,9 @@ $("#cobroCerrar").onclick=()=>{
 };
 
 /* ---- Ticket a medio cargar ----
-
-   Antes acá había dos carteles: el de beforeunload (el del navegador, que no se
-   puede redactar ni sacar con el check de "evitar cuadros de diálogo") y un
-   confirm propio al tocar un link. Los dos preguntaban por una pérdida que no
-   pasa: el borrador se guarda solo en cada cambio y se restaura al volver.
-
-   Un cartel que interrumpe para avisar algo que ya está resuelto es puro
-   ruido, y encima había que contestarlo dos veces. Se reemplaza por un aviso
-   que no pide nada: una marca en la pantalla y otra en el menú, que se ven
-   desde cualquier lado y desaparecen solas al cobrar. */
+   El borrador se guarda solo en cada cambio y se restaura al volver, así que no
+   hay nada que preguntar al salir: el aviso es una marca en la pantalla y otra
+   en el menú, que se ven desde cualquier lado y se van solas al cobrar. */
 function hayTicketSinCobrar(){
   return ticket.length > 0 || EXTRAS.length > 0;
 }
