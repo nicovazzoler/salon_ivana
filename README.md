@@ -315,3 +315,7 @@ Funcionalidades en evaluación / desarrollo:
 ## 👤 Sobre el proyecto y mi rol
 
 Identifiqué la necesidad del comercio de mi amigo y diseñé el sistema a medida para sus preferencias. La app está en producción y se usa todos los días en el local; el dueño la prueba activamente y varias funcionalidades (como la agenda) surgieron de este ida y vuelta. Es mi primer proyecto de esta magnitud y estoy aprendiendo muchísimo mientras tanto.
+
+---
+
+*Última actualización: 26 de octubre de 2026.*
