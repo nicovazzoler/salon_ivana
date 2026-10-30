@@ -331,6 +331,10 @@ const fmt = n => "$" + (n || 0).toLocaleString("es-AR");
 function toast(m){const t=$("#toast");t.textContent=m;t.classList.add("show");setTimeout(()=>t.classList.remove("show"),2200);}
 
 let ZONAS = [], TICKET = [], CLI = null, SENAS = [], FORMA = null;
+// Lo que la pantalla muestra como Total y como seña aplicada. Lo escribe pintar()
+// y lo lee el confirm de cobrar: con su propia cuenta, el cartel decía un número
+// y el papel salía por otro.
+let TOTAL_HOY = 0, SENA_TAPA = 0;
 
 /* Lo que está a medio cargar se guarda en el aparato.
 
@@ -532,6 +536,10 @@ function pintar(){
     : ren(`Seña ${botonSena}`, `<span class="sin">sin seña</span>`, "sena");
   if(SENAS.length && enEfvo) filas += ren("Subtotal", fmt(restoT), "sub");
   if(enEfvo) filas += ren(`Desc. efectivo ${pct}%`, "−" + fmt(desc), "desc");
+  TOTAL_HOY = FORMA ? total : 0;
+  // Siempre el valor de la lista de transferencia, igual que el renglón de arriba
+  // y que valorSena(): es el número que se le dijo al tomarla.
+  SENA_TAPA = FORMA ? tapaT : 0;
   filas += FORMA
     ? ren("Total", fmt(total), "grande")
     : `<div class="falta-forma">Elegí arriba cómo paga para ver el total.</div>`;
@@ -672,10 +680,10 @@ $("#btnCobrar").onclick = async () => {
     $("#cliente").value = CLI.nombre;
     await mostrarSenas();
   }
-  const total = TICKET.reduce((a, l) => a + (FORMA === "efectivo" ? l.precio : l.transfer) * l.cantidad, 0);
-  if(!confirm(`${nombre}\n${TICKET.length} ${TICKET.length === 1 ? "zona" : "zonas"} · `
-            + `${fmt(total)} en ${FORMA === "efectivo" ? "efectivo" : "transferencia"}`
-            + `${SENAS.length ? "\n\nSe le aplican las señas que tiene a favor." : ""}`
+  const detalle = TICKET.map(l => (l.cantidad > 1 ? l.cantidad + "× " : "") + l.nombre).join(" · ");
+  if(!confirm(`${nombre}\n${detalle}`
+            + `${SENA_TAPA ? `\n\nSeña que ya dejó: −${fmt(SENA_TAPA)}` : ""}`
+            + `\n\nPone ${fmt(TOTAL_HOY)} en ${FORMA === "efectivo" ? "efectivo" : "transferencia"}.`
             + `\n\n¿Lo cobramos?`)){ b.disabled = false; return; }
 
   /* Crear, aplicar las señas y cobrar, todo en UN pedido: en tres llamadas, la
@@ -895,9 +903,11 @@ function pintarDia(){
           <input type="date" id="cFecha" value="${hoyArg()}"></div>
         <div class="campo"><label for="cNota">Nota (opcional)</label>
           <input id="cNota" maxlength="80"></div>
-        <button class="b-ok" id="cCerrar">${d.de_mas > 0
+        <button class="b-ok" id="cCerrar"${d.a_cargo ? "" : " disabled"}>${d.de_mas > 0
           ? `Cerrar y ajustar ${fmt(d.de_mas)}` : `Cerrar y pagar ${fmt(d.pendiente)}`}</button>
       </div>
+      ${d.a_cargo ? "" : `<p class="nota">Falta elegir quién la lleva, con el ✎ de arriba:
+        la mitad es de ella.</p>`}
     </div>` : `
     <div class="card" style="margin-top:var(--sp-4);">
       <h3>Cerrar la sesión</h3>

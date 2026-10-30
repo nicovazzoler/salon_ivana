@@ -153,6 +153,12 @@ td, .money, .monto{ font-variant-numeric:tabular-nums; }
   transition:none !important;
 }
 
+/* ----- Esconder algo ----- */
+/* El `hidden` del navegador es display:none con especificidad 0-0-1, así que
+   cualquier clase que ponga display le gana y el elemento se ve igual. Pasó con
+   `.fila` y con `.quien`, y admin.css tenía seis parches para lo mismo. */
+[hidden]{ display:none !important; }
+
 /* ----- Scrollbar ----- */
 ::-webkit-scrollbar{ width:8px; height:8px; }
 ::-webkit-scrollbar-track{ background:var(--bg-app); }

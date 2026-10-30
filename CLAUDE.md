@@ -580,6 +580,16 @@ agrega con su fixture y una línea en `CASOS`, en `tests/escpos/config.js`.
 Las pruebas de una sola vez —levantar el servidor, Playwright, comparar
 capturas— no se versionan: van al scratchpad de la sesión.
 
+**Y hay dos barredores de pantallas**, que no son pruebas que pasan o fallan sino
+listas de sospechas para mirar. `revisar_pantallas.py` lee el código y busca un
+botón que no está conectado a nada, un id que el JS pide y no existe y un link a
+una ruta que no es. `revisar_pantallas.js` abre las diez pantallas en un
+navegador y busca lo que no se puede saber leyendo: algo con `hidden` que igual
+se ve, un id repetido de verdad en el DOM, un error de consola y una pantalla
+que desborda a lo ancho en el celular. Los usa el agente `revisor-pantallas`,
+que después mira a mano lo que ninguna máquina ve —dos formas de hacer lo mismo,
+un control que dice una cosa y hace otra— y trae una lista sin arreglar nada.
+
 Cuando una prueba falla, **primero preguntarse si está mal la prueba**. En este
 proyecto la mayoría de las fallas fueron eso: un puerto viejo, una contraseña
 cambiada, un dato de prueba que ya no existía. Corregir la prueba, no el código,

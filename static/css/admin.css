@@ -120,7 +120,6 @@
   /* Con display:flex en la clase, el hidden del navegador no alcanza para
      esconderlo: una clase le gana siempre. Ya pasó con el bloque de "quién sos"
      en Sueldos. */
-  .ficha-marcas .campo[hidden]{ display:none; }
   .ficha-marcas .con-signo{ display:flex; align-items:center; gap:4px; }
   .ficha-marcas .con-signo input{ width:70px; text-align:right; }
   .ficha-marcas .con-signo span{ color:var(--text-tenue); }
@@ -138,7 +137,6 @@
 
   /* El porcentaje en el modo edición, pegado a la marca de comisión. */
   .item-row .pct-fila{ display:inline-flex; align-items:center; gap:3px; }
-  .item-row .pct-fila[hidden]{ display:none; }
   /* La columna para elegir de a varios. Va adelante de todo: el que viene a
      elegir arranca por la izquierda, y en la fila el resto queda donde estaba. */
   .item-row.con-sel{ grid-template-columns:auto minmax(0,2fr) 110px minmax(0,1fr) auto; }
@@ -315,7 +313,6 @@
   }
   .de-una .marca input{ width:auto; margin:0; flex:none; }
   .de-una .tramo{ display:inline-flex; align-items:center; gap:6px; }
-  .de-una .tramo[hidden]{ display:none; }
   .de-una input[type=time]{ width:auto; padding:5px 7px; }
   .chips{ display:flex; gap:4px; flex-wrap:wrap; }
   .chip-dia{
@@ -334,10 +331,8 @@
     font-size:var(--fs-md); color:var(--text-suave);
   }
   .panel-horario .resumen b{ color:var(--text-titulo); }
-  .panel-horario .resumen[hidden]{ display:none; }
 
   .panel-horario .dias{ display:flex; flex-direction:column; gap:2px; }
-  .panel-horario .dias[hidden]{ display:none; }
   .dia-horario{
     display:flex; align-items:center; gap:var(--sp-3); flex-wrap:wrap;
     padding:6px 0; border-bottom:1px solid var(--border-sutil);
@@ -353,7 +348,6 @@
   .dia-horario .marca.corta{ min-width:0; font-size:var(--fs-sm); color:var(--text-tenue); }
   .dia-horario .marca input{ width:auto; margin:0; }
   .dia-horario .tramo{ display:inline-flex; align-items:center; gap:6px; }
-  .dia-horario .tramo[hidden]{ display:none; }
   .dia-horario .tramo input{ width:auto; padding:5px 7px; }
   .dia-horario .tramo .a{ color:var(--text-tenue); font-size:var(--fs-sm); }
   .panel-horario .acc{ display:flex; gap:var(--sp-2); flex-wrap:wrap; margin-top:var(--sp-3); }

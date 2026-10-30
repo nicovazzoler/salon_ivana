@@ -3605,6 +3605,10 @@ def crear_egreso(e: EgresoIn, user = Depends(usuario_actual), db: Session = Depe
     # Mover plata de una caja a otra es de la dueña, como en el comprobante.
     if not es_dueno(user) and hora_argentina(fecha).date() != hoy_argentina():
         raise HTTPException(403, "Solo la dueña puede anotar un gasto de otro día")
+    # Un egreso es plata que SALE. El negativo existe —el ajuste de una sesión que
+    # vuelve al cajón— pero lo escribe el cierre, no este formulario: acá un "-"
+    # de más es un ingreso que nadie cargó, y mueve el arqueo sin avisar.
+    if e.monto <= 0: raise HTTPException(400, "El monto tiene que ser mayor que cero")
     eg = models.Egreso(numero=siguiente_numero_egreso(db),
                        tipo=e.tipo, concepto=e.concepto, monto=e.monto,
                        forma_pago=e.forma_pago, notas=e.notas, privado=privado,
@@ -3633,7 +3637,12 @@ def editar_egreso(egreso_id: int, cambios: EgresoEdit, user = Depends(usuario_ac
         raise HTTPException(403, "Solo el dueño puede editar egresos de otros días")
     if cambios.tipo is not None: e.tipo = cambios.tipo
     if cambios.concepto is not None: e.concepto = cambios.concepto
-    if cambios.monto is not None: e.monto = cambios.monto
+    if cambios.monto is not None:
+        # Corregir el monto no cambia de qué lado está: un egreso es plata que
+        # sale y un ajuste de sesión es plata que vuelve.
+        if cambios.monto == 0 or (cambios.monto < 0) != ((e.monto or 0) < 0):
+            raise HTTPException(400, "El monto no puede ser cero ni cambiar de signo")
+        e.monto = cambios.monto
     if cambios.forma_pago is not None: e.forma_pago = cambios.forma_pago
     if cambios.notas is not None: e.notas = cambios.notas
     # Editar NO reclasifica. Antes, un egreso cuyo tipo hubiera pasado a privado
@@ -4125,22 +4134,29 @@ def _resolver_ventana(dias, desde, hasta, db):
     return ini, fin
 
 def _buckets(ini, fin):
-    """Lista de (inicio, fin_excl, etiqueta) y la granularidad elegida por el span."""
+    """Lista de (inicio, fin_excl, etiqueta) y la granularidad elegida por el span.
+
+    Los cortes van a la medianoche ARGENTINA, el mismo que usa _rango_dia(): con
+    el corte en la medianoche UTC —las 21:00 del local— lo facturado de noche cae
+    en la barra del día siguiente mientras la caja lo cuenta hoy.
+    """
     span = (fin - ini).days
+    corte = lambda f: datetime(f.year, f.month, f.day) + timedelta(hours=HORAS_ARG)
+    arranque = hora_argentina(ini).date()
     out = []
     if span <= 31:
-        gran = "dia"; d = datetime(ini.year, ini.month, ini.day)
+        gran = "dia"; d = corte(arranque)
         while d < fin:
             nd = d + timedelta(days=1); out.append((d, nd, d.strftime("%d/%m"))); d = nd
     elif span <= 130:
-        gran = "semana"; d = datetime(ini.year, ini.month, ini.day)
-        d = d - timedelta(days=d.weekday())   # lunes de esa semana
+        gran = "semana"; d = corte(arranque - timedelta(days=arranque.weekday()))
         while d < fin:
             nd = d + timedelta(days=7); out.append((d, nd, d.strftime("%d/%m"))); d = nd
     else:
-        gran = "mes"; d = datetime(ini.year, ini.month, 1)
+        gran = "mes"; d = corte(arranque.replace(day=1))
         while d < fin:
-            nd = datetime(d.year + 1, 1, 1) if d.month == 12 else datetime(d.year, d.month + 1, 1)
+            sig = date(d.year + 1, 1, 1) if d.month == 12 else date(d.year, d.month + 1, 1)
+            nd = corte(sig)
             out.append((d, nd, d.strftime("%m/%Y"))); d = nd
     if not out:
         out = [(ini, fin, ini.strftime("%d/%m"))]; gran = "dia"
