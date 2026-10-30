@@ -53,6 +53,8 @@ def test_calcular_transfer(efectivo, transfer_esperado):
         pytest.param(1000, -50, -200, 800, id="vienen-los-dos-manda-el-monto"),
         pytest.param(500, None, -800, 0, id="el-monto-no-baja-el-precio-de-cero"),
         pytest.param(150, 1, None, 152, id="151,5-redondea-al-par-mas-cercano"),
+        # 151,5 da 152 también redondeando para arriba; 252,5 es el que las separa.
+        pytest.param(250, 1, None, 252, id="252,5-al-par-no-para-arriba"),
     ],
 )
 def test_precio_con_ajuste(base, pct, monto, esperado):
@@ -159,6 +161,20 @@ def test_estado_comprobante_extras_no_reciben_ningun_descuento():
     assert resultado["total_final"] == 2300
 
 
+def test_estado_comprobante_extra_dificultad_de_los_viejos_se_sigue_sumando():
+    # Ya no se carga, pero un comprobante viejo tiene que seguir dando su total.
+    comp = _comprobante(extra_dificultad=300)
+    resultado = estado_comprobante(None, comp, pagos_precargados={comp.id: []})
+    assert resultado["total_transfer"] == 2700
+    assert resultado["total_final"] == 2700
+
+
+def test_estado_comprobante_presupuesto_no_es_una_deuda():
+    comp = _comprobante(tipo="presupuesto")
+    resultado = estado_comprobante(None, comp, pagos_precargados={comp.id: []})
+    assert resultado["estado"] == "presupuesto"
+
+
 def test_estado_comprobante_pago_parcial():
     comp = _comprobante()  # total_final = 2400, sin descuentos ni extras
     resultado = estado_comprobante(
@@ -255,3 +271,11 @@ def test_base_comision_no_mira_la_forma_de_pago():
     )
     for forma in ("efectivo", "transferencia"):
         assert base_comision(linea, _comprobante(forma_pago=forma)) == 2000
+
+
+def test_base_comision_baja_con_el_descuento_del_comprobante():
+    """El descuento jubilado sí es plata que la clienta no pagó."""
+    linea = SimpleNamespace(
+        precio_unit=1200, precio_efectivo=1000, ajuste_pct=0, ajuste_monto=0, cantidad=2
+    )
+    assert base_comision(linea, _comprobante(descuento_pct=10)) == 1800  # 2000 - 10%
