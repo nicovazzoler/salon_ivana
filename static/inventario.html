@@ -277,8 +277,9 @@ function render(){
     // Marca la fila como "sin guardar" apenas se toca algo: el botón se enciende
     // solo donde hay cambios, en vez de 27 botones dorados todo el tiempo.
     const marcarSucio=()=>fila.classList.toggle("sucio",
-      (parseInt(sa.value)||0)!==p.stock_actual || (parseInt(sm.value)||0)!==p.stock_minimo);
-    [sa,sm].forEach(i=>i.addEventListener("input", marcarSucio));
+      (parseInt(sa.value)||0)!==p.stock_actual || (parseInt(sm.value)||0)!==p.stock_minimo
+      || !!(parseInt(ent.value)||0));
+    [sa,sm,ent].forEach(i=>i.addEventListener("input", marcarSucio));
 
     const guardar=async(nuevoSa,nuevoSm)=>{
       const r=await authFetch(`/api/inventario/${p.id}`,{method:"PUT",headers:{"Content-Type":"application/json"},
@@ -287,8 +288,13 @@ function render(){
     };
 
     fila.querySelector(".guardar").onclick=async()=>{
-      if(await guardar(parseInt(sa.value)||0, parseInt(sm.value)||0)){ toast("Guardado"); cargar(); }
-      else toast("No se pudo guardar");
+      // La entrada entra acá también: tipearla y apretar Guardar la perdía sin
+      // aviso, y el campo se vaciaba al recargar la lista.
+      const entra=parseInt(ent.value)||0;
+      const nuevoSa=(parseInt(sa.value)||0)+entra;
+      if(await guardar(nuevoSa, parseInt(sm.value)||0)){
+        toast(entra ? `+${entra} → ${nuevoSa} en stock` : "Guardado"); cargar();
+      } else toast("No se pudo guardar");
     };
     fila.querySelector(".sumar").onclick=async()=>{
       const entra=parseInt(ent.value)||0;

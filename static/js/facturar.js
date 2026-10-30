@@ -463,7 +463,7 @@ function renderTicket(){
         ?`<input class="nombre-item-extra" placeholder="Nombre del ítem" value="${esc(l.nombre)}">
           <div class="precio-extra-box"><span class="pfx">$</span><input class="precio-item-extra" inputmode="numeric" placeholder="Precio efvo." value="${l.precio>0?l.precio:''}"></div>
           <span class="transfer-vivo">transf ${fmt(l.precioTransfer)}</span>
-          <button class="check-item-extra" title="Guardar ítem">💾</button>`
+          <button class="check-item-extra" title="Listo">💾</button>`
         : esExtra
         ?`<span class="n">${esc(l.nombre)}<button class="edit-item-extra" title="Editar ítem">✏️</button></span>
           ${preciosHTML}`
@@ -521,6 +521,13 @@ function renderTicket(){
       };
       // Enter en cualquiera de los campos también guarda
       [inputnombre, inputprecio].forEach(inp => inp.onkeydown = e => { if(e.key === "Enter"){ e.preventDefault(); guardarItemExtra(l); } });
+      // Salir de la fila con los dos campos puestos la cierra sola. Mientras
+      // queda abierta el cobro está deshabilitado y nada lo dice, así que el 💾
+      // era un peaje: ahora es un atajo.
+      [inputnombre, inputprecio].forEach(inp => inp.onblur = () => setTimeout(() => {
+        if(row.contains(document.activeElement)) return;
+        if(l.editando && (l.nombre || "").trim() !== "" && l.precio > 0) guardarItemExtra(l);
+      }, 0));
       row.querySelector(".check-item-extra").onclick = () => guardarItemExtra(l);
     } else if(esExtra){
       row.querySelector(".edit-item-extra").onclick = () => { l.editando = true; renderTicket(); };

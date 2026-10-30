@@ -225,7 +225,7 @@ async function cargarDia(){
                   : '';
       const puedeAnular = !v.es_sena && !v.es_ajuste;
       html+=`<tr><td>${v.hora}</td><td>${esc(v.ref||'—')}${marca}</td><td>${esc(v.forma_pago||'')}${esc(al)}</td><td class="money">${money(v.total)}</td>
-             <td>${puedeAnular ? `<button class="mini b-del" onclick="anularPagoCaja('${v.id}')">Anular</button>` : ''}</td></tr>`;
+             <td>${puedeAnular ? `<button class="mini b-del" onclick="anularPagoCaja('${v.id}')">Anular cobro</button>` : ''}</td></tr>`;
     });
     html += '</tbody></table></div>';
   }
