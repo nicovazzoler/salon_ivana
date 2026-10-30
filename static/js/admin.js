@@ -514,7 +514,7 @@ function fichaItem(it){
       </button>
       <button type="button" class="marca f-depi">
         <span class="tilde">✓</span> Es depilación
-        <span class="sub">entra en el reparto del día, no en comisiones</span>
+        <span class="sub">entra en el reparto de la sesión, no en comisiones</span>
       </button>
       <div class="campo pct" hidden><label>Su porcentaje</label>
         <div class="con-signo"><input class="f-pct" type="number" min="0" max="100" inputmode="numeric"
@@ -1079,9 +1079,8 @@ function panelEmpleado(e, tipo){
     ${esPin ? `<p class="muted" style="flex:1 1 100%;margin:0;">El código no se puede volver a ver:
        se guarda encriptado, como las contraseñas. Si se olvida, se pone uno nuevo.</p>` : ""}
     ${esVh ? `<p class="muted" style="flex:1 1 100%;margin:0;">Vacío quiere decir que cobra el general
-       ($${VALOR_HORA_GENERAL.toLocaleString("es-AR")}), que se cambia en Sueldos. Esto es solo para
-       quien cobre distinto. Los sueldos ya cerrados no se tocan: cada liquidación guarda el valor
-       con el que se pagó.</p>` : ""}`;
+       ($${VALOR_HORA_GENERAL.toLocaleString("es-AR")}), que se cambia arriba. Los sueldos ya cerrados
+       no se tocan: cada liquidación guarda el valor con el que se pagó.</p>` : ""}`;
   const campo = pan.querySelector(".valor");
   if(!esPin && !esVh) campo.value = e.nombre;
   if(esVh && e.valor_hora != null) campo.value = e.valor_hora;

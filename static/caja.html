@@ -97,7 +97,7 @@
   .fecha-hoy{
     padding:8px 0;
     font-weight:600;
-    text-transform:capitalize;
+    /* capitalize pone en mayúscula CADA palabra: "Miércoles, 28 De Octubre". */
   }
 </style>
 </head><body>
@@ -183,8 +183,9 @@ if(!HOY_SOLO) $("#fecha").value=hoyISO;
 
 function mostrarFecha(iso){
   if(!HOY_SOLO || !iso) return;
-  $("#fechaHoy").textContent = new Date(iso+"T12:00:00")
+  const t = new Date(iso+"T12:00:00")
     .toLocaleDateString("es-AR", {weekday:"long", day:"numeric", month:"long"});
+  $("#fechaHoy").textContent = t.charAt(0).toUpperCase() + t.slice(1);
 }
 
 async function cargarDia(){

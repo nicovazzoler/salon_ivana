@@ -3686,13 +3686,17 @@ def _sv(db, i, f):
     return sum(p.monto for p in pagos) + sum(s.monto for s in senas)
 def _se(db, i, f): return sum((e.monto or 0) for e in db.query(models.Egreso).filter(models.Egreso.fecha >= i, models.Egreso.fecha < f))
 
+def num_comprobante(comp) -> str:
+    """"N-00016" o "P-00016". Gemelo de numComp() en escpos.js: con otro prefijo,
+    el mismo ticket es A- en Caja y N- en el Historial y no se lo puede cruzar."""
+    return f'{"N" if comp.tipo == "ticket" else "P"}-{comp.numero:05d}'
+
 def _pago_detalle(p):
     """Detalle de un cobro para la caja: hora, monto, forma de pago y a qué comprobante pertenece."""
     comp = p.comprobante
     ref = "—"
     if comp:
-        pref = "A" if comp.tipo == "ticket" else "P"
-        ref = f"{pref}-{comp.numero:05d}"
+        ref = num_comprobante(comp)
         if comp.cliente_nombre:
             ref += f" · {comp.cliente_nombre}"
     return {"id": p.id, "hora": hora_argentina(p.fecha).strftime("%H:%M"), "total": p.monto,
@@ -3887,7 +3891,9 @@ def caja_dia(fecha: str | None = None, user = Depends(usuario_actual), db: Sessi
             # Las señas van con la MISMA forma que un pago —`total` y `ref`—, que es
             # lo que la pantalla lee. Con nombres propios salían en $0 y sin
             # referencia, como si alguien hubiera cobrado nada.
-            "ventas_detalle": [{**_pago_detalle(p),
+            # Ordenado por hora: pagos, señas y ajustes se arman por separado y
+            # concatenados dejaban una seña de las 17:20 abajo de un cobro de las 17:28.
+            "ventas_detalle": sorted([{**_pago_detalle(p),
                                 "depilacion": p.comprobante_id in ids_depi} for p in pagos] + [
                 {"id": f"s{s.id}", "hora": hora_argentina(s.fecha).strftime("%H:%M"),
                  "ref": f"Seña N-{(s.numero or 0):05d}"
@@ -3899,7 +3905,7 @@ def caja_dia(fecha: str | None = None, user = Depends(usuario_actual), db: Sessi
                  "ref": e.concepto or "Ajuste", "total": -(e.monto or 0),
                  "forma_pago": e.forma_pago, "alias": None,
                  "es_ajuste": True, "privado": bool(e.privado)}
-                for e in ajustes],
+                for e in ajustes], key=lambda v: v["hora"]),
             "egresos_detalle": [{"id": e.id, "numero": e.numero,
                                  "hora": hora_argentina(e.fecha).strftime("%H:%M"), "tipo": e.tipo,
                                  "concepto": e.concepto, "monto": e.monto, "forma_pago": e.forma_pago,
@@ -4058,8 +4064,7 @@ def _movimientos(db, ini, fin):
         comp = p.comprobante
         ref = "—"; cliente = ""; items = ""
         if comp:
-            pref = "A" if comp.tipo == "ticket" else "P"
-            ref = f"{pref}-{comp.numero:05d}"
+            ref = num_comprobante(comp)
             cliente = comp.cliente_nombre or ""
             items = ", ".join(f"{l.cantidad}× {l.nombre}" for l in comp.lineas)
         movs.append({"fecha": p.fecha, "clase": "ingreso",
