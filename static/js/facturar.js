@@ -889,14 +889,21 @@ async function confirmarAntesDeGenerar(tipo, cliente){
   let num = "";
   try{
     const r = await authFetch(`/api/comprobantes/proximo-numero?tipo=${tipo}`);
-    if(r.ok) num = " " + (esTicket ? "A" : "P") + "-" + String((await r.json()).numero).padStart(5, "0");
+    if(r.ok) num = " " + EscPos.numComp(tipo, (await r.json()).numero);
   }catch(e){}
-  const forma = esTicket ? (formaPago === "efectivo" ? "Efectivo" : "Transferencia") : null;
+  // Las cuatro formas, no dos: con "mixto" y "cuenta" cayendo en el else, el
+  // cartel decía "en Transferencia" antes de dejar algo a cuenta.
+  const forma = esTicket ? {
+    efectivo: " en Efectivo",
+    transfer: " en Transferencia",
+    mixto:    ", que se cobra en partes",
+    cuenta:   ", que queda a cuenta: hoy no entra nada",
+  }[formaPago] : "";
   const total = $("#total") ? $("#total").textContent.trim() : "";
   return confirm(
     `¿Generamos el ${esTicket ? "ticket" : "presupuesto"}${num}?\n\n` +
     `Cliente: ${cliente}\n` +
-    (total ? `Total: ${total}${forma ? " en " + forma : ""}\n` : "") +
+    (total ? `Total: ${total}${forma || ""}\n` : "") +
     "\nDespués solo se corrige anulándolo.");
 }
 
