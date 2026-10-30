@@ -977,6 +977,8 @@ function cargarEnForm(t){
   const btn=$("#btnAgregar"); btn.textContent="Guardar cambios";
   btn.onclick=async()=>{
     const body=formBody(); if(!body)return;
+    const choque = await buscarChoque(body, t.id);
+    if(choque && !confirm(choque + "\n\n¿Lo movemos igual?")) return;
     await authFetch("/api/turnos/"+t.id,{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
     toast("Turno actualizado"); limpiarForm(); renderDia();
   };
@@ -995,8 +997,26 @@ function limpiarForm(){
   $("#fPeluquero").value=""; $("#fNotas").value="";
   const btn=$("#btnAgregar"); btn.textContent="Agendar"; btn.onclick=agregarTurno;
 }
+/* Dos turnos encima: la misma persona atendiendo a dos a la vez, o la misma
+   clienta anotada dos veces. No lo frena —se superponen a propósito seguido—
+   pero lo dice antes, que si no quedan dos tarjetas una arriba de la otra. */
+async function buscarChoque(b, exceptoId){
+  const d = await (await authFetch("/api/agenda/dia?fecha="+b.fecha)).json();
+  const otros = d.turnos.filter(t => t.id !== exceptoId);
+  const desde = aMin(b.hora), hasta = desde + b.duracion_min;
+  const pisa = otros.find(t => t.peluquero && t.peluquero === b.peluquero
+                            && aMin(t.hora) < hasta && aMin(t.fin) > desde);
+  if(pisa) return `${b.peluquero} ya tiene a ${pisa.cliente} de ${pisa.hora} a ${pisa.fin}.`;
+  const repe = otros.find(t => (t.cliente||"").toLowerCase() === b.cliente.toLowerCase()
+                             && t.hora === b.hora);
+  if(repe) return `${b.cliente} ya tiene un turno a las ${b.hora}: ${repe.servicio}.`;
+  return null;
+}
+
 async function agregarTurno(){
   const body=formBody(); if(!body)return;
+  const choque = await buscarChoque(body, null);
+  if(choque && !confirm(choque + "\n\n¿Lo agendamos igual?")) return;
   await authFetch("/api/turnos",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
   toast(`Turno de ${body.cliente} agendado`); limpiarForm(); renderDia();
 }
