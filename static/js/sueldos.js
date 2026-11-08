@@ -236,7 +236,16 @@ async function cargarPanelDueno(){
   // el scroll, tocarlo parecía no hacer nada.
   $("#listaEmpleadas").querySelectorAll(".ver").forEach(b=>{
     b.onclick = async () => {
-      $("#quien").value = b.dataset.emp;
+      // La lista de arriba muestra a quien tenga ALGO para mirar; el desplegable,
+      // solo a quien cobre. Sin la opción el .value no agarra y el detalle abría
+      // el de otra persona, diciendo "no hay nada pendiente".
+      const sel = $("#quien");
+      if(!sel.querySelector(`option[value="${b.dataset.emp}"]`)){
+        const emp = EMPLEADOS.find(e => String(e.id) === String(b.dataset.emp));
+        sel.insertAdjacentHTML("beforeend",
+          `<option value="${b.dataset.emp}">${esc(emp ? emp.nombre : "—")}</option>`);
+      }
+      sel.value = b.dataset.emp;
       localStorage.setItem(RECUERDO, b.dataset.emp);
       await cargar();
       $("#tituloDetalle").closest(".card").scrollIntoView({behavior:"smooth", block:"start"});

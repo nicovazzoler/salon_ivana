@@ -511,7 +511,12 @@ function crearFila(comp){
     div.querySelector(".btnPrint").onclick = e=>e.stopPropagation();   // que no despliegue el detalle
     div.querySelector(".btnAnular").onclick = async (e)=>{
       e.stopPropagation();
-      if(!confirm("¿Anular este servicio?")) return;
+      const esT = comp.tipo === "ticket";
+      if(!confirm(`¿Anular el ${esT ? "ticket" : "presupuesto"} ${numComp(comp.tipo, comp.numero)}`
+        + ` de ${quien}?\n\n`
+        + (comp.cobrado > 0 ? `Salen ${fmt(comp.cobrado)} de la caja de ese día.\n` : "")
+        + (esT ? "Vuelve el stock y las señas que haya usado.\n" : "")
+        + "\nNo se puede deshacer.")) return;
       const r = await authFetch("/api/comprobantes/"+comp.id, {method:"DELETE"});
       // El motivo lo dice el backend, y la lista se refresca pase lo que pase:
       // el caso más común de fallo es que la pantalla quedó vieja.
