@@ -17,6 +17,7 @@ from main import (
     precio_con_ajuste,
     saldado_por_efectivo,
     sena_saldado,
+    valor_en_transferencia,
     validar_numeros,
 )
 from fastapi import HTTPException
@@ -278,8 +279,8 @@ def _sena(monto, forma_pago):
     "forma_sena, forma_cuenta, saldado_esperado",
     [
         # Efectivo contra una cuenta sin el descuento adentro: esos pesos valen
-        # mas. 5000 / 0,9 = 5555,5 -> para arriba al siguiente múltiplo de 100.
-        pytest.param("Efectivo", "transferencia", 5600, id="efvo-contra-transfer-vale-mas"),
+        # mas. 5000 / 0,9 = 5555,5 -> al peso, no al múltiplo de 100.
+        pytest.param("Efectivo", "transferencia", 5556, id="efvo-contra-transfer-vale-mas"),
         # Transferencia contra una cuenta que ya viene con el 10% sacado:
         # descontarsela entera seria regalarle el 10% de la seña.
         pytest.param("Transferencia", "efectivo", 4500, id="transfer-contra-efvo-vale-menos"),
@@ -377,3 +378,26 @@ def test_validar_numeros_rebota(pedido):
 ])
 def test_validar_numeros_deja_pasar(pedido):
     validar_numeros(pedido)
+
+
+# ---------------------------------------------------------------------------
+# Lo que se le dice al tomar una seña es lo que después tapa, y partirla no
+# regala nada.
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("valor", [5000, 5050, 7300, 10000, 12345, 15000])
+def test_la_sena_tapa_lo_que_se_le_dijo(valor):
+    entra = (valor * 9 + 5) // 10           # lo que calcula crear_sena() en efectivo
+    tapa = valor_en_transferencia(entra, "Efectivo")
+    assert abs(tapa - valor) <= 1           # al peso: con $100 una de $5.050 tapaba $5.100
+
+
+def test_sena_que_sobra_no_regala_el_redondeo_dos_veces():
+    """$9.000 en efectivo valen $10.000. Contra $5.050 se usa una parte y lo
+    que queda libre vale el resto: entre las dos, $10.000 y no $10.050."""
+    comp = _comprobante(forma_pago="transferencia")
+    sena = _sena(9000, "Efectivo")
+    usa, saldado = sena_saldado(sena, comp, saldo=5050)
+    assert saldado == 5050
+    queda = valor_en_transferencia(9000 - usa, "Efectivo")
+    assert saldado + queda == 10000

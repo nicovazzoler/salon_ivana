@@ -68,8 +68,7 @@ const hayAjuste = l => !!(l.ajuste_pct || l.ajuste_monto);
    Se lee de arriba a abajo y toda en la lista de transferencia: subtotal, la
    seña que ya dejó y al final el 10% de pagar en efectivo. Uno solo para las
    cuatro pantallas, y el descuento sale de RESTAR: así la columna cierra. */
-const senaTransfer = p => (p.sena_forma || "") === "Efectivo"
-  ? Math.ceil((p.monto / 0.9) / 100) * 100 : p.monto;
+const senaTransfer = p => p.sena_valor || 0;   // lo calcula el backend
 
 function cuentaDeComprobante(d){
   const pagos  = d.pagos || [];
