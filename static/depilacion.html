@@ -624,11 +624,12 @@ async function mostrarSenas(avisar){
         <div class="sena${CLI && s.cliente_id === CLI.id ? " suya" : ""}">
           <b>${fmt(valorSena(s))}</b>
           <span class="quienes">${esc(s.cliente || "—")}</span>
-          <span class="det">${(s.forma_pago || "") === "Efectivo"
+          <span class="det">${s.parcial ? `lo que queda de una de ${fmt(s.valor_total)}`
+            : (s.forma_pago || "") === "Efectivo"
             ? `entraron ${fmt(s.monto)} en efectivo` : esc(s.forma_pago || "")}</span>
           <span class="cuando">${esc(s.fecha || "")}</span>
-          <button class="b-out btn-mini borrar-sena" data-id="${s.id}"
-                  title="Se le devolvió la plata">✕</button>
+          ${s.parcial ? "" : `<button class="b-out btn-mini borrar-sena" data-id="${s.id}"
+                  title="Se le devolvió la plata">✕</button>`}
         </div>`).join("")}</div>`;
   caja.querySelectorAll(".borrar-sena").forEach(b => {
     b.onclick = async () => {

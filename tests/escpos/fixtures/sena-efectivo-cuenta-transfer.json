@@ -14,7 +14,7 @@
   "extras": [],
   "pagos": [
     { "monto": 5000, "saldado": 5600, "desc_aplicado": 600, "fecha": "2026-08-20T10:00:00",
-      "forma_pago": "Seña", "es_sena": true, "sena_forma": "Efectivo" },
+      "forma_pago": "Seña", "es_sena": true, "sena_forma": "Efectivo", "sena_valor": 5600 },
     { "monto": 14400, "saldado": 14400, "desc_aplicado": 0, "fecha": "2026-08-27T17:05:00",
       "forma_pago": "Transferencia", "es_sena": false, "sena_forma": null }
   ],

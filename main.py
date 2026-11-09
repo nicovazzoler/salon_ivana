@@ -440,7 +440,9 @@ class FondoIn(BaseModel):
 class NombreIn(BaseModel):
     nombre: str
 class SenaIn(BaseModel):
-    cliente_id: int; monto: int
+    # `valor` es de cuánto es la seña, en la lista de transferencia: la plata que
+    # entra la calcula el backend. `monto` (lo que entró) queda para la API vieja.
+    cliente_id: int; monto: int | None = None; valor: int | None = None
     forma_pago: str = "Efectivo"; alias: str | None = None; notas: str | None = None
 class TurnoIn(BaseModel):
     fecha: str | None = None; hora: str; cliente: str; cliente_id: int | None = None; servicio: str; peluquero: str | None = None; notas: str | None = None
@@ -3431,7 +3433,11 @@ def ver_comprobante(comp_id: int, _ = Depends(usuario_actual), db: Session = Dep
         "extras": [{"concepto": e.concepto, "monto": e.monto} for e in comp.extras],
         "pagos": [{"id": p.id, "fecha": p.fecha.isoformat(), "monto": p.monto, "saldado": p.saldado,
                    "desc_aplicado": p.desc_aplicado, "forma_pago": p.forma_pago, "alias": p.alias,
-                   "es_sena": p.sena_id is not None, "sena_forma": formas_sena.get(p.sena_id)}
+                   "es_sena": p.sena_id is not None, "sena_forma": formas_sena.get(p.sena_id),
+                   # Lo que esa seña tapó, en la lista de transferencia, para el papel.
+                   "sena_valor": (None if p.sena_id is None
+                                  else p.saldado if comp.forma_pago != "efectivo"
+                                  else valor_en_transferencia(p.monto, formas_sena.get(p.sena_id)))}
                   for p in pagos],
         **estado_comprobante(db, comp)}
 
@@ -3607,7 +3613,12 @@ def anular_comprobante(comp_id: int, user = Depends(usuario_actual), db: Session
         if ses:
             ses_corr = ses
             parte_antes = cuenta_depilacion(db, ses)["parte_empleada"]
+    senas_del_ticket = [i for (i,) in db.query(models.Pago.sena_id).filter(
+        models.Pago.comprobante_id == comp.id, models.Pago.sena_id.isnot(None))]
     db.query(models.Pago).filter(models.Pago.comprobante_id == comp.id).delete()
+    if senas_del_ticket:
+        db.query(models.Sena).filter(models.Sena.id.in_(senas_del_ticket)).update(
+            {"comprobante_id": None}, synchronize_session=False)
     # Las señas que se habían aplicado vuelven a quedar a favor de la clienta.
     # Sin esto la seña quedaba apuntando a un comprobante anulado: no sumaba
     # como pago de nada y tampoco volvía a aparecer como disponible, así que la
@@ -3828,7 +3839,24 @@ def _pago_detalle(p):
 
 # ---------- señas ----------
 
-def _sena_json(s, nombre=None):
+def valor_en_transferencia(plata: int, forma: str | None) -> int:
+    """Lo que vale plata de una seña en la lista de transferencia: en efectivo
+    entró el 10% menos. Al peso, que redondeando a $100 tapaba más de lo dicho."""
+    return (plata * 20 + 9) // 18 if forma == "Efectivo" else plata
+
+def valor_en_efectivo(plata: int, forma: str | None) -> int:
+    """Lo que vale plata de una seña contra una cuenta en la lista de efectivo."""
+    return plata if forma == "Efectivo" else (plata * 9 + 5) // 10
+
+def usado_de_senas(db, ids) -> dict:
+    """{id de seña: plata ya usada}, de sus abonos. La seña guarda lo que entró y
+    no se parte: lo que le queda libre es la resta."""
+    if not ids: return {}
+    return dict(db.query(models.Pago.sena_id, func.sum(models.Pago.monto))
+                  .filter(models.Pago.sena_id.in_(list(ids))).group_by(models.Pago.sena_id).all())
+
+def _sena_json(s, nombre=None, usado: int = 0):
+    libre = 0 if s.anulada else max(s.monto - usado, 0)
     return {"id": s.id, "numero": s.numero, "cliente_id": s.cliente_id, "cliente": nombre,
             "fecha": hora_argentina(s.fecha).strftime("%d/%m/%Y"),
             "hora": hora_argentina(s.fecha).strftime("%H:%M"),
@@ -3838,7 +3866,14 @@ def _sena_json(s, nombre=None):
             # El número del ticket, no su id: el id no está escrito en ningún papel.
             "comprobante_numero": (s.comprobante.numero if s.comprobante_id and s.comprobante else None),
             "anulada": bool(s.anulada),
-            "usuario": s.usuario}
+            "usuario": s.usuario,
+            # Lo que se le dijo al tomarla, lo que ya se usó y lo que le queda:
+            # las pantallas y el papel muestran estos, sin hacer la cuenta.
+            "valor_total": valor_en_transferencia(s.monto, s.forma_pago),
+            "usado": usado, "libre": libre,
+            "valor": valor_en_transferencia(libre, s.forma_pago),
+            "valor_efectivo": valor_en_efectivo(libre, s.forma_pago),
+            "parcial": bool(usado) and libre > 0}
 
 def senas_libres(db, cliente_id: int):
     """Las que todavía no se usaron. Se aplican todas juntas: si señó dos turnos,
@@ -3854,9 +3889,12 @@ def crear_sena(datos: SenaIn, user = Depends(usuario_actual), db: Session = Depe
     """Plata adelantada de una clienta. Entra a la caja de HOY."""
     cli = db.get(models.Cliente, datos.cliente_id)
     if not cli: raise HTTPException(404, "Ese cliente no existe")
-    if datos.monto <= 0: raise HTTPException(400, "El monto tiene que ser positivo")
-    s = models.Sena(numero=siguiente_numero_sena(db), cliente_id=cli.id, monto=datos.monto,
-                    forma_pago=forma_de_pago(db, datos.forma_pago or "Efectivo"),
+    forma = forma_de_pago(db, datos.forma_pago or "Efectivo")
+    monto = (datos.monto if datos.valor is None
+             else (datos.valor * 9 + 5) // 10 if forma == "Efectivo" else datos.valor)
+    if not monto or monto <= 0: raise HTTPException(400, "El monto tiene que ser positivo")
+    s = models.Sena(numero=siguiente_numero_sena(db), cliente_id=cli.id, monto=monto,
+                    forma_pago=forma,
                     alias=(datos.alias or "").strip() or None,
                     notas=(datos.notas or "").strip() or None,
                     usuario=user.get("usuario", "?"))
@@ -3871,13 +3909,15 @@ def listar_senas(cliente_id: int | None = None, solo_libres: bool = False,
     if cliente_id: q = q.filter(models.Sena.cliente_id == cliente_id)
     if solo_libres:
         q = q.filter(models.Sena.comprobante_id.is_(None), _no_privado(models.Sena.anulada))
-    return [_sena_json(s, n) for s, n in q.order_by(models.Sena.fecha.desc()).limit(300)]
+    filas = q.order_by(models.Sena.fecha.desc()).limit(300).all()
+    usado = usado_de_senas(db, [s.id for s, _n in filas])
+    return [_sena_json(s, n, usado.get(s.id) or 0) for s, n in filas]
 
 @app.get("/api/senas/{sena_id}")
 def ver_sena(sena_id: int, _ = Depends(usuario_actual), db: Session = Depends(get_db)):
     s = db.get(models.Sena, sena_id)
     if not s: raise HTTPException(404, "Esa seña no existe")
-    return _sena_json(s, s.cliente.nombre if s.cliente else None)
+    return _sena_json(s, s.cliente.nombre if s.cliente else None, usado_de_senas(db, [s.id]).get(s.id) or 0)
 
 @app.delete("/api/senas/{sena_id}")
 def anular_sena(sena_id: int, _ = Depends(usuario_actual), db: Session = Depends(get_db)):
@@ -3890,26 +3930,30 @@ def anular_sena(sena_id: int, _ = Depends(usuario_actual), db: Session = Depends
     if not s: raise HTTPException(404, "Esa seña no existe")
     if s.comprobante_id:
         raise HTTPException(400, "Esa seña ya se usó en un comprobante. Anulá el comprobante.")
+    if usado_de_senas(db, [s.id]).get(s.id):
+        raise HTTPException(400, "De esa seña ya se usó una parte: lo que queda se usa en la próxima jornada")
     s.anulada = True; db.commit(); return {"ok": True}
 
-def sena_saldado(sena, comp, saldo: int) -> tuple[int, int]:
+def sena_saldado(sena, comp, saldo: int, libre: int | None = None) -> tuple[int, int]:
     """De una seña: cuánta se usa y cuánto de la cuenta salda.
 
     El 10% es de la plata que entra en EFECTIVO, no del trabajo, así que lo que
     tapa sale de en qué lista está escrita cada cosa: efectivo contra cuenta en
     transferencia tapa monto ÷ 0,9; transferencia contra efectivo, monto × 0,9.
     """
-    en_efectivo = (sena.forma_pago or "") == "Efectivo"
+    libre = sena.monto if libre is None else libre
+    forma = sena.forma_pago or ""
+    en_efectivo = forma == "Efectivo"
     cuenta_en_efectivo = comp.forma_pago == "efectivo"
     if en_efectivo == cuenta_en_efectivo:
-        factor, bruto = 1, sena.monto
+        bruto, plata_de = libre, (lambda tapa: tapa)
     elif en_efectivo:
-        factor, bruto = 1 / 0.9, math.ceil((sena.monto / 0.9) / 100) * 100
+        bruto, plata_de = valor_en_transferencia(libre, forma), (lambda tapa: (tapa * 9 + 5) // 10)
     else:
-        factor, bruto = 0.9, round(sena.monto * 0.9)
+        bruto, plata_de = valor_en_efectivo(libre, forma), (lambda tapa: (tapa * 20 + 9) // 18)
     if bruto <= saldo:
-        return sena.monto, bruto
-    return min(sena.monto, round(saldo / factor)), saldo
+        return libre, bruto
+    return min(libre, plata_de(saldo)), saldo
 
 def _aplicar_senas(db, comp) -> tuple[int, int]:
     """Usa las señas libres del cliente como abono. No hace commit.
@@ -3920,22 +3964,19 @@ def _aplicar_senas(db, comp) -> tuple[int, int]:
     """
     if not comp.depilacion: return 0, 0
     aplicadas, total = 0, 0
-    for s in senas_libres(db, comp.cliente_id):
+    libres = senas_libres(db, comp.cliente_id)
+    usado = usado_de_senas(db, [s.id for s in libres])
+    for s in libres:
         saldo = estado_comprobante(db, comp)["saldo"]
         if saldo <= 0: break
-        usa, saldado = sena_saldado(s, comp, saldo)
-        if usa < s.monto:
-            sobra = models.Sena(numero=siguiente_numero_sena(db),
-                                cliente_id=s.cliente_id, fecha=s.fecha, monto=s.monto - usa,
-                                forma_pago=s.forma_pago, alias=s.alias,
-                                notas=" · ".join(filter(None, [s.notas, "resto sin usar"])),
-                                usuario=s.usuario)
-            db.add(sobra)
-            s.monto = usa
+        libre = s.monto - (usado.get(s.id) or 0)
+        if libre <= 0: continue
+        usa, saldado = sena_saldado(s, comp, saldo, libre)
         db.add(models.Pago(comprobante_id=comp.id, monto=usa, saldado=saldado,
                            forma_pago="Seña", desc_aplicado=saldado - usa, sena_id=s.id))
         db.flush()
-        s.comprobante_id = comp.id
+        # Usada es usada entera: con algo libre sigue a favor, la misma seña.
+        if usa >= libre: s.comprobante_id = comp.id
         aplicadas += 1; total += usa
     return aplicadas, total
 

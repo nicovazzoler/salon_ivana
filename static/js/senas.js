@@ -8,13 +8,10 @@ const _escSena = s => String(s ?? "").replace(/[&<>"']/g,
   c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const _plataSena = n => "$" + (n || 0).toLocaleString("es-AR");
 
-/* Lo que vale una seña contra la lista de transferencia, que es el número que
-   se le dijo al tomarla y el que va en los carteles. Lo GUARDADO es la plata que
-   entró, un 10% menos en efectivo. Tiene que dar igual que sena_saldado(). */
-const valorSena = s => (s.forma_pago || "") === "Efectivo"
-  ? Math.ceil((s.monto / 0.9) / 100) * 100 : s.monto;
-const valorSenaEfectivo = s => (s.forma_pago || "") === "Efectivo"
-  ? s.monto : Math.round(s.monto * 0.9);
+/* Lo que le queda libre a una seña, en la lista de transferencia (el número que
+   se le dijo) y en la de efectivo. Los calcula el backend, el mismo que la aplica. */
+const valorSena = s => s.valor || 0;
+const valorSenaEfectivo = s => s.valor_efectivo || 0;
 
 let _FORMAS_SENA = null;
 async function formasParaSena(){
@@ -72,7 +69,8 @@ function panelSena(clienteId, nombre, alGuardar){
      entrega el 10% menos, y eso es lo que entra a la caja y lo que se guarda. */
   const enEfectivo = () => pan.querySelector(".sForma").value === "Efectivo";
   const valor = () => parseInt(pan.querySelector(".sMonto").value, 10) || 0;
-  const entra = () => enEfectivo() ? Math.round(valor() * 0.9) : valor();
+  // Solo para el cartel: lo que entra lo calcula el backend con la misma cuenta.
+  const entra = () => enEfectivo() ? Math.floor((valor() * 9 + 5) / 10) : valor();
   function cuenta(){
     const v = valor();
     pan.querySelector(".sCuenta").textContent = !v ? ""
@@ -136,7 +134,7 @@ function panelSena(clienteId, nombre, alGuardar){
     // Se guarda lo que ENTRÓ, no el valor: de eso depende el arqueo. Lo que
     // vale contra una factura lo calcula el backend al aplicarla.
     const r = await authFetch("/api/senas", {method:"POST", headers:{"Content-Type":"application/json"},
-      body: JSON.stringify({cliente_id: elegido, monto: entra(),
+      body: JSON.stringify({cliente_id: elegido, valor: v,
                             forma_pago: pan.querySelector(".sForma").value})});
     if(!r.ok){ toast((await r.json().catch(()=>({}))).detail || "No se pudo"); return; }
     const s = await r.json();
@@ -176,19 +174,20 @@ function pintarSenas(cont, senas, alAnular, todas){
     fila.className = "sena-fila" + (s.usada ? " usada" : "") + (s.anulada ? " anulada" : "");
     fila.innerHTML = `
       <div>
-        <b>${_plataSena(valorSena(s))}</b>
+        <b>${_plataSena(s.valor_total)}</b>
         <span class="det">N-${String(s.numero || 0).padStart(5,"0")} · ${s.fecha} · ${_escSena(s.forma_pago || "")}${
-          valorSena(s) !== s.monto ? ` (entraron ${_plataSena(s.monto)})` : ""}${
+          s.valor_total !== s.monto ? ` (entraron ${_plataSena(s.monto)})` : ""}${
           s.notas ? " · " + _escSena(s.notas) : ""}</span>
       </div>
       <span class="estado">${s.anulada ? "devuelta"
         : s.usada ? `usada en N-${String(s.comprobante_numero || 0).padStart(5,"0")}`
+        : s.parcial ? `le quedan ${_plataSena(s.valor)} a favor`
         : "a favor"}</span>`;
     const imp = document.createElement("a");
     imp.className = "b-out"; imp.textContent = "🖨️ Recibo";
     imp.href = `/ticket?tipo=sena&id=${s.id}`;
     fila.appendChild(imp);
-    if(!s.usada && !s.anulada && alAnular && getRol() === "dueno"){
+    if(!s.usada && !s.parcial && !s.anulada && alAnular && getRol() === "dueno"){
       const b = document.createElement("button");
       b.className = "b-out"; b.textContent = "Devolver";
       b.onclick = () => alAnular(s);

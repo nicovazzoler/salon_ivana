@@ -14,7 +14,7 @@
   "extras": [ { "concepto": "Traslado", "monto": 1000 } ],
   "pagos": [
     { "monto": 21000, "saldado": 21000, "desc_aplicado": 0, "fecha": "2026-08-20T10:00:00",
-      "forma_pago": "Seña", "es_sena": true, "sena_forma": "Transferencia" }
+      "forma_pago": "Seña", "es_sena": true, "sena_forma": "Transferencia", "sena_valor": 21000 }
   ],
   "ingresado": 21000,
   "cobrado": 0,
