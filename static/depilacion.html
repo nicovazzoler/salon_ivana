@@ -519,7 +519,8 @@ function pintar(){
   const restoT = Math.max(trans - tapaT, 0);
   const total = enEfvo ? Math.max(efvo - tapaE, 0) : restoT;
   const desc = restoT - total;
-  const pct = restoT ? Math.round(desc / restoT * 1000) / 10 : 0;
+  // Mismo rótulo y mismos decimales que cuentaDeComprobante(): el papel dice esto.
+  const pct = restoT ? (desc / restoT * 100).toFixed(2) : 0;
   const botonSena = `<button class="b-out btn-mini" id="masSena"
       title="Tomar una seña que el cliente dejó y no quedó cargada">+ seña</button>`;
 
@@ -535,7 +536,7 @@ function pintar(){
     ? ren(`Seña ${botonSena}`, "−" + fmt(tapaT), "sena")
     : ren(`Seña ${botonSena}`, `<span class="sin">sin seña</span>`, "sena");
   if(SENAS.length && enEfvo) filas += ren("Subtotal", fmt(restoT), "sub");
-  if(enEfvo) filas += ren(`Desc. efectivo ${pct}%`, "−" + fmt(desc), "desc");
+  if(enEfvo) filas += ren(`Descuento ${pct}%`, "−" + fmt(desc), "desc");
   TOTAL_HOY = FORMA ? total : 0;
   // Siempre el valor de la lista de transferencia, igual que el renglón de arriba
   // y que valorSena(): es el número que se le dijo al tomarla.
