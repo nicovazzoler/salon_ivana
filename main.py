@@ -3030,7 +3030,8 @@ def cuenta_cliente(cliente_id: int, _ = Depends(usuario_actual), db: Session = D
         if comp.tipo == "ticket" and est["saldo"] > 0: saldo_total += est["saldo"]
         conv = None
         if comp.tipo == "presupuesto":
-            t = db.query(models.Comprobante).filter(models.Comprobante.convertido_de == comp.id).first()
+            t = db.query(models.Comprobante).filter(models.Comprobante.convertido_de == comp.id,
+                                                    models.Comprobante.activo == True).first()
             conv = t.numero if t else None
         out.append({"id": comp.id, "tipo": comp.tipo, "numero": comp.numero, "fecha": comp.fecha.isoformat(),
                     # Para saber si la hora de `fecha` es real o es el mediodía
@@ -3042,7 +3043,7 @@ def cuenta_cliente(cliente_id: int, _ = Depends(usuario_actual), db: Session = D
                     "total_final": est["total_final"], "pagado": est["pagado"],
                     "ingresado": est["ingresado"], "cobrado": est["cobrado"], "convertido_a": conv,
                     "depilacion": bool(comp.depilacion),
-                    "forma_pago": forma_comprobante(db, comp, pagos_map), "forma_origen": comp.forma_pago,
+                    "forma_pago": forma_comprobante(db, comp, pagos_map), "forma_origen": comp.forma_pago or "cuenta",
                     "saldo": est["saldo"], "estado": est["estado"],
                     "total_efectivo": est["total_efectivo"], "saldo_efectivo": est["saldo_efectivo"]})
     return {"cliente": _cliente_json(cli),
@@ -3351,7 +3352,8 @@ def _convertidos_de(db, ids) -> dict:
     salida = {}
     for i in range(0, len(ids), 500):        # el tope de parámetros de SQLite
         for origen, num in db.query(models.Comprobante.convertido_de, models.Comprobante.numero)\
-                             .filter(models.Comprobante.convertido_de.in_(ids[i:i+500])):
+                             .filter(models.Comprobante.convertido_de.in_(ids[i:i+500]),
+                                     models.Comprobante.activo == True):
             salida[origen] = num
     return salida
 
@@ -3381,7 +3383,7 @@ def _pagina_comprobantes(db, comps, total, total_sin_filtros, deuda, precalculad
                     "peluquero": comp.peluquero,
                     "total_lista": comp.total_lista, "extra_dificultad": comp.extra_dificultad,
                     "convertido_a": conv, "forma_pago": forma_comprobante(db, comp, pagos_map),
-                    "forma_origen": comp.forma_pago, "anotado_despues": anotado_despues(comp),
+                    "forma_origen": comp.forma_pago or "cuenta", "anotado_despues": anotado_despues(comp),
                     "depilacion": bool(comp.depilacion),
                     "sesion_id": comp.sesion_id, "sesion_cerrada": comp.sesion_id in cerradas,
                     **est})
@@ -3648,11 +3650,18 @@ def convertir_a_ticket(comp_id: int, user = Depends(usuario_actual), db: Session
     presu = db.get(models.Comprobante, comp_id)
     if not presu or not presu.activo: raise HTTPException(404, "Comprobante no existe")
     if presu.tipo != "presupuesto": raise HTTPException(400, "Solo se convierten presupuestos")
-    ya = db.query(models.Comprobante).filter(models.Comprobante.convertido_de == presu.id).first()
+    # Un ticket anulado no cuenta: el presupuesto vuelve a quedar para convertir.
+    ya = db.query(models.Comprobante).filter(models.Comprobante.convertido_de == presu.id,
+                                             models.Comprobante.activo == True).first()
     if ya: raise HTTPException(400, "Este presupuesto ya fue convertido")
     ticket = models.Comprobante(
         tipo="ticket", numero=siguiente_numero(db, "ticket"),
         cliente_id=presu.cliente_id, cliente_nombre=presu.cliente_nombre, peluquero=presu.peluquero,
+        # A cuenta y no la forma del presupuesto: nace como deuda, en la lista de
+        # transferencia, y pagada en efectivo sale el precio de efectivo
+        # (saldado_por_efectivo). Con "efectivo" copiado, pagarla por
+        # transferencia se cobraba a precio de efectivo.
+        forma_pago="cuenta",
         descuento_pct=presu.descuento_pct, descuento_nombre=presu.descuento_nombre,
         mostrar_motivo=presu.mostrar_motivo, total_lista=presu.total_lista,
         extra_dificultad=presu.extra_dificultad, convertido_de=presu.id)
