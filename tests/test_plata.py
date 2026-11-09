@@ -15,6 +15,7 @@ from main import (
     calcular_transfer,
     estado_comprobante,
     precio_con_ajuste,
+    saldado_por_efectivo,
     sena_saldado,
 )
 
@@ -125,6 +126,9 @@ def test_estado_comprobante_caso_base_sin_extras_sin_descuentos():
         "cobrado": 0,
         "saldo": 2400,
         "estado": "pendiente",
+        # 1000 x 2 de la lista de efectivo
+        "total_efectivo": 2000,
+        "saldo_efectivo": 2000,
     }
 
 
@@ -185,6 +189,61 @@ def test_estado_comprobante_pago_parcial():
     assert resultado["cobrado"] == 1000
     assert resultado["saldo"] == 1400
     assert resultado["estado"] == "parcial"
+
+
+# ---------------------------------------------------------------------------
+# Pagar en efectivo una cuenta que está en la lista de transferencia.
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("efectivo", range(1000, 60001, 500))
+def test_la_deuda_entera_en_efectivo_sale_lo_de_la_lista_de_efectivo(efectivo):
+    """Dejarlo a cuenta y pagarlo después en efectivo cuesta lo mismo que
+    facturarlo en efectivo. Con el 10% suelto sobre el transfer ya redondeado
+    para arriba, en 106 de estos 119 precios salía $100 más."""
+    comp = _comprobante(total_lista=calcular_transfer(efectivo),
+                        lineas=[_linea(precio_efectivo=efectivo, cantidad=1)])
+    est = estado_comprobante(None, comp, pagos_precargados={comp.id: []})
+    assert est["saldo_efectivo"] == efectivo
+    assert saldado_por_efectivo(est, efectivo) == est["saldo"]
+
+
+def test_efectivo_parcial_tapa_en_proporcion_y_nunca_mas_que_el_saldo():
+    comp = _comprobante()  # 2400 en transferencia, 2000 en efectivo
+    est = estado_comprobante(None, comp, pagos_precargados={comp.id: []})
+    assert saldado_por_efectivo(est, 1000) == 1200
+    assert saldado_por_efectivo(est, 999) == 1199    # 1198,8: para arriba
+    assert saldado_por_efectivo(est, 5000) == 2400   # el tope es el saldo
+
+
+def test_saldo_efectivo_despues_de_un_abono():
+    comp = _comprobante()
+    est = estado_comprobante(None, comp, pagos_precargados={comp.id: [_pago(1000)]})
+    assert est["saldo"] == 1400
+    assert est["saldo_efectivo"] == 1167             # 1166,67: para arriba
+    assert saldado_por_efectivo(est, 1167) == 1400
+
+
+@pytest.mark.parametrize("primero", [1, 999, 3000, 4000, 7777])
+def test_pagando_en_dos_veces_suma_lo_mismo_que_de_una(primero):
+    comp = _comprobante(total_lista=10000, lineas=[_linea(precio_efectivo=9000, cantidad=1)])
+    est = estado_comprobante(None, comp, pagos_precargados={comp.id: []})
+    pago = _pago(primero, saldado=saldado_por_efectivo(est, primero))
+    est = estado_comprobante(None, comp, pagos_precargados={comp.id: [pago]})
+    assert primero + est["saldo_efectivo"] == 9000
+
+
+def test_cuenta_en_efectivo_no_lleva_otro_descuento():
+    comp = _comprobante(forma_pago="efectivo")
+    est = estado_comprobante(None, comp, pagos_precargados={comp.id: []})
+    assert est["saldo_efectivo"] == est["saldo"] == 2000
+    assert saldado_por_efectivo(est, 700) == 700
+
+
+def test_extras_en_efectivo_no_se_descuentan():
+    comp = _comprobante(extras=[SimpleNamespace(monto=5000)])
+    est = estado_comprobante(None, comp, pagos_precargados={comp.id: []})
+    assert est["total_final"] == 7400
+    assert est["saldo_efectivo"] == 7000
 
 
 def test_estado_comprobante_la_sena_no_es_plata_de_mostrador():

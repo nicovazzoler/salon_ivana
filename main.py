@@ -333,6 +333,8 @@ class PagoIn(BaseModel):
     # True = este abono cierra la venta, así que la plata pertenece al día del
     # servicio. False = está saldando una deuda vieja, y entra el día de hoy.
     del_servicio: bool = False
+    # True = es efectivo y lleva el 10%: lo saldado lo calcula el backend.
+    descuento_efectivo: bool = False
 class FormaIn(BaseModel):
     nombre: str
 class DescuentoIn(BaseModel):
@@ -785,9 +787,8 @@ def con_relaciones(query):
     return query.options(selectinload(models.Comprobante.lineas),
                          selectinload(models.Comprobante.extras))
 
-def estado_comprobante(db, comp, pagos_precargados=None) -> dict:
-    """pagos_precargados: mapa {comprobante_id: [pagos]} armado con
-    pagos_por_comprobante(). Si viene, no se consulta la base por este comprobante."""
+def _cuenta(comp, en_efectivo: bool) -> dict:
+    """Los renglones de la cuenta de un comprobante, en una de las dos listas."""
     # El extra por dificultad se sacó; los comprobantes nuevos lo tienen en 0.
     # Se sigue sumando para que los viejos den el mismo total de siempre.
     extra = comp.extra_dificultad or 0
@@ -795,21 +796,45 @@ def estado_comprobante(db, comp, pagos_precargados=None) -> dict:
     # Las dos listas llevan el mismo ajuste por línea, así los totales quedan parejos.
     total_efectivo = sum(precio_con_ajuste(l.precio_efectivo, l.ajuste_pct, l.ajuste_monto) * l.cantidad
                          for l in comp.lineas)
-
-    # El comprobante se precia según su forma: efectivo usa lista efectivo; cualquier otra, transfer.
-    if comp.forma_pago == "efectivo":
+    if en_efectivo:
         desc_efectivo = total_transfer - total_efectivo                  # diferencia entre listas
         subtotal = total_efectivo + extra
     else:
         desc_efectivo = 0
         subtotal = total_transfer + extra
-
     # El descuento de listado (jubilado) va sobre el subtotal YA con el descuento efectivo restado.
     desc_jubilado = round(subtotal * (comp.descuento_pct or 0) / 100)
     # Los extras entran al final, después de TODOS los descuentos: son cargos que
     # no se negocian (traslado, un producto que se lleva, etc.).
     extras_total = sum(e.monto or 0 for e in comp.extras)
-    total_final = subtotal - desc_jubilado + extras_total
+    return {"extra": extra, "total_transfer": total_transfer, "desc_efectivo": desc_efectivo,
+            "subtotal": subtotal, "desc_jubilado": desc_jubilado, "extras_total": extras_total,
+            "total_final": subtotal - desc_jubilado + extras_total}
+
+def saldado_por_efectivo(est: dict, monto: int) -> int:
+    """Cuánto de la cuenta tapa `monto` pagado en efectivo.
+
+    Va por la proporción entre los dos totales del comprobante y no por un 10%
+    suelto: así la cuenta entera en efectivo sale exactamente lo de la lista de
+    efectivo, igual que si se hubiera facturado en efectivo.
+    """
+    if monto >= est["saldo_efectivo"]:
+        return est["saldo"]
+    if est["total_efectivo"] <= 0:
+        return monto
+    # Para arriba: pagando en partes, la suma da justo lo de la lista de efectivo.
+    return -(-monto * est["total_final"] // est["total_efectivo"])
+
+def estado_comprobante(db, comp, pagos_precargados=None) -> dict:
+    """pagos_precargados: mapa {comprobante_id: [pagos]} armado con
+    pagos_por_comprobante(). Si viene, no se consulta la base por este comprobante."""
+    # El comprobante se precia según su forma: efectivo usa lista efectivo; cualquier otra, transfer.
+    en_efectivo = comp.forma_pago == "efectivo"
+    c = _cuenta(comp, en_efectivo)
+    extra, total_transfer = c["extra"], c["total_transfer"]
+    desc_efectivo, subtotal = c["desc_efectivo"], c["subtotal"]
+    desc_jubilado, extras_total, total_final = c["desc_jubilado"], c["extras_total"], c["total_final"]
+    total_en_efectivo = total_final if en_efectivo else _cuenta(comp, True)["total_final"]
 
     pagos = (pagos_precargados.get(comp.id, []) if pagos_precargados is not None
              else db.query(models.Pago).filter(models.Pago.comprobante_id == comp.id).all())
@@ -820,6 +845,11 @@ def estado_comprobante(db, comp, pagos_precargados=None) -> dict:
     # que se le lee a la clienta: subtotal, menos la seña, menos el descuento.
     cobrado = sum(p.monto for p in pagos if not p.sena_id)
     saldo = total_final - pagado
+    # Lo que falta, contado en la lista de efectivo: con eso en efectivo se salda.
+    if saldo <= 0 or total_final <= 0 or total_en_efectivo >= total_final:
+        saldo_efectivo = saldo
+    else:
+        saldo_efectivo = -(-saldo * total_en_efectivo // total_final)
 
     if comp.tipo == "presupuesto": estado = "presupuesto"
     elif pagado <= 0: estado = "pendiente"
@@ -835,6 +865,8 @@ def estado_comprobante(db, comp, pagos_precargados=None) -> dict:
         "total_final": total_final,                 # lo que paga el cliente
         "pagado": pagado, "ingresado": ingresado, "cobrado": cobrado,
         "saldo": saldo, "estado": estado,
+        "total_efectivo": total_en_efectivo,        # la cuenta entera en la lista de efectivo
+        "saldo_efectivo": saldo_efectivo,           # con esto en efectivo se salda
     }
 
 def forma_comprobante(db, comp, pagos_precargados=None) -> str:
@@ -2874,10 +2906,14 @@ def deudas_clientes(_ = Depends(usuario_actual), db: Session = Depends(get_db)):
         models.Comprobante.activo == True,
         models.Comprobante.cliente_id != None)).all()
 
-    # 3) filtro barato (total_final NUNCA supera total_lista + extra): los que lo pasan
-    # necesitan el cálculo fino, y sus pagos se traen todos juntos, no de a uno.
+    # 3) filtro barato: total_final nunca supera la lista transfer más los cargos
+    # de arriba (extra viejo y extras), salvo con un descuento negativo. Los que lo
+    # pasan necesitan el cálculo fino, y sus pagos se traen todos juntos.
+    def techo(t):
+        return ((t.total_lista or 0) + (t.extra_dificultad or 0)
+                + sum(max(e.monto or 0, 0) for e in t.extras))
     candidatos = [t for t in tickets
-                  if pagado_por_comp.get(t.id, 0) < (t.total_lista or 0) + (t.extra_dificultad or 0)]
+                  if (t.descuento_pct or 0) < 0 or pagado_por_comp.get(t.id, 0) < techo(t)]
     pagos_map = pagos_por_comprobante(db, candidatos)
 
     deudas = {}
@@ -2963,7 +2999,8 @@ def cuenta_cliente(cliente_id: int, _ = Depends(usuario_actual), db: Session = D
                     "ingresado": est["ingresado"], "cobrado": est["cobrado"], "convertido_a": conv,
                     "depilacion": bool(comp.depilacion),
                     "forma_pago": forma_comprobante(db, comp, pagos_map), "forma_origen": comp.forma_pago,
-                    "saldo": est["saldo"], "estado": est["estado"]})
+                    "saldo": est["saldo"], "estado": est["estado"],
+                    "total_efectivo": est["total_efectivo"], "saldo_efectivo": est["saldo_efectivo"]})
     return {"cliente": _cliente_json(cli),
             "saldo_total": saldo_total, "comprobantes": out}
 
@@ -3461,6 +3498,10 @@ def registrar_pago(comp_id: int, pago: PagoIn, _ = Depends(usuario_actual), db: 
     # 'saldado' es cuánto de la cuenta (a precio transferencia) cubre este pago.
     # Si no viene, se asume igual al monto (caso transferencia, sin descuento).
     saldado = pago.saldado if pago.saldado is not None else pago.monto
+    if pago.descuento_efectivo:
+        if pago.forma_pago != "Efectivo":
+            raise HTTPException(400, "El descuento de efectivo es solo para pagos en efectivo")
+        saldado = saldado_por_efectivo(est, pago.monto)
     if saldado <= 0: raise HTTPException(400, "Lo saldado debe ser positivo")
     if saldado > est["saldo"]: raise HTTPException(400, f"Supera el saldo pendiente (${est['saldo']})")
     desc = saldado - pago.monto   # descuento en pesos (0 si no hubo)
