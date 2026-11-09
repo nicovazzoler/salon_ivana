@@ -1,17 +1,17 @@
-# Regenera ARQUITECTURA.md cada vez que cambia el código, para que el mapa
-# no se desactualice. Un mapa viejo es peor que ninguno, porque le creés.
+# Regenera ARQUITECTURA.md para que el mapa no se desactualice. Un mapa viejo
+# es peor que ninguno, porque le creés.
 name: Mapa de arquitectura
 
+# Corre sobre los pull requests, no sobre main. Motivo: main está protegido y
+# exige PR, así que un push directo del bot sería rechazado. Al actualizar el
+# archivo dentro del PR, el mapa entra junto con el cambio que lo volvió viejo,
+# y de paso lo ves en el diff antes de mergear.
 on:
-  push:
+  pull_request:
     branches: [main]
-    # Si no ignoráramos el propio archivo, el commit que hace este workflow
-    # dispararía el workflow otra vez, y así para siempre.
-    paths-ignore:
-      - 'ARQUITECTURA.md'
 
-# Por defecto el workflow sólo puede leer. Como acá commiteamos de vuelta al
-# repo, hay que pedir permiso de escritura explícitamente.
+# Por defecto el workflow sólo puede leer. Acá commitea, así que necesita
+# permiso de escritura.
 permissions:
   contents: write
 
@@ -23,6 +23,11 @@ jobs:
     steps:
       - name: Descargar el código
         uses: actions/checkout@v4
+        with:
+          # Sin esto, en un pull request GitHub te deja parado en un commit de
+          # merge temporal que no pertenece a ninguna rama, y el commit que
+          # hacemos más abajo no tendría a dónde ir.
+          ref: ${{ github.head_ref }}
 
       # El script usa sólo la biblioteca estándar de Python: no hay que
       # instalar nada, y por eso este workflow corre en pocos segundos.
@@ -45,7 +50,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add ARQUITECTURA.md
-          # [skip ci] es un segundo seguro contra el bucle, además del
-          # paths-ignore de arriba.
-          git commit -m "Actualiza el mapa de arquitectura [skip ci]"
+          git commit -m "Actualiza el mapa de arquitectura"
           git push
+          # Un push hecho con el token del workflow no vuelve a disparar
+          # workflows, así que esto no se puede morder la cola.
