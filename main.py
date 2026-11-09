@@ -4835,7 +4835,9 @@ def armar_backup(db) -> dict:
              # vuelve a ofrecer cargar la máquina y el pago a la ayudante de un
              # día ya cerrado, y las horas de la ayudante se pagarían dos veces.
              "ayudante": bool(e.ayudante), "maquina": bool(e.maquina),
-             "empleado_id": e.empleado_id}
+             "empleado_id": e.empleado_id,
+             # De qué sesión se resta: sin esto, la máquina queda fuera del reparto.
+             "depilacion": bool(e.depilacion), "sesion_id": e.sesion_id}
             for e in db.query(models.Egreso).order_by(models.Egreso.fecha).all()
         ],
         "empleados": [
@@ -4855,7 +4857,7 @@ def armar_backup(db) -> dict:
              "depilacion": bool(l.depilacion), "recaudado": l.recaudado, "gastos": l.gastos,
              "total_comisiones": l.total_comisiones, "total_horas": l.total_horas,
              "total": l.total, "notas": l.notas, "egreso_id": l.egreso_id,
-             "parcial": bool(l.parcial)}
+             "parcial": bool(l.parcial), "sesion_id": l.sesion_id}
             for l in db.query(models.Liquidacion).order_by(models.Liquidacion.id).all()
         ],
         "horas_trabajadas": [
@@ -4874,6 +4876,18 @@ def armar_backup(db) -> dict:
         "formas_pago": [
             {"id": f.id, "nombre": f.nombre, "activo": f.activo}
             for f in db.query(models.FormaPago).all()
+        ],
+        "sesiones_depilacion": [
+            {"id": s.id, "numero": s.numero, "empleado_id": s.empleado_id,
+             "abierta": _iso_utc(s.abierta), "cerrada": _iso_utc(s.cerrada),
+             "reparto_efectivo": bool(s.reparto_efectivo), "notas": s.notas}
+            for s in db.query(models.SesionDepilacion).order_by(models.SesionDepilacion.id).all()
+        ],
+        "correcciones_sesion": [
+            {"id": x.id, "sesion_id": x.sesion_id, "fecha": _iso_utc(x.fecha),
+             "usuario": x.usuario, "detalle": x.detalle,
+             "parte_antes": x.parte_antes, "parte_despues": x.parte_despues}
+            for x in db.query(models.CorreccionSesion).order_by(models.CorreccionSesion.id).all()
         ],
         "tipos_egreso": [
             {"id": t.id, "nombre": t.nombre, "activo": t.activo, "privado": bool(t.privado)}
@@ -4918,7 +4932,7 @@ def armar_backup(db) -> dict:
         ],
         "excepciones_horario": [
             {"id": x.id, "empleado_id": x.empleado_id, "fecha": x.fecha,
-             "desde": x.desde, "hasta": x.hasta, "motivo": x.motivo}
+             "desde": x.desde, "hasta": x.hasta, "motivo": x.motivo, "a_cargo": x.a_cargo}
             for x in db.query(models.ExcepcionHorario).all()
         ],
         "notas_diarias": [
@@ -4951,7 +4965,7 @@ def armar_backup(db) -> dict:
              "extra_dificultad": c.extra_dificultad, "descuento_pct": c.descuento_pct,
              "descuento_nombre": c.descuento_nombre, "forma_pago": c.forma_pago,
              "mostrar_motivo": c.mostrar_motivo, "convertido_de": c.convertido_de,
-             "depilacion": bool(c.depilacion), "activo": c.activo,
+             "depilacion": bool(c.depilacion), "activo": c.activo, "sesion_id": c.sesion_id,
              "lineas": [
                  {"id": l.id, "item_id": l.item_id, "nombre": l.nombre,
                   "cantidad": l.cantidad, "precio_unit": l.precio_unit,
