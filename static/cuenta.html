@@ -276,6 +276,14 @@ if($("#btnEliminar")) $("#btnEliminar").onclick=async()=>{
   renderComprobantes();
 }
 
+/* La misma cuenta que saldado_por_efectivo() en main.py, solo para el aviso:
+   lo que se guarda lo calcula el backend. */
+function saldadoPorEfectivo(comp, efectivo){
+  if(efectivo >= comp.saldo_efectivo) return comp.saldo;
+  if(comp.total_efectivo <= 0) return efectivo;
+  return Math.ceil(efectivo * comp.total_final / comp.total_efectivo);
+}
+
 /* Lista de comprobantes, filtrada por la pestaña elegida. */
 function renderComprobantes(){
   const cont=$("#lista"); cont.innerHTML="";
@@ -289,7 +297,7 @@ function renderComprobantes(){
     const esPresu = comp.tipo==="presupuesto";
     const div=document.createElement("div"); div.className="comp card";
     const fecha=fechaHoraComp(comp);
-    const efvoTodo = comp.desc_efectivo>0 ? comp.saldo : Math.ceil(comp.saldo * 0.9/100)*100;
+    const efvoTodo = comp.saldo_efectivo;
     const {monto, soloSena} = EscPos.montoDeTarjeta(comp);
     div.innerHTML=`
       <div class="comp-head">
@@ -365,14 +373,13 @@ function renderComprobantes(){
         if(forma.value==="" || efectivo<=0){ avisoVivo.textContent=""; return; }
 
         const aplicaDesc = forma.value==="Efectivo" && comp.desc_efectivo===0;
-        const saldadoCalc = aplicaDesc ? Math.ceil((efectivo/0.9)/100)*100 : efectivo;
-        const tapa = Math.min(saldadoCalc, comp.saldo);      
+        const tapa = Math.min(aplicaDesc ? saldadoPorEfectivo(comp, efectivo) : efectivo, comp.saldo);
         const queda = comp.saldo - tapa;
 
         if(queda <= 0){
           avisoVivo.textContent = `Salda todo ✓`;
         } else if(aplicaDesc){
-          const faltaEfvo = Math.ceil((queda * 0.9) / 100) * 100;
+          const faltaEfvo = Math.ceil(queda * comp.total_efectivo / comp.total_final);
           avisoVivo.textContent = `Tapás ${fmt(tapa)} · queda ${fmt(queda)} (con ${fmt(faltaEfvo)} en efectivo lo saldás)`;
         } else {
           avisoVivo.textContent = `Tapás ${fmt(tapa)} · queda ${fmt(queda)}`;
@@ -384,10 +391,9 @@ function renderComprobantes(){
         const efectivo=parseInt(div.querySelector(".aMonto").value)||0;
         if(efectivo<=0){ toast("Monto inválido"); return; }
         const aplicaDesc = forma.value==="Efectivo" && comp.desc_efectivo===0;
-        const saldadoCalc = aplicaDesc ? Math.ceil((efectivo / 0.9) / 100) * 100 : efectivo;  
-        const saldado = Math.min(saldadoCalc, comp.saldo);         
         const monto = efectivo;
-        const body={ monto, saldado, forma_pago:forma.value,
+        const body={ monto, saldado: aplicaDesc ? null : Math.min(efectivo, comp.saldo),
+          descuento_efectivo: aplicaDesc, forma_pago:forma.value,
           alias: forma.value==="Transferencia" ? (div.querySelector(".aAlias").value.trim()||null) : null };
         const r=await authFetch("/api/comprobantes/"+comp.id+"/pagos",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
         if(!r.ok){ const e=await r.json(); toast(e.detail||"No se pudo"); return; }

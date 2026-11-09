@@ -8,6 +8,7 @@ let TIPOS_PRIVADOS=new Set();   // tipos de egreso que son privados siempre (vac
 let tipo="ticket", descPct=0, descNombre=null, formaPago="efectivo";
 let totalActual=0;
 let mxDeudaActual=0;
+let totalEfActual=0;     // el mismo ticket entero en la lista de efectivo
 let vista="cats", catActual=null, grupoActual=null;
 const ORDEN_VAR=["S","M","L","XL","Mayor XL"];
 const ordenVar=v=>{const i=ORDEN_VAR.indexOf(v);return i<0?99:i;};
@@ -678,6 +679,7 @@ function actualizarTotales(){
 
   // total
   const total = baseCat - descCat + extrasTotal;
+  totalEfActual = subEf - descCatEf + extrasTotal;
   if(esPresu){
     $("#total").textContent  = fmt(subTr - descCatTr + extrasTotal);
     $("#total2").textContent = fmt(subEf - descCatEf + extrasTotal);
@@ -1188,7 +1190,8 @@ function calcularMixto(){
   const D = mxDeudaActual;                          
   const E = parseInt($("#mxEfectivo").value)||0;    
   const aviso = $("#mxAviso");
-  const efvoBruto =  Math.ceil((E / 0.9) / 100) * 100;  // Deuda cubierta
+  // Deuda cubierta: la misma cuenta que saldado_por_efectivo() en main.py
+  const efvoBruto = E >= totalEfActual ? D : Math.ceil(E * D / totalEfActual);
 
   let error = "";
   if(E <= 0)              error = "Poné cuánto paga en efectivo.";
@@ -1232,23 +1235,20 @@ $("#mxRegistrar").onclick=async()=>{
   if(!d){ $("#mxRegistrar").disabled=false; return; }
 
 
-  const c = await (await authFetch("/api/comprobantes/"+d.id)).json();
-  const D = c.saldo;
-  let efvoBruto = Math.ceil((E / 0.9) / 100) * 100;  
-  efvoBruto = Math.min(efvoBruto, D);                // nunca más que la deuda real
-  const T = D - efvoBruto;                            
+  // Primero el efectivo: cuánto de la deuda tapa lo calcula el backend, y la
+  // transferencia es lo que quede.
+  const r1 = await authFetch("/api/comprobantes/"+d.id+"/pagos",{method:"POST",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({ monto:E, descuento_efectivo:true, forma_pago:"Efectivo", alias:null, del_servicio:true })});
+  if(!r1.ok){ toast("Falló la parte efectivo — quedó a cuenta"); $("#panelMixto").style.display="none"; limpiar(); return; }
+  const T = (await r1.json()).saldo;
 
-  // Pago 1: transferencia 
+  let ok = true;
   if(T > 0){
-    const r1 = await authFetch("/api/comprobantes/"+d.id+"/pagos",{method:"POST",headers:{"Content-Type":"application/json"},
+    const r2 = await authFetch("/api/comprobantes/"+d.id+"/pagos",{method:"POST",headers:{"Content-Type":"application/json"},
       body:JSON.stringify({ monto:T, saldado:T, forma_pago:"Transferencia", alias, del_servicio:true })});
-    if(!r1.ok){ toast("Falló la parte transferencia — quedó a cuenta"); $("#panelMixto").style.display="none"; limpiar(); return; }
+    ok = r2.ok;
   }
-
-  // Pago 2: efectivo (monto = plata real; saldado = deuda que cubre)
-  const r2 = await authFetch("/api/comprobantes/"+d.id+"/pagos",{method:"POST",headers:{"Content-Type":"application/json"},
-    body:JSON.stringify({ monto:E, saldado:efvoBruto, forma_pago:"Efectivo", alias:null, del_servicio:true })});
-  toast(r2.ok ? "Pago mixto registrado ✓" : "Falló la parte efectivo — quedó saldo a cuenta");
+  toast(ok ? "Pago mixto registrado ✓" : "Falló la parte transferencia — quedó saldo a cuenta");
 
   $("#panelMixto").style.display="none";
   limpiar();
