@@ -4971,7 +4971,8 @@ def armar_backup(db) -> dict:
                   "cantidad": l.cantidad, "precio_unit": l.precio_unit,
                   "precio_efectivo": l.precio_efectivo, "dificultad": l.dificultad,
                   "ajuste_pct": l.ajuste_pct, "ajuste_monto": l.ajuste_monto,
-                  "ajuste_nombre": l.ajuste_nombre, "subtotal": l.subtotal}
+                  "ajuste_nombre": l.ajuste_nombre, "subtotal": l.subtotal,
+                  "es_depilacion": bool(l.es_depilacion)}
                  for l in c.lineas
              ],
              "extras": [{"id": e.id, "concepto": e.concepto, "monto": e.monto} for e in c.extras]}
