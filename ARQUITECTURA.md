@@ -1,6 +1,6 @@
 # Arquitectura · salon_ivana
 
-Generado el 2026-11-09 leyendo el repo. **No editar a mano**: se regenera.
+Generado leyendo el repo. **No editar a mano**: lo regenera el CI en cada commit.
 
 Todo lo que figura acá está escrito en el código — dependencias declaradas, decoradores de ruta, `__tablename__` y las rutas que nombran los archivos del front. Nada está inferido por un modelo.
 

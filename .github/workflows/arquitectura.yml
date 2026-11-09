@@ -1,0 +1,51 @@
+# Regenera ARQUITECTURA.md cada vez que cambia el código, para que el mapa
+# no se desactualice. Un mapa viejo es peor que ninguno, porque le creés.
+name: Mapa de arquitectura
+
+on:
+  push:
+    branches: [main]
+    # Si no ignoráramos el propio archivo, el commit que hace este workflow
+    # dispararía el workflow otra vez, y así para siempre.
+    paths-ignore:
+      - 'ARQUITECTURA.md'
+
+# Por defecto el workflow sólo puede leer. Como acá commiteamos de vuelta al
+# repo, hay que pedir permiso de escritura explícitamente.
+permissions:
+  contents: write
+
+jobs:
+  mapa:
+    name: Regenerar el mapa
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Descargar el código
+        uses: actions/checkout@v4
+
+      # El script usa sólo la biblioteca estándar de Python: no hay que
+      # instalar nada, y por eso este workflow corre en pocos segundos.
+      - name: Preparar Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Leer el repo y armar el mapa
+        run: python3 herramientas/mapa.py . --escribir
+
+      - name: Commitear sólo si cambió
+        run: |
+          # --porcelain detecta tanto un archivo modificado como uno nuevo
+          # todavía sin trackear. Si está vacío, no hay nada que hacer.
+          if [ -z "$(git status --porcelain ARQUITECTURA.md)" ]; then
+            echo "El mapa no cambió. No hay nada que commitear."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add ARQUITECTURA.md
+          # [skip ci] es un segundo seguro contra el bucle, además del
+          # paths-ignore de arriba.
+          git commit -m "Actualiza el mapa de arquitectura [skip ci]"
+          git push
