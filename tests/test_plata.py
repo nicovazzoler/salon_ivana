@@ -17,7 +17,9 @@ from main import (
     precio_con_ajuste,
     saldado_por_efectivo,
     sena_saldado,
+    validar_numeros,
 )
+from fastapi import HTTPException
 
 
 # ---------------------------------------------------------------------------
@@ -338,3 +340,40 @@ def test_base_comision_baja_con_el_descuento_del_comprobante():
         precio_unit=1200, precio_efectivo=1000, ajuste_pct=0, ajuste_monto=0, cantidad=2
     )
     assert base_comision(linea, _comprobante(descuento_pct=10)) == 1800  # 2000 - 10%
+
+
+# ---------------------------------------------------------------------------
+# validar_numeros: los topes de un comprobante nuevo, sin depender de la pantalla.
+# ---------------------------------------------------------------------------
+
+def _pedido(forma="efectivo", descuento=0, extras=(), **linea):
+    ln = dict(item_id=None, nombre="Corte", cantidad=1, precio_custom=1000, ajuste_pct=0)
+    ln.update(linea)
+    return SimpleNamespace(forma_pago=forma, descuento_pct=descuento, lineas=[SimpleNamespace(**ln)],
+                           extras=[SimpleNamespace(concepto="Extra", monto=m) for m in extras])
+
+
+@pytest.mark.parametrize("pedido", [
+    pytest.param(_pedido(descuento=150), id="descuento-150-daba-total-negativo"),
+    pytest.param(_pedido(descuento=-10), id="descuento-negativo"),
+    pytest.param(_pedido(ajuste_pct=-150), id="ajuste-menos-150-daba-precio-negativo"),
+    pytest.param(_pedido(cantidad=0), id="cantidad-cero"),
+    pytest.param(_pedido(cantidad=-2), id="cantidad-negativa-subia-el-stock"),
+    pytest.param(_pedido(precio_custom=None), id="sin-item-ni-precio-daba-500"),
+    pytest.param(_pedido(extras=[-3000]), id="extra-negativo"),
+    pytest.param(_pedido(forma="Efectivo"), id="forma-de-cobro-desconocida"),
+])
+def test_validar_numeros_rebota(pedido):
+    with pytest.raises(HTTPException) as e:
+        validar_numeros(pedido)
+    assert e.value.status_code == 400
+
+
+@pytest.mark.parametrize("pedido", [
+    pytest.param(_pedido(), id="comun"),
+    pytest.param(_pedido(descuento=100, ajuste_pct=-100), id="los-bordes-valen"),
+    pytest.param(_pedido(ajuste_pct=15, extras=[5000]), id="recargo-y-extra"),
+    pytest.param(_pedido(forma="cuenta", item_id=7, precio_custom=None), id="item-del-catalogo"),
+])
+def test_validar_numeros_deja_pasar(pedido):
+    validar_numeros(pedido)
