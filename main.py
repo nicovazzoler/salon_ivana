@@ -728,6 +728,25 @@ def _busca(col, texto: str):
     """Condición 'esta columna contiene ese texto', sin importar acentos ni mayúsculas."""
     return _plano_sql(col).like(f"%{_plano(texto)}%")
 
+FORMAS_COMPROBANTE = ("efectivo", "transfer", "mixto", "cuenta")
+
+def validar_numeros(c) -> None:
+    """Los topes de un comprobante nuevo. Las pantallas ya los ponen, pero la
+    cuenta de la plata no puede depender de que la pantalla los ponga."""
+    if c.forma_pago not in FORMAS_COMPROBANTE:
+        raise HTTPException(400, f'"{c.forma_pago}" no es una forma de cobro')
+    if not 0 <= (c.descuento_pct or 0) <= 100:
+        raise HTTPException(400, "El descuento va de 0 a 100%")
+    for ln in c.lineas:
+        que = ln.nombre or "una línea"
+        if ln.cantidad < 1: raise HTTPException(400, f"La cantidad de {que} tiene que ser al menos 1")
+        if (ln.ajuste_pct or 0) < -100: raise HTTPException(400, f"El ajuste de {que} no puede bajar de −100%")
+        if not ln.item_id and (ln.precio_custom is None or ln.precio_custom <= 0):
+            raise HTTPException(400, f"Falta el precio de {que}")
+    for ex in c.extras:
+        if (ex.monto or 0) < 0:
+            raise HTTPException(400, f'El extra "{ex.concepto}" no puede ser negativo: los descuentos van en la lista de descuentos')
+
 def calcular_transfer(precio_efectivo: int) -> int:
     """Precio de transferencia = efectivo x 1.1111, redondeado PARA ARRIBA a múltiplo de 100."""
     bruto = precio_efectivo * 1.1111
@@ -2012,7 +2031,7 @@ def gasto_depilacion(g: GastoDepiIn, user = Depends(usuario_actual),
         numero=siguiente_numero_egreso(db),
         tipo=(g.tipo or "").strip() or por_defecto,
         concepto=(g.concepto or "").strip() or None,
-        monto=g.monto, forma_pago=g.forma_pago, notas=notas, privado=False,
+        monto=g.monto, forma_pago=forma_de_pago(db, g.forma_pago or "Efectivo"), notas=notas, privado=False,
         fecha=fecha_del_servicio(g.fecha, fecha_hora_now_utc().replace(tzinfo=None), "un gasto"),
         depilacion=True, sesion_id=ses.id,
         ayudante=bool(g.ayudante), maquina=bool(g.maquina), empleado_id=de_quien)
@@ -2307,7 +2326,7 @@ def cerrar_depilacion(datos: CerrarDepiIn, user = Depends(usuario_actual),
         # Sin forma de pago el egreso no entra en el arqueo de efectivo y la caja
         # pide más plata de la que hay, sin nada que lo explique. La pantalla
         # siempre la manda; esto es para el que cierre por la API.
-        monto=pendiente, forma_pago=datos.forma_pago or "Efectivo", notas=datos.notas,
+        monto=pendiente, forma_pago=forma_de_pago(db, datos.forma_pago or "Efectivo"), notas=datos.notas,
         privado=es_dueno(user),
         fecha=fecha_del_servicio(datos.fecha_pago,
                                  fecha_hora_now_utc().replace(tzinfo=None), "un pago"))
@@ -2474,7 +2493,7 @@ def cerrar_liquidacion(datos: CerrarIn, _ = Depends(solo_dueno), db: Session = D
             numero=siguiente_numero_egreso(db), tipo=tipo_de_sueldo(db).nombre,
             concepto=(f"Sueldo {emp.nombre} ({ciclo['desde']} a {ciclo['hasta']})"
                       + (" · pago parcial" if parcial else "")),
-            monto=liq.total, forma_pago=datos.forma_pago,
+            monto=liq.total, forma_pago=forma_de_pago(db, datos.forma_pago or "Efectivo"),
             notas=datos.notas,
             fecha=fecha_del_servicio(datos.fecha,
                                      fecha_hora_now_utc().replace(tzinfo=None), "un sueldo"),
@@ -3105,6 +3124,22 @@ def renombrar_categoria(datos: RenombrarCat, _ = Depends(usuario_actual), db: Se
 """
 FORMAS_FIJAS = ("Efectivo", "Transferencia")
 
+def forma_de_pago(db, texto: str | None) -> str:
+    """La forma de pago escrita como en la lista, o 400.
+
+    El arqueo compara el texto exacto: un "efectivo" en minúscula entraba a la
+    caja pero no al efectivo esperado, y una seña así tapaba como transferencia.
+    """
+    t = (texto or "").strip()
+    if not t: raise HTTPException(400, "Falta la forma de pago")
+    for fija in FORMAS_FIJAS:
+        if t.lower() == fija.lower(): return fija
+    f = (db.query(models.FormaPago)
+           .filter(func.lower(models.FormaPago.nombre) == t.lower(), models.FormaPago.activo == True)
+           .first())
+    if not f: raise HTTPException(400, f'"{t}" no es una forma de pago de la lista')
+    return f.nombre
+
 @app.get("/api/formas")
 def listar_formas(_ = Depends(usuario_actual), db: Session = Depends(get_db)):
     return [{"id": f.id, "nombre": f.nombre, "fija": f.nombre in FORMAS_FIJAS}
@@ -3384,6 +3419,7 @@ def crear_comprobante(c: ComprobanteIn, user = Depends(usuario_actual), db: Sess
         # el nombre que queda en el comprobante también, si no el mismo cliente
         # aparece escrito distinto en el historial y en el papel impreso
         nombre_cli = nombre_propio(c.cliente_nombre) or None
+    validar_numeros(c)
     ahora = fecha_hora_now_utc().replace(tzinfo=None)
     # Anotar un servicio con fecha de otro día mueve plata de una caja a otra,
     # así que es de la dueña. Se compara la fecha YA validada y no el texto que
@@ -3495,15 +3531,20 @@ def registrar_pago(comp_id: int, pago: PagoIn, _ = Depends(usuario_actual), db: 
     if comp.tipo != "ticket": raise HTTPException(400, "Solo se cobran tickets, no presupuestos")
     est = estado_comprobante(db, comp)
     if pago.monto <= 0: raise HTTPException(400, "El monto debe ser positivo")
-    # 'saldado' es cuánto de la cuenta (a precio transferencia) cubre este pago.
-    # Si no viene, se asume igual al monto (caso transferencia, sin descuento).
-    saldado = pago.saldado if pago.saldado is not None else pago.monto
+    forma = forma_de_pago(db, pago.forma_pago)
+    # Cuánto de la cuenta tapa este pago lo calcula SIEMPRE el backend: con el
+    # 'saldado' de la pantalla, $1 podía cancelar una deuda de $20.000.
     if pago.descuento_efectivo:
-        if pago.forma_pago != "Efectivo":
+        if forma != "Efectivo":
             raise HTTPException(400, "El descuento de efectivo es solo para pagos en efectivo")
+        tope = est["saldo_efectivo"]
         saldado = saldado_por_efectivo(est, pago.monto)
-    if saldado <= 0: raise HTTPException(400, "Lo saldado debe ser positivo")
-    if saldado > est["saldo"]: raise HTTPException(400, f"Supera el saldo pendiente (${est['saldo']})")
+    else:
+        tope = est["saldo"]
+        saldado = pago.monto
+    if est["saldo"] <= 0: raise HTTPException(400, "Este ticket no debe nada")
+    if pago.monto > tope:
+        raise HTTPException(400, f"Supera el saldo pendiente (${tope:,})".replace(",", "."))
     desc = saldado - pago.monto   # descuento en pesos (0 si no hubo)
 
     """Qué día de caja le toca a esta plata.
@@ -3515,7 +3556,7 @@ def registrar_pago(comp_id: int, pago: PagoIn, _ = Depends(usuario_actual), db: 
     fecha_pago = comp.fecha if pago.del_servicio else fecha_hora_now_utc().replace(tzinfo=None)
     db.add(models.Pago(comprobante_id=comp.id, monto=pago.monto, saldado=saldado,
                        fecha=fecha_pago,
-                       forma_pago=pago.forma_pago, alias=pago.alias, desc_aplicado=desc))
+                       forma_pago=forma, alias=pago.alias, desc_aplicado=desc))
     db.commit(); return estado_comprobante(db, comp)
 
 @app.delete("/api/comprobantes/{comp_id}")
@@ -3652,7 +3693,7 @@ def crear_egreso(e: EgresoIn, user = Depends(usuario_actual), db: Session = Depe
     if e.monto <= 0: raise HTTPException(400, "El monto tiene que ser mayor que cero")
     eg = models.Egreso(numero=siguiente_numero_egreso(db),
                        tipo=e.tipo, concepto=e.concepto, monto=e.monto,
-                       forma_pago=e.forma_pago, notas=e.notas, privado=privado,
+                       forma_pago=forma_de_pago(db, e.forma_pago or "Efectivo"), notas=e.notas, privado=privado,
                        fecha=fecha)
     db.add(eg); db.commit(); db.refresh(eg)
     return {"id": eg.id, "numero": eg.numero, "privado": privado}
@@ -3684,7 +3725,7 @@ def editar_egreso(egreso_id: int, cambios: EgresoEdit, user = Depends(usuario_ac
         if cambios.monto == 0 or (cambios.monto < 0) != ((e.monto or 0) < 0):
             raise HTTPException(400, "El monto no puede ser cero ni cambiar de signo")
         e.monto = cambios.monto
-    if cambios.forma_pago is not None: e.forma_pago = cambios.forma_pago
+    if cambios.forma_pago is not None: e.forma_pago = forma_de_pago(db, cambios.forma_pago)
     if cambios.notas is not None: e.notas = cambios.notas
     # Editar NO reclasifica. Antes, un egreso cuyo tipo hubiera pasado a privado
     # se volvía privado al guardar cualquier corrección, la hiciera quien la
@@ -3775,7 +3816,7 @@ def crear_sena(datos: SenaIn, user = Depends(usuario_actual), db: Session = Depe
     if not cli: raise HTTPException(404, "Ese cliente no existe")
     if datos.monto <= 0: raise HTTPException(400, "El monto tiene que ser positivo")
     s = models.Sena(numero=siguiente_numero_sena(db), cliente_id=cli.id, monto=datos.monto,
-                    forma_pago=datos.forma_pago or "Efectivo",
+                    forma_pago=forma_de_pago(db, datos.forma_pago or "Efectivo"),
                     alias=(datos.alias or "").strip() or None,
                     notas=(datos.notas or "").strip() or None,
                     usuario=user.get("usuario", "?"))
