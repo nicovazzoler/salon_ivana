@@ -35,6 +35,14 @@ SERVICIOS = {
     "mercadopago": ("Mercado Pago", "externo"),
     "boto3": ("S3", "externo"),
     "redis": ("Redis", "datos"),
+    "anthropic": ("Claude · API de Anthropic", "modelo"),
+    "openai": ("OpenAI", "modelo"),
+    "psycopg": ("PostgreSQL", "datos"),
+    "pdfplumber": ("Lector de PDF", "archivo"),
+    "pypdf": ("Lector de PDF", "archivo"),
+    "beautifulsoup4": ("Lector de HTML", "archivo"),
+    "pandas": ("Pandas", "datos"),
+    "xlrd": ("Excel", "archivo"),
 }
 
 
@@ -69,6 +77,15 @@ def librerias(repo):
     importa algo que no esta declarado, tambien.
     """
     declaradas = {}
+    pyproject = repo / "pyproject.toml"
+    if pyproject.is_file():
+        texto = pyproject.read_text(encoding="utf-8", errors="replace")
+        bloque = re.search(r"dependencies\s*=\s*\[(.*?)\]", texto, re.S)
+        if bloque:
+            for item in re.findall(r"[\"\']([^\"\']+)[\"\']", bloque.group(1)):
+                m2 = re.match(r"([A-Za-z0-9_.-]+)", item)
+                if m2:
+                    declaradas.setdefault(m2.group(1).lower(), "ver pyproject")
     for req in sorted(repo.glob("requirements*.txt")):
         for linea in req.read_text(encoding="utf-8", errors="replace").splitlines():
             linea = linea.strip()
@@ -110,6 +127,27 @@ def librerias(repo):
     return filas, propios
 
 
+def contar_pantallas(repo):
+    """Cuantas vistas tiene el front, le peguen o no a la API."""
+    ext = (".html", ".tsx", ".jsx", ".vue", ".svelte")
+    n = 0
+    for archivo in _mirar(repo, "*"):
+        if archivo.is_file() and archivo.suffix in ext:
+            partes = archivo.relative_to(repo).parts
+            if any(d in ("static", "front", "frontend", "src", "public", "web")
+                   for d in partes[:-1]):
+                n += 1
+    return n
+
+
+def corto(ruta):
+    """Nombre legible: sin el prefijo de carpeta que se repite en todas."""
+    for pre in ("static/", "front/src/", "frontend/src/", "src/", "front/", "web/"):
+        if ruta.startswith(pre):
+            return ruta[len(pre):]
+    return ruta
+
+
 def dependencias(repo):
     """Lee requirements*.txt y package.json."""
     out = {}
@@ -125,74 +163,141 @@ def dependencias(repo):
     return out
 
 
+def _mirar(repo, patron):
+    """Archivos del repo que valen la pena, salteando lo que no es codigo propio."""
+    fuera = {".venv", "venv", "__pycache__", "node_modules", ".git",
+             "dist", "build", ".mypy_cache", ".pytest_cache", "site-packages"}
+    for archivo in sorted(repo.rglob(patron)):
+        if not any(parte in fuera for parte in archivo.parts):
+            yield archivo
+
+
 def tablas(repo):
-    """class -> nombre de tabla, leyendo __tablename__ de models.py."""
-    archivo = repo / "models.py"
-    if not archivo.exists():
-        return {}
-    arbol = ast.parse(archivo.read_text(encoding="utf-8", errors="replace"))
+    """class -> nombre de tabla. Busca __tablename__ en todo el repo: no
+    todos los proyectos ponen los modelos en models.py."""
     out = {}
-    for nodo in arbol.body:
-        if not isinstance(nodo, ast.ClassDef):
+    for archivo in _mirar(repo, "*.py"):
+        try:
+            arbol = ast.parse(archivo.read_text(encoding="utf-8", errors="replace"))
+        except SyntaxError:
             continue
-        for sub in nodo.body:
-            if isinstance(sub, ast.Assign):
-                for destino in sub.targets:
-                    if getattr(destino, "id", None) == "__tablename__":
-                        if isinstance(sub.value, ast.Constant):
-                            out[nodo.name] = sub.value.value
+        for nodo in ast.walk(arbol):
+            if not isinstance(nodo, ast.ClassDef):
+                continue
+            for sub in nodo.body:
+                if isinstance(sub, ast.Assign):
+                    for destino in sub.targets:
+                        if getattr(destino, "id", None) == "__tablename__":
+                            if isinstance(sub.value, ast.Constant):
+                                out[nodo.name] = sub.value.value
     return out
 
 
 def rutas(repo, clases):
-    """Lista de (metodo, path, funcion, tablas que toca)."""
-    archivo = repo / "main.py"
-    if not archivo.exists():
-        return []
-    arbol = ast.parse(archivo.read_text(encoding="utf-8", errors="replace"))
+    """Lista de (metodo, path, funcion, tablas que toca).
+
+    Entiende dos formas de declarar rutas en FastAPI: el decorador sobre la
+    app (@app.get) y los APIRouter con prefijo (api = APIRouter(prefix="/api")
+    y despues @api.get("/cosas"), que en realidad es /api/cosas).
+    """
     out = []
-    for nodo in ast.walk(arbol):
-        if not isinstance(nodo, (ast.FunctionDef, ast.AsyncFunctionDef)):
+    for archivo in _mirar(repo, "*.py"):
+        try:
+            arbol = ast.parse(archivo.read_text(encoding="utf-8", errors="replace"))
+        except SyntaxError:
             continue
-        for deco in nodo.decorator_list:
-            if not isinstance(deco, ast.Call):
+
+        # Primero, que routers hay en este archivo y con que prefijo.
+        prefijos = {"app": ""}
+        for nodo in ast.walk(arbol):
+            if not isinstance(nodo, ast.Assign) or not isinstance(nodo.value, ast.Call):
                 continue
-            fn = deco.func
-            if not isinstance(fn, ast.Attribute) or fn.attr not in METODOS:
+            fn = nodo.value.func
+            nombre_fn = getattr(fn, "id", None) or getattr(fn, "attr", None)
+            if nombre_fn != "APIRouter":
                 continue
-            if not deco.args or not isinstance(deco.args[0], ast.Constant):
+            prefijo = ""
+            for kw in nodo.value.keywords:
+                if kw.arg == "prefix" and isinstance(kw.value, ast.Constant):
+                    prefijo = kw.value.value
+            for destino in nodo.targets:
+                if isinstance(destino, ast.Name):
+                    prefijos[destino.id] = prefijo
+
+        for nodo in ast.walk(arbol):
+            if not isinstance(nodo, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 continue
-            path = deco.args[0].value
-            # Qué modelos aparecen nombrados dentro de la función. Puede ser
-            # `Venta` (from models import ...) o `models.Venta` (import models).
-            usadas = set()
-            for hijo in ast.walk(nodo):
-                if isinstance(hijo, ast.Name) and hijo.id in clases:
-                    usadas.add(clases[hijo.id])
-                elif isinstance(hijo, ast.Attribute) and hijo.attr in clases:
-                    usadas.add(clases[hijo.attr])
-            out.append((fn.attr.upper(), path, nodo.name, sorted(usadas)))
-    return out
+            for deco in nodo.decorator_list:
+                if not isinstance(deco, ast.Call):
+                    continue
+                fn = deco.func
+                if not isinstance(fn, ast.Attribute) or fn.attr not in METODOS:
+                    continue
+                base = getattr(fn.value, "id", None)
+                if base not in prefijos:
+                    continue
+                if not deco.args or not isinstance(deco.args[0], ast.Constant):
+                    continue
+                path = prefijos[base] + deco.args[0].value
+                usadas = set()
+                for hijo in ast.walk(nodo):
+                    if isinstance(hijo, ast.Name) and hijo.id in clases:
+                        usadas.add(clases[hijo.id])
+                    elif isinstance(hijo, ast.Attribute) and hijo.attr in clases:
+                        usadas.add(clases[hijo.attr])
+                out.append((fn.attr.upper(), path, nodo.name, sorted(usadas)))
+    # Una misma ruta puede aparecer dos veces (router publico y privado).
+    vistas, unicas = set(), []
+    for r in out:
+        if (r[0], r[1]) not in vistas:
+            vistas.add((r[0], r[1]))
+            unicas.append(r)
+    return unicas
 
 
 def frente(repo):
-    """Archivo del front -> paths de API que menciona."""
+    """Archivo del front -> paths de API que menciona.
+
+    Mira static/ (HTML suelto) y tambien front/ o src/ (React, Vue), que es
+    donde viven los proyectos con build.
+    """
     out = {}
-    raiz = repo / "static"
-    if not raiz.exists():
-        return out
-    for archivo in sorted(raiz.rglob("*")):
-        if archivo.suffix not in (".html", ".js"):
+    extensiones = {".html", ".js", ".jsx", ".ts", ".tsx", ".vue", ".svelte"}
+    for archivo in _mirar(repo, "*"):
+        if archivo.suffix not in extensiones or not archivo.is_file():
+            continue
+        partes = archivo.relative_to(repo).parts
+        if not any(d in ("static", "front", "frontend", "src", "public", "web")
+                   for d in partes[:-1]):
             continue
         texto = archivo.read_text(encoding="utf-8", errors="replace")
-        paths = set(re.findall(r"/api/[A-Za-z0-9_/{}.-]+", texto))
-        paths = {p.rstrip("/.") for p in paths}
+        # Dos formas: la ruta completa escrita en el componente, o el
+        # pedacito que recibe un envoltorio, por ejemplo fetch("/api" + ruta).
+        paths = set(re.findall(r"[\"\'`](/[A-Za-z0-9_/{}.-]*)[\"\'`]", texto))
+        paths = {x.rstrip("/.") for x in paths if len(x) > 1}
         if paths:
-            out[archivo.relative_to(raiz).as_posix()] = sorted(paths)
+            out[archivo.relative_to(repo).as_posix()] = sorted(paths)
     return out
 
 
-def emparejar(path_front, rutas_def):
+def solo_api(rutas_def):
+    """Las rutas que devuelven datos, dejando afuera las que sirven paginas."""
+    marcas = ("/api", "/v1", "/v2", "/rest", "/graphql")
+    de_datos = [r for r in rutas_def if r[1].startswith(marcas)]
+    return de_datos if de_datos else list(rutas_def)
+
+
+def prefijos_de(rutas_def):
+    """Los primeros segmentos que usan las rutas declaradas, por ejemplo /api."""
+    out = set()
+    for _, path, _, _ in rutas_def:
+        partes = [x for x in path.split("/") if x]
+        if partes:
+            out.add("/" + partes[0])
+    return sorted(out)
+
+
+def emparejar(path_front, rutas_def, prefijos=()):
     """Qué rutas declaradas cubren un path que usa el front."""
     encontradas = []
     for metodo, path, fn, tabs in rutas_def:
@@ -205,20 +310,46 @@ def emparejar(path_front, rutas_def):
     if encontradas:
         return encontradas
     # El front suele recortar: /api/clientes/ para /api/clientes/{id}
-    return [r for r in rutas_def if r[1].startswith(path_front)]
+    parciales = [r for r in rutas_def if r[1] == path_front
+                 or r[1].startswith(path_front.rstrip("/") + "/")]
+    if parciales:
+        return parciales
+    # Y suele escribir solo la cola, cuando un envoltorio pone el prefijo.
+    for pre in prefijos:
+        if path_front.startswith(pre):
+            continue
+        con_prefijo = emparejar(pre + path_front, rutas_def)
+        if con_prefijo:
+            return con_prefijo
+    return []
 
 
 def mermaid_piezas(deps, n_pantallas, n_rutas, n_tablas, procfile):
     lineas = ["```mermaid", "graph LR"]
     lineas.append(f'  FRONT["{n_pantallas} pantallas<br/>HTML + JS"]')
     lineas.append(f'  API["API<br/>FastAPI · {n_rutas} endpoints"]')
-    lineas.append(f'  DB[("Base de datos<br/>{n_tablas} tablas")]')
     lineas.append("  FRONT --> API")
-    lineas.append("  API --> DB")
+    if n_tablas:
+        lineas.append(f'  DB[("Base de datos<br/>{n_tablas} tablas")]')
+        lineas.append("  API --> DB")
+    elif any(t == "datos" for t in deps.values()):
+        # Hay motor de base declarado pero ningun modelo con __tablename__:
+        # las tablas pueden estar en SQL suelto. No ponemos un numero falso.
+        lineas.append('  DB[("Base de datos<br/>sin modelos declarados")]')
+        lineas.append("  API --> DB")
+    usados = {"FRONT", "API", "DB", "DEPLOY"}
     for pieza, tipo in sorted(deps.items()):
         if pieza in ("API", "Base de datos"):
             continue
         clave = re.sub(r"[^A-Za-z]", "", pieza).upper()[:8] or "X"
+        # Dos piezas distintas pueden dar la misma abreviatura ("Lector de
+        # HTML" y "Lector de PDF" daban las dos LECTORDE). Si ya esta usada,
+        # le agregamos un numero: si no, Mermaid las dibuja como una sola.
+        base, n = clave, 2
+        while clave in usados:
+            clave = f"{base}{n}"
+            n += 1
+        usados.add(clave)
         lineas.append(f'  {clave}["{pieza}"]')
         lineas.append(f"  API --> {clave}")
     if procfile:
@@ -240,8 +371,8 @@ def mermaid_datos(por_pantalla, tope=3):
         top = sorted(cuenta, key=lambda t: -cuenta[t])[:tope]
         if not top:
             continue
-        pid = "P" + re.sub(r"[^A-Za-z0-9]", "", pantalla)[:12]
-        lineas.append(f'  {pid}["{pantalla}"]')
+        pid = "P" + re.sub(r"[^A-Za-z0-9]", "", corto(pantalla))[:14]
+        lineas.append(f'  {pid}["{corto(pantalla)}"]')
         for t in top:
             tid = "T" + re.sub(r"[^A-Za-z0-9]", "", t)[:12]
             if t not in tablas_vistas:
@@ -269,11 +400,17 @@ def main():
     proc = (repo / "Procfile")
     procfile = proc.read_text(encoding="utf-8").strip().split(":")[0] if proc.exists() else ""
 
+    rutas_api = solo_api(rutas_def)
+    pres = prefijos_de(rutas_api)
     por_pantalla = {}
     for archivo, paths in front.items():
         encontradas = []
+        # Si el archivo ya escribe rutas completas, no usa envoltorio: probar
+        # prefijos ahi solo genera falsos positivos con los links del menu.
+        escribe_completas = any(x.startswith(tuple(pres)) for x in paths)
+        pres_archivo = () if escribe_completas else pres
         for p in paths:
-            encontradas.extend(emparejar(p, rutas_def))
+            encontradas.extend(emparejar(p, rutas_api, pres_archivo))
         # unicas, conservando orden
         unicas, vistas = [], set()
         for r in encontradas:
@@ -283,7 +420,7 @@ def main():
                 unicas.append(r)
         por_pantalla[archivo] = {"paths": paths, "rutas": unicas}
 
-    sin_front = len(rutas_def) - len({(r[0], r[1]) for i in por_pantalla.values() for r in i["rutas"]})
+    sin_front = len(rutas_api) - len({(r[0], r[1]) for i in por_pantalla.values() for r in i["rutas"]})
 
     partes = [
         f"# Arquitectura · {nombre_repo(repo)}",
@@ -296,7 +433,7 @@ def main():
         "",
         "## Las piezas",
         "",
-        mermaid_piezas(deps, len(list((repo / "static").glob("*.html"))), len(rutas_def), len(set(clases.values())), procfile),
+        mermaid_piezas(deps, contar_pantallas(repo), len(solo_api(rutas_def)), len(set(clases.values())), procfile),
         "",
         "## Qué datos toca cada pantalla",
         "",
@@ -328,7 +465,7 @@ def main():
 
     for pantalla, info in sorted(por_pantalla.items()):
         tabs = sorted({t for _, _, _, ts in info["rutas"] for t in ts})
-        partes.append(f"### {pantalla}")
+        partes.append(f"### {corto(pantalla)}")
         partes.append("")
         partes.append(f"- Endpoints que usa: **{len(info['rutas'])}**")
         partes.append(f"- Tablas que tocan esos endpoints: {', '.join('`' + t + '`' for t in tabs) if tabs else '—'}")

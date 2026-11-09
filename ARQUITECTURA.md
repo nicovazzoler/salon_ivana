@@ -9,9 +9,9 @@ Todo lo que figura acá está escrito en el código — dependencias declaradas,
 ```mermaid
 graph LR
   FRONT["13 pantallas<br/>HTML + JS"]
-  API["API<br/>FastAPI · 135 endpoints"]
-  DB[("Base de datos<br/>29 tablas")]
+  API["API<br/>FastAPI · 121 endpoints"]
   FRONT --> API
+  DB[("Base de datos<br/>29 tablas")]
   API --> DB
   EXCEL["Excel"]
   API --> EXCEL
@@ -27,22 +27,26 @@ Las tablas principales de cada pantalla. El detalle completo está abajo.
 
 ```mermaid
 graph LR
+  Padminhtml["admin.html"]
+  Tcomprobantes[("comprobantes")]
+  Padminhtml --> Tcomprobantes
+  Titems[("items")]
+  Padminhtml --> Titems
+  Tegresos[("egresos")]
+  Padminhtml --> Tegresos
   Pagendahtml["agenda.html"]
   Templeados[("empleados")]
   Pagendahtml --> Templeados
-  Tturnos[("turnos")]
-  Pagendahtml --> Tturnos
   Texcepcionesh[("excepciones_horario")]
   Pagendahtml --> Texcepcionesh
+  Tclientes[("clientes")]
+  Pagendahtml --> Tclientes
   Pcajahtml["caja.html"]
-  Tegresos[("egresos")]
   Pcajahtml --> Tegresos
-  Tcomprobantes[("comprobantes")]
   Pcajahtml --> Tcomprobantes
   Tfondocaja[("fondo_caja")]
   Pcajahtml --> Tfondocaja
   Pclienteshtml["clientes.html"]
-  Tclientes[("clientes")]
   Pclienteshtml --> Tclientes
   Pclienteshtml --> Tcomprobantes
   Tpagos[("pagos")]
@@ -50,47 +54,44 @@ graph LR
   Pcuentahtml["cuenta.html"]
   Pcuentahtml --> Tclientes
   Pcuentahtml --> Tcomprobantes
-  Titems[("items")]
   Pcuentahtml --> Titems
-  Pdepilacionht["depilacion.html"]
-  Pdepilacionht --> Titems
-  Pdepilacionht --> Tclientes
+  Pdepilacionhtml["depilacion.html"]
+  Pdepilacionhtml --> Tclientes
   Tsesionesdepi[("sesiones_depilacion")]
-  Pdepilacionht --> Tsesionesdepi
-  Phistorialhtm["historial.html"]
-  Phistorialhtm --> Tcomprobantes
-  Phistorialhtm --> Tclientes
+  Pdepilacionhtml --> Tsesionesdepi
+  Pdepilacionhtml --> Titems
+  Phistorialhtml["historial.html"]
+  Phistorialhtml --> Tcomprobantes
+  Phistorialhtml --> Tclientes
   Tcomprobantee[("comprobante_extras")]
-  Phistorialhtm --> Tcomprobantee
-  Pinventarioht["inventario.html"]
-  Pinventarioht --> Titems
+  Phistorialhtml --> Tcomprobantee
+  Pinventariohtml["inventario.html"]
+  Pinventariohtml --> Titems
   Tmovimientoss[("movimientos_stock")]
-  Pinventarioht --> Tmovimientoss
+  Pinventariohtml --> Tmovimientoss
   Pjsadminjs["js/admin.js"]
   Pjsadminjs --> Titems
   Tusuarios[("usuarios")]
   Pjsadminjs --> Tusuarios
   Pjsadminjs --> Templeados
   Pjsfacturarjs["js/facturar.js"]
-  Pjsfacturarjs --> Titems
-  Pjsfacturarjs --> Tcomprobantes
   Pjsfacturarjs --> Tegresos
-  Pjsgeneralesj["js/generales.js"]
-  Pjsgeneralesj --> Templeados
+  Pjsfacturarjs --> Titems
+  Pjsfacturarjs --> Tclientes
+  Pjsgeneralesjs["js/generales.js"]
+  Pjsgeneralesjs --> Templeados
   Tconfig[("config")]
-  Pjsgeneralesj --> Tconfig
+  Pjsgeneralesjs --> Tconfig
   Taliastransfe[("alias_transferencia")]
-  Pjsgeneralesj --> Taliastransfe
+  Pjsgeneralesjs --> Taliastransfe
   Pjslistasjs["js/listas.js"]
   Tajustesitem[("ajustes_item")]
   Pjslistasjs --> Tajustesitem
   Pjslistasjs --> Taliastransfe
   Tdescuentos[("descuentos")]
   Pjslistasjs --> Tdescuentos
-  Pjspeluqueroj["js/peluquero.js"]
-  Pjspeluqueroj --> Tcomprobantes
-  Pjspeluqueroj --> Templeados
-  Pjspeluqueroj --> Tclientes
+  Pjspeluquerojs["js/peluquero.js"]
+  Pjspeluquerojs --> Templeados
   Pjssenasjs["js/senas.js"]
   Pjssenasjs --> Tclientes
   Tsenas[("senas")]
@@ -106,7 +107,7 @@ graph LR
   Preporteshtml["reportes.html"]
   Preporteshtml --> Tclientes
   Preporteshtml --> Tcomprobantes
-  Preporteshtml --> Tegresos
+  Preporteshtml --> Tpagos
   Ptickethtml["ticket.html"]
   Ptickethtml --> Tclientes
   Ptickethtml --> Tcomprobantes
@@ -130,15 +131,36 @@ De dónde sale: la versión, de `requirements*.txt`; el uso, de los `import` de 
 <details>
 <summary><b>Desglose por pantalla</b> — endpoints y tablas, uno por uno</summary>
 
+### admin.html
+
+- Endpoints que usa: **14**
+- Tablas que tocan esos endpoints: `comprobante_lineas`, `comprobantes`, `egresos`, `empleados`, `excepciones_horario`, `horarios_empleado`, `items`, `turnos`
+
+| Método | Endpoint | Función | Tablas |
+|---|---|---|---|
+| POST | `/api/admin/recalcular-transfer` | `recalcular_transfer` | items |
+| POST | `/api/agenda/abrir-dia` | `abrir_dia` | empleados, excepciones_horario |
+| GET | `/api/agenda/dia` | `agenda_dia` | empleados, horarios_empleado, turnos |
+| GET | `/api/caja/dia` | `caja_dia` | comprobantes, egresos |
+| GET | `/api/caja/diario` | `caja_diario` | — |
+| GET | `/api/caja/semanal` | `caja_semanal` | — |
+| GET | `/api/inventario` | `inventario` | items |
+| GET | `/api/reportes/deuda` | `rep_deuda` | comprobantes |
+| GET | `/api/reportes/excel` | `reportes_excel` | — |
+| GET | `/api/reportes/ranking-items` | `ranking_items` | comprobante_lineas, comprobantes, items |
+| GET | `/api/reportes/resumen` | `rep_resumen` | comprobantes, egresos |
+| GET | `/api/reportes/serie-caja` | `serie_caja` | egresos |
+| GET | `/api/reportes/serie-categorias` | `serie_categorias` | comprobante_lineas, comprobantes, items |
+| GET | `/api/reportes/serie-items` | `serie_items` | comprobante_lineas, comprobantes |
+
 ### agenda.html
 
-- Endpoints que usa: **12**
-- Tablas que tocan esos endpoints: `clientes`, `empleados`, `excepciones_horario`, `horarios_empleado`, `items`, `notas_diarias`, `turnos`
+- Endpoints que usa: **11**
+- Tablas que tocan esos endpoints: `clientes`, `empleados`, `excepciones_horario`, `items`, `notas_diarias`, `turnos`
 
 | Método | Endpoint | Función | Tablas |
 |---|---|---|---|
 | POST | `/api/agenda/abrir-dia` | `abrir_dia` | empleados, excepciones_horario |
-| GET | `/api/agenda/dia` | `agenda_dia` | empleados, horarios_empleado, turnos |
 | GET | `/api/catalogo` | `catalogo` | items |
 | GET | `/api/clientes` | `listar_clientes` | clientes |
 | POST | `/api/clientes` | `crear_cliente` | clientes |
@@ -187,8 +209,8 @@ De dónde sale: la versión, de `requirements*.txt`; el uso, de los `import` de 
 
 ### cuenta.html
 
-- Endpoints que usa: **7**
-- Tablas que tocan esos endpoints: `alias_transferencia`, `clientes`, `comprobante_extras`, `comprobante_lineas`, `comprobantes`, `config`, `empleados`, `formas_pago`, `items`, `pagos`, `senas`, `sesiones_depilacion`, `tipos_egreso`
+- Endpoints que usa: **5**
+- Tablas que tocan esos endpoints: `alias_transferencia`, `clientes`, `comprobante_extras`, `comprobante_lineas`, `comprobantes`, `config`, `empleados`, `formas_pago`, `items`, `pagos`, `sesiones_depilacion`, `tipos_egreso`
 
 | Método | Endpoint | Función | Tablas |
 |---|---|---|---|
@@ -197,17 +219,14 @@ De dónde sale: la versión, de `requirements*.txt`; el uso, de los `import` de 
 | GET | `/api/comprobantes` | `listar_comprobantes` | comprobantes |
 | POST | `/api/comprobantes` | `crear_comprobante` | clientes, comprobante_extras, comprobante_lineas, comprobantes, items, pagos, sesiones_depilacion |
 | GET | `/api/config` | `config` | alias_transferencia, config, empleados, formas_pago, items, tipos_egreso |
-| POST | `/api/senas` | `crear_sena` | clientes, senas |
-| GET | `/api/senas` | `listar_senas` | clientes, senas |
 
 ### depilacion.html
 
-- Endpoints que usa: **18**
+- Endpoints que usa: **17**
 - Tablas que tocan esos endpoints: `alias_transferencia`, `clientes`, `comprobante_extras`, `comprobante_lineas`, `comprobantes`, `config`, `egresos`, `empleados`, `formas_pago`, `items`, `liquidaciones`, `pagos`, `senas`, `sesiones_depilacion`, `tipos_egreso`
 
 | Método | Endpoint | Función | Tablas |
 |---|---|---|---|
-| GET | `/api/catalogo` | `catalogo` | items |
 | GET | `/api/clientes` | `listar_clientes` | clientes |
 | POST | `/api/clientes` | `crear_cliente` | clientes |
 | GET | `/api/comprobantes` | `listar_comprobantes` | comprobantes |
@@ -225,6 +244,11 @@ De dónde sale: la versión, de `requirements*.txt`; el uso, de los `import` de 
 | POST | `/api/items` | `crear_item` | items |
 | POST | `/api/senas` | `crear_sena` | clientes, senas |
 | GET | `/api/senas` | `listar_senas` | clientes, senas |
+
+### facturar.html
+
+- Endpoints que usa: **0**
+- Tablas que tocan esos endpoints: —
 
 ### historial.html
 
@@ -278,8 +302,8 @@ De dónde sale: la versión, de `requirements*.txt`; el uso, de los `import` de 
 
 ### js/facturar.js
 
-- Endpoints que usa: **21**
-- Tablas que tocan esos endpoints: `ajustes_item`, `alias_transferencia`, `clientes`, `comprobante_extras`, `comprobante_lineas`, `comprobantes`, `config`, `descuentos`, `egresos`, `empleados`, `formas_pago`, `items`, `pagos`, `senas`, `sesiones_depilacion`, `tipos_egreso`
+- Endpoints que usa: **18**
+- Tablas que tocan esos endpoints: `ajustes_item`, `alias_transferencia`, `clientes`, `comprobante_extras`, `comprobante_lineas`, `comprobantes`, `config`, `descuentos`, `egresos`, `empleados`, `formas_pago`, `items`, `pagos`, `sesiones_depilacion`, `tipos_egreso`
 
 | Método | Endpoint | Función | Tablas |
 |---|---|---|---|
@@ -290,9 +314,6 @@ De dónde sale: la versión, de `requirements*.txt`; el uso, de los `import` de 
 | POST | `/api/clientes` | `crear_cliente` | clientes |
 | GET | `/api/comprobantes` | `listar_comprobantes` | comprobantes |
 | POST | `/api/comprobantes` | `crear_comprobante` | clientes, comprobante_extras, comprobante_lineas, comprobantes, items, pagos, sesiones_depilacion |
-| GET | `/api/comprobantes/proximo-numero` | `proximo_numero` | — |
-| GET | `/api/comprobantes/{comp_id}` | `ver_comprobante` | comprobantes, pagos, senas |
-| DELETE | `/api/comprobantes/{comp_id}` | `anular_comprobante` | comprobantes, items, pagos, senas, sesiones_depilacion |
 | GET | `/api/config` | `config` | alias_transferencia, config, empleados, formas_pago, items, tipos_egreso |
 | GET | `/api/descuentos` | `listar_descuentos` | descuentos |
 | POST | `/api/descuentos` | `crear_descuento` | descuentos |
@@ -339,13 +360,11 @@ De dónde sale: la versión, de `requirements*.txt`; el uso, de los `import` de 
 
 ### js/peluquero.js
 
-- Endpoints que usa: **4**
-- Tablas que tocan esos endpoints: `clientes`, `comprobante_extras`, `comprobante_lineas`, `comprobantes`, `empleados`, `items`, `pagos`, `sesiones_depilacion`
+- Endpoints que usa: **2**
+- Tablas que tocan esos endpoints: `empleados`
 
 | Método | Endpoint | Función | Tablas |
 |---|---|---|---|
-| GET | `/api/comprobantes` | `listar_comprobantes` | comprobantes |
-| POST | `/api/comprobantes` | `crear_comprobante` | clientes, comprobante_extras, comprobante_lineas, comprobantes, items, pagos, sesiones_depilacion |
 | GET | `/api/empleados` | `listar_empleados` | empleados |
 | POST | `/api/empleados` | `crear_empleado` | empleados |
 
@@ -364,7 +383,7 @@ De dónde sale: la versión, de `requirements*.txt`; el uso, de los `import` de 
 
 ### js/sueldos.js
 
-- Endpoints que usa: **11**
+- Endpoints que usa: **10**
 - Tablas que tocan esos endpoints: `alias_transferencia`, `config`, `egresos`, `empleados`, `formas_pago`, `horas_trabajadas`, `items`, `liquidaciones`, `tipos_egreso`, `trabajos_comision`
 
 | Método | Endpoint | Función | Tablas |
@@ -377,7 +396,6 @@ De dónde sale: la versión, de `requirements*.txt`; el uso, de los `import` de 
 | PUT | `/api/sueldos/horas` | `cargar_horas` | horas_trabajadas, liquidaciones |
 | GET | `/api/sueldos/items-comision` | `items_a_comision` | items |
 | GET | `/api/sueldos/liquidaciones` | `listar_liquidaciones` | liquidaciones |
-| GET | `/api/sueldos/pendiente` | `sueldo_pendiente` | — |
 | PUT | `/api/sueldos/trabajo-minutos` | `cargar_minutos_trabajo` | trabajos_comision |
 | POST | `/api/sueldos/trabajo-suelto` | `crear_trabajo_suelto` | items, trabajos_comision |
 
@@ -392,8 +410,8 @@ De dónde sale: la versión, de `requirements*.txt`; el uso, de los `import` de 
 
 ### reportes.html
 
-- Endpoints que usa: **11**
-- Tablas que tocan esos endpoints: `clientes`, `comprobante_lineas`, `comprobantes`, `egresos`, `items`, `pagos`
+- Endpoints que usa: **6**
+- Tablas que tocan esos endpoints: `clientes`, `comprobantes`, `pagos`
 
 | Método | Endpoint | Función | Tablas |
 |---|---|---|---|
@@ -403,11 +421,11 @@ De dónde sale: la versión, de `requirements*.txt`; el uso, de los `import` de 
 | GET | `/api/clientes/{cliente_id}` | `ver_cliente` | clientes |
 | PUT | `/api/clientes/{cliente_id}` | `editar_cliente` | clientes |
 | DELETE | `/api/clientes/{cliente_id}` | `borrar_cliente` | clientes, comprobantes |
-| GET | `/api/registro` | `registro_movimientos` | — |
-| GET | `/api/reportes/excel` | `reportes_excel` | — |
-| GET | `/api/reportes/ranking-items` | `ranking_items` | comprobante_lineas, comprobantes, items |
-| GET | `/api/reportes/resumen` | `rep_resumen` | comprobantes, egresos |
-| GET | `/api/reportes/serie-caja` | `serie_caja` | egresos |
+
+### sueldos.html
+
+- Endpoints que usa: **0**
+- Tablas que tocan esos endpoints: —
 
 ### ticket.html
 
@@ -428,5 +446,5 @@ De dónde sale: la versión, de `requirements*.txt`; el uso, de los `import` de 
 
 ## Lo que no se pudo probar
 
-- Endpoints que ninguna pantalla nombra: **49**. Pueden ser internos, llamarse con la ruta armada en tiempo de ejecución, o estar muertos.
+- Endpoints que ninguna pantalla nombra: **34**. Pueden ser internos, llamarse con la ruta armada en tiempo de ejecución, o estar muertos.
 - Tablas declaradas en `models.py`: **29**; las que no aparecen arriba no las toca ningún endpoint que el front nombre.
