@@ -113,7 +113,22 @@ graph LR
   Ptickethtml --> Titems
 ```
 
-## Desglose por pantalla
+## Librerías
+
+De dónde sale: la versión, de `requirements*.txt`; el uso, de los `import` de cada archivo. Una librería declarada que nadie importa se nota.
+
+| Librería | Versión | Quién la usa |
+|---|---|---|
+| `fastapi` | 0.115.6 | `main.py`, `tests/test_plata.py` |
+| `openpyxl` | 3.1.5 | `main.py` |
+| `psycopg2-binary` | 2.9.10 | sin import directo |
+| `pydantic` | 2.10.4 | `main.py` |
+| `pytest` | 8.3.4 | `tests/test_backup.py`, `tests/test_plata.py` |
+| `sqlalchemy` | 2.0.36 | `cargar_depilacion.py`, `database.py`, `levantar_local.py`, `main.py` y 3 más |
+| `uvicorn` | 0.34.0 | `levantar_local.py` |
+
+<details>
+<summary><b>Desglose por pantalla</b> — endpoints y tablas, uno por uno</summary>
 
 ### agenda.html
 
@@ -408,6 +423,8 @@ graph LR
 | GET | `/api/config` | `config` | alias_transferencia, config, empleados, formas_pago, items, tipos_egreso |
 | POST | `/api/senas` | `crear_sena` | clientes, senas |
 | GET | `/api/senas` | `listar_senas` | clientes, senas |
+
+</details>
 
 ## Lo que no se pudo probar
 
