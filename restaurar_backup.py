@@ -96,7 +96,8 @@ ANIDADAS = [
      ["id", "item_id", "nombre", "cantidad", "precio_unit", "dificultad", "subtotal"]),
     ("comprobantes", "lineas", models.ComprobanteLinea, "comprobante_id",
      ["id", "item_id", "nombre", "cantidad", "precio_unit", "precio_efectivo",
-      "dificultad", "ajuste_pct", "ajuste_monto", "ajuste_nombre", "subtotal"]),
+      "dificultad", "ajuste_pct", "ajuste_monto", "ajuste_nombre", "subtotal",
+      "es_depilacion"]),
     ("comprobantes", "extras", models.ComprobanteExtra, "comprobante_id",
      ["id", "concepto", "monto"]),
 ]
@@ -248,6 +249,13 @@ def restaurar(archivo, destino, vaciar=False, sin_preguntar=False):
                     d[fk] = p.get("id")
                     filas.append(d)
             total[f"{padre}.{hija}"] = _insertar(db, modelo, filas)
+
+        # Un backup de antes de que la línea guardara su marca la trae vacía: se
+        # saca del ítem, que es lo mismo que hace la migración con la base viva.
+        db.execute(text(
+            "UPDATE comprobante_lineas SET es_depilacion = COALESCE("
+            "(SELECT items.es_depilacion FROM items WHERE items.id = comprobante_lineas.item_id), FALSE) "
+            "WHERE es_depilacion IS NULL"))
 
         # Después de las líneas, que se insertan anidadas dentro de los
         # comprobantes: cada trabajo apunta a una de ellas.

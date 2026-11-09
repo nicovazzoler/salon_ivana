@@ -322,6 +322,9 @@ class ComprobanteLinea(Base):
     ajuste_pct = Column(Integer, default=0)
     ajuste_monto = Column(Integer, default=0)
     ajuste_nombre = Column(String)     # snapshot del motivo ("Fidelidad", "Pelo largo"...)
+    # Foto de Item.es_depilacion al facturar: el reparto de una sesión ya pagada
+    # no puede cambiar porque alguien destilde la marca del ítem en Admin.
+    es_depilacion = Column(Boolean, default=False)
     # Ya no se usa: el extra por dificultad se sacó. Queda la columna para que los
     # comprobantes viejos sigan mostrando el mismo total que el día que se cobraron.
     dificultad = Column(Boolean, default=False)

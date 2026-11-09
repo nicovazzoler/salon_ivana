@@ -825,7 +825,8 @@ function pintarDia(){
         ${abierta ? `<span class="tag abierta">Abierta</span>` : ""}
         ${pagado ? `<span class="tag">${cerrado ? "Ya pagada" : "Pagada en parte"} · ${fmt(pagado)}${
             d.cerrado.veces > 1 ? ` · ${d.cerrado.veces} cierres` : ""}</span>` : ""}
-        ${!abierta && !pagado ? `<span class="tag sin-pagar">Cerrada sin pagar</span>` : ""}
+        ${!abierta && !pagado ? (d.pendiente > 0 ? `<span class="tag sin-pagar">Cerrada sin pagar</span>`
+                                                 : `<span class="tag">Cerrada · nada que pagar</span>`) : ""}
         ${(d.correcciones || []).length ? `<span class="tag">Corregida</span>` : ""}
       </div>
       <div id="panelQuien"></div>
@@ -1152,6 +1153,7 @@ function pintarSesiones(){
     : s.dias > 1 ? `${fechaCorta(s.desde)} al ${fechaCorta(s.hasta)}` : fechaCorta(s.desde);
   const estado = s => s.abierta ? `<b>abierta</b>`
     : s.cerrada ? "pagada"
+    : !s.pagado && s.parte_empleada <= 0 ? "nada que pagar"
     : s.pagado ? `<b class="deuda">falta ${fmt(s.parte_empleada - s.pagado)}</b>`
     : `<b class="deuda">sin pagar</b>`;
   $("#hSesiones").innerHTML = SESIONES.length ? `
