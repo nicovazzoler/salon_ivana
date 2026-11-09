@@ -61,6 +61,55 @@ def nombre_repo(repo):
     return repo.name
 
 
+def librerias(repo):
+    """Libreria declarada -> archivos del repo que la importan.
+
+    La version sale de requirements*.txt; el uso, de los import de cada .py.
+    Si una libreria esta declarada y nadie la importa, se ve. Si alguien
+    importa algo que no esta declarado, tambien.
+    """
+    declaradas = {}
+    for req in sorted(repo.glob("requirements*.txt")):
+        for linea in req.read_text(encoding="utf-8", errors="replace").splitlines():
+            linea = linea.strip()
+            if not linea or linea.startswith(("#", "-")):
+                continue
+            m = re.match(r"([A-Za-z0-9_.-]+)", linea)
+            if not m:
+                continue
+            nombre = m.group(1).lower()
+            resto = linea[len(m.group(1)):]
+            resto = re.sub(r"^\[[^\]]*\]", "", resto)   # saca el [standard] de uvicorn[standard]
+            version = resto.lstrip("=<>~! ").strip()
+            declaradas[nombre] = version or "sin fijar"
+
+    # Como se escribe el import de cada paquete, cuando no coincide.
+    ALIAS = {"psycopg2-binary": "psycopg2", "python-multipart": "multipart",
+             "python-jose": "jose", "pillow": "PIL", "beautifulsoup4": "bs4",
+             "pyyaml": "yaml", "python-dotenv": "dotenv"}
+
+    importa = {}
+    propios = {f.stem for f in repo.glob("*.py")}
+    for archivo in sorted(repo.rglob("*.py")):
+        if any(parte in (".venv", "venv", "__pycache__", "node_modules")
+               for parte in archivo.parts):
+            continue
+        texto = archivo.read_text(encoding="utf-8", errors="replace")
+        mods = set(re.findall(r"^\s*import\s+([A-Za-z0-9_]+)", texto, re.M))
+        mods |= set(re.findall(r"^\s*from\s+([A-Za-z0-9_]+)", texto, re.M))
+        for mod in mods:
+            importa.setdefault(mod.lower(), set()).add(
+                archivo.relative_to(repo).as_posix())
+
+    filas = []
+    for nombre, version in sorted(declaradas.items()):
+        clave = ALIAS.get(nombre, nombre).lower()
+        usos = sorted(importa.get(clave, set()))
+        filas.append((nombre, version, usos))
+    # Lo que se importa sin estar declarado y no es del repo ni de la stdlib.
+    return filas, propios
+
+
 def dependencias(repo):
     """Lee requirements*.txt y package.json."""
     out = {}
@@ -255,7 +304,25 @@ def main():
         "",
         mermaid_datos(por_pantalla),
         "",
-        "## Desglose por pantalla",
+    ]
+
+    filas_lib, _ = librerias(repo)
+    if filas_lib:
+        partes += ["## Librerías", "",
+                   "De dónde sale: la versión, de `requirements*.txt`; el uso, "
+                   "de los `import` de cada archivo. Una librería declarada que "
+                   "nadie importa se nota.", "",
+                   "| Librería | Versión | Quién la usa |", "|---|---|---|"]
+        for nombre, version, usos in filas_lib:
+            donde = ", ".join("`" + u + "`" for u in usos[:4]) if usos else "sin import directo"
+            if len(usos) > 4:
+                donde += f" y {len(usos) - 4} más"
+            partes.append(f"| `{nombre}` | {version} | {donde} |")
+        partes.append("")
+
+    partes += [
+        "<details>",
+        "<summary><b>Desglose por pantalla</b> — endpoints y tablas, uno por uno</summary>",
         "",
     ]
 
@@ -274,6 +341,8 @@ def main():
             partes.append("")
 
     partes += [
+        "</details>",
+        "",
         "## Lo que no se pudo probar",
         "",
         f"- Endpoints que ninguna pantalla nombra: **{max(sin_front, 0)}**. "
