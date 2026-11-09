@@ -1647,7 +1647,7 @@ def cuenta_depilacion(db, ses) -> dict:
                              "concepto": e.concepto, "monto": e.monto or 0,
                              "fecha": hora_argentina(e.fecha).date().isoformat(),
                              "ayudante": bool(e.ayudante), "maquina": bool(e.maquina),
-                             "empleado_id": e.empleado_id,
+                             "empleado_id": e.empleado_id, "forma_pago": e.forma_pago,
                              "notas": e.notas} for e in egresos],
     }
 
@@ -2065,6 +2065,7 @@ def gasto_depilacion(g: GastoDepiIn, user = Depends(usuario_actual),
 
 class MontoGastoIn(BaseModel):
     monto: int
+    forma_pago: str | None = None         # None = no la toques
 
 def _gasto_de_sesion_abierta(db, egreso_id: int):
     """El gasto que se puede tocar: de depilación, no privado y de una sesión abierta."""
@@ -2079,7 +2080,7 @@ def _gasto_de_sesion_abierta(db, egreso_id: int):
 @app.put("/api/depilacion/gasto/{egreso_id}")
 def corregir_gasto_depilacion(egreso_id: int, datos: MontoGastoIn,
                               _ = Depends(usuario_actual), db: Session = Depends(get_db)):
-    """Corrige el monto de un gasto, sin cambiarle el número ni la hora.
+    """Corrige el monto y la forma de pago de un gasto, sin cambiarle el número ni la hora.
 
     Pasa por las reglas de la SESIÓN —que no esté cerrada— y no por las de Caja,
     donde el empleado solo toca lo de hoy: una sesión se cierra días después.
@@ -2087,7 +2088,8 @@ def corregir_gasto_depilacion(egreso_id: int, datos: MontoGastoIn,
     if datos.monto <= 0: raise HTTPException(400, "El monto tiene que ser mayor que cero")
     e = _gasto_de_sesion_abierta(db, egreso_id)
     e.monto = datos.monto
-    db.commit(); return {"ok": True, "monto": e.monto}
+    if datos.forma_pago is not None: e.forma_pago = forma_de_pago(db, datos.forma_pago)
+    db.commit(); return {"ok": True, "monto": e.monto, "forma_pago": e.forma_pago}
 
 @app.delete("/api/depilacion/gasto/{egreso_id}")
 def borrar_gasto_depilacion(egreso_id: int, _ = Depends(usuario_actual),

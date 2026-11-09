@@ -794,11 +794,12 @@ function pintarDia(){
   // en un monto es lo más común y borrar y volver a cargar pierde el número.
   const acciones = e => !abierta ? "" : `
       <button class="b-out btn-mini editar-gasto" data-id="${e.id}" data-monto="${e.monto}"
-              title="Corregir el monto">✎</button>
+              data-forma="${esc(e.forma_pago || "Efectivo")}" title="Corregir">✎</button>
       <button class="b-out btn-mini borrar-gasto" data-id="${e.id}"
               title="Sacar este gasto de la sesión">✕</button>`;
   const gasto = (e, rot) => `<div class="ren chico" data-gasto="${e.id}">
       <span>${rot}${e.fecha && d.dias.length > 1 ? ` <em class="det">${fechaCorta(e.fecha)}</em>` : ""}${
+        e.forma_pago && e.forma_pago !== "Efectivo" ? ` <em class="det">por ${esc(e.forma_pago).toLowerCase()}</em>` : ""}${
         e.notas ? ` <em class="det">(${esc(e.notas)})</em>` : ""}</span>
       <span>−${fmt(e.monto)} ${acciones(e)}</span></div>`;
   const falta = (clase, rot) => !abierta ? "" : `<div class="ren chico falta-fijo">
@@ -998,6 +999,7 @@ function editarGasto(boton){
   caja.className = "gEdit";
   caja.innerHTML = `<input type="number" class="gNuevo" min="1" inputmode="numeric"
       value="${boton.dataset.monto}" style="width:7rem;">
+    ${selectorForma(boton.dataset.forma)}
     <button class="b-ok btn-mini gSi">Guardar</button>
     <button class="b-out btn-mini gNo">Cancelar</button>`;
   fila.appendChild(caja);
@@ -1009,7 +1011,8 @@ function editarGasto(boton){
     if(monto <= 0){ toast("Poné cuánto fue"); return; }
     const r = await pedir("/api/depilacion/gasto/" + boton.dataset.id, {method:"PUT",
       headers:{"Content-Type":"application/json"},
-      body: JSON.stringify({empleado_id: DIA.empleado_id, monto})});
+      body: JSON.stringify({empleado_id: DIA.empleado_id, monto,
+                            forma_pago: caja.querySelector(".gForma").value})});
     if(!r.ok){ toast((await r.json().catch(()=>({}))).detail || "No se pudo"); return; }
     toast("Corregido");
     verDia();
@@ -1057,6 +1060,11 @@ function tablaComprobantes(filas){
     </tr>`).join("")}</tbody></table></div>`;
 }
 
+// Las mismas dos que el cierre. Efectivo primero: es de donde sale casi siempre.
+const selectorForma = (actual = "Efectivo") =>
+  `<select class="gForma">${["Efectivo", "Transferencia"].map(f =>
+    `<option${f === actual ? " selected" : ""}>${f}</option>`).join("")}</select>`;
+
 /* El formulario de un gasto del día. El de la ayudante pide QUIÉN, porque es un
    pago a una persona; el de la máquina y el común piden qué y cuánto. La
    máquina no viene con monto: se alquila por jornada y un día corto sale menos. */
@@ -1076,6 +1084,7 @@ async function formGasto(clase){
          <input class="gNombre" maxlength="60" placeholder="No es del salón"></div>
        <div style="flex:0 0 130px;"><label>Se le paga</label>
          <input type="number" class="gMonto" min="1" inputmode="numeric" value="${fijo || ""}"></div>
+       <div style="flex:0 0 150px;"><label>Con</label>${selectorForma()}</div>
        <button class="b-ok gOk">Anotar el pago</button>
        <button class="b-out gNo">Cancelar</button>
        ${fijo ? `<span class="nota">El fijo son ${fmt(fijo)}.</span>` : ""}`
@@ -1084,6 +1093,7 @@ async function formGasto(clase){
                 placeholder="Cera, descartables…"></div>
        <div style="flex:0 0 130px;"><label>${clase === "maquina" ? "Costó" : "Monto"}</label>
          <input type="number" class="gMonto" min="1" inputmode="numeric"></div>
+       <div style="flex:0 0 150px;"><label>Se pagó con</label>${selectorForma()}</div>
        <button class="b-ok gOk">Anotar</button>
        <button class="b-out gNo">Cancelar</button>`;
   $("#panelGasto").innerHTML = "";
@@ -1099,7 +1109,7 @@ async function formGasto(clase){
     if(monto <= 0){ toast("Poné cuánto fue"); return; }
     // Sin fecha: el egreso sale con la de hoy, que es cuando sale la plata del
     // cajón. De qué reparto se resta lo dice la sesión, no esa fecha.
-    let cuerpo = {sesion_id: DIA.id, monto};
+    let cuerpo = {sesion_id: DIA.id, monto, forma_pago: caja.querySelector(".gForma").value};
     if(esAyudante){
       const elegida = sel.value || caja.querySelector(".gNombre").value.trim();
       if(!elegida){ toast("Decí quién ayudó"); return; }
