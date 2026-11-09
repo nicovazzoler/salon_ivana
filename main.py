@@ -47,6 +47,13 @@ def migrar():
     if "ajuste_monto" not in lcols:
         with engine.begin() as con:
             con.execute(text("ALTER TABLE comprobante_lineas ADD COLUMN ajuste_monto INTEGER DEFAULT 0"))
+    if "es_depilacion" not in lcols:
+        # La foto de lo ya facturado se saca de la marca del ítem de HOY, una sola
+        # vez: si la columna ya existía, esto no corre.
+        with engine.begin() as con:
+            con.execute(text("ALTER TABLE comprobante_lineas ADD COLUMN es_depilacion BOOLEAN DEFAULT FALSE"))
+            con.execute(text("UPDATE comprobante_lineas SET es_depilacion = COALESCE("
+                             "(SELECT items.es_depilacion FROM items WHERE items.id = comprobante_lineas.item_id), FALSE)"))
     acols = [c["name"] for c in insp.get_columns("ajustes_item")]
     if "monto" not in acols:
         with engine.begin() as con:
@@ -959,6 +966,22 @@ def siguiente_numero(db, tipo: str) -> int:
     ).order_by(models.Comprobante.numero.desc()).first()
     return (ultimo.numero + 1) if ultimo else 1
 
+def _es_de_una_sesion(db, e) -> str | None:
+    """Por qué Caja no puede tocar este egreso, si es de una sesión de depilación.
+
+    Un gasto de la sesión cambia su reparto, y el egreso de un cierre es plata
+    que salió para pagarlo: se tocan desde depilación, con sus reglas, o no se tocan.
+    """
+    if e.sesion_id:
+        ses = db.get(models.SesionDepilacion, e.sesion_id)
+        return f"Es un gasto de la sesión de depilación #{ses.numero if ses else e.sesion_id}: se corrige desde Depilación"
+    liq = (db.query(models.Liquidacion)
+             .filter(models.Liquidacion.egreso_id == e.id, models.Liquidacion.sesion_id.isnot(None)).first())
+    if liq:
+        ses = db.get(models.SesionDepilacion, liq.sesion_id)
+        return f"Es el pago de la sesión de depilación #{ses.numero if ses else liq.sesion_id}: lo pagado no se toca"
+    return None
+
 def _puede_modificar(user, fecha) -> bool:
     # el dueño puede modificar cualquier fecha; el empleado solo lo de hoy
     return user.get("rol") == "dueno" or hora_argentina(fecha).date() == hoy_argentina()
@@ -1442,7 +1465,7 @@ def lineas_a_comision_pendientes(db, empleado):
                    # La depilación se reparte mitad y mitad, así que pagarla
                    # también por comisión sería pagar dos veces. Se filtra la
                    # LÍNEA y no el día: la peluquería de ese día cobra igual.
-                   _no_depi(models.Item.es_depilacion),
+                   _no_depi(models.ComprobanteLinea.es_depilacion),
                    models.ComprobanteLinea.id.notin_(ya)))
     if desde and desde.valor:
         # El corte mira CUÁNDO SE ANOTÓ, no la fecha del servicio. Si mirara la
@@ -1476,11 +1499,10 @@ def lineas_de_sesion(db, sesion_id: int):
     return (db.query(models.ComprobanteLinea, models.Comprobante)
               .join(models.Comprobante,
                     models.ComprobanteLinea.comprobante_id == models.Comprobante.id)
-              .join(models.Item, models.ComprobanteLinea.item_id == models.Item.id)
               .filter(models.Comprobante.sesion_id == sesion_id,
                       models.Comprobante.activo == True,
                       models.Comprobante.tipo == "ticket",
-                      models.Item.es_depilacion == True)
+                      models.ComprobanteLinea.es_depilacion == True)
               .all())
 
 def sesion_actual(db):
@@ -2011,8 +2033,12 @@ def gasto_depilacion(g: GastoDepiIn, user = Depends(usuario_actual),
     reparto. El egreso conserva su propia fecha, que es cuándo salió la plata
     del cajón; de qué reparto se resta lo dice la sesión y no esa fecha.
     """
-    ses = _sesion_para_tocar(db, g.sesion_id) if g.sesion_id else sesion_para_cobrar(db)
     if g.monto <= 0: raise HTTPException(400, "El monto tiene que ser mayor que cero")
+    fecha = fecha_del_servicio(g.fecha, fecha_hora_now_utc().replace(tzinfo=None), "un gasto")
+    # Mover plata de una caja a otra es de la dueña, igual que en Caja.
+    if not es_dueno(user) and hora_argentina(fecha).date() != hoy_argentina():
+        raise HTTPException(403, "Solo la dueña puede anotar un gasto de otro día")
+    ses = _sesion_para_tocar(db, g.sesion_id) if g.sesion_id else sesion_para_cobrar(db)
     quien = ses.empleado.nombre if ses.empleado else "la que lleva la sesión"
 
     notas = None; de_quien = None
@@ -2032,8 +2058,7 @@ def gasto_depilacion(g: GastoDepiIn, user = Depends(usuario_actual),
         tipo=(g.tipo or "").strip() or por_defecto,
         concepto=(g.concepto or "").strip() or None,
         monto=g.monto, forma_pago=forma_de_pago(db, g.forma_pago or "Efectivo"), notas=notas, privado=False,
-        fecha=fecha_del_servicio(g.fecha, fecha_hora_now_utc().replace(tzinfo=None), "un gasto"),
-        depilacion=True, sesion_id=ses.id,
+        fecha=fecha, depilacion=True, sesion_id=ses.id,
         ayudante=bool(g.ayudante), maquina=bool(g.maquina), empleado_id=de_quien)
     db.add(eg); db.commit(); db.refresh(eg)
     return {"id": eg.id, "numero": eg.numero, "sesion_id": ses.id}
@@ -3458,7 +3483,8 @@ def crear_comprobante(c: ComprobanteIn, user = Depends(usuario_actual), db: Sess
             total += sub
             db.add(models.ComprobanteLinea(comprobante_id=comp.id, item_id=item.id, nombre=item.nombre,
             cantidad=ln.cantidad, precio_unit=precio, precio_efectivo=item.precio,
-            ajuste_pct=ajuste, ajuste_monto=aj_monto, ajuste_nombre=motivo, subtotal=sub))
+            ajuste_pct=ajuste, ajuste_monto=aj_monto, ajuste_nombre=motivo, subtotal=sub,
+            es_depilacion=bool(item.es_depilacion)))
             # El stock se mueve SOLO cuando hay venta. Un presupuesto es un precio
             # que se pasa, no mercadería que sale: si descontara, cada presupuesto
             # que no se concreta dejaría el inventario mal para siempre.
@@ -3638,7 +3664,8 @@ def convertir_a_ticket(comp_id: int, user = Depends(usuario_actual), db: Session
         db.add(models.ComprobanteLinea(comprobante_id=ticket.id, item_id=l.item_id, nombre=l.nombre,
             cantidad=l.cantidad, precio_unit=l.precio_unit, precio_efectivo=l.precio_efectivo,
             ajuste_pct=l.ajuste_pct or 0, ajuste_monto=l.ajuste_monto or 0,
-            ajuste_nombre=l.ajuste_nombre, dificultad=l.dificultad, subtotal=l.subtotal))
+            ajuste_nombre=l.ajuste_nombre, dificultad=l.dificultad, subtotal=l.subtotal,
+            es_depilacion=bool(l.es_depilacion)))
     for e in presu.extras:
         db.add(models.ComprobanteExtra(comprobante_id=ticket.id, concepto=e.concepto, monto=e.monto))
     # Recién acá sale la mercadería: el presupuesto no había tocado el stock.
@@ -3717,6 +3744,7 @@ def editar_egreso(egreso_id: int, cambios: EgresoEdit, user = Depends(usuario_ac
     if not e or not _ve_el_egreso(user, e): raise HTTPException(404, "Egreso no existe")
     if not _puede_modificar(user, e.fecha):
         raise HTTPException(403, "Solo el dueño puede editar egresos de otros días")
+    if (motivo := _es_de_una_sesion(db, e)): raise HTTPException(409, motivo)
     if cambios.tipo is not None: e.tipo = cambios.tipo
     if cambios.concepto is not None: e.concepto = cambios.concepto
     if cambios.monto is not None:
@@ -3744,6 +3772,7 @@ def anular_egreso(egreso_id: int, user = Depends(usuario_actual), db: Session = 
     if not e or not _ve_el_egreso(user, e): raise HTTPException(404, "Egreso no existe")
     if not _puede_modificar(user, e.fecha):
         raise HTTPException(403, "Solo el dueño puede anular egresos de otros días")
+    if (motivo := _es_de_una_sesion(db, e)): raise HTTPException(409, motivo)
     db.delete(e); db.commit(); return {"ok": True}
 
 # ---------- caja (solo dueño) ----------
@@ -3963,7 +3992,8 @@ def caja_dia(fecha: str | None = None, user = Depends(usuario_actual), db: Sessi
     ids_depi = {c for (c,) in db.query(models.Comprobante.id).filter(
         models.Comprobante.depilacion == True,
         models.Comprobante.id.in_([p.comprobante_id for p in pagos]))} if pagos else set()
-    ing_depi = sum(p.monto for p in pagos if p.comprobante_id in ids_depi)
+    # Las señas son todas de depilación.
+    ing_depi = sum(p.monto for p in pagos if p.comprobante_id in ids_depi) + sum(s.monto for s in senas)
     fondo = get_fondo_dia(db, d)
     return {"fecha": d.isoformat(), "ingresos": ing, "egresos": egr, "neto": ing - egr,
             "ventas": len(pagos) + len(senas) + len(ajustes) + len(egresos), "ingresos_por_pago": por_pago, "egresos_por_tipo": por_tipo,
@@ -3991,7 +4021,8 @@ def caja_dia(fecha: str | None = None, user = Depends(usuario_actual), db: Sessi
             "egresos_detalle": [{"id": e.id, "numero": e.numero,
                                  "hora": hora_argentina(e.fecha).strftime("%H:%M"), "tipo": e.tipo,
                                  "concepto": e.concepto, "monto": e.monto, "forma_pago": e.forma_pago,
-                                 "privado": bool(e.privado), "depilacion": bool(e.depilacion)}
+                                 "privado": bool(e.privado), "depilacion": bool(e.depilacion),
+                                 "no_se_toca": _es_de_una_sesion(db, e)}
                                 for e in egresos]}
 
 @app.get("/api/caja/diario")
