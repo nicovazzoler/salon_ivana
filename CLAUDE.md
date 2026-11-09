@@ -666,8 +666,15 @@ detecta quién sigue usando una y lo avisa con un cartel que no se puede cerrar.
 
 ## Al terminar un cambio
 
-Commit en castellano explicando **por qué**, no qué (el diff ya dice qué), y
-push a `main`. El deploy en Railway es automático.
+Commit en castellano explicando **por qué**, no qué (el diff ya dice qué).
+
+**Nunca push directo a `main`**: lo que llega a `main` se deploya solo en
+Railway, y la dueña quiere ver el cambio antes. Cada cambio va en una rama
+nueva que sale de `main`, con un nombre corto en castellano de lo que arregla
+(`cuentas-efectivo-y-deudores`), se pushea esa rama y se abre el PR con
+`gh pr create --base main`. El merge lo hace ella desde GitHub; las pruebas de
+`.github/workflows/tests.yml` corren solas en el PR. En el cuerpo del PR va qué
+se verificó y qué no, para que sepa qué mirar antes de mergear.
 
 Acá sí va la historia: qué pasaba antes, con qué caso se encontró el bug y qué
 números daba. Es lo que se busca cuando se pregunta "¿por qué cambió esto?", y es
