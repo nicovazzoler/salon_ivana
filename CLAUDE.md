@@ -562,6 +562,7 @@ No alcanza con que compile. Lo que se usa acá, de menor a mayor:
 
 ```bash
 pytest tests/test_plata.py           # la aritmética de plata del backend
+pytest tests/test_backup.py          # que el backup JSON vuelva entero al restaurarlo
 node --test "tests/escpos/**/*.test.js"   # el papel, byte a byte contra los golden
 ```
 
@@ -570,6 +571,11 @@ servidor: `calcular_transfer`, `precio_con_ajuste`, `estado_comprobante`,
 `sena_saldado` y `base_facturada`. Los comprobantes y los pagos se arman con
 `SimpleNamespace`, así que **un campo nuevo en un modelo hay que agregarlo
 también ahí**, o el test revienta con un AttributeError que no es un bug.
+
+`tests/test_backup.py` llena una base con todas las columnas de todos los
+modelos, la exporta con `armar_backup()`, la restaura y compara fila por fila.
+**Una columna nueva hay que sumarla a `armar_backup()` y a `restaurar_backup.py`**:
+si no, este test falla diciendo cuál.
 
 Los de `tests/escpos/` comparan el papel contra un `.bin` de referencia. Cuando
 un cambio mueve el papel A PROPÓSITO se regeneran con
