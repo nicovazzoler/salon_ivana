@@ -3008,6 +3008,13 @@ def crear_cliente(cli: ClienteIn, _ = Depends(usuario_actual), db: Session = Dep
 @app.get("/api/clientes/deudas")
 def deudas_clientes(_ = Depends(usuario_actual), db: Session = Depends(get_db)):
     """Saldo por cliente, solo de los que deben. Va ANTES de /{cliente_id}: las rutas fijas primero."""
+    deudas = {}
+    for t, saldo in tickets_con_deuda(db, solo_con_cliente=True):
+        deudas[t.cliente_id] = deudas.get(t.cliente_id, 0) + saldo
+    return [{"cliente_id": k, "saldo": v} for k, v in deudas.items()]
+
+def tickets_con_deuda(db, solo_con_cliente: bool = False) -> list:
+    """[(ticket, saldo)] de los tickets activos que deben algo, en pocas consultas."""
     # 1) cuánto se pagó por comprobante — UNA query agregada, la suma la hace la base
     pagado_por_comp = dict(
         db.query(models.Pago.comprobante_id,
@@ -3015,11 +3022,12 @@ def deudas_clientes(_ = Depends(usuario_actual), db: Session = Depends(get_db)):
           .filter(_pago_cuenta())
           .group_by(models.Pago.comprobante_id).all())
 
-    # 2) todos los tickets con cliente — UNA query, con líneas y extras incluidos
-    tickets = con_relaciones(db.query(models.Comprobante).filter(
-        models.Comprobante.tipo == "ticket",
-        models.Comprobante.activo == True,
-        models.Comprobante.cliente_id != None)).all()
+    # 2) todos los tickets — UNA query, con líneas y extras incluidos
+    q = db.query(models.Comprobante).filter(models.Comprobante.tipo == "ticket",
+                                            models.Comprobante.activo == True)
+    if solo_con_cliente:
+        q = q.filter(models.Comprobante.cliente_id != None)
+    tickets = con_relaciones(q).all()
 
     # 3) filtro barato: total_final nunca supera la lista transfer más los cargos
     # de arriba (extra viejo y extras), salvo con un descuento negativo. Los que lo
@@ -3030,14 +3038,11 @@ def deudas_clientes(_ = Depends(usuario_actual), db: Session = Depends(get_db)):
     candidatos = [t for t in tickets
                   if (t.descuento_pct or 0) < 0 or pagado_por_comp.get(t.id, 0) < techo(t)]
     pagos_map = pagos_por_comprobante(db, candidatos)
-
-    deudas = {}
+    con_deuda = []
     for t in candidatos:
-        est = estado_comprobante(db, t, pagos_map)
-        if est["saldo"] > 0:
-            deudas[t.cliente_id] = deudas.get(t.cliente_id, 0) + est["saldo"]
-
-    return [{"cliente_id": k, "saldo": v} for k, v in deudas.items()]
+        saldo = estado_comprobante(db, t, pagos_map)["saldo"]
+        if saldo > 0: con_deuda.append((t, saldo))
+    return con_deuda
 
 @app.get("/api/clientes/{cliente_id}")
 def ver_cliente(cliente_id: int, _ = Depends(usuario_actual), db: Session = Depends(get_db)):
@@ -3095,15 +3100,15 @@ def cuenta_cliente(cliente_id: int, _ = Depends(usuario_actual), db: Session = D
         models.Comprobante.activo == True
     )).order_by(models.Comprobante.fecha.desc()).all()
     pagos_map = pagos_por_comprobante(db, comps)
+    presus = [c.id for c in comps if c.tipo == "presupuesto"]
+    convertidos = {} if not presus else dict(db.query(
+        models.Comprobante.convertido_de, models.Comprobante.numero).filter(
+        models.Comprobante.convertido_de.in_(presus), models.Comprobante.activo == True))
     out = []; saldo_total = 0
     for comp in comps:
         est = estado_comprobante(db, comp, pagos_map)
         if comp.tipo == "ticket" and est["saldo"] > 0: saldo_total += est["saldo"]
-        conv = None
-        if comp.tipo == "presupuesto":
-            t = db.query(models.Comprobante).filter(models.Comprobante.convertido_de == comp.id,
-                                                    models.Comprobante.activo == True).first()
-            conv = t.numero if t else None
+        conv = convertidos.get(comp.id) if comp.tipo == "presupuesto" else None
         out.append({"id": comp.id, "tipo": comp.tipo, "numero": comp.numero, "fecha": comp.fecha.isoformat(),
                     # Para saber si la hora de `fecha` es real o es el mediodía
                     # que se le pone a un servicio anotado de otro día.
@@ -4372,17 +4377,8 @@ def rep_resumen(dias: int = 30, desde: str | None = None, hasta: str | None = No
 @app.get("/api/reportes/deuda")
 def rep_deuda(_ = Depends(solo_dueno), db: Session = Depends(get_db)):
     """Cuánto se debe HOY. No lleva período: es una foto, no un acumulado."""
-    tickets = (db.query(models.Comprobante)
-                 .filter(models.Comprobante.tipo == "ticket",
-                         models.Comprobante.activo == True)
-                 .all())
-    total = 0; cuantos = 0
-    for t in tickets:
-        est = estado_comprobante(db, t)
-        if est["saldo"] > 0:
-            total += est["saldo"]
-            cuantos += 1
-    return {"deuda": total, "tickets": cuantos}
+    con_deuda = tickets_con_deuda(db)
+    return {"deuda": sum(saldo for _, saldo in con_deuda), "tickets": len(con_deuda)}
 
 def _movimientos(db, ini, fin):
     """Ingresos (pagos y señas) + egresos del período. Fuente ÚNICA para el registro y el Excel."""
