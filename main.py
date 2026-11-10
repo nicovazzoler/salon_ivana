@@ -23,9 +23,9 @@ def migrar():
     # Rastro de anulaciones. Sin esto, anular le cambia el numero a un dia ya
     # cerrado y no queda forma de saber quien lo hizo ni por que.
     for tabla, columnas in (
-        ("pagos", [("anulado", "BOOLEAN DEFAULT 0"), ("anulado_por", "VARCHAR"),
+        ("pagos", [("anulado", "BOOLEAN DEFAULT FALSE"), ("anulado_por", "VARCHAR"),
                    ("anulado_motivo", "VARCHAR"), ("anulado_en", "TIMESTAMP")]),
-        ("egresos", [("anulado", "BOOLEAN DEFAULT 0"), ("anulado_por", "VARCHAR"),
+        ("egresos", [("anulado", "BOOLEAN DEFAULT FALSE"), ("anulado_por", "VARCHAR"),
                      ("anulado_motivo", "VARCHAR"), ("anulado_en", "TIMESTAMP")]),
         ("comprobantes", [("anulado_por", "VARCHAR"), ("anulado_motivo", "VARCHAR"),
                           ("anulado_en", "TIMESTAMP")]),
