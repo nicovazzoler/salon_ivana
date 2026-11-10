@@ -635,7 +635,9 @@ async function mostrarSenas(avisar){
   caja.querySelectorAll(".borrar-sena").forEach(b => {
     b.onclick = async () => {
       if(!confirm("¿Se le devolvió esta seña?\n\nSale de las que están a favor y queda anotada como devuelta.")) return;
-      const r = await authFetch("/api/senas/" + b.dataset.id, {method:"DELETE"});
+      const motivo = pedirMotivo("esta seña"); if(motivo === null) return;
+      const r = await authFetch("/api/senas/" + b.dataset.id
+                                + "?motivo=" + encodeURIComponent(motivo), {method:"DELETE"});
       if(!r.ok){ toast((await r.json().catch(()=>({}))).detail || "No se pudo"); return; }
       toast("Seña devuelta");
       mostrarSenas();

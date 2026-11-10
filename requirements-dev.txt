@@ -1,2 +1,5 @@
 -r requirements.txt
 pytest==8.3.4
+# Solo para los tests: TestClient de FastAPI lo usa por abajo para llamar a la
+# app sin levantar un servidor. En produccion no hace falta.
+httpx==0.28.1

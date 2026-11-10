@@ -230,6 +230,22 @@ async function cargarDia(){
     });
     html += '</tbody></table></div>';
   }
+  /* Lo anulado del día. Va aparte y tachado: no suma a ningún total —esa plata
+     ya no está en el cajón— pero el día tiene que poder explicar por qué el
+     número le cambió, y eso es el motivo y quién lo puso. */
+  if(d.anulaciones && d.anulaciones.length){
+    const esDueno = getRol() === "dueno";
+    html += `<b class="sub-titulo">Anulado del día <span class="muted">· ${money(d.anulado_total)}, no cuenta en los totales</span></b>`
+          + '<div class="tabla-scroll"><table class="t-anuladas" style="margin-top:6px;"><thead><tr><th>Hora</th><th>Servicio</th><th>Monto</th><th>Motivo</th><th>Quién</th><th></th></tr></thead><tbody>';
+    d.anulaciones.forEach(a=>{
+      html += `<tr><td>${a.hora}</td><td><s>${esc(a.ref||'—')}</s>${a.es_sena?' <span class="tag">seña</span>':''}</td>
+               <td class="money"><s>${money(a.total)}</s></td>
+               <td>${esc(a.motivo||'—')}</td>
+               <td class="muted">${esc(a.por||'—')}${a.cuando?` · ${esc(a.cuando)}`:''}</td>
+               <td>${esDueno ? `<button class="mini b-del" onclick="borrarAnulado('${a.es_sena?'senas':'pagos'}',${a.id})">Borrar</button>` : ''}</td></tr>`;
+    });
+    html += '</tbody></table></div>';
+  }
   if(d.egresos_detalle && d.egresos_detalle.length){
     html += '<b class="sub-titulo">Egresos del día</b><div class="tabla-scroll"><table class="t-egresos" style="margin-top:6px;"><thead><tr><th>N°</th><th>Hora</th><th>Tipo</th><th>Concepto</th><th>Monto</th><th></th></tr></thead><tbody>';
     d.egresos_detalle.forEach(e=>{
@@ -274,9 +290,19 @@ $("#btnFondo").onclick=async()=>{
 
 async function anularPagoCaja(id){
   if(!confirm("¿Anular este cobro? El comprobante vuelve a quedar con saldo pendiente."))return;
-  const r=await authFetch("/api/pagos/"+id,{method:"DELETE"});
-  if(!r.ok){toast("No se pudo");return;}
+  const motivo = pedirMotivo("este cobro"); if(motivo === null) return;
+  const r=await authFetch("/api/pagos/"+id+"?motivo="+encodeURIComponent(motivo),{method:"DELETE"});
+  if(!r.ok){toast((await r.json().catch(()=>({}))).detail || "No se pudo");return;}
   toast("Cobro anulado"); cargarDia();
+}
+
+/* Borrar de verdad: solo la dueña, y solo algo ya anulado. El motivo vive en la
+   fila, así que borrar en un paso no dejaría nada escrito. */
+async function borrarAnulado(tipo, id){
+  if(!confirm("Esto borra el registro para siempre: deja de estar incluso como anulado.\n\n¿Seguro?"))return;
+  const r=await authFetch(`/api/${tipo}/${id}/definitivo`,{method:"DELETE"});
+  if(!r.ok){toast((await r.json().catch(()=>({}))).detail || "No se pudo");return;}
+  toast("Borrado"); cargarDia();
 }
 async function guardarEgresoCaja(id){
   const r = await authFetch("/api/egresos/"+id,{method:"PUT",headers:{"Content-Type":"application/json"},

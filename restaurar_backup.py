@@ -81,6 +81,7 @@ ORDEN = [
                               "peluquero", "total"], ["fecha"]),
     ("pagos", models.Pago, ["id", "comprobante_id", "monto", "saldado", "forma_pago",
                             "alias", "desc_aplicado", "sena_id",
+                            "usuario",
                             "anulado", "anulado_por", "anulado_motivo"],
      ["fecha", "anulado_en"]),
     ("senas", models.Sena, ["id", "numero", "cliente_id", "monto", "forma_pago", "alias",
@@ -288,6 +289,7 @@ def restaurar(archivo, destino, vaciar=False, sin_preguntar=False):
             datos, "pagos",
             ["id", "comprobante_id", "monto", "saldado", "forma_pago", "alias",
              "desc_aplicado", "sena_id",
+             "usuario",
              "anulado", "anulado_por", "anulado_motivo"],
             ["fecha", "anulado_en"], version))
 

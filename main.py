@@ -24,7 +24,8 @@ def migrar():
     # cerrado y no queda forma de saber quien lo hizo ni por que.
     for tabla, columnas in (
         ("pagos", [("anulado", "BOOLEAN DEFAULT FALSE"), ("anulado_por", "VARCHAR"),
-                   ("anulado_motivo", "VARCHAR"), ("anulado_en", "TIMESTAMP")]),
+                   ("anulado_motivo", "VARCHAR"), ("anulado_en", "TIMESTAMP"),
+                   ("usuario", "VARCHAR")]),
         ("egresos", [("anulado", "BOOLEAN DEFAULT FALSE"), ("anulado_por", "VARCHAR"),
                      ("anulado_motivo", "VARCHAR"), ("anulado_en", "TIMESTAMP")]),
         ("comprobantes", [("anulado_por", "VARCHAR"), ("anulado_motivo", "VARCHAR"),
@@ -710,6 +711,41 @@ def es_dueno(user) -> bool:
     """
     return (user or {}).get("rol") == "dueno"
 
+LARGO_MINIMO_MOTIVO = 3
+
+def exigir_motivo(motivo: str | None) -> str:
+    """El motivo de una anulación, o 400.
+
+    Siempre obligatorio, en cualquier pantalla y para cualquier rol. Una
+    anulación sin explicación deja el número del día distinto y a nadie que
+    pueda contar qué pasó, que es exactamente el agujero que esto tapa.
+    """
+    m = (motivo or "").strip()
+    if len(m) < LARGO_MINIMO_MOTIVO:
+        raise HTTPException(400, "Hace falta decir por qué se anula")
+    return m
+
+def exigir_poder_anular(db, user, fecha, comp=None):
+    """Que el que anula pueda tocar la caja de ESE día, o 403.
+
+    El empleado anula lo de hoy: la caja de ayer ya cuadró y cambiarla de atrás
+    le mueve un arqueo que alguien ya firmó. La dueña anula cualquier fecha
+    —a veces el error aparece a la semana— y queda registrado igual que el resto.
+
+    En depilación la unidad de la plata es la sesión y no el día: una jornada se
+    trabaja uno o varios días y la cuenta se cierra al cerrarla. Mientras esté
+    abierta, el empleado puede corregir lo suyo aunque sea de anteayer.
+    """
+    if es_dueno(user):
+        return
+    if fecha and hora_argentina(fecha).date() == hoy_argentina():
+        return
+    if comp is not None and comp.depilacion and comp.sesion_id:
+        ses = db.get(models.SesionDepilacion, comp.sesion_id)
+        if ses and not ses.cerrada:
+            return
+    raise HTTPException(403, "Solo la dueña puede anular algo de otro día")
+
 def _no_privado(col):
     """Condición SQL para "esto NO es privado", contando el NULL como que no.
 
@@ -718,6 +754,15 @@ def _no_privado(col):
     y esos egresos desaparecían de la caja del empleado sin que nada avisara.
     """
     return or_(col == False, col.is_(None))
+
+def _pago_cuenta():
+    """Condición SQL para "este cobro todavía vale": los anulados no.
+
+    Va en TODAS las consultas que preguntan cuánto se pagó, no solo en las de
+    la caja. El NULL cuenta como que no, igual que en `_no_privado`: lo escribe
+    un restore de un backup viejo y si no, esos cobros desaparecerían.
+    """
+    return _no_privado(models.Pago.anulado)
 
 def _no_depi(col):
     """Condición SQL para "esto NO es depilación", con el mismo cuidado del NULL.
@@ -823,7 +868,8 @@ def pagos_por_comprobante(db, comps) -> dict:
     agrupados = {}
     # SQLite tiene un tope de parámetros por consulta, así que se va de a tandas
     for i in range(0, len(ids), 500):
-        for p in db.query(models.Pago).filter(models.Pago.comprobante_id.in_(ids[i:i+500])):
+        for p in db.query(models.Pago).filter(models.Pago.comprobante_id.in_(ids[i:i+500]),
+                                              _pago_cuenta()):
             agrupados.setdefault(p.comprobante_id, []).append(p)
     return agrupados
 
@@ -883,7 +929,8 @@ def estado_comprobante(db, comp, pagos_precargados=None) -> dict:
     total_en_efectivo = total_final if en_efectivo else _cuenta(comp, True)["total_final"]
 
     pagos = (pagos_precargados.get(comp.id, []) if pagos_precargados is not None
-             else db.query(models.Pago).filter(models.Pago.comprobante_id == comp.id).all())
+             else db.query(models.Pago).filter(models.Pago.comprobante_id == comp.id,
+                                               _pago_cuenta()).all())
     pagado = sum((p.saldado if p.saldado is not None else p.monto) for p in pagos)
     ingresado = sum(p.monto for p in pagos)
     # Lo que se cobró de mostrador: la seña no, que ya había entrado antes. Es
@@ -921,7 +968,8 @@ def forma_comprobante(db, comp, pagos_precargados=None) -> str:
     if comp.tipo == "presupuesto":
         return "—"
     pagos = (pagos_precargados.get(comp.id, []) if pagos_precargados is not None
-             else db.query(models.Pago).filter(models.Pago.comprobante_id == comp.id).all())
+             else db.query(models.Pago).filter(models.Pago.comprobante_id == comp.id,
+                                               _pago_cuenta()).all())
     if not pagos:
         return "A cuenta"
     formas = {p.forma_pago for p in pagos}     # set: descarta repetidos
@@ -2964,6 +3012,7 @@ def deudas_clientes(_ = Depends(usuario_actual), db: Session = Depends(get_db)):
     pagado_por_comp = dict(
         db.query(models.Pago.comprobante_id,
                  func.sum(func.coalesce(models.Pago.saldado, models.Pago.monto)))
+          .filter(_pago_cuenta())
           .group_by(models.Pago.comprobante_id).all())
 
     # 2) todos los tickets con cliente — UNA query, con líneas y extras incluidos
@@ -3427,7 +3476,8 @@ def proximo_numero(tipo: str = "ticket", _ = Depends(usuario_actual), db: Sessio
 def ver_comprobante(comp_id: int, _ = Depends(usuario_actual), db: Session = Depends(get_db)):
     comp = db.get(models.Comprobante, comp_id)
     if not comp or not comp.activo: raise HTTPException(404, "Comprobante no existe")
-    pagos = (db.query(models.Pago).filter(models.Pago.comprobante_id == comp.id)
+    pagos = (db.query(models.Pago).filter(models.Pago.comprobante_id == comp.id,
+                                          _pago_cuenta())
                .order_by(models.Pago.fecha).all())
     # Con qué forma se tomó cada seña: de eso depende cuánto tapa de la cuenta, y
     # la pantalla la muestra por su valor de la lista de transferencia.
@@ -3579,7 +3629,7 @@ def crear_comprobante(c: ComprobanteIn, user = Depends(usuario_actual), db: Sess
             "senas_usadas": senas_usadas}
 
 @app.post("/api/comprobantes/{comp_id}/pagos")
-def registrar_pago(comp_id: int, pago: PagoIn, _ = Depends(usuario_actual), db: Session = Depends(get_db)):
+def registrar_pago(comp_id: int, pago: PagoIn, user = Depends(usuario_actual), db: Session = Depends(get_db)):
     comp = db.get(models.Comprobante, comp_id)
     if not comp or not comp.activo: raise HTTPException(404, "Comprobante no existe")
     if comp.tipo != "ticket": raise HTTPException(400, "Solo se cobran tickets, no presupuestos")
@@ -3610,7 +3660,10 @@ def registrar_pago(comp_id: int, pago: PagoIn, _ = Depends(usuario_actual), db: 
     fecha_pago = comp.fecha if pago.del_servicio else fecha_hora_now_utc().replace(tzinfo=None)
     db.add(models.Pago(comprobante_id=comp.id, monto=pago.monto, saldado=saldado,
                        fecha=fecha_pago,
-                       forma_pago=forma, alias=pago.alias, desc_aplicado=desc))
+                       forma_pago=forma, alias=pago.alias, desc_aplicado=desc,
+                       # Quién lo cobró. Sin esto, un cobro mal cargado no tiene
+                       # a quién preguntarle qué pasó.
+                       usuario=user.get("usuario")))
     db.commit(); return estado_comprobante(db, comp)
 
 @app.delete("/api/comprobantes/{comp_id}")
@@ -3664,16 +3717,44 @@ def anular_comprobante(comp_id: int, user = Depends(usuario_actual), db: Session
     return {"ok": True}
 
 @app.delete("/api/pagos/{pago_id}")
-def borrar_pago(pago_id: int, _ = Depends(usuario_actual), db: Session = Depends(get_db)):
-    """Anula un cobro mal cargado. El comprobante vuelve a quedar con saldo pendiente."""
+def anular_pago(pago_id: int, motivo: str = "", user = Depends(usuario_actual),
+                db: Session = Depends(get_db)):
+    """Anula un cobro mal cargado. El comprobante vuelve a quedar con saldo pendiente.
+
+    No borra la fila: la marca. El cobro deja de contar en la caja y en los
+    reportes, pero el día sigue pudiendo explicar qué pasó y quién lo hizo.
+    """
     p = db.get(models.Pago, pago_id)
     if not p: raise HTTPException(404, "Pago no existe")
+    # Ya anulado no es lo mismo que no existe: casi siempre es una pantalla
+    # dibujada de antes, y "no existe" no le dice a nadie que ya está hecho.
+    if p.anulado: raise HTTPException(409, "Ese cobro ya estaba anulado")
+    exigir_poder_anular(db, user, p.fecha, p.comprobante)
+    m = exigir_motivo(motivo)
     # Si el abono venía de una seña, la seña vuelve a quedar a favor de la
-    # clienta: borrado el abono, no salda nada y sin esto tampoco volvía a
+    # clienta: anulado el abono, no salda nada y sin esto tampoco volvía a
     # aparecer como disponible. Es lo mismo que hace anular el comprobante.
     if p.sena_id:
         db.query(models.Sena).filter(models.Sena.id == p.sena_id).update(
             {"comprobante_id": None}, synchronize_session=False)
+    p.anulado = True
+    p.anulado_por = user.get("usuario")
+    p.anulado_motivo = m
+    p.anulado_en = fecha_hora_now_utc().replace(tzinfo=None)
+    db.commit(); return {"ok": True}
+
+@app.delete("/api/pagos/{pago_id}/definitivo")
+def borrar_pago(pago_id: int, _ = Depends(solo_dueno), db: Session = Depends(get_db)):
+    """Borra de verdad un cobro YA anulado. Solo la dueña.
+
+    Pide que esté anulado primero a propósito: el quién y el por qué viven en la
+    fila y no hay tabla de auditoría, así que borrar en un paso no dejaría nada
+    escrito. Anular y después borrar deja el motivo asentado en el medio.
+    """
+    p = db.get(models.Pago, pago_id)
+    if not p: raise HTTPException(404, "Pago no existe")
+    if not p.anulado:
+        raise HTTPException(409, "Primero hay que anularlo con un motivo; después se borra")
     db.delete(p); db.commit(); return {"ok": True}
 
 @app.post("/api/comprobantes/{comp_id}/convertir")
@@ -3823,14 +3904,36 @@ def plata_que_entro(db, ini, fin):
     seña. En una sola función para que la caja, los reportes, el Excel y los
     gráficos no puedan contestar distinto.
     """
-    pagos = (db.query(models.Pago)
-               .filter(models.Pago.fecha >= ini, models.Pago.fecha < fin,
-                       models.Pago.sena_id.is_(None)).all()) if ini and fin else \
-            db.query(models.Pago).filter(models.Pago.sena_id.is_(None)).all()
+    # Un cobro anulado no entró: la fila sigue para poder explicar el día, pero
+    # la plata no cuenta. Va acá y no en cada pantalla porque esta función es la
+    # única que leen la caja, los reportes, el Excel y los gráficos.
+    q_p = db.query(models.Pago).filter(models.Pago.sena_id.is_(None), _pago_cuenta())
+    if ini and fin:
+        q_p = q_p.filter(models.Pago.fecha >= ini, models.Pago.fecha < fin)
+    pagos = q_p.all()
     q = db.query(models.Sena).filter(_no_privado(models.Sena.anulada))
     if ini: q = q.filter(models.Sena.fecha >= ini)
     if fin: q = q.filter(models.Sena.fecha < fin)
     return pagos, q.all()
+
+def plata_anulada(db, ini, fin):
+    """Los cobros y señas anulados que caen en el período, para poder mostrarlos.
+
+    Por la fecha ORIGINAL y no por la de la anulación: la plata entró ese día y
+    ese día es el que tiene que poder explicar por qué ya no está. Si se contara
+    el día en que se anuló, la caja de hoy mostraría un descuento de una venta
+    de la semana pasada y ninguno de los dos días cerraría solo.
+    """
+    q_p = db.query(models.Pago).filter(models.Pago.sena_id.is_(None),
+                                       models.Pago.anulado == True)
+    q_s = db.query(models.Sena).filter(models.Sena.anulada == True)
+    if ini:
+        q_p = q_p.filter(models.Pago.fecha >= ini)
+        q_s = q_s.filter(models.Sena.fecha >= ini)
+    if fin:
+        q_p = q_p.filter(models.Pago.fecha < fin)
+        q_s = q_s.filter(models.Sena.fecha < fin)
+    return q_p.all(), q_s.all()
 
 def _sv(db, i, f):
     pagos, senas = plata_que_entro(db, i, f)
@@ -3871,7 +3974,8 @@ def usado_de_senas(db, ids) -> dict:
     no se parte: lo que le queda libre es la resta."""
     if not ids: return {}
     return dict(db.query(models.Pago.sena_id, func.sum(models.Pago.monto))
-                  .filter(models.Pago.sena_id.in_(list(ids))).group_by(models.Pago.sena_id).all())
+                  .filter(models.Pago.sena_id.in_(list(ids)), _pago_cuenta())
+                  .group_by(models.Pago.sena_id).all())
 
 def _sena_json(s, nombre=None, usado: int = 0):
     libre = 0 if s.anulada else max(s.monto - usado, 0)
@@ -3938,19 +4042,42 @@ def ver_sena(sena_id: int, _ = Depends(usuario_actual), db: Session = Depends(ge
     return _sena_json(s, s.cliente.nombre if s.cliente else None, usado_de_senas(db, [s.id]).get(s.id) or 0)
 
 @app.delete("/api/senas/{sena_id}")
-def anular_sena(sena_id: int, _ = Depends(usuario_actual), db: Session = Depends(get_db)):
+def anular_sena(sena_id: int, motivo: str = "", user = Depends(usuario_actual),
+                db: Session = Depends(get_db)):
     """Se devolvió la plata. Una seña ya usada no se anula: se anula el comprobante.
 
     Queda anulada y no borrada, así que el número sigue estando y la devolución
-    se ve.
+    se ve. Con motivo, igual que un cobro: es plata que entró y que sale.
     """
     s = db.get(models.Sena, sena_id)
     if not s: raise HTTPException(404, "Esa seña no existe")
+    if s.anulada: raise HTTPException(409, "Esa seña ya estaba anulada")
+    # Una seña libre no cuelga de ningún comprobante, así que acá no hay sesión
+    # de depilación de la cual colgarse: para el empleado es el día y nada más.
+    exigir_poder_anular(db, user, s.fecha)
+    m = exigir_motivo(motivo)
     if s.comprobante_id:
         raise HTTPException(400, "Esa seña ya se usó en un comprobante. Anulá el comprobante.")
     if usado_de_senas(db, [s.id]).get(s.id):
         raise HTTPException(400, "De esa seña ya se usó una parte: lo que queda se usa en la próxima jornada")
-    s.anulada = True; db.commit(); return {"ok": True}
+    s.anulada = True
+    s.anulado_por = user.get("usuario")
+    s.anulado_motivo = m
+    s.anulado_en = fecha_hora_now_utc().replace(tzinfo=None)
+    db.commit(); return {"ok": True}
+
+@app.delete("/api/senas/{sena_id}/definitivo")
+def borrar_sena(sena_id: int, _ = Depends(solo_dueno), db: Session = Depends(get_db)):
+    """Borra de verdad una seña YA anulada. Solo la dueña.
+
+    Misma regla que un cobro: anular primero deja el motivo escrito en la fila,
+    que es el único lugar donde queda.
+    """
+    s = db.get(models.Sena, sena_id)
+    if not s: raise HTTPException(404, "Esa seña no existe")
+    if not s.anulada:
+        raise HTTPException(409, "Primero hay que anularla con un motivo; después se borra")
+    db.delete(s); db.commit(); return {"ok": True}
 
 def sena_saldado(sena, comp, saldo: int, libre: int | None = None) -> tuple[int, int]:
     """De una seña: cuánta se usa y cuánto de la cuenta salda.
@@ -4065,7 +4192,25 @@ def caja_dia(fecha: str | None = None, user = Depends(usuario_actual), db: Sessi
     # Las señas son todas de depilación.
     ing_depi = sum(p.monto for p in pagos if p.comprobante_id in ids_depi) + sum(s.monto for s in senas)
     fondo = get_fondo_dia(db, d)
+    # Lo anulado de ESTE día. No suma ni resta de ningún total: el arqueo pide la
+    # plata que hay en el cajón y esa plata ya no está. Está para que el día se
+    # pueda explicar, que es lo que antes no se podía.
+    pg_anul, sn_anul = plata_anulada(db, ini, fin)
+    anulaciones = sorted(
+        [{"id": p.id, "hora": hora_argentina(p.fecha).strftime("%H:%M"), "ref": _pago_detalle(p)["ref"],
+          "total": p.monto, "forma_pago": p.forma_pago,
+          "por": p.anulado_por, "motivo": p.anulado_motivo,
+          "cuando": hora_argentina(p.anulado_en).strftime("%d/%m %H:%M") if p.anulado_en else None}
+         for p in pg_anul] +
+        [{"id": s.id, "hora": hora_argentina(s.fecha).strftime("%H:%M"),
+          "ref": f"Seña N-{(s.numero or 0):05d}" + (f" · {s.cliente.nombre}" if s.cliente else ""),
+          "total": s.monto, "forma_pago": s.forma_pago, "es_sena": True,
+          "por": s.anulado_por, "motivo": s.anulado_motivo,
+          "cuando": hora_argentina(s.anulado_en).strftime("%d/%m %H:%M") if s.anulado_en else None}
+         for s in sn_anul], key=lambda v: v["hora"])
     return {"fecha": d.isoformat(), "ingresos": ing, "egresos": egr, "neto": ing - egr,
+            "anulaciones": anulaciones,
+            "anulado_total": sum(a["total"] or 0 for a in anulaciones),
             "ventas": len(pagos) + len(senas) + len(ajustes) + len(egresos), "ingresos_por_pago": por_pago, "egresos_por_tipo": por_tipo,
             "ingresos_depilacion": ing_depi,
             "fondo": fondo, "efectivo_ventas": efectivo_ventas, "efectivo_egresos": efectivo_egresos,
@@ -4213,8 +4358,14 @@ def rep_resumen(dias: int = 30, desde: str | None = None, hasta: str | None = No
         models.Comprobante.tipo == "ticket",
         models.Comprobante.activo == True)
     n = _filtrar(q, models.Comprobante.fecha, ini, fin).count()
+    # Lo anulado del período, aparte. Ya no está en `ingresos`: va como su propio
+    # renglón para que un mes con muchas anulaciones se note en vez de leerse
+    # como un mes flojo.
+    pg_anul, sn_anul = plata_anulada(db, ini, fin)
     return {"ingresos": ing, "egresos": egr, "neto": ing - egr,
-            "ventas": n, "ingresos_por_pago": por_pago}
+            "ventas": n, "ingresos_por_pago": por_pago,
+            "anuladas": len(pg_anul) + len(sn_anul),
+            "anulado": sum(p.monto for p in pg_anul) + sum(s.monto for s in sn_anul)}
 
 
 
@@ -5065,6 +5216,7 @@ def armar_backup(db) -> dict:
             {"id": p.id, "comprobante_id": p.comprobante_id, "fecha": _iso_utc(p.fecha),
              "monto": p.monto, "saldado": p.saldado, "forma_pago": p.forma_pago,
              "alias": p.alias, "desc_aplicado": p.desc_aplicado, "sena_id": p.sena_id,
+             "usuario": p.usuario,
              "anulado": bool(p.anulado), "anulado_por": p.anulado_por,
              "anulado_motivo": p.anulado_motivo, "anulado_en": _iso_utc(p.anulado_en)}
             for p in db.query(models.Pago).order_by(models.Pago.fecha).all()
