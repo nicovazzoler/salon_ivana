@@ -2,7 +2,7 @@
 
 Generado leyendo el repo. **No editar a mano**: lo regenera el CI en cada commit.
 
-Todo lo que figura acá está escrito en el código — dependencias declaradas, decoradores de ruta, `__tablename__` y las rutas que nombran los archivos del front. Nada está inferido por un modelo.
+Todo lo que figura acá está escrito en el código. Nada está inferido por un modelo de lenguaje: si algo no se puede probar leyendo el repo, no aparece.
 
 ## Las piezas
 
@@ -447,4 +447,4 @@ De dónde sale: la versión, de `requirements*.txt`; el uso, de los `import` de 
 ## Lo que no se pudo probar
 
 - Endpoints que ninguna pantalla nombra: **34**. Pueden ser internos, llamarse con la ruta armada en tiempo de ejecución, o estar muertos.
-- Tablas declaradas en `models.py`: **29**; las que no aparecen arriba no las toca ningún endpoint que el front nombre.
+- Tablas declaradas: **29**; las que no aparecen arriba no las toca ningún endpoint que el front nombre.
