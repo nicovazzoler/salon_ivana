@@ -91,6 +91,14 @@ class Egreso(Base):
     # De qué sesión es este gasto. La fecha sigue siendo la del día en que salió
     # la plata, que es lo que mira la caja; de qué reparto se resta lo dice esto.
     sesion_id = Column(Integer, ForeignKey("sesiones_depilacion.id"), index=True)
+    # Una anulacion no borra la fila: la marca. Asi el arqueo del dia puede
+    # explicar que paso en vez de simplemente dar otro numero.
+    anulado = Column(Boolean, default=False)
+    # Quien anulo, por que y cuando. El motivo es obligatorio: una anulacion
+    # sin explicacion es exactamente el agujero que esto viene a tapar.
+    anulado_por = Column(String)
+    anulado_motivo = Column(String)
+    anulado_en = Column(DateTime)
 
 class SesionDepilacion(Base):
     """Una jornada de depilación: se abre, se trabaja uno o varios días, se cierra.
@@ -303,6 +311,11 @@ class Comprobante(Base):
     # La sesión de depilación a la que pertenece, puesta al crearlo.
     sesion_id = Column(Integer, ForeignKey("sesiones_depilacion.id"), index=True)
     activo = Column(Boolean, default=True)
+    # Quien anulo, por que y cuando. El motivo es obligatorio: una anulacion
+    # sin explicacion es exactamente el agujero que esto viene a tapar.
+    anulado_por = Column(String)
+    anulado_motivo = Column(String)
+    anulado_en = Column(DateTime)
     cliente = relationship("Cliente")
     lineas = relationship("ComprobanteLinea", back_populates="comprobante", cascade="all, delete-orphan")
     extras = relationship("ComprobanteExtra", back_populates="comprobante", cascade="all, delete-orphan")
@@ -357,6 +370,14 @@ class Pago(Base):
     # abono salda la cuenta pero no es plata del día. La caja lo saltea por el id
     # y no por el texto de la forma, que se puede tipear distinto.
     sena_id = Column(Integer, ForeignKey("senas.id"))
+    # Una anulacion no borra la fila: la marca. Asi el arqueo del dia puede
+    # explicar que paso en vez de simplemente dar otro numero.
+    anulado = Column(Boolean, default=False)
+    # Quien anulo, por que y cuando. El motivo es obligatorio: una anulacion
+    # sin explicacion es exactamente el agujero que esto viene a tapar.
+    anulado_por = Column(String)
+    anulado_motivo = Column(String)
+    anulado_en = Column(DateTime)
     comprobante = relationship("Comprobante")
 
 class Sena(Base):
@@ -379,7 +400,12 @@ class Sena(Base):
     notas = Column(String)
     comprobante_id = Column(Integer, ForeignKey("comprobantes.id"))   # NULL = sin usar
     anulada = Column(Boolean, default=False)
-    usuario = Column(String)
+    usuario = Column(String)   # quien la cobro, no quien la anulo
+    # Quien anulo, por que y cuando. El motivo es obligatorio: una anulacion
+    # sin explicacion es exactamente el agujero que esto viene a tapar.
+    anulado_por = Column(String)
+    anulado_motivo = Column(String)
+    anulado_en = Column(DateTime)
     cliente = relationship("Cliente")
     comprobante = relationship("Comprobante")
 

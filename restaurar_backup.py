@@ -64,7 +64,9 @@ ORDEN = [
     ("egresos", models.Egreso, ["id", "numero", "tipo", "concepto", "monto",
                                 "forma_pago", "notas", "privado",
                                 "ayudante", "maquina", "empleado_id",
-                                "depilacion", "sesion_id"], ["fecha"]),
+                                "depilacion", "sesion_id",
+                                "anulado", "anulado_por", "anulado_motivo"],
+     ["fecha", "anulado_en"]),
     ("turnos", models.Turno, ["id", "fecha", "hora", "cliente_id", "cliente",
                               "servicio", "peluquero", "notas", "activo",
                               "duracion_min"], []),
@@ -78,9 +80,12 @@ ORDEN = [
     ("ventas", models.Venta, ["id", "forma_pago", "alias", "cliente",
                               "peluquero", "total"], ["fecha"]),
     ("pagos", models.Pago, ["id", "comprobante_id", "monto", "saldado", "forma_pago",
-                            "alias", "desc_aplicado", "sena_id"], ["fecha"]),
+                            "alias", "desc_aplicado", "sena_id",
+                            "anulado", "anulado_por", "anulado_motivo"],
+     ["fecha", "anulado_en"]),
     ("senas", models.Sena, ["id", "numero", "cliente_id", "monto", "forma_pago", "alias",
-                            "notas", "comprobante_id", "anulada", "usuario"], ["fecha"]),
+                            "notas", "comprobante_id", "anulada", "usuario",
+                            "anulado_por", "anulado_motivo"], ["fecha", "anulado_en"]),
     ("liquidaciones", models.Liquidacion,
      ["id", "empleado_id", "desde", "hasta", "valor_hora", "comision_pct",
       "minutos_total", "minutos_comision", "minutos_pagados",
@@ -104,7 +109,8 @@ ANIDADAS = [
 
 CAMPOS_COMPROBANTE = ["id", "tipo", "numero", "cliente_id", "cliente_nombre", "peluquero",
                       "total_lista", "extra_dificultad", "descuento_pct", "descuento_nombre",
-                      "forma_pago", "mostrar_motivo", "depilacion", "activo", "sesion_id"]
+                      "forma_pago", "mostrar_motivo", "depilacion", "activo", "sesion_id",
+                      "anulado_por", "anulado_motivo"]
 
 
 def _filas(datos, clave, campos, campos_fecha, version):
@@ -237,6 +243,7 @@ def restaurar(archivo, destino, vaciar=False, sin_preguntar=False):
             d = {k: c.get(k) for k in CAMPOS_COMPROBANTE}
             d["fecha"] = _a_utc_naive(c.get("fecha"), version)
             d["cargado"] = _a_utc_naive(c.get("cargado"), version)
+            d["anulado_en"] = _a_utc_naive(c.get("anulado_en"), version)
             d["convertido_de"] = None
             comps.append(d)
         total["comprobantes"] = _insertar(db, models.Comprobante, comps)
@@ -265,19 +272,24 @@ def restaurar(archivo, destino, vaciar=False, sin_preguntar=False):
              "fecha", "minutos", "liquidacion_id", "base", "comision"],
             [], version))
 
+        # Ojo: estas listas de campos repiten las de ORDEN. Si agregás una
+        # columna a pagos o a señas, va en los dos lados o se pierde al
+        # restaurar, sin error y sin aviso.
         # Las señas van ANTES que los pagos: un abono que salió de una seña la
         # apunta con una clave foránea.
         total["senas"] = _insertar(db, models.Sena, _filas(
             datos, "senas",
             ["id", "numero", "cliente_id", "monto", "forma_pago", "alias", "notas",
-             "comprobante_id", "anulada", "usuario"],
-            ["fecha"], version))
+             "comprobante_id", "anulada", "usuario",
+             "anulado_por", "anulado_motivo"],
+            ["fecha", "anulado_en"], version))
 
         total["pagos"] = _insertar(db, models.Pago, _filas(
             datos, "pagos",
             ["id", "comprobante_id", "monto", "saldado", "forma_pago", "alias",
-             "desc_aplicado", "sena_id"],
-            ["fecha"], version))
+             "desc_aplicado", "sena_id",
+             "anulado", "anulado_por", "anulado_motivo"],
+            ["fecha", "anulado_en"], version))
 
         vinculos = [{"_id": c["id"], "conv": c.get("convertido_de")}
                     for c in datos.get("comprobantes", []) if c.get("convertido_de")]
