@@ -81,7 +81,7 @@ ORDEN = [
                               "peluquero", "total"], ["fecha"]),
     ("pagos", models.Pago, ["id", "comprobante_id", "monto", "saldado", "forma_pago",
                             "alias", "desc_aplicado", "sena_id",
-                            "usuario",
+                            "usuario", "clave",
                             "anulado", "anulado_por", "anulado_motivo"],
      ["fecha", "anulado_en"]),
     ("senas", models.Sena, ["id", "numero", "cliente_id", "monto", "forma_pago", "alias",
@@ -111,7 +111,7 @@ ANIDADAS = [
 CAMPOS_COMPROBANTE = ["id", "tipo", "numero", "cliente_id", "cliente_nombre", "peluquero",
                       "total_lista", "extra_dificultad", "descuento_pct", "descuento_nombre",
                       "forma_pago", "mostrar_motivo", "depilacion", "activo", "sesion_id",
-                      "anulado_por", "anulado_motivo"]
+                      "clave", "anulado_por", "anulado_motivo"]
 
 
 def _filas(datos, clave, campos, campos_fecha, version):
@@ -289,7 +289,7 @@ def restaurar(archivo, destino, vaciar=False, sin_preguntar=False):
             datos, "pagos",
             ["id", "comprobante_id", "monto", "saldado", "forma_pago", "alias",
              "desc_aplicado", "sena_id",
-             "usuario",
+             "usuario", "clave",
              "anulado", "anulado_por", "anulado_motivo"],
             ["fecha", "anulado_en"], version))
 

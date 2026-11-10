@@ -476,6 +476,19 @@ avisar**. Facturar sigue cobrando en dos pasos porque ahí el cobro no siempre e
 entero —cobrar una parte, dejar a cuenta, pago mixto—; las dos banderas vienen
 apagadas por defecto.
 
+**Y cada cobro lleva su `clave`.** Un pedido puede llegar y perderse la
+respuesta: la pantalla dice "no se pudo" y el segundo toque creaba otro ticket
+cobrado. La pantalla arma la clave con `claveDeCobro()` (`auth.js`), la guarda
+en el borrador y la repite en cada reintento hasta que sale bien; el backend,
+con una clave que ya vio, contesta lo que hizo esa vez **si el pedido es el
+mismo**. Si en el medio cambió algo —otra zona, otro monto— o eso se anuló,
+contesta 409 diciendo qué había entrado, y la pantalla suelta la clave:
+contestar "cobrado" con lo viejo haría creer que entró lo que se ve. Va en el alta del
+comprobante y en cada abono: un abono parcial repetido no lo frena el saldo,
+porque todavía alcanza. **Un camino nuevo que cree un ticket o un pago tiene que
+mandarla.** Y `registrar_pago()` traba el comprobante hasta el commit: dos
+abonos al mismo tiempo leían el mismo saldo y pasaban los dos el tope.
+
 **Anular un comprobante devuelve las señas que había usado.** Quedaban
 apuntando al comprobante anulado: no saldaban nada y tampoco volvían a aparecer
 como disponibles, así que esa plata se le perdía a la clienta sin que nada
@@ -588,6 +601,7 @@ No alcanza con que compile. Lo que se usa acá, de menor a mayor:
 pytest tests/test_plata.py           # la aritmética de plata del backend
 pytest tests/test_backup.py          # que el backup JSON vuelva entero al restaurarlo
 pytest tests/test_anulaciones.py     # quién puede anular plata y qué queda escrito
+pytest tests/test_cobro_repetido.py  # que un cobro reintentado no cobre dos veces
 node --test "tests/escpos/**/*.test.js"   # el papel, byte a byte contra los golden
 ```
 
@@ -602,7 +616,7 @@ modelos, la exporta con `armar_backup()`, la restaura y compara fila por fila.
 **Una columna nueva hay que sumarla a `armar_backup()` y a `restaurar_backup.py`**:
 si no, este test falla diciendo cuál.
 
-`tests/test_anulaciones.py` es el único que levanta la app: usa `TestClient` y
+`tests/test_anulaciones.py` y `tests/test_cobro_repetido.py` levantan la app: usan `TestClient` y
 reemplaza `get_db` por una base nueva y `usuario_actual` por el rol que cada
 test quiere probar. Los permisos se prueban POR HTTP a propósito: `solo_dueno`
 es un `Depends`, así que llamando la función derecho el 403 no corre y el test

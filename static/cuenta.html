@@ -387,6 +387,8 @@ function renderComprobantes(){
       }
       inp.addEventListener("input", calcularAviso);
       forma.addEventListener("change", calcularAviso);                            
+      // Una por formulario: el reintento de un abono que llegó no lo anota dos veces.
+      let clave = null;
       div.querySelector(".aOk").onclick=async()=>{
         const efectivo=parseInt(div.querySelector(".aMonto").value)||0;
         if(efectivo<=0){ toast("Monto inválido"); return; }
@@ -395,7 +397,12 @@ function renderComprobantes(){
         const body={ monto, saldado: aplicaDesc ? null : Math.min(efectivo, comp.saldo),
           descuento_efectivo: aplicaDesc, forma_pago:forma.value,
           alias: forma.value==="Transferencia" ? (div.querySelector(".aAlias").value.trim()||null) : null };
-        const r=await authFetch("/api/comprobantes/"+comp.id+"/pagos",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+        body.clave = clave = clave || claveDeCobro();
+        let r;
+        try{
+          r=await authFetch("/api/comprobantes/"+comp.id+"/pagos",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+        }catch(e){ toast("Sin conexión: volvé a tocar, no se cobra dos veces"); return; }
+        if(r.status === 409){ toast((await r.json().catch(()=>({}))).detail); cargar(); return; }
         if(!r.ok){ const e=await r.json(); toast(e.detail||"No se pudo"); return; }
         toast("Abono registrado"); cargar();
       };

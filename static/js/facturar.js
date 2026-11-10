@@ -341,6 +341,11 @@ let AJUSTES = [];                 // lista configurada en admin
    Cargos sueltos que se suman al final, después de todos los descuentos, y que
    siempre salen impresos. No son ítems del catálogo ni llevan cantidad. */
 let EXTRAS = [];                  // [{concepto, monto}]
+/* La del comprobante en curso: vive hasta limpiar() y en el borrador, así un
+   reintento —aunque sea después de recargar— le pide al backend el mismo. */
+let CLAVE = null;
+let CLAVE_ABONO = null;           // la del abono suelto que se está mandando
+const SIN_CONEXION = "Sin conexión: volvé a tocar, no se cobra dos veces";
 
 function renderExtras(){
   const cont=$("#listaExtras"); cont.innerHTML="";
@@ -712,7 +717,8 @@ function guardarBorrador(){
     fechaServicio: hayOtroDia() ? $("#fechaServicio").value : "",
     descuentoSel: $("#descuento").value,   // el índice elegido en el select de descuento
     formaPago,
-    extras: EXTRAS
+    extras: EXTRAS,
+    clave: CLAVE
   }));
 }
 
@@ -743,6 +749,7 @@ function restaurarBorrador(){
     if(EXTRAS.length) $("#extrasBox").open = true;   // si hay extras cargados, que se vean
     formaPago = d.formaPago || "efectivo";
     $("#formaPago").value = formaPago;
+    CLAVE = d.clave || null;
   }catch(e){ localStorage.removeItem(BORRADOR_KEY); }
 }
 
@@ -981,7 +988,15 @@ async function crearComprobante(){
                             ajuste_nombre: l.ajusteNombre || null})),
     extras: EXTRAS
   };
-  const r=await authFetch("/api/comprobantes",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+  if(!CLAVE){ CLAVE = claveDeCobro(); guardarBorrador(); }
+  // Con el tipo adentro: el presupuesto que se armó primero no es el ticket.
+  body.clave = CLAVE + "-" + tipo;
+  let r;
+  try{
+    r=await authFetch("/api/comprobantes",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+  }catch(e){ toast(SIN_CONEXION); return null; }
+  // 409: con esa clave ya entró otra cosa. El que sigue es un comprobante nuevo.
+  if(r.status === 409){ CLAVE = null; guardarBorrador(); }
   if(!r.ok){
     // El backend rechaza fechas futuras o demasiado viejas: conviene decir cuál
     // fue el motivo y no un "no se pudo" que no explica nada.
@@ -1060,14 +1075,18 @@ $("#cobrarTodo").onclick=async()=>{
   const otroDia = esDeOtroDia();
   const d=await crearComprobante();
   if(!d){ renderTicket(); return; }
-  const c=await (await authFetch("/api/comprobantes/"+d.id)).json();
+  let r;
+  try{
+    const c=await (await authFetch("/api/comprobantes/"+d.id)).json();
 
-  const forma = formaPago==="efectivo" ? "Efectivo" : "Transferencia";
-  const monto = c.saldo;            // el total ya trae el descuento: se salda 1:1
-  if(monto <= 0){ limpiar(); if(!otroDia) imprimirComprobante(d.id); return; }
+    const forma = formaPago==="efectivo" ? "Efectivo" : "Transferencia";
+    const monto = c.saldo;            // el total ya trae el descuento: se salda 1:1
+    if(monto <= 0){ limpiar(); if(!otroDia) imprimirComprobante(d.id); return; }
 
-  const r=await authFetch("/api/comprobantes/"+d.id+"/pagos",{method:"POST",headers:{"Content-Type":"application/json"},
-    body:JSON.stringify({monto, saldado:monto, forma_pago:forma, alias:null, del_servicio:true})});
+    r=await authFetch("/api/comprobantes/"+d.id+"/pagos",{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({monto, saldado:monto, forma_pago:forma, alias:null, del_servicio:true,
+                           clave: CLAVE + "-todo"})});
+  }catch(e){ toast(SIN_CONEXION); renderTicket(); return; }
   if(r.ok){ toast("Cobrado ✓"); } else { toast("Se creó, pero el cobro falló — cobralo desde la cuenta"); }
   limpiar();
   if(r.ok && !otroDia) imprimirComprobante(d.id);
@@ -1118,6 +1137,7 @@ function limpiar(){
   $("#aliasTransfer").value="";
   EXTRAS=[]; renderExtras(); $("#extrasBox").open=false;
   $("#panelCobro").style.display="none"; compActual=null;
+  CLAVE = null; CLAVE_ABONO = null;
   localStorage.removeItem(BORRADOR_KEY);
   renderTicket();
 }
@@ -1234,20 +1254,28 @@ $("#mxRegistrar").onclick=async()=>{
   const d = await crearComprobante();
   if(!d){ $("#mxRegistrar").disabled=false; return; }
 
-
-  // Primero el efectivo: cuánto de la deuda tapa lo calcula el backend, y la
-  // transferencia es lo que quede.
-  const r1 = await authFetch("/api/comprobantes/"+d.id+"/pagos",{method:"POST",headers:{"Content-Type":"application/json"},
-    body:JSON.stringify({ monto:E, descuento_efectivo:true, forma_pago:"Efectivo", alias:null, del_servicio:true })});
-  if(!r1.ok){ toast("Falló la parte efectivo — quedó a cuenta"); $("#panelMixto").style.display="none"; limpiar(); return; }
-  const T = (await r1.json()).saldo;
-
   let ok = true;
-  if(T > 0){
-    const r2 = await authFetch("/api/comprobantes/"+d.id+"/pagos",{method:"POST",headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({ monto:T, saldado:T, forma_pago:"Transferencia", alias, del_servicio:true })});
-    ok = r2.ok;
-  }
+  try{
+    // Primero el efectivo: cuánto de la deuda tapa lo calcula el backend, y la
+    // transferencia es lo que quede.
+    const r1 = await authFetch("/api/comprobantes/"+d.id+"/pagos",{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({ monto:E, descuento_efectivo:true, forma_pago:"Efectivo", alias:null, del_servicio:true,
+                            clave: CLAVE + "-ef" })});
+    if(!r1.ok){
+      const e = await r1.json().catch(()=>({}));
+      toast(r1.status === 409 ? e.detail : "Falló la parte efectivo — quedó a cuenta");
+      $("#panelMixto").style.display="none"; limpiar(); return;
+    }
+    const T = (await r1.json()).saldo;
+
+    if(T > 0){
+      const r2 = await authFetch("/api/comprobantes/"+d.id+"/pagos",{method:"POST",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({ monto:T, saldado:T, forma_pago:"Transferencia", alias, del_servicio:true,
+                              clave: CLAVE + "-tr" })});
+      ok = r2.ok;
+      if(r2.status === 409){ toast((await r2.json().catch(()=>({}))).detail); $("#panelMixto").style.display="none"; limpiar(); return; }
+    }
+  }catch(e){ toast(SIN_CONEXION); $("#mxRegistrar").disabled=false; return; }
   toast(ok ? "Pago mixto registrado ✓" : "Falló la parte transferencia — quedó saldo a cuenta");
 
   $("#panelMixto").style.display="none";
@@ -1264,8 +1292,15 @@ $("#cobroRegistrar").onclick=async()=>{
   const body={ monto:saldado, saldado, forma_pago:forma,      // 1:1
                alias: (forma==="Transferencia") ? ($("#cobroAlias").value.trim()||null) : null,
                del_servicio: true };
-  const r=await authFetch("/api/comprobantes/"+compActual+"/pagos",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+  if(!CLAVE_ABONO) CLAVE_ABONO = claveDeCobro();
+  body.clave = CLAVE_ABONO;
+  let r;
+  try{
+    r=await authFetch("/api/comprobantes/"+compActual+"/pagos",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+  }catch(e){ toast(SIN_CONEXION); return; }
+  if(r.status === 409){ CLAVE_ABONO = null; toast((await r.json().catch(()=>({}))).detail); abrirCobro(); return; }
   if(!r.ok){ const e=await r.json(); toast(e.detail||"No se pudo"); return; }
+  CLAVE_ABONO = null;
   const est=await r.json();
   toast(est.saldo<=0 ? "Ticket saldado ✓" : "Pago registrado");
   abrirCobro();

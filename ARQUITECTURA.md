@@ -51,7 +51,6 @@ graph LR
   Pclienteshtml["clientes.html"]
   Pclienteshtml --> Tclientes
   Pclienteshtml --> Tcomprobantes
-  Pclienteshtml --> Tpagos
   Pcuentahtml["cuenta.html"]
   Pcuentahtml --> Tclientes
   Pcuentahtml --> Tcomprobantes
@@ -108,7 +107,6 @@ graph LR
   Preporteshtml["reportes.html"]
   Preporteshtml --> Tclientes
   Preporteshtml --> Tcomprobantes
-  Preporteshtml --> Tpagos
   Ptickethtml["ticket.html"]
   Ptickethtml --> Tclientes
   Ptickethtml --> Tcomprobantes
@@ -121,13 +119,13 @@ De dónde sale: la versión, de `requirements*.txt`; el uso, de los `import` de 
 
 | Librería | Versión | Quién la usa |
 |---|---|---|
-| `fastapi` | 0.115.6 | `main.py`, `tests/test_anulaciones.py`, `tests/test_plata.py` |
+| `fastapi` | 0.115.6 | `main.py`, `tests/test_anulaciones.py`, `tests/test_cobro_repetido.py`, `tests/test_plata.py` |
 | `httpx` | 0.28.1 | sin import directo |
 | `openpyxl` | 3.1.5 | `main.py` |
 | `psycopg2-binary` | 2.9.10 | sin import directo |
 | `pydantic` | 2.10.4 | `main.py` |
-| `pytest` | 8.3.4 | `tests/test_anulaciones.py`, `tests/test_backup.py`, `tests/test_plata.py` |
-| `sqlalchemy` | 2.0.36 | `cargar_depilacion.py`, `database.py`, `levantar_local.py`, `main.py` y 4 más |
+| `pytest` | 8.3.4 | `tests/test_anulaciones.py`, `tests/test_backup.py`, `tests/test_cobro_repetido.py`, `tests/test_plata.py` |
+| `sqlalchemy` | 2.0.36 | `cargar_depilacion.py`, `database.py`, `levantar_local.py`, `main.py` y 5 más |
 | `uvicorn` | 0.34.0 | `levantar_local.py` |
 
 <details>
@@ -147,7 +145,7 @@ De dónde sale: la versión, de `requirements*.txt`; el uso, de los `import` de 
 | GET | `/api/caja/diario` | `caja_diario` | — |
 | GET | `/api/caja/semanal` | `caja_semanal` | — |
 | GET | `/api/inventario` | `inventario` | items |
-| GET | `/api/reportes/deuda` | `rep_deuda` | comprobantes |
+| GET | `/api/reportes/deuda` | `rep_deuda` | — |
 | GET | `/api/reportes/excel` | `reportes_excel` | — |
 | GET | `/api/reportes/ranking-items` | `ranking_items` | comprobante_lineas, comprobantes, items |
 | GET | `/api/reportes/resumen` | `rep_resumen` | comprobantes, egresos |
@@ -199,13 +197,13 @@ De dónde sale: la versión, de `requirements*.txt`; el uso, de los `import` de 
 ### clientes.html
 
 - Endpoints que usa: **6**
-- Tablas que tocan esos endpoints: `clientes`, `comprobantes`, `pagos`
+- Tablas que tocan esos endpoints: `clientes`, `comprobantes`
 
 | Método | Endpoint | Función | Tablas |
 |---|---|---|---|
 | GET | `/api/clientes` | `listar_clientes` | clientes |
 | POST | `/api/clientes` | `crear_cliente` | clientes |
-| GET | `/api/clientes/deudas` | `deudas_clientes` | comprobantes, pagos |
+| GET | `/api/clientes/deudas` | `deudas_clientes` | — |
 | GET | `/api/clientes/{cliente_id}` | `ver_cliente` | clientes |
 | PUT | `/api/clientes/{cliente_id}` | `editar_cliente` | clientes |
 | DELETE | `/api/clientes/{cliente_id}` | `borrar_cliente` | clientes, comprobantes |
@@ -414,13 +412,13 @@ De dónde sale: la versión, de `requirements*.txt`; el uso, de los `import` de 
 ### reportes.html
 
 - Endpoints que usa: **6**
-- Tablas que tocan esos endpoints: `clientes`, `comprobantes`, `pagos`
+- Tablas que tocan esos endpoints: `clientes`, `comprobantes`
 
 | Método | Endpoint | Función | Tablas |
 |---|---|---|---|
 | GET | `/api/clientes` | `listar_clientes` | clientes |
 | POST | `/api/clientes` | `crear_cliente` | clientes |
-| GET | `/api/clientes/deudas` | `deudas_clientes` | comprobantes, pagos |
+| GET | `/api/clientes/deudas` | `deudas_clientes` | — |
 | GET | `/api/clientes/{cliente_id}` | `ver_cliente` | clientes |
 | PUT | `/api/clientes/{cliente_id}` | `editar_cliente` | clientes |
 | DELETE | `/api/clientes/{cliente_id}` | `borrar_cliente` | clientes, comprobantes |

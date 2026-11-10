@@ -10,6 +10,13 @@ async function authFetch(url,opts){
   if(r.status===401){logout();throw new Error("sesion vencida");}
   return r;
 }
+/* La clave de un cobro: se arma una vez y viaja en cada reintento, así el
+   backend reconoce el pedido que ya hizo y no cobra dos veces. randomUUID solo
+   existe en https y en localhost. */
+function claveDeCobro(){
+  if(window.crypto && crypto.randomUUID) return crypto.randomUUID();
+  return Date.now().toString(36) + "-" + Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
+}
 function requireLogin(){ if(!getToken()){location.href="/login";} }
 function requireDueno(){ requireLogin(); if(getRol()!=="dueno"){location.href="/";} }
 function esDueno(){ return getRol()==="dueno"; }

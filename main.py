@@ -3,7 +3,8 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy.orm import Session, selectinload
 from sqlalchemy import text, inspect, func, or_, String
-from pydantic import BaseModel
+from sqlalchemy.exc import IntegrityError
+from pydantic import BaseModel, Field
 from datetime import datetime, date, timedelta, timezone
 from openpyxl import Workbook
 import os
@@ -32,12 +33,19 @@ def migrar():
                           ("anulado_en", "TIMESTAMP")]),
         ("senas", [("anulado_por", "VARCHAR"), ("anulado_motivo", "VARCHAR"),
                    ("anulado_en", "TIMESTAMP")]),
+        # La que frena el cobro repetido cuando se pierde la respuesta.
+        ("comprobantes", [("clave", "VARCHAR")]),
+        ("pagos", [("clave", "VARCHAR")]),
     ):
         existentes = [c["name"] for c in insp.get_columns(tabla)]
         for col, tipo in columnas:
             if col not in existentes:
                 with engine.begin() as con:
                     con.execute(text(f"ALTER TABLE {tabla} ADD COLUMN {col} {tipo}"))
+    # El mismo nombre que le pone create_all() a una base nueva.
+    for tabla in ("comprobantes", "pagos"):
+        with engine.begin() as con:
+            con.execute(text(f"CREATE UNIQUE INDEX IF NOT EXISTS ix_{tabla}_clave ON {tabla} (clave)"))
 
     icols = [c["name"] for c in insp.get_columns("items")]
     if "stock_minimo" not in icols:
@@ -354,6 +362,8 @@ class ComprobanteIn(BaseModel):
     # que no llega deja el ticket cobrado a medias y con deuda.
     aplicar_senas: bool = False
     cobrar: bool = False
+    # La arma la pantalla una vez por cobro y la repite en cada reintento.
+    clave: str | None = Field(None, max_length=64)
 class PagoIn(BaseModel):
     monto: int; forma_pago: str; alias: str | None = None; saldado: int | None = None
     # True = este abono cierra la venta, así que la plata pertenece al día del
@@ -361,6 +371,7 @@ class PagoIn(BaseModel):
     del_servicio: bool = False
     # True = es efectivo y lleva el 10%: lo saldado lo calcula el backend.
     descuento_efectivo: bool = False
+    clave: str | None = Field(None, max_length=64)
 class FormaIn(BaseModel):
     nombre: str
 class DescuentoIn(BaseModel):
@@ -3008,6 +3019,13 @@ def crear_cliente(cli: ClienteIn, _ = Depends(usuario_actual), db: Session = Dep
 @app.get("/api/clientes/deudas")
 def deudas_clientes(_ = Depends(usuario_actual), db: Session = Depends(get_db)):
     """Saldo por cliente, solo de los que deben. Va ANTES de /{cliente_id}: las rutas fijas primero."""
+    deudas = {}
+    for t, saldo in tickets_con_deuda(db, solo_con_cliente=True):
+        deudas[t.cliente_id] = deudas.get(t.cliente_id, 0) + saldo
+    return [{"cliente_id": k, "saldo": v} for k, v in deudas.items()]
+
+def tickets_con_deuda(db, solo_con_cliente: bool = False) -> list:
+    """[(ticket, saldo)] de los tickets activos que deben algo, en pocas consultas."""
     # 1) cuánto se pagó por comprobante — UNA query agregada, la suma la hace la base
     pagado_por_comp = dict(
         db.query(models.Pago.comprobante_id,
@@ -3015,11 +3033,12 @@ def deudas_clientes(_ = Depends(usuario_actual), db: Session = Depends(get_db)):
           .filter(_pago_cuenta())
           .group_by(models.Pago.comprobante_id).all())
 
-    # 2) todos los tickets con cliente — UNA query, con líneas y extras incluidos
-    tickets = con_relaciones(db.query(models.Comprobante).filter(
-        models.Comprobante.tipo == "ticket",
-        models.Comprobante.activo == True,
-        models.Comprobante.cliente_id != None)).all()
+    # 2) todos los tickets — UNA query, con líneas y extras incluidos
+    q = db.query(models.Comprobante).filter(models.Comprobante.tipo == "ticket",
+                                            models.Comprobante.activo == True)
+    if solo_con_cliente:
+        q = q.filter(models.Comprobante.cliente_id != None)
+    tickets = con_relaciones(q).all()
 
     # 3) filtro barato: total_final nunca supera la lista transfer más los cargos
     # de arriba (extra viejo y extras), salvo con un descuento negativo. Los que lo
@@ -3030,14 +3049,11 @@ def deudas_clientes(_ = Depends(usuario_actual), db: Session = Depends(get_db)):
     candidatos = [t for t in tickets
                   if (t.descuento_pct or 0) < 0 or pagado_por_comp.get(t.id, 0) < techo(t)]
     pagos_map = pagos_por_comprobante(db, candidatos)
-
-    deudas = {}
+    con_deuda = []
     for t in candidatos:
-        est = estado_comprobante(db, t, pagos_map)
-        if est["saldo"] > 0:
-            deudas[t.cliente_id] = deudas.get(t.cliente_id, 0) + est["saldo"]
-
-    return [{"cliente_id": k, "saldo": v} for k, v in deudas.items()]
+        saldo = estado_comprobante(db, t, pagos_map)["saldo"]
+        if saldo > 0: con_deuda.append((t, saldo))
+    return con_deuda
 
 @app.get("/api/clientes/{cliente_id}")
 def ver_cliente(cliente_id: int, _ = Depends(usuario_actual), db: Session = Depends(get_db)):
@@ -3095,15 +3111,15 @@ def cuenta_cliente(cliente_id: int, _ = Depends(usuario_actual), db: Session = D
         models.Comprobante.activo == True
     )).order_by(models.Comprobante.fecha.desc()).all()
     pagos_map = pagos_por_comprobante(db, comps)
+    presus = [c.id for c in comps if c.tipo == "presupuesto"]
+    convertidos = {} if not presus else dict(db.query(
+        models.Comprobante.convertido_de, models.Comprobante.numero).filter(
+        models.Comprobante.convertido_de.in_(presus), models.Comprobante.activo == True))
     out = []; saldo_total = 0
     for comp in comps:
         est = estado_comprobante(db, comp, pagos_map)
         if comp.tipo == "ticket" and est["saldo"] > 0: saldo_total += est["saldo"]
-        conv = None
-        if comp.tipo == "presupuesto":
-            t = db.query(models.Comprobante).filter(models.Comprobante.convertido_de == comp.id,
-                                                    models.Comprobante.activo == True).first()
-            conv = t.numero if t else None
+        conv = convertidos.get(comp.id) if comp.tipo == "presupuesto" else None
         out.append({"id": comp.id, "tipo": comp.tipo, "numero": comp.numero, "fecha": comp.fecha.isoformat(),
                     # Para saber si la hora de `fecha` es real o es el mediodía
                     # que se le pone a un servicio anotado de otro día.
@@ -3511,6 +3527,10 @@ def ver_comprobante(comp_id: int, _ = Depends(usuario_actual), db: Session = Dep
 
 @app.post("/api/comprobantes")
 def crear_comprobante(c: ComprobanteIn, user = Depends(usuario_actual), db: Session = Depends(get_db)):
+    # Si el pedido ya había llegado y lo que se perdió fue la respuesta, el
+    # reintento trae la misma clave: se contesta lo que se creó esa vez.
+    ya = _comprobante_por_clave(db, c.clave)
+    if ya: return _repetido(db, ya, c)
     if c.tipo not in ("ticket", "presupuesto"): raise HTTPException(400, "Tipo inválido")
     if not c.lineas: raise HTTPException(400, "El comprobante no tiene líneas")
     nombre_cli = None
@@ -3535,8 +3555,17 @@ def crear_comprobante(c: ComprobanteIn, user = Depends(usuario_actual), db: Sess
         fecha=fecha_serv, cargado=ahora,
         cliente_id=c.cliente_id, cliente_nombre=nombre_cli, peluquero=c.peluquero,
         forma_pago=c.forma_pago,
-        descuento_pct=c.descuento_pct or 0, descuento_nombre=c.descuento_nombre, mostrar_motivo=c.mostrar_motivo)
-    db.add(comp); db.flush()
+        descuento_pct=c.descuento_pct or 0, descuento_nombre=c.descuento_nombre, mostrar_motivo=c.mostrar_motivo,
+        clave=c.clave or None)
+    db.add(comp)
+    try:
+        db.flush()
+    except IntegrityError:
+        # Los dos pedidos llegaron juntos: el otro ganó y este se descarta entero.
+        db.rollback()
+        ya = _comprobante_por_clave(db, c.clave)
+        if not ya: raise
+        return _repetido(db, ya, c)
     total = 0
     # Un comprobante es de depilación cuando TODAS sus líneas lo son. Todas y no
     # alguna: media mitad de cada cosa no se puede mandar entera ni al reparto ni
@@ -3622,7 +3651,55 @@ def crear_comprobante(c: ComprobanteIn, user = Depends(usuario_actual), db: Sess
             anotar_correccion(db, ses_nueva, f"Se agregó el N-{comp.numero or 0:05d}",
                               parte_previa, user.get("usuario"))
     db.commit(); db.refresh(comp)
+    return _comprobante_creado(db, comp)
+
+def _comprobante_por_clave(db, clave):
+    if not clave: return None
+    return db.query(models.Comprobante).filter(models.Comprobante.clave == clave).first()
+
+def _pesos(n: int) -> str:
+    return f"${n:,}".replace(",", ".")
+
+def _repetido(db, comp, c: ComprobanteIn) -> dict:
+    """Lo que se contesta a un pedido con una clave que ya entró.
+
+    Si es el mismo pedido, lo que se hizo esa vez. Si cambió algo en el medio
+    —otra zona, otra clienta— o se anuló, 409: contestar "cobrado" con lo viejo
+    haría creer que entró lo que está en la pantalla.
+    """
+    num = num_comprobante(comp)
+    if not comp.activo:
+        raise HTTPException(409, f"Ese cobro ya había entrado como {num} y después se anuló. "
+                                 "Revisalo antes de cobrar de nuevo.")
+    if not _mismo_pedido(comp, c):
+        total = estado_comprobante(db, comp)["total_final"]
+        raise HTTPException(409, f"Ese cobro ya había entrado como {num} ({_pesos(total)}), "
+                                 "con otros datos. Revisalo antes de cobrar de nuevo.")
+    return _comprobante_creado(db, comp)
+
+def _mismo_pedido(comp, c: ComprobanteIn) -> bool:
+    """Si el comprobante guardado es el que pide `c`: lo que mueve plata, no el texto."""
+    def de_lineas(lineas):
+        return sorted((l[0] or 0, l[1], l[2], l[3], l[4] or 0) for l in lineas)
+    pedidas = de_lineas(
+        (ln.item_id, ln.cantidad, 0 if ln.ajuste_monto else (ln.ajuste_pct or 0),
+         ln.ajuste_monto or 0, None if ln.item_id else ln.precio_custom) for ln in c.lineas)
+    guardadas = de_lineas(
+        (l.item_id, l.cantidad, l.ajuste_pct or 0, l.ajuste_monto or 0,
+         None if l.item_id else l.precio_efectivo) for l in comp.lineas)
+    extras_pedidos = sorted(((e.concepto or "").strip(), e.monto) for e in c.extras
+                            if (e.concepto or "").strip() and e.monto)
+    extras_guardados = sorted((e.concepto, e.monto) for e in comp.extras)
+    return (comp.tipo == c.tipo and comp.cliente_id == c.cliente_id
+            and (comp.forma_pago or "") == (c.forma_pago or "")
+            and (comp.descuento_pct or 0) == (c.descuento_pct or 0)
+            and pedidas == guardadas and extras_pedidos == extras_guardados)
+
+def _comprobante_creado(db, comp) -> dict:
     est = estado_comprobante(db, comp)
+    senas_usadas = db.query(models.Pago).filter(models.Pago.comprobante_id == comp.id,
+                                                models.Pago.sena_id.isnot(None),
+                                                _pago_cuenta()).count()
     return {"id": comp.id, "numero": comp.numero, "tipo": comp.tipo,
             "fecha": comp.fecha.isoformat(), "anotado_despues": anotado_despues(comp),
             "total_final": est["total_final"], "saldo": est["saldo"],
@@ -3630,8 +3707,24 @@ def crear_comprobante(c: ComprobanteIn, user = Depends(usuario_actual), db: Sess
 
 @app.post("/api/comprobantes/{comp_id}/pagos")
 def registrar_pago(comp_id: int, pago: PagoIn, user = Depends(usuario_actual), db: Session = Depends(get_db)):
-    comp = db.get(models.Comprobante, comp_id)
+    # Trabado hasta el commit: dos abonos al mismo tiempo leerían el mismo saldo
+    # y pasarían los dos el tope.
+    comp = _trabar_comprobante(db, comp_id)
     if not comp or not comp.activo: raise HTTPException(404, "Comprobante no existe")
+    if pago.clave:
+        ya = db.query(models.Pago).filter(models.Pago.clave == pago.clave).first()
+        if ya:
+            # Lo mismo que con el comprobante: solo si es el mismo abono.
+            entro = f"{_pesos(ya.monto)} en {ya.forma_pago}"
+            if ya.comprobante_id != comp.id:
+                raise HTTPException(409, "Esa clave de cobro es de otro comprobante")
+            if ya.anulado:
+                raise HTTPException(409, f"Ese abono ya había entrado ({entro}) y después se anuló. "
+                                         "Revisalo antes de cobrar de nuevo.")
+            if ya.monto != pago.monto or (ya.forma_pago or "").lower() != (pago.forma_pago or "").strip().lower():
+                raise HTTPException(409, f"Ese abono ya había entrado ({entro}), con otro monto o "
+                                         "forma. Revisalo antes de cobrar de nuevo.")
+            return estado_comprobante(db, comp)
     if comp.tipo != "ticket": raise HTTPException(400, "Solo se cobran tickets, no presupuestos")
     est = estado_comprobante(db, comp)
     if pago.monto <= 0: raise HTTPException(400, "El monto debe ser positivo")
@@ -3663,8 +3756,16 @@ def registrar_pago(comp_id: int, pago: PagoIn, user = Depends(usuario_actual), d
                        forma_pago=forma, alias=pago.alias, desc_aplicado=desc,
                        # Quién lo cobró. Sin esto, un cobro mal cargado no tiene
                        # a quién preguntarle qué pasó.
-                       usuario=user.get("usuario")))
+                       usuario=user.get("usuario"), clave=pago.clave or None))
     db.commit(); return estado_comprobante(db, comp)
+
+def _trabar_comprobante(db, comp_id: int):
+    """El comprobante, trabado para los demás pedidos hasta el commit.
+
+    En SQLite no hace nada, pero ahí las escrituras ya van de a una.
+    """
+    return (db.query(models.Comprobante).filter(models.Comprobante.id == comp_id)
+              .populate_existing().with_for_update().first())
 
 @app.delete("/api/comprobantes/{comp_id}")
 def anular_comprobante(comp_id: int, user = Depends(usuario_actual), db: Session = Depends(get_db)):
@@ -3759,7 +3860,7 @@ def borrar_pago(pago_id: int, _ = Depends(solo_dueno), db: Session = Depends(get
 
 @app.post("/api/comprobantes/{comp_id}/convertir")
 def convertir_a_ticket(comp_id: int, user = Depends(usuario_actual), db: Session = Depends(get_db)):
-    presu = db.get(models.Comprobante, comp_id)
+    presu = _trabar_comprobante(db, comp_id)
     if not presu or not presu.activo: raise HTTPException(404, "Comprobante no existe")
     if presu.tipo != "presupuesto": raise HTTPException(400, "Solo se convierten presupuestos")
     # Un ticket anulado no cuenta: el presupuesto vuelve a quedar para convertir.
@@ -4133,7 +4234,7 @@ def aplicar_senas(comp_id: int, _ = Depends(usuario_actual), db: Session = Depen
     vino de dónde. El abono salda la cuenta pero no es plata del día: entró
     cuando se cobró la seña.
     """
-    comp = db.get(models.Comprobante, comp_id)
+    comp = _trabar_comprobante(db, comp_id)
     if not comp or not comp.activo: raise HTTPException(404, "Comprobante no existe")
     if comp.tipo != "ticket": raise HTTPException(400, "Solo se cobran tickets, no presupuestos")
     if not comp.cliente_id: raise HTTPException(400, "El comprobante no tiene cliente registrado")
@@ -4372,17 +4473,8 @@ def rep_resumen(dias: int = 30, desde: str | None = None, hasta: str | None = No
 @app.get("/api/reportes/deuda")
 def rep_deuda(_ = Depends(solo_dueno), db: Session = Depends(get_db)):
     """Cuánto se debe HOY. No lleva período: es una foto, no un acumulado."""
-    tickets = (db.query(models.Comprobante)
-                 .filter(models.Comprobante.tipo == "ticket",
-                         models.Comprobante.activo == True)
-                 .all())
-    total = 0; cuantos = 0
-    for t in tickets:
-        est = estado_comprobante(db, t)
-        if est["saldo"] > 0:
-            total += est["saldo"]
-            cuantos += 1
-    return {"deuda": total, "tickets": cuantos}
+    con_deuda = tickets_con_deuda(db)
+    return {"deuda": sum(saldo for _, saldo in con_deuda), "tickets": len(con_deuda)}
 
 def _movimientos(db, ini, fin):
     """Ingresos (pagos y señas) + egresos del período. Fuente ÚNICA para el registro y el Excel."""
@@ -5192,6 +5284,7 @@ def armar_backup(db) -> dict:
              "descuento_nombre": c.descuento_nombre, "forma_pago": c.forma_pago,
              "mostrar_motivo": c.mostrar_motivo, "convertido_de": c.convertido_de,
              "depilacion": bool(c.depilacion), "activo": c.activo, "sesion_id": c.sesion_id,
+             "clave": c.clave,
              "lineas": [
                  {"id": l.id, "item_id": l.item_id, "nombre": l.nombre,
                   "cantidad": l.cantidad, "precio_unit": l.precio_unit,
@@ -5216,7 +5309,7 @@ def armar_backup(db) -> dict:
             {"id": p.id, "comprobante_id": p.comprobante_id, "fecha": _iso_utc(p.fecha),
              "monto": p.monto, "saldado": p.saldado, "forma_pago": p.forma_pago,
              "alias": p.alias, "desc_aplicado": p.desc_aplicado, "sena_id": p.sena_id,
-             "usuario": p.usuario,
+             "usuario": p.usuario, "clave": p.clave,
              "anulado": bool(p.anulado), "anulado_por": p.anulado_por,
              "anulado_motivo": p.anulado_motivo, "anulado_en": _iso_utc(p.anulado_en)}
             for p in db.query(models.Pago).order_by(models.Pago.fecha).all()
