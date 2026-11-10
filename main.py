@@ -20,6 +20,24 @@ Base.metadata.create_all(engine)
 # Funciona en SQLite y PostgreSQL: el ALTER TABLE ... ADD COLUMN es compatible con ambos.
 def migrar():
     insp = inspect(engine)
+    # Rastro de anulaciones. Sin esto, anular le cambia el numero a un dia ya
+    # cerrado y no queda forma de saber quien lo hizo ni por que.
+    for tabla, columnas in (
+        ("pagos", [("anulado", "BOOLEAN DEFAULT 0"), ("anulado_por", "VARCHAR"),
+                   ("anulado_motivo", "VARCHAR"), ("anulado_en", "TIMESTAMP")]),
+        ("egresos", [("anulado", "BOOLEAN DEFAULT 0"), ("anulado_por", "VARCHAR"),
+                     ("anulado_motivo", "VARCHAR"), ("anulado_en", "TIMESTAMP")]),
+        ("comprobantes", [("anulado_por", "VARCHAR"), ("anulado_motivo", "VARCHAR"),
+                          ("anulado_en", "TIMESTAMP")]),
+        ("senas", [("anulado_por", "VARCHAR"), ("anulado_motivo", "VARCHAR"),
+                   ("anulado_en", "TIMESTAMP")]),
+    ):
+        existentes = [c["name"] for c in insp.get_columns(tabla)]
+        for col, tipo in columnas:
+            if col not in existentes:
+                with engine.begin() as con:
+                    con.execute(text(f"ALTER TABLE {tabla} ADD COLUMN {col} {tipo}"))
+
     icols = [c["name"] for c in insp.get_columns("items")]
     if "stock_minimo" not in icols:
         with engine.begin() as con:
@@ -4889,7 +4907,10 @@ def armar_backup(db) -> dict:
              "ayudante": bool(e.ayudante), "maquina": bool(e.maquina),
              "empleado_id": e.empleado_id,
              # De qué sesión se resta: sin esto, la máquina queda fuera del reparto.
-             "depilacion": bool(e.depilacion), "sesion_id": e.sesion_id}
+             "depilacion": bool(e.depilacion), "sesion_id": e.sesion_id,
+             "anulado": bool(e.anulado), "anulado_por": e.anulado_por,
+             "anulado_motivo": e.anulado_motivo,
+             "anulado_en": _iso_utc(e.anulado_en)}
             for e in db.query(models.Egreso).order_by(models.Egreso.fecha).all()
         ],
         "empleados": [
@@ -4966,7 +4987,9 @@ def armar_backup(db) -> dict:
             {"id": x.id, "numero": x.numero, "cliente_id": x.cliente_id, "fecha": _iso_utc(x.fecha),
              "monto": x.monto, "forma_pago": x.forma_pago, "alias": x.alias,
              "notas": x.notas, "comprobante_id": x.comprobante_id,
-             "anulada": x.anulada, "usuario": x.usuario}
+             "anulada": x.anulada, "usuario": x.usuario,
+             "anulado_por": x.anulado_por, "anulado_motivo": x.anulado_motivo,
+             "anulado_en": _iso_utc(x.anulado_en)}
             for x in db.query(models.Sena).all()
         ],
         "turnos": [
@@ -5027,7 +5050,10 @@ def armar_backup(db) -> dict:
                   "es_depilacion": bool(l.es_depilacion)}
                  for l in c.lineas
              ],
-             "extras": [{"id": e.id, "concepto": e.concepto, "monto": e.monto} for e in c.extras]}
+             "extras": [{"id": e.id, "concepto": e.concepto, "monto": e.monto} for e in c.extras],
+             "anulado_por": c.anulado_por,
+             "anulado_motivo": c.anulado_motivo,
+             "anulado_en": _iso_utc(c.anulado_en)}
             for c in con_relaciones(db.query(models.Comprobante)).order_by(models.Comprobante.fecha).all()
         ],
         "ajustes_item": [
@@ -5038,7 +5064,9 @@ def armar_backup(db) -> dict:
         "pagos": [
             {"id": p.id, "comprobante_id": p.comprobante_id, "fecha": _iso_utc(p.fecha),
              "monto": p.monto, "saldado": p.saldado, "forma_pago": p.forma_pago,
-             "alias": p.alias, "desc_aplicado": p.desc_aplicado, "sena_id": p.sena_id}
+             "alias": p.alias, "desc_aplicado": p.desc_aplicado, "sena_id": p.sena_id,
+             "anulado": bool(p.anulado), "anulado_por": p.anulado_por,
+             "anulado_motivo": p.anulado_motivo, "anulado_en": _iso_utc(p.anulado_en)}
             for p in db.query(models.Pago).order_by(models.Pago.fecha).all()
         ],
     }
