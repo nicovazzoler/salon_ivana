@@ -310,6 +310,9 @@ class Comprobante(Base):
     depilacion = Column(Boolean, default=False)
     # La sesión de depilación a la que pertenece, puesta al crearlo.
     sesion_id = Column(Integer, ForeignKey("sesiones_depilacion.id"), index=True)
+    # La que manda la pantalla al cobrar: un reintento con la misma clave
+    # devuelve este comprobante en vez de crear otro.
+    clave = Column(String, unique=True, index=True)
     activo = Column(Boolean, default=True)
     # Quien anulo, por que y cuando. El motivo es obligatorio: una anulacion
     # sin explicacion es exactamente el agujero que esto viene a tapar.
@@ -373,6 +376,7 @@ class Pago(Base):
     # Quién lo cobró. Un cobro mal cargado se arregla preguntándole al que lo
     # cargó, y hasta ahora no quedaba anotado en ningún lado.
     usuario = Column(String)
+    clave = Column(String, unique=True, index=True)   # como la del comprobante
     # Una anulacion no borra la fila: la marca. Asi el arqueo del dia puede
     # explicar que paso en vez de simplemente dar otro numero.
     anulado = Column(Boolean, default=False)

@@ -335,6 +335,9 @@ let ZONAS = [], TICKET = [], CLI = null, SENAS = [], FORMA = null;
 // y lo lee el confirm de cobrar: con su propia cuenta, el cartel decía un número
 // y el papel salía por otro.
 let TOTAL_HOY = 0, SENA_TAPA = 0;
+/* La del cobro en curso. Vive hasta que el cobro sale bien, y en el borrador:
+   un reintento —aunque sea después de recargar— manda la misma. */
+let CLAVE = null;
 
 /* Lo que está a medio cargar se guarda en el aparato.
 
@@ -344,19 +347,22 @@ let TOTAL_HOY = 0, SENA_TAPA = 0;
 const BORRADOR = "depi_borrador";
 function guardarBorrador(){
   try{
-    if(TICKET.length) localStorage.setItem(BORRADOR, JSON.stringify({TICKET, CLI, FORMA}));
+    if(TICKET.length) localStorage.setItem(BORRADOR, JSON.stringify({TICKET, CLI, FORMA, CLAVE}));
     else localStorage.removeItem(BORRADOR);
   }catch(e){}
 }
+/* Va antes que mostrarSenas(), que pinta: pintar con el ticket vacío borra el
+   borrador. */
 async function restaurarBorrador(){
-  let b;
-  try{ b = JSON.parse(localStorage.getItem(BORRADOR) || "null"); }catch(e){ return; }
-  if(!b || !b.TICKET || !b.TICKET.length) return;
-  TICKET = b.TICKET; CLI = b.CLI || null; FORMA = b.FORMA || null;
-  document.querySelectorAll("#formas button").forEach(x =>
-    x.classList.toggle("on", x.dataset.forma === FORMA));
-  if(CLI){ $("#cliente").value = CLI.nombre; await mostrarSenas(); }
-  pintar();
+  let b = null;
+  try{ b = JSON.parse(localStorage.getItem(BORRADOR) || "null"); }catch(e){}
+  if(b && b.TICKET && b.TICKET.length){
+    TICKET = b.TICKET; CLI = b.CLI || null; FORMA = b.FORMA || null; CLAVE = b.CLAVE || null;
+    document.querySelectorAll("#formas button").forEach(x =>
+      x.classList.toggle("on", x.dataset.forma === FORMA));
+    if(CLI) $("#cliente").value = CLI.nombre;
+  }
+  await mostrarSenas();
 }
 
 async function cargar(){
@@ -369,7 +375,6 @@ async function cargar(){
   $("#atiende").innerHTML = `<option value="">—</option>` + emps.filter(e => e.activo !== false)
     .map(e => `<option${e.nombre === quien ? " selected" : ""}>${esc(e.nombre)}</option>`).join("");
   pintarCatalogo();
-  await mostrarSenas();      // el cartelito de "elegí la clienta" desde el arranque
   await restaurarBorrador();
   await decirLaSesion();
 }
@@ -698,10 +703,18 @@ $("#btnCobrar").onclick = async () => {
                   forma_pago: FORMA, descuento_pct: 0, mostrar_motivo: false,
                   lineas: TICKET.map(l => ({item_id: l.id, nombre: l.nombre, cantidad: l.cantidad})),
                   extras: [], aplicar_senas: true, cobrar: true};
-  const r = await authFetch("/api/comprobantes", {method:"POST",
-    headers:{"Content-Type":"application/json"}, body: JSON.stringify(cuerpo)});
+  if(!CLAVE){ CLAVE = claveDeCobro(); guardarBorrador(); }
+  cuerpo.clave = CLAVE;
+  let r;
+  try{
+    r = await authFetch("/api/comprobantes", {method:"POST",
+      headers:{"Content-Type":"application/json"}, body: JSON.stringify(cuerpo)});
+  }catch(e){ toast("Sin conexión: tocá Cobrar de nuevo, no se cobra dos veces"); b.disabled = false; return; }
+  // 409: con esa clave ya entró otra cosa. El que sigue es un cobro nuevo.
+  if(r.status === 409){ CLAVE = null; guardarBorrador(); }
   if(!r.ok){ toast((await r.json().catch(()=>({}))).detail || "No se pudo cobrar"); b.disabled = false; return; }
   const d = await r.json();
+  CLAVE = null;
   const num = "N-" + String(d.numero).padStart(5, "0");
   $("#hecho").hidden = false;
   $("#hecho").innerHTML = `<b>${num} cobrado</b>
