@@ -370,6 +370,9 @@ class Pago(Base):
     # abono salda la cuenta pero no es plata del día. La caja lo saltea por el id
     # y no por el texto de la forma, que se puede tipear distinto.
     sena_id = Column(Integer, ForeignKey("senas.id"))
+    # Quién lo cobró. Un cobro mal cargado se arregla preguntándole al que lo
+    # cargó, y hasta ahora no quedaba anotado en ningún lado.
+    usuario = Column(String)
     # Una anulacion no borra la fila: la marca. Asi el arqueo del dia puede
     # explicar que paso en vez de simplemente dar otro numero.
     anulado = Column(Boolean, default=False)

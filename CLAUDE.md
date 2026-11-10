@@ -138,6 +138,30 @@ anotó le deja el arqueo sin explicación. Y ojo con el `privado != True` a seca
 en SQL el NULL no entra, y `restaurar_backup.py` levantando un backup viejo
 escribe NULL — por eso está `_no_privado()`.
 
+**Anular un cobro o una seña no borra la fila: la marca.** `DELETE
+/api/pagos/{id}` y `DELETE /api/senas/{id}` exigen `?motivo=` —siempre, los dos
+roles, todas las pantallas— y guardan `anulado_por`, `anulado_motivo` y
+`anulado_en`. El empleado anula lo de **hoy**; en depilación, lo de **toda la
+sesión mientras siga abierta**, que es la misma regla que para anular un ticket.
+La dueña, cualquier fecha, y queda registrado igual. Borrar **de verdad** es
+`DELETE /api/pagos/{id}/definitivo` (ídem señas), solo de la dueña y solo sobre
+algo **ya anulado**: el quién y el por qué viven en la fila y no hay tabla de
+auditoría, así que borrar en un paso no dejaría nada escrito. Lo decide
+`exigir_poder_anular()` + `exigir_motivo()`.
+
+**Un cobro anulado no cuenta en ninguna parte, pero se sigue viendo.** Sale de
+`plata_que_entro()` —caja, reportes, Excel y gráficos— y también de todo lo que
+pregunta cuánto se pagó: el saldo del comprobante, la deuda de cada clienta, lo
+que imprime el papel y cuánta seña quedó libre. Eso es `_pago_cuenta()`, y va en
+**todas** esas consultas: con sacarlo solo de la caja, anular le quitaba la plata
+al día y le dejaba el ticket saldado igual —la clienta sin deuda y sin haber
+pagado—. La única que lo quiere todo es `armar_backup()`. Y se ve: la caja del
+día lista las anulaciones aparte y tachadas, con motivo y quién, sin sumar a
+ningún total; los reportes las cuentan en su propio renglón. Van por la fecha
+**original** y no por la de la anulación: si contaran el día en que se anularon,
+la caja de hoy mostraría el descuento de una venta de la semana pasada y ninguno
+de los dos días cerraría solo.
+
 **La depilación es otro negocio, no otra categoría.** Tiene su pantalla, su
 facturación, su historial y su cierre del día, y nada de eso se mezcla con
 peluquería: Sueldos es exclusivamente peluquería. Lo que las ata es el ítem
@@ -558,11 +582,12 @@ No alcanza con que compile. Lo que se usa acá, de menor a mayor:
 4. **Comparación píxel a píxel** cuando el cambio es un refactor que no debería
    cambiar nada: capturas completas antes y después, en tema claro y oscuro.
 
-**Hay dos suites versionados y corren en cada PR** (`.github/workflows/tests.yml`):
+**Hay tres suites versionados y corren en cada PR** (`.github/workflows/tests.yml`):
 
 ```bash
 pytest tests/test_plata.py           # la aritmética de plata del backend
 pytest tests/test_backup.py          # que el backup JSON vuelva entero al restaurarlo
+pytest tests/test_anulaciones.py     # quién puede anular plata y qué queda escrito
 node --test "tests/escpos/**/*.test.js"   # el papel, byte a byte contra los golden
 ```
 
@@ -576,6 +601,13 @@ también ahí**, o el test revienta con un AttributeError que no es un bug.
 modelos, la exporta con `armar_backup()`, la restaura y compara fila por fila.
 **Una columna nueva hay que sumarla a `armar_backup()` y a `restaurar_backup.py`**:
 si no, este test falla diciendo cuál.
+
+`tests/test_anulaciones.py` es el único que levanta la app: usa `TestClient` y
+reemplaza `get_db` por una base nueva y `usuario_actual` por el rol que cada
+test quiere probar. Los permisos se prueban POR HTTP a propósito: `solo_dueno`
+es un `Depends`, así que llamando la función derecho el 403 no corre y el test
+no probaría nada. Por eso `httpx` está en `requirements-dev.txt` (lo usa
+`TestClient` por abajo) y no en `requirements.txt`.
 
 Los de `tests/escpos/` comparan el papel contra un `.bin` de referencia. Cuando
 un cambio mueve el papel A PROPÓSITO se regeneran con

@@ -191,6 +191,19 @@ window.pintarBotonTema = pintarBotonTema;
 const PARTICULAS = new Set(["de","del","la","las","los","y","e","da","das","do",
                             "dos","van","von","di","der","el"]);
 
+/* Pide el motivo de una anulación. Devuelve el texto, o null si se canceló.
+
+   El backend lo exige siempre, así que sin esto los botones de anular
+   contestaban 400 y no se podía anular nada. Acá se valida el largo nada más
+   para no hacer un viaje al servidor por un campo vacío: la regla la pone el
+   backend, no esta función. */
+function pedirMotivo(que){
+  const m = prompt(`¿Por qué se anula ${que}?\n\nQueda anotado con tu usuario y la hora.`);
+  if(m === null) return null;            // canceló: no es un motivo vacío
+  if(m.trim().length < 3){ toast("Hace falta decir por qué"); return null; }
+  return m.trim();
+}
+
 function titulo(str){
   // Ojo: \b de JS es ASCII, así que "maría" caía en "MarÍa" (la í cuenta como
   // borde de palabra). Por eso se parte por letras y no por bordes de palabra.

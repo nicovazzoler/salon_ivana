@@ -521,7 +521,8 @@ async function refrescarSenas(){
   const senas = await (await authFetch(`/api/senas?cliente_id=${id}`)).json().catch(()=>[]);
   pintarSenas(cont, senas, async s => {
     if(!confirm(`Devolver la seña de ${fmt(s.monto)}. ¿Seguimos?`)) return;
-    const r = await authFetch(`/api/senas/${s.id}`, {method:"DELETE"});
+    const motivo = pedirMotivo("esta seña"); if(motivo === null) return;
+    const r = await authFetch(`/api/senas/${s.id}?motivo=${encodeURIComponent(motivo)}`, {method:"DELETE"});
     if(!r.ok){ toast((await r.json().catch(()=>({}))).detail || "No se pudo"); return; }
     toast("Seña devuelta"); refrescarSenas();
   });

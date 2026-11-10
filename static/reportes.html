@@ -408,7 +408,12 @@ async function loadResumen(s){
     <div class="kpi"><span class="lbl">Neto</span><span class="val ${r.neto<0?'neg':''}">${money(r.neto)}</span></div>
     <div class="kpi"><span class="lbl">Tickets</span><span class="val">${r.ventas}</span></div>
     <div class="kpi"><span class="lbl">Ticket promedio</span><span class="val">${money(promedio)}</span>
-      <span class="pie">${r.ventas ? "sobre "+r.ventas+" ticket(s)" : "sin ventas"}</span></div>`;
+      <span class="pie">${r.ventas ? "sobre "+r.ventas+" ticket(s)" : "sin ventas"}</span></div>`
+    /* Lo anulado del período, como su propio renglón. Ya no está en Ingresos:
+       sin este número, un mes con muchas anulaciones se lee igual que un mes
+       flojo y no hay con qué darse cuenta. Solo aparece si hubo. */
+    + (r.anuladas ? `<div class="kpi"><span class="lbl">Anulado</span><span class="val neg">${money(r.anulado)}</span>
+      <span class="pie">${r.anuladas} anulación(es), fuera de los ingresos</span></div>` : "");
 
   // formas de pago: barras con el % al lado
   const fp = r.ingresos_por_pago || {};

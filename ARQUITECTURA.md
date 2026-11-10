@@ -9,12 +9,14 @@ Todo lo que figura acá está escrito en el código. Nada está inferido por un 
 ```mermaid
 graph LR
   FRONT["13 pantallas<br/>HTML + JS"]
-  API["API<br/>FastAPI · 121 endpoints"]
+  API["API<br/>FastAPI · 123 endpoints"]
   FRONT --> API
   DB[("Base de datos<br/>29 tablas")]
   API --> DB
   EXCEL["Excel"]
   API --> EXCEL
+  HTTPSALI["HTTP saliente"]
+  API --> HTTPSALI
   POSTGRES["PostgreSQL"]
   API --> POSTGRES
   DEPLOY["Deploy<br/>web"]
@@ -43,13 +45,12 @@ graph LR
   Pagendahtml --> Tclientes
   Pcajahtml["caja.html"]
   Pcajahtml --> Tegresos
+  Tpagos[("pagos")]
+  Pcajahtml --> Tpagos
   Pcajahtml --> Tcomprobantes
-  Tfondocaja[("fondo_caja")]
-  Pcajahtml --> Tfondocaja
   Pclienteshtml["clientes.html"]
   Pclienteshtml --> Tclientes
   Pclienteshtml --> Tcomprobantes
-  Tpagos[("pagos")]
   Pclienteshtml --> Tpagos
   Pcuentahtml["cuenta.html"]
   Pcuentahtml --> Tclientes
@@ -120,12 +121,13 @@ De dónde sale: la versión, de `requirements*.txt`; el uso, de los `import` de 
 
 | Librería | Versión | Quién la usa |
 |---|---|---|
-| `fastapi` | 0.115.6 | `main.py`, `tests/test_plata.py` |
+| `fastapi` | 0.115.6 | `main.py`, `tests/test_anulaciones.py`, `tests/test_plata.py` |
+| `httpx` | 0.28.1 | sin import directo |
 | `openpyxl` | 3.1.5 | `main.py` |
 | `psycopg2-binary` | 2.9.10 | sin import directo |
 | `pydantic` | 2.10.4 | `main.py` |
-| `pytest` | 8.3.4 | `tests/test_backup.py`, `tests/test_plata.py` |
-| `sqlalchemy` | 2.0.36 | `cargar_depilacion.py`, `database.py`, `levantar_local.py`, `main.py` y 3 más |
+| `pytest` | 8.3.4 | `tests/test_anulaciones.py`, `tests/test_backup.py`, `tests/test_plata.py` |
+| `sqlalchemy` | 2.0.36 | `cargar_depilacion.py`, `database.py`, `levantar_local.py`, `main.py` y 4 más |
 | `uvicorn` | 0.34.0 | `levantar_local.py` |
 
 <details>
@@ -183,7 +185,7 @@ De dónde sale: la versión, de `requirements*.txt`; el uso, de los `import` de 
 
 ### caja.html
 
-- Endpoints que usa: **4**
+- Endpoints que usa: **5**
 - Tablas que tocan esos endpoints: `comprobantes`, `egresos`, `fondo_caja`, `pagos`, `senas`
 
 | Método | Endpoint | Función | Tablas |
@@ -191,7 +193,8 @@ De dónde sale: la versión, de `requirements*.txt`; el uso, de los `import` de 
 | GET | `/api/caja/dia` | `caja_dia` | comprobantes, egresos |
 | PUT | `/api/config/fondo-caja` | `set_fondo` | fondo_caja |
 | POST | `/api/egresos` | `crear_egreso` | egresos |
-| DELETE | `/api/pagos/{pago_id}` | `borrar_pago` | pagos, senas |
+| DELETE | `/api/pagos/{pago_id}` | `anular_pago` | pagos, senas |
+| DELETE | `/api/pagos/{pago_id}/definitivo` | `borrar_pago` | pagos |
 
 ### clientes.html
 
@@ -446,5 +449,5 @@ De dónde sale: la versión, de `requirements*.txt`; el uso, de los `import` de 
 
 ## Lo que no se pudo probar
 
-- Endpoints que ninguna pantalla nombra: **34**. Pueden ser internos, llamarse con la ruta armada en tiempo de ejecución, o estar muertos.
+- Endpoints que ninguna pantalla nombra: **35**. Pueden ser internos, llamarse con la ruta armada en tiempo de ejecución, o estar muertos.
 - Tablas declaradas: **29**; las que no aparecen arriba no las toca ningún endpoint que el front nombre.
