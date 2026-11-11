@@ -61,6 +61,7 @@
   /* El renglón se dibuja siempre (así se puede completar mientras se tipea el
      ajuste, sin redibujar la línea y perder el foco), pero vacío no ocupa. */
   .linea .aj-nota:empty{ display:none; }
+  .linea .aj-nota.come{ color:var(--danger); font-weight:600; }
 
   /* Tira de controles: ocupa el ancho y se ordena sola. Los de la línea a la
      izquierda, la cantidad y el quitar a la derecha. */

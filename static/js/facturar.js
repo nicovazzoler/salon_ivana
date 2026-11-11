@@ -335,6 +335,9 @@ const precioAjTr = l => conAjuste(l.precioTransfer, l.ajustePct, l.ajusteMonto);
 // Un ajuste "existe" si tiene porcentaje o monto. Se pregunta en varios lados,
 // así que va una sola vez acá.
 const hayAj = l => !!(l.ajustePct || l.ajusteMonto);
+// El ajuste que se comió el ítem: el backend lo deja en $0 sin quejarse, así
+// que lo dice la pantalla. Se mira el efectivo, que es la lista más baja.
+const seLoComeElAjuste = l => hayAj(l) && (l.precio || 0) > 0 && precioAjEf(l) === 0;
 let AJUSTES = [];                 // lista configurada en admin
 
 /* --- Extras del comprobante ---
@@ -390,6 +393,12 @@ function textoAj(l){
   if(l.ajusteMonto) return `${l.ajusteMonto<0?"−":"+"}${fmt(Math.abs(l.ajusteMonto))}`;
   if(l.ajustePct)   return `${l.ajustePct<0?"−":"+"}${Math.abs(l.ajustePct)}%`;
   return "%";
+}
+
+/* El renglón de abajo de la línea, y en rojo si el ajuste la dejó en $0. */
+function pintarNotaAj(nota, l){
+  nota.textContent = hayAj(l) ? "↳ " + detalleAj(l) + (seLoComeElAjuste(l) ? " · queda en $0" : "") : "";
+  nota.classList.toggle("come", seLoComeElAjuste(l));
 }
 
 /* Cómo se describe el ajuste en palabras, para el renglón de abajo de la línea. */
@@ -476,7 +485,7 @@ function renderTicket(){
         :`<span class="n">${l.nombre}</span>
           ${preciosHTML}`
       }
-      ${editando ? "" : `<span class="aj-nota">${aj ? "↳ "+esc(detalleAj(l)) : ""}</span>`}
+      ${editando ? "" : `<span class="aj-nota"></span>`}
       <div class="controles">
         ${editando ? "" : `<button class="${ajClase}" title="${ajTitulo}">${ajTexto}</button>`}
         <div class="qty separa"><button class="menos">−</button><span>${l.cantidad}</span><button class="mas">+</button></div>
@@ -513,6 +522,9 @@ function renderTicket(){
         <button class="quitar-aj">Listo</button>
       </div>` : ""}
     `;
+
+    const nota = row.querySelector(".aj-nota");
+    if(nota) pintarNotaAj(nota, l);
 
     // Ítem extra en edición: inputs de nombre/precio + guardar
     if(editando){
@@ -598,8 +610,7 @@ function renderTicket(){
         sel.value = v ? "libre" : "";
         const btn = row.querySelector(".aj");
         btn.className = claseAj(l); btn.textContent = textoAj(l);
-        const nota = row.querySelector(".aj-nota");
-        if(nota) nota.textContent = hayAj(l) ? "↳ " + detalleAj(l) : "";
+        if(nota) pintarNotaAj(nota, l);
         row.querySelector(".precios-linea").innerHTML = htmlPrecios(l, esPresu && !editando);
         actualizarTotales();
       };
@@ -916,10 +927,12 @@ async function confirmarAntesDeGenerar(tipo, cliente){
     cuenta:   ", que queda a cuenta: hoy no entra nada",
   }[formaPago] : "";
   const total = $("#total") ? $("#total").textContent.trim() : "";
+  const comidos = ticket.filter(seLoComeElAjuste).map(l => l.nombre);
   return confirm(
     `¿Generamos el ${esTicket ? "ticket" : "presupuesto"}${num}?\n\n` +
     `Cliente: ${cliente}\n` +
     (total ? `Total: ${total}${forma || ""}\n` : "") +
+    (comidos.length ? `\nQueda en $0 por el ajuste: ${comidos.join(", ")}.\n` : "") +
     "\nDespués solo se corrige anulándolo.");
 }
 
