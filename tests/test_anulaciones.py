@@ -347,3 +347,133 @@ def test_anular_un_abono_que_salio_de_una_sena_la_deja_libre_otra_vez(db, como):
     db.refresh(s)
     assert s.comprobante_id is None
     assert not usado_de_senas(db, [s.id]).get(s.id)
+
+
+# ---------------------------------------------------------------------------
+# Comprobantes: las mismas reglas que un cobro suelto
+# ---------------------------------------------------------------------------
+
+def un_ticket_cobrado(db, cuando=None, cobrado_el=None, depilacion=False, sesion=None,
+                      tipo="ticket"):
+    """Un ticket de $5.000 con su cobro. Devuelve el Comprobante."""
+    f = cuando or ahora()
+    comp = models.Comprobante(tipo=tipo, numero=12, fecha=f, cargado=f, activo=True,
+                              cliente_nombre="Ana", total_lista=5000, forma_pago="efectivo",
+                              depilacion=depilacion, sesion_id=sesion.id if sesion else None)
+    db.add(comp); db.flush()
+    db.add(models.ComprobanteLinea(comprobante_id=comp.id, nombre="Corte", cantidad=1,
+                                   precio_unit=5000, precio_efectivo=5000, subtotal=5000))
+    if tipo == "ticket":
+        db.add(models.Pago(comprobante_id=comp.id, fecha=cobrado_el or f, monto=5000,
+                           saldado=5000, forma_pago="Efectivo", usuario="sofi"))
+    db.commit()
+    return comp
+
+
+def test_empleado_no_anula_un_ticket_de_otro_dia(db, como):
+    comp = un_ticket_cobrado(db, cuando=ahora() - timedelta(days=2))
+    r = como(EMPLEADO).delete(f"/api/comprobantes/{comp.id}", params={"motivo": "estaba mal"})
+    assert r.status_code == 403
+    db.refresh(comp)
+    assert comp.activo
+
+
+def test_empleado_no_anula_un_ticket_de_hoy_cuya_plata_entro_otro_dia(db, como):
+    # No se arma desde la pantalla, pero la regla mira cada cobro, no solo el ticket.
+    comp = un_ticket_cobrado(db, cobrado_el=ahora() - timedelta(days=2))
+    r = como(EMPLEADO).delete(f"/api/comprobantes/{comp.id}", params={"motivo": "estaba mal"})
+    assert r.status_code == 403
+
+
+def test_empleado_anula_un_presupuesto_viejo(db, como):
+    # Un presupuesto no movió plata: no hay caja de otro día que cuidar.
+    comp = un_ticket_cobrado(db, cuando=ahora() - timedelta(days=20), tipo="presupuesto")
+    r = como(EMPLEADO).delete(f"/api/comprobantes/{comp.id}", params={"motivo": "no volvió"})
+    assert r.status_code == 200
+
+
+def test_anular_un_ticket_sin_motivo_no_se_puede(db, como):
+    comp = un_ticket_cobrado(db)
+    assert como(DUENO).delete(f"/api/comprobantes/{comp.id}").status_code == 400
+    db.refresh(comp)
+    assert comp.activo
+
+
+def test_empleado_anula_depilacion_de_otro_dia_con_la_sesion_abierta(db, como):
+    ses = una_sesion(db)
+    comp = un_ticket_cobrado(db, cuando=ahora() - timedelta(days=1), depilacion=True, sesion=ses)
+    r = como(EMPLEADO).delete(f"/api/comprobantes/{comp.id}", params={"motivo": "no iba"})
+    assert r.status_code == 200, r.text
+
+
+def test_anular_un_ticket_deja_rastro_y_no_borra_sus_cobros(db, como):
+    comp = un_ticket_cobrado(db, cuando=ahora() - timedelta(days=40))
+    cli = como(DUENO)
+    r = cli.delete(f"/api/comprobantes/{comp.id}", params={"motivo": "se cargó dos veces"})
+    assert r.status_code == 200
+    db.refresh(comp)
+    assert not comp.activo
+    assert (comp.anulado_por, comp.anulado_motivo) == ("ivana", "se cargó dos veces")
+    assert comp.anulado_en is not None
+    p = db.query(models.Pago).filter(models.Pago.comprobante_id == comp.id).one()
+    assert p.anulado is True and p.anulado_por == "ivana"
+    assert p.anulado_motivo == "Se anuló el N-00012: se cargó dos veces"
+
+
+def test_un_cobro_ya_anulado_conserva_su_motivo_al_anular_el_ticket(db, como):
+    comp = un_ticket_cobrado(db)
+    cli = como(EMPLEADO)
+    p = db.query(models.Pago).filter(models.Pago.comprobante_id == comp.id).one()
+    cli.delete(f"/api/pagos/{p.id}", params={"motivo": "lo cobré dos veces"})
+    assert cli.delete(f"/api/comprobantes/{comp.id}", params={"motivo": "no iba"}).status_code == 200
+    db.refresh(p)
+    assert (p.anulado_por, p.anulado_motivo) == ("sofi", "lo cobré dos veces")
+
+
+def test_el_cobro_de_un_ticket_anulado_sale_en_la_caja_de_su_dia(db, como):
+    comp = un_ticket_cobrado(db)
+    cli = como(DUENO)
+    antes = cli.get("/api/caja/dia").json()
+    cli.delete(f"/api/comprobantes/{comp.id}", params={"motivo": "se cargó dos veces"})
+    despues = cli.get("/api/caja/dia").json()
+    assert despues["ingresos"] == antes["ingresos"] - 5000
+    assert despues["anulado_total"] == 5000
+    assert "se cargó dos veces" in despues["anulaciones"][0]["motivo"]
+
+
+def test_la_sena_de_un_ticket_anulado_queda_libre_y_dice_donde_estuvo(db, como):
+    s = una_sena(db, monto=3000)
+    comp = models.Comprobante(tipo="ticket", numero=12, fecha=ahora(), cargado=ahora(),
+                              activo=True, cliente_nombre="Ana", total_lista=3000,
+                              forma_pago="efectivo", cliente_id=s.cliente_id)
+    db.add(comp); db.flush()
+    s.comprobante_id = comp.id
+    db.add(models.Pago(comprobante_id=comp.id, fecha=ahora(), monto=3000, saldado=3000,
+                       forma_pago="Seña", sena_id=s.id))
+    db.commit()
+    cli = como(EMPLEADO)
+
+    assert cli.delete(f"/api/comprobantes/{comp.id}", params={"motivo": "otra clienta"}).status_code == 200
+
+    sena = cli.get(f"/api/senas/{s.id}").json()
+    assert sena["usada"] is False and sena["libre"] == 3000
+    assert sena["estuvo_en"] == ["N-00012"]
+    # La plata de la seña no entra a la caja como anulación: no salió del cajón.
+    assert cli.get("/api/caja/dia").json()["anulado_total"] == 0
+
+
+def test_anular_solo_el_abono_de_la_sena_no_dice_que_el_ticket_se_anulo(db, como):
+    s = una_sena(db, monto=3000)
+    comp = models.Comprobante(tipo="ticket", numero=12, fecha=ahora(), cargado=ahora(),
+                              activo=True, cliente_nombre="Ana", total_lista=3000,
+                              forma_pago="efectivo", cliente_id=s.cliente_id)
+    db.add(comp); db.flush()
+    db.add(models.Pago(comprobante_id=comp.id, fecha=ahora(), monto=3000, saldado=3000,
+                       forma_pago="Seña", sena_id=s.id))
+    db.commit()
+    cli = como(EMPLEADO)
+    p = db.query(models.Pago).filter(models.Pago.sena_id == s.id).one()
+
+    assert cli.delete(f"/api/pagos/{p.id}", params={"motivo": "otra clienta"}).status_code == 200
+
+    assert cli.get(f"/api/senas/{s.id}").json()["estuvo_en"] == []

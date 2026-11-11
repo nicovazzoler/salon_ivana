@@ -138,8 +138,8 @@ anotó le deja el arqueo sin explicación. Y ojo con el `privado != True` a seca
 en SQL el NULL no entra, y `restaurar_backup.py` levantando un backup viejo
 escribe NULL — por eso está `_no_privado()`.
 
-**Anular un cobro o una seña no borra la fila: la marca.** `DELETE
-/api/pagos/{id}` y `DELETE /api/senas/{id}` exigen `?motivo=` —siempre, los dos
+**Anular un cobro, una seña o un comprobante no borra la fila: la marca.** `DELETE
+/api/pagos/{id}`, `DELETE /api/senas/{id}` y `DELETE /api/comprobantes/{id}` exigen `?motivo=` —siempre, los dos
 roles, todas las pantallas— y guardan `anulado_por`, `anulado_motivo` y
 `anulado_en`. El empleado anula lo de **hoy**; en depilación, lo de **toda la
 sesión mientras siga abierta**, que es la misma regla que para anular un ticket.
@@ -147,7 +147,11 @@ La dueña, cualquier fecha, y queda registrado igual. Borrar **de verdad** es
 `DELETE /api/pagos/{id}/definitivo` (ídem señas), solo de la dueña y solo sobre
 algo **ya anulado**: el quién y el por qué viven en la fila y no hay tabla de
 auditoría, así que borrar en un paso no dejaría nada escrito. Lo decide
-`exigir_poder_anular()` + `exigir_motivo()`.
+`exigir_poder_anular()` + `exigir_motivo()`. Anular un ticket marca además
+cada cobro suyo, con "Se anuló el N-xxxxx: motivo", y la regla de la fecha se
+mira contra el ticket Y contra cada cobro: una deuda saldada otro día tiene la
+plata en otra caja. Un cobro que ya estaba anulado conserva su motivo. El
+presupuesto pide motivo pero no fecha: no movió plata.
 
 **Un cobro anulado no cuenta en ninguna parte, pero se sigue viendo.** Sale de
 `plata_que_entro()` —caja, reportes, Excel y gráficos— y también de todo lo que
@@ -492,7 +496,10 @@ abonos al mismo tiempo leían el mismo saldo y pasaban los dos el tope.
 **Anular un comprobante devuelve las señas que había usado.** Quedaban
 apuntando al comprobante anulado: no saldaban nada y tampoco volvían a aparecer
 como disponibles, así que esa plata se le perdía a la clienta sin que nada
-avisara. En depilación se anula desde su propio historial lo de **toda la sesión
+avisara. Por dónde pasó la seña lo cuenta su abono, que queda anulado y no se
+borra: `senas_en_anulados()` lo lee y la ficha dice "estuvo en N-xxxxx, anulado".
+El trío `anulado_*` de la seña NO se usa para esto: ese es el de la seña
+devuelta. En depilación se anula desde su propio historial lo de **toda la sesión
 mientras siga abierta**, no solo lo de hoy: la jornada dura dos días y el error
 se encuentra al otro, cuando se cierra la cuenta. Cerrada sí frena —el reparto
 ya se liquidó y sacarle un ticket le cambiaría la cuenta a lo que se pagó—, que
