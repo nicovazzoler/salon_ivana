@@ -716,6 +716,32 @@ en el código — ya pasó, y la app andaba perfecto igual, así que nada avisab
 Las contraseñas de fábrica de `seed_datos.py` también son públicas: el sistema
 detecta quién sigue usando una y lo avisa con un cartel que no se puede cerrar.
 
+**Hay un hook que frena un commit con una contraseña de base adentro.** Está en
+`.githooks/pre-commit` y mira solo las líneas que AGREGA el commit, así que un
+archivo que ya tiene un ejemplo no molesta cada vez que se lo toca. Deja pasar
+los placeholders (`postgresql://usuario:contrasena@host:puerto/base`), las
+variables (`$DATABASE_URL`, `${VAR}`, `<tu-password>`) y las bases locales
+(`localhost`, `127.0.0.1`), que no son secreto.
+
+Los hooks no viajan con el clon: en cada copia nueva hay que hacerlo una vez.
+
+```bash
+git config core.hooksPath .githooks
+```
+
+Alcanza con correrlo en el repo principal; los worktrees comparten esa config.
+
+Existe porque la contraseña de producción ya estuvo **a un commit** de entrar,
+pegada encima de los placeholders de `backup/instalar_tarea.ps1`, que es un
+archivo versionado. No se pusheó de casualidad —quedó en un stash— y una
+casualidad no es un control. Si el hook te frena y el dato es de verdad, va en
+`~/.salon_ivana/config.txt` (la tarea de Windows) o en un secret del repo
+(el workflow de backup); nunca en un archivo versionado.
+
+Arriba de eso está prendido el **secret scanning con push protection** de
+GitHub, que rechaza el push en el servidor. El hook puede faltar en un clon;
+eso no.
+
 ## Al terminar un cambio
 
 Commit en castellano explicando **por qué**, no qué (el diff ya dice qué), y
