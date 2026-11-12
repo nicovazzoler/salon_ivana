@@ -350,6 +350,9 @@ class LineaCompIn(BaseModel):
     ajuste_nombre: str | None = None         # motivo, si salió de la lista de ajustes
 class ExtraIn(BaseModel):
     concepto: str; monto: int
+class MixtoIn(BaseModel):
+    efectivo: int                         # la plata que entrega; lo que queda va por transferencia
+    alias: str | None = None
 class ComprobanteIn(BaseModel):
     tipo: str; cliente_id: int | None = None; cliente_nombre: str | None = None; peluquero: str | None = None
     forma_pago: str = "efectivo"
@@ -362,6 +365,7 @@ class ComprobanteIn(BaseModel):
     # que no llega deja el ticket cobrado a medias y con deuda.
     aplicar_senas: bool = False
     cobrar: bool = False
+    mixto: MixtoIn | None = None          # cobrar entero, parte en efectivo y el resto por transferencia
     # La arma la pantalla una vez por cobro y la repite en cada reintento.
     clave: str | None = Field(None, max_length=64)
 class PagoIn(BaseModel):
@@ -3641,7 +3645,11 @@ def crear_comprobante(c: ComprobanteIn, user = Depends(usuario_actual), db: Sess
             # El texto exacto, que es con el que el arqueo compara.
             forma = "Efectivo" if comp.forma_pago == "efectivo" else "Transferencia"
             db.add(models.Pago(comprobante_id=comp.id, monto=saldo, saldado=saldo,
-                               fecha=comp.fecha, forma_pago=forma, desc_aplicado=0))
+                               fecha=comp.fecha, forma_pago=forma, desc_aplicado=0,
+                               usuario=user.get("usuario")))
+    if c.tipo == "ticket" and c.mixto:
+        db.flush()
+        _cobrar_mixto(db, comp, c.mixto, user)
     # Facturado dentro de una sesión que ya se había cerrado, esto es una
     # corrección: la cuenta sube y la diferencia se paga con otro cierre.
     if comp.sesion_id:
@@ -3652,6 +3660,20 @@ def crear_comprobante(c: ComprobanteIn, user = Depends(usuario_actual), db: Sess
                               parte_previa, user.get("usuario"))
     db.commit(); db.refresh(comp)
     return _comprobante_creado(db, comp)
+
+def _cobrar_mixto(db, comp, m: MixtoIn, user):
+    """Los dos abonos del pago mixto, en la transacción que crea el ticket: o
+    queda cobrado entero o no queda nada. La transferencia es lo que falte."""
+    est = estado_comprobante(db, comp)
+    if m.efectivo <= 0: raise HTTPException(400, "Poné cuánto paga en efectivo")
+    saldado = saldado_por_efectivo(est, m.efectivo)
+    if saldado >= est["saldo"]:
+        raise HTTPException(400, "El efectivo cubre todo: cobralo en efectivo, no mixto")
+    for monto, tapa, forma, alias in ((m.efectivo, saldado, "Efectivo", None),
+                                      (est["saldo"] - saldado, est["saldo"] - saldado, "Transferencia", m.alias)):
+        db.add(models.Pago(comprobante_id=comp.id, monto=monto, saldado=tapa, fecha=comp.fecha,
+                           forma_pago=forma, alias=alias, desc_aplicado=tapa - monto,
+                           usuario=user.get("usuario")))
 
 def _comprobante_por_clave(db, clave):
     if not clave: return None
@@ -3671,7 +3693,7 @@ def _repetido(db, comp, c: ComprobanteIn) -> dict:
     if not comp.activo:
         raise HTTPException(409, f"Ese cobro ya había entrado como {num} y después se anuló. "
                                  "Revisalo antes de cobrar de nuevo.")
-    if not _mismo_pedido(comp, c):
+    if not _mismo_pedido(comp, c) or (c.mixto and not _mismo_mixto(db, comp, c.mixto)):
         total = estado_comprobante(db, comp)["total_final"]
         raise HTTPException(409, f"Ese cobro ya había entrado como {num} ({_pesos(total)}), "
                                  "con otros datos. Revisalo antes de cobrar de nuevo.")
@@ -3694,6 +3716,11 @@ def _mismo_pedido(comp, c: ComprobanteIn) -> bool:
             and (comp.forma_pago or "") == (c.forma_pago or "")
             and (comp.descuento_pct or 0) == (c.descuento_pct or 0)
             and pedidas == guardadas and extras_pedidos == extras_guardados)
+
+def _mismo_mixto(db, comp, m: MixtoIn) -> bool:
+    pagos = db.query(models.Pago).filter(models.Pago.comprobante_id == comp.id, _pago_cuenta()).all()
+    return (any(p.forma_pago == "Efectivo" and p.monto == m.efectivo for p in pagos)
+            and any(p.forma_pago == "Transferencia" and (p.alias or None) == (m.alias or None) for p in pagos))
 
 def _comprobante_creado(db, comp) -> dict:
     est = estado_comprobante(db, comp)
