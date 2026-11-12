@@ -1,0 +1,90 @@
+#!/bin/sh
+# Frena un commit que traiga una contraseña de base de datos escrita en el código.
+#
+# Por qué existe: este repo es PÚBLICO. La contraseña de la base de producción
+# ya estuvo a un commit de entrar, pegada encima de los placeholders de
+# backup/instalar_tarea.ps1, que es un archivo versionado. No se pusheó de
+# casualidad —quedó en un stash— y una casualidad no es un control.
+#
+# Qué mira: solo las líneas que AGREGA el commit, no el archivo entero. Así un
+# archivo que ya tiene un ejemplo no molesta cada vez que se lo toca.
+#
+# Qué deja pasar a propósito:
+#   - placeholders: postgresql://usuario:contrasena@host:puerto/base
+#   - variables y plantillas: $DATABASE_URL, ${VAR}, <tu-password>, %s
+#   - bases locales: localhost, 127.0.0.1, db, postgres (no hay secreto ahí)
+#
+# Si te frena y el dato es de verdad: sacalo del archivo y ponelo en
+# ~/.salon_ivana/config.txt (la PC) o en un secret de GitHub (el workflow).
+# Se puede saltear con `git commit --no-verify`, pero si lo que te frenó es una
+# contraseña real, saltearlo es exactamente el error que esto viene a evitar.
+set -eu
+
+# Las líneas nuevas del commit. -U0: sin contexto, así no se revisan líneas que
+# el commit no toca. --diff-filter=d: los borrados no agregan nada.
+nuevas=$(git diff --cached -U0 --diff-filter=d | grep '^+' | grep -v '^+++' || true)
+[ -n "$nuevas" ] || exit 0
+
+# usuario:contraseña@host dentro de una URL de Postgres.
+URL='postgres(ql)?://[^:/@[:space:]]+:[^@[:space:]]+@[^/[:space:]]+'
+
+sospechosas=$(printf '%s\n' "$nuevas" | grep -Ei "$URL" || true)
+[ -n "$sospechosas" ] || exit 0
+
+# De cada línea sospechosa, separar la contraseña y el host para decidir.
+malas=""
+printf '%s\n' "$sospechosas" | while IFS= read -r linea; do
+    url=$(printf '%s\n' "$linea" | grep -Eio "$URL" | head -1)
+    [ -n "$url" ] || continue
+    resto=${url#*://}
+    cred=${resto%%@*}
+    host=${resto#*@}
+    pass=${cred#*:}
+
+    # Variable, plantilla o algo sin resolver: no es una contraseña.
+    case "$pass" in
+        *'$'*|*'{'*|*'<'*|*'*'*|*'%'*|*'['*|*'('*) continue ;;
+    esac
+    # Palabras que son claramente de ejemplo.
+    case "$(printf '%s' "$pass" | tr 'A-Z' 'a-z')" in
+        contrasena|contraseña|password|pass|clave|secreto|secret|usuario|user|xxx|xxxx|tu-password|tu_password|changeme|ejemplo|example|miclave|tucontrasena)
+            continue ;;
+    esac
+    # Base local: la contraseña de una base de prueba no es un secreto.
+    case "$host" in
+        localhost|localhost:*|127.0.0.1|127.0.0.1:*|db|db:*|postgres|postgres:*|host|host:*)
+            continue ;;
+    esac
+
+    # Llegó hasta acá: parece de verdad. El archivo y la línea, para encontrarla.
+    # index() y no una regex: la URL trae puntos, barras y signos que como patrón
+    # significarían otra cosa, y escaparlos a mano llenaba esto de warnings.
+    donde=$(git diff --cached -U0 --diff-filter=d \
+            | awk -v pat="$url" '
+                /^\+\+\+ b\// { archivo = substr($0, 7) }
+                /^@@/ { split($3, a, ","); linea = substr(a[1], 2) }
+                /^\+/ && index($0, pat) && archivo != "" { print "  " archivo ":" linea; exit }' )
+    [ -n "$donde" ] || donde="  (no pude ubicar la línea)"
+    printf '%s\n' "$donde"
+done > /tmp/guard-credenciales.$$ || true
+
+malas=$(cat /tmp/guard-credenciales.$$ 2>/dev/null || true)
+rm -f /tmp/guard-credenciales.$$
+
+[ -n "$malas" ] || exit 0
+
+cat >&2 <<FIN
+
+  Commit frenado: hay una contraseña de base de datos en lo que estás por commitear.
+
+$malas
+
+  Este repo es público. Si eso entra, la contraseña queda en el historial de
+  GitHub para siempre, y rotarla después es una hora de trabajo en tres sistemas.
+
+  Qué hacer: sacala del archivo y dejá el placeholder. La de verdad va en
+  ~/.salon_ivana/config.txt (la tarea de Windows) o en un secret del repo
+  (el workflow de backup).
+
+FIN
+exit 1
