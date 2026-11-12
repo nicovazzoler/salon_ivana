@@ -60,6 +60,14 @@ function fechaSolo(iso){
 const pu = l => l.precio_unit_final     ?? l.precio_unit     ?? 0;
 const pe = l => l.precio_efectivo_final ?? l.precio_efectivo ?? 0;
 
+/* Redondea como round() de Python, que es el que cobra: el medio peso va al
+   PAR ($682,50 → $682), no para arriba como Math.round. */
+function redondear(x){
+  const f = Math.floor(x), resto = x - f;
+  if(resto !== 0.5) return resto < 0.5 ? f : f + 1;
+  return f % 2 === 0 ? f : f + 1;
+}
+
 // Si la línea tiene un ajuste, sea en porcentaje o en pesos.
 const hayAjuste = l => !!(l.ajuste_pct || l.ajuste_monto);
 
@@ -299,8 +307,8 @@ function deComprobante(d, negocio){
     let totPromo=d.lineas.reduce((a,l)=>a+pe(l)*l.cantidad,0)+extra;
     if(d.descuento_pct>0){
       h.lin(fila2((d.descuento_nombre||"Descuento")+" "+d.descuento_pct+"%","aplicado"));
-      totLista=Math.round(totLista*(100-d.descuento_pct)/100);
-      totPromo=Math.round(totPromo*(100-d.descuento_pct)/100);
+      totLista-=redondear(totLista*d.descuento_pct/100);
+      totPromo-=redondear(totPromo*d.descuento_pct/100);
     }
     (d.extras||[]).forEach(e=>{
       filaItem("+ "+e.concepto, fmtP(e.monto)).forEach(h.lin);
@@ -420,7 +428,7 @@ global.EscPos = {
   ANCHO, LEGAL_TXT,
   deComprobante, deCuenta, deSena, urlRawbt,
   numComp, fechaLocal, fechaSolo, pu, pe, hayAjuste, textoAjuste,
-  cuentaDeComprobante, montoDeTarjeta,
+  cuentaDeComprobante, montoDeTarjeta, redondear,
 };
 
 })(window);

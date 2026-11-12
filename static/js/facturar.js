@@ -328,7 +328,7 @@ function agregar(it){
 const conAjuste = (base, pct, monto) => {
   base = base || 0;
   if(monto) return Math.max(base + monto, 0);
-  return pct ? Math.round(base * (100 + pct) / 100) : base;
+  return pct ? EscPos.redondear(base * (100 + pct) / 100) : base;
 };
 const precioAjEf = l => conAjuste(l.precio,         l.ajustePct, l.ajusteMonto);
 const precioAjTr = l => conAjuste(l.precioTransfer, l.ajustePct, l.ajusteMonto);
@@ -643,8 +643,8 @@ function actualizarTotales(){
 
   // descuento de catálogo (jubilado, promo, etc.)
   const hayDescCat = descPct > 0;
-  const descCatTr = hayDescCat ? Math.round(subTr * descPct / 100) : 0;
-  const descCatEf = hayDescCat ? Math.round(subEf * descPct / 100) : 0;
+  const descCatTr = hayDescCat ? EscPos.redondear(subTr * descPct / 100) : 0;
+  const descCatEf = hayDescCat ? EscPos.redondear(subEf * descPct / 100) : 0;
   const baseCat = esEf ? subEf : subTr;
   const descCat = hayDescCat ? (esEf ? descCatEf : descCatTr) : 0;
 
@@ -949,7 +949,7 @@ function marcarAtendio(){
 }
 
 // Valida el cliente (obligatorio) y crea el comprobante. Devuelve el objeto creado o null.
-async function crearComprobante(){
+async function crearComprobante(cobro = {}){
   const nom=$("#cliente").value.trim();
   if(!nom){ toast("Falta el nombre del cliente"); $("#cliente").focus(); return null; }
   // Solo cuando hay algo a comisión, que es de lo único que sale un sueldo: un
@@ -999,7 +999,8 @@ async function crearComprobante(){
                             precio_custom: l.precioEditado ? l.precio : null,
                             ajuste_pct: l.ajustePct || 0, ajuste_monto: l.ajusteMonto || 0,
                             ajuste_nombre: l.ajusteNombre || null})),
-    extras: EXTRAS
+    extras: EXTRAS,
+    ...cobro
   };
   if(!CLAVE){ CLAVE = claveDeCobro(); guardarBorrador(); }
   // Con el tipo adentro: el presupuesto que se armó primero no es el ticket.
@@ -1199,7 +1200,7 @@ async function abrirCobro(){
 function totalEfectivoComp(c){
   const base = c.lineas.reduce((a,l)=>a + (l.precio_efectivo_final ?? l.precio_efectivo)*l.cantidad, 0)
              + (c.extra_dificultad||0);          // el extra solo existe en comprobantes viejos
-  const desc = Math.round(base * (c.descuento_pct||0) / 100);
+  const desc = EscPos.redondear(base * (c.descuento_pct||0) / 100);
   const extras = (c.extras||[]).reduce((a,e)=>a+(e.monto||0), 0);
   return base - desc + extras;
 }
@@ -1260,36 +1261,15 @@ $("#mxEfectivo").oninput = calcularMixto;
 
 $("#mxRegistrar").onclick=async()=>{
   $("#mxRegistrar").disabled = true;                 // evitar doble click y duplicados
-  const E = parseInt($("#mxEfectivo").value)||0;     
+  const E = parseInt($("#mxEfectivo").value)||0;
   const alias = $("#mxAlias").value.trim() || null;
 
   const otroDia = esDeOtroDia();
-  const d = await crearComprobante();
+  // Un solo pedido: el ticket y sus dos abonos entran juntos o no entra nada.
+  // Cuánto tapa el efectivo lo calcula el backend; la transferencia es el resto.
+  const d = await crearComprobante({ mixto: { efectivo: E, alias } });
   if(!d){ $("#mxRegistrar").disabled=false; return; }
-
-  let ok = true;
-  try{
-    // Primero el efectivo: cuánto de la deuda tapa lo calcula el backend, y la
-    // transferencia es lo que quede.
-    const r1 = await authFetch("/api/comprobantes/"+d.id+"/pagos",{method:"POST",headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({ monto:E, descuento_efectivo:true, forma_pago:"Efectivo", alias:null, del_servicio:true,
-                            clave: CLAVE + "-ef" })});
-    if(!r1.ok){
-      const e = await r1.json().catch(()=>({}));
-      toast(r1.status === 409 ? e.detail : "Falló la parte efectivo — quedó a cuenta");
-      $("#panelMixto").style.display="none"; limpiar(); return;
-    }
-    const T = (await r1.json()).saldo;
-
-    if(T > 0){
-      const r2 = await authFetch("/api/comprobantes/"+d.id+"/pagos",{method:"POST",headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({ monto:T, saldado:T, forma_pago:"Transferencia", alias, del_servicio:true,
-                              clave: CLAVE + "-tr" })});
-      ok = r2.ok;
-      if(r2.status === 409){ toast((await r2.json().catch(()=>({}))).detail); $("#panelMixto").style.display="none"; limpiar(); return; }
-    }
-  }catch(e){ toast(SIN_CONEXION); $("#mxRegistrar").disabled=false; return; }
-  toast(ok ? "Pago mixto registrado ✓" : "Falló la parte transferencia — quedó saldo a cuenta");
+  toast("Pago mixto registrado ✓");
 
   $("#panelMixto").style.display="none";
   limpiar();

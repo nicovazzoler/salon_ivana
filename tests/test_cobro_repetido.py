@@ -178,3 +178,61 @@ def test_el_mismo_pedido_de_facturar_se_reconoce(db, api):
     a = api.post("/api/comprobantes", json=pedido)
     b = api.post("/api/comprobantes", json=pedido)
     assert a.status_code == b.status_code == 200 and a.json()["id"] == b.json()["id"]
+
+
+def mixto(item, efectivo, clave="mixto-1", alias="ivana.mp"):
+    return ticket(item, forma_pago="mixto", clave=clave,
+                  mixto={"efectivo": efectivo, "alias": alias})
+
+
+def test_el_mixto_entra_entero_en_un_pedido(db, api):
+    item = un_item(db)                       # $18.000 efectivo / $20.000 transferencia
+
+    r = api.post("/api/comprobantes", json=mixto(item, 9000))
+
+    assert r.status_code == 200 and r.json()["saldo"] == 0
+    db.expire_all()
+    pagos = {p.forma_pago: p for p in db.query(models.Pago).all()}
+    # $9.000 en efectivo tapan $10.000 de la cuenta; el resto va por transferencia
+    assert (pagos["Efectivo"].monto, pagos["Efectivo"].saldado, pagos["Efectivo"].desc_aplicado) == (9000, 10000, 1000)
+    assert (pagos["Transferencia"].monto, pagos["Transferencia"].alias) == (10000, "ivana.mp")
+    assert {p.usuario for p in pagos.values()} == {"ivana"}
+
+
+def test_el_mixto_repetido_se_cobra_una_vez(db, api):
+    item = un_item(db)
+
+    r1 = api.post("/api/comprobantes", json=mixto(item, 9000))
+    r2 = api.post("/api/comprobantes", json=mixto(item, 9000))
+
+    assert r1.status_code == r2.status_code == 200 and r1.json() == r2.json()
+    assert cuantos(db, models.Comprobante) == 1 and cuantos(db, models.Pago) == 2
+
+
+def test_el_mixto_repetido_con_otro_efectivo_no_dice_cobrado(db, api):
+    item = un_item(db)
+    api.post("/api/comprobantes", json=mixto(item, 9000))
+
+    otro_efectivo = api.post("/api/comprobantes", json=mixto(item, 5000))
+    otra_cuenta = api.post("/api/comprobantes", json=mixto(item, 9000, alias="otra.cuenta"))
+
+    assert otro_efectivo.status_code == otra_cuenta.status_code == 409
+    assert cuantos(db, models.Pago) == 2
+
+
+@pytest.mark.parametrize("efectivo", [0, 18000, 25000])
+def test_un_mixto_que_no_va_no_deja_nada(db, api, efectivo):
+    # Como get_db de verdad: una sesión por pedido, que al cerrarse descarta lo
+    # que no llegó al commit.
+    fabrica = sessionmaker(bind=db.get_bind(), autoflush=False)
+    def por_pedido():
+        s = fabrica()
+        try: yield s
+        finally: s.close()
+    item = un_item(db)
+    app.dependency_overrides[get_db] = por_pedido
+
+    r = api.post("/api/comprobantes", json=mixto(item, efectivo))
+
+    assert r.status_code == 400
+    assert cuantos(db, models.Comprobante) == 0 and cuantos(db, models.Pago) == 0

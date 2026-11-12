@@ -443,6 +443,13 @@ de depilación tiene la suya, porque ahí todavía no hay comprobante: son los
 mismos renglones y tiene que dar lo mismo. Si fueran cuatro cuentas, un día el
 papel que sale al cobrar diría otra cosa que la ficha.
 
+**Y en el JS se redondea con `EscPos.redondear()`, nunca con `Math.round`.** El
+backend usa `round()` de Python, que manda el medio peso al PAR, y `Math.round`
+lo manda para arriba: el 15% de $4.550 son $682,50, y Facturar decía $3.867
+mientras el backend cobraba e imprimía $3.868. Pasa solo con precios que no
+terminan en 00, pero pasa, y en el mixto el resumen que se aprobaba no era el
+que se anotaba.
+
 Los abonos de seña no se repiten abajo, en lo recibido: ya se restaron arriba, y
 listados otra vez lo recibido sumaba más que el total. Por lo mismo la tarjeta
 del historial y la de la ficha muestran `cobrado`, que es lo que entró sin
@@ -477,8 +484,10 @@ llegaba dejaba el ticket cobrado a medias: con seña quedaba cobrado SOLO con la
 seña y el resto como deuda, y si lo que fallaba era la consulta del saldo, el
 `if (c.saldo > 0)` con `c.saldo` en `undefined` se saltaba el cobro **sin
 avisar**. Facturar sigue cobrando en dos pasos porque ahí el cobro no siempre es
-entero —cobrar una parte, dejar a cuenta, pago mixto—; las dos banderas vienen
-apagadas por defecto.
+entero —cobrar una parte, dejar a cuenta—; las dos banderas vienen apagadas por
+defecto. **El pago mixto sí va en uno** (`mixto: {efectivo, alias}`): el backend
+anota el efectivo, calcula cuánto tapa y la transferencia es lo que falte. En dos
+pedidos, el de la transferencia que no llegaba dejaba el ticket pagado a medias.
 
 **Y cada cobro lleva su `clave`.** Un pedido puede llegar y perderse la
 respuesta: la pantalla dice "no se pudo" y el segundo toque creaba otro ticket
