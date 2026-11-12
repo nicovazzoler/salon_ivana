@@ -1268,7 +1268,9 @@ async function cargarTickets(id){
     b.onclick = async () => {
       if(!confirm(`¿Anular el N-${b.dataset.num}?\n\nSe le devuelven las señas que haya usado `
                 + `y sale de la sesión. Esto no se puede deshacer.`)) return;
-      const r = await authFetch("/api/comprobantes/" + b.dataset.id, {method:"DELETE"});
+      const motivo = pedirMotivo(`el N-${b.dataset.num}`); if(motivo === null) return;
+      const r = await authFetch("/api/comprobantes/" + b.dataset.id
+                                + "?motivo=" + encodeURIComponent(motivo), {method:"DELETE"});
       if(!r.ok){ toast((await r.json().catch(()=>({}))).detail || "No se pudo anular"); return; }
       toast("Anulado");
       cargarSesiones();

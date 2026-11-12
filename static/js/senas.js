@@ -182,7 +182,8 @@ function pintarSenas(cont, senas, alAnular, todas){
       <span class="estado">${s.anulada ? "devuelta"
         : s.usada ? `usada en N-${String(s.comprobante_numero || 0).padStart(5,"0")}`
         : s.parcial ? `le quedan ${_plataSena(s.valor)} a favor`
-        : "a favor"}</span>`;
+        : "a favor"}${
+        (s.estuvo_en || []).length ? ` · estuvo en ${s.estuvo_en.join(", ")}, anulado` : ""}</span>`;
     const imp = document.createElement("a");
     imp.className = "b-out"; imp.textContent = "🖨️ Recibo";
     imp.href = `/ticket?tipo=sena&id=${s.id}`;

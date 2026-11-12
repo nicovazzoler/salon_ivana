@@ -410,7 +410,8 @@ function renderComprobantes(){
     div.querySelector(".btnAnular").onclick = async (e)=>{
       e.stopPropagation();
       if(!confirm("¿Anular este servicio?")) return;
-      const r = await authFetch("/api/comprobantes/"+comp.id, {method:"DELETE"});
+      const motivo = pedirMotivo("este servicio"); if(motivo === null) return;
+      const r = await authFetch("/api/comprobantes/"+comp.id+"?motivo="+encodeURIComponent(motivo), {method:"DELETE"});
       // El motivo lo dice el backend, y la lista se refresca pase lo que pase:
       // el caso más común de fallo es que la pantalla quedó vieja.
       toast(r.ok ? "Servicio anulado"

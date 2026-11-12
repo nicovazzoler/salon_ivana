@@ -3768,12 +3768,27 @@ def _trabar_comprobante(db, comp_id: int):
               .populate_existing().with_for_update().first())
 
 @app.delete("/api/comprobantes/{comp_id}")
-def anular_comprobante(comp_id: int, user = Depends(usuario_actual), db: Session = Depends(get_db)):
-    comp = db.get(models.Comprobante, comp_id)
+def anular_comprobante(comp_id: int, motivo: str = "", user = Depends(usuario_actual),
+                       db: Session = Depends(get_db)):
+    """Anula un comprobante con su plata. Las mismas reglas que anular un cobro.
+
+    No borra nada: el comprobante y sus cobros quedan marcados con quién, cuándo
+    y por qué, y los cobros salen en la caja de su día como anulados.
+    """
+    # Trabado: un cobro que entrara en el medio quedaría vivo sobre un anulado.
+    comp = _trabar_comprobante(db, comp_id)
     if not comp: raise HTTPException(404, "Ese comprobante no existe")
     # Ya anulado no es lo mismo que no existe: lo que pasa es que la pantalla
     # quedó dibujada de antes, y "no existe" no le dice a nadie que ya está hecho.
     if not comp.activo: raise HTTPException(409, "Ese servicio ya estaba anulado")
+    cobros = db.query(models.Pago).filter(models.Pago.comprobante_id == comp.id, _pago_cuenta()).all()
+    # Un presupuesto no movió plata: no hay caja de otro día que cuidar.
+    if comp.tipo == "ticket":
+        exigir_poder_anular(db, user, comp.fecha, comp)
+        # Una deuda vieja saldada hoy tiene la plata en otro día que el servicio.
+        for p in cobros:
+            exigir_poder_anular(db, user, p.fecha, comp)
+    m = exigir_motivo(motivo)
     # De una sesión de depilación cerrada no se saca nada: el reparto ya se
     # liquidó y sacarle un ticket le cambiaría la cuenta a lo que se pagó. Es la
     # misma regla que para los gastos de la sesión.
@@ -3785,9 +3800,13 @@ def anular_comprobante(comp_id: int, user = Depends(usuario_actual), db: Session
         if ses:
             ses_corr = ses
             parte_antes = cuenta_depilacion(db, ses)["parte_empleada"]
-    senas_del_ticket = [i for (i,) in db.query(models.Pago.sena_id).filter(
-        models.Pago.comprobante_id == comp.id, models.Pago.sena_id.isnot(None))]
-    db.query(models.Pago).filter(models.Pago.comprobante_id == comp.id).delete()
+    senas_del_ticket = [p.sena_id for p in cobros if p.sena_id]
+    # Marcados y no borrados: un cobro que ya estaba anulado conserva su motivo,
+    # y el abono de una seña queda como el rastro de dónde estuvo aplicada.
+    ahora = fecha_hora_now_utc().replace(tzinfo=None)
+    for p in cobros:
+        p.anulado, p.anulado_por, p.anulado_en = True, user.get("usuario"), ahora
+        p.anulado_motivo = f"Se anuló el {num_comprobante(comp)}: {m}"
     if senas_del_ticket:
         db.query(models.Sena).filter(models.Sena.id.in_(senas_del_ticket)).update(
             {"comprobante_id": None}, synchronize_session=False)
@@ -3807,6 +3826,7 @@ def anular_comprobante(comp_id: int, user = Depends(usuario_actual), db: Session
                     log_stock(db, it, "anulacion", l.cantidad, f"Anulación comprobante #{comp.id}", "sistema")
                     it.stock_actual += l.cantidad
     comp.activo = False
+    comp.anulado_por, comp.anulado_motivo, comp.anulado_en = user.get("usuario"), m, ahora
     # Si era de una sesión que ya se había cerrado, esto es una corrección y
     # queda anotada: tres semanas después nadie se acuerda de qué ticket se sacó.
     # `antes` se tomó arriba, con el comprobante todavía activo.
@@ -4078,7 +4098,25 @@ def usado_de_senas(db, ids) -> dict:
                   .filter(models.Pago.sena_id.in_(list(ids)), _pago_cuenta())
                   .group_by(models.Pago.sena_id).all())
 
-def _sena_json(s, nombre=None, usado: int = 0):
+def senas_en_anulados(db, ids) -> dict:
+    """{id de seña: ["N-00012", ...]}: los tickets donde estuvo aplicada y se anularon.
+
+    Sale de sus abonos anulados, que quedan en la base: sin esto la seña volvía
+    a "a favor" sin decir que había pasado por un ticket.
+    """
+    if not ids: return {}
+    filas = (db.query(models.Pago.sena_id, models.Comprobante)
+               .join(models.Comprobante, models.Comprobante.id == models.Pago.comprobante_id)
+               .filter(models.Pago.sena_id.in_(list(ids)), models.Pago.anulado == True,
+                       models.Comprobante.activo == False)
+               .order_by(models.Pago.fecha).all())
+    out = {}
+    for sena_id, comp in filas:
+        num = num_comprobante(comp)
+        if num not in out.setdefault(sena_id, []): out[sena_id].append(num)
+    return out
+
+def _sena_json(s, nombre=None, usado: int = 0, estuvo_en: list | None = None):
     libre = 0 if s.anulada else max(s.monto - usado, 0)
     return {"id": s.id, "numero": s.numero, "cliente_id": s.cliente_id, "cliente": nombre,
             "fecha": hora_argentina(s.fecha).strftime("%d/%m/%Y"),
@@ -4096,7 +4134,8 @@ def _sena_json(s, nombre=None, usado: int = 0):
             "usado": usado, "libre": libre,
             "valor": valor_en_transferencia(libre, s.forma_pago),
             "valor_efectivo": valor_en_efectivo(libre, s.forma_pago),
-            "parcial": bool(usado) and libre > 0}
+            "parcial": bool(usado) and libre > 0,
+            "estuvo_en": estuvo_en or []}
 
 def senas_libres(db, cliente_id: int):
     """Las que todavía no se usaron. Se aplican todas juntas: si señó dos turnos,
@@ -4133,14 +4172,16 @@ def listar_senas(cliente_id: int | None = None, solo_libres: bool = False,
     if solo_libres:
         q = q.filter(models.Sena.comprobante_id.is_(None), _no_privado(models.Sena.anulada))
     filas = q.order_by(models.Sena.fecha.desc()).limit(300).all()
-    usado = usado_de_senas(db, [s.id for s, _n in filas])
-    return [_sena_json(s, n, usado.get(s.id) or 0) for s, n in filas]
+    ids = [s.id for s, _n in filas]
+    usado, estuvo = usado_de_senas(db, ids), senas_en_anulados(db, ids)
+    return [_sena_json(s, n, usado.get(s.id) or 0, estuvo.get(s.id)) for s, n in filas]
 
 @app.get("/api/senas/{sena_id}")
 def ver_sena(sena_id: int, _ = Depends(usuario_actual), db: Session = Depends(get_db)):
     s = db.get(models.Sena, sena_id)
     if not s: raise HTTPException(404, "Esa seña no existe")
-    return _sena_json(s, s.cliente.nombre if s.cliente else None, usado_de_senas(db, [s.id]).get(s.id) or 0)
+    return _sena_json(s, s.cliente.nombre if s.cliente else None, usado_de_senas(db, [s.id]).get(s.id) or 0,
+                      senas_en_anulados(db, [s.id]).get(s.id))
 
 @app.delete("/api/senas/{sena_id}")
 def anular_sena(sena_id: int, motivo: str = "", user = Depends(usuario_actual),
