@@ -72,6 +72,9 @@ jobs:
       - name: Instalar dependencias
         run: pip install -r requirements-dev.txt
 
+      - name: Correr los tests del estudio de uso
+        run: pytest tests/test_clarity.py
+
       # Paso 4: correr los tests. Si algún test falla, pytest devuelve un
       # código de salida distinto de cero y este paso (y con él, el job y
       # el chequeo del PR) queda marcado como fallido.

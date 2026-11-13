@@ -758,6 +758,24 @@ Arriba de eso está prendido el **secret scanning con push protection** de
 GitHub, que rechaza el push en el servidor. El hook puede faltar en un clon;
 eso no.
 
+## Estudio de uso
+
+Para el rediseño se mira cómo se usan las pantallas con **Microsoft Clarity**, un
+tiempo y después se saca. Se prende con la variable `CLARITY_ID` en Railway y se
+apaga borrándola: sin ella `/clarity.js` viene vacío y no se carga nada, que es
+lo que pasa en cualquier copia local. Lo pide `auth.js`, así que el login no se
+graba.
+
+Graba la pantalla de un local donde hay nombres de clientas y montos, así que va
+**todo enmascarado**: el script le pone `data-clarity-mask` a la página entera,
+aunque en el panel de Clarity alguien cambie el modo. Lo único que se le manda
+aparte es el rol, para separar lo que hace la dueña de lo que hace el empleado.
+El enmascarado tapa la pantalla pero **no la URL**, que se graba entera: ningún
+dato de una clienta va en una URL. Por eso la ficha le pasa el nombre a Facturar
+por `sessionStorage` y no con `?cliente=`; los ids sí pueden ir. El id del
+proyecto se valida antes de escribirlo adentro del script, y `tests/test_clarity.py`
+controla todo esto.
+
 ## Al terminar un cambio
 
 Commit en castellano explicando **por qué**, no qué (el diff ya dice qué), y

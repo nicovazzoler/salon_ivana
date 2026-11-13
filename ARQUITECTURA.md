@@ -119,12 +119,12 @@ De dónde sale: la versión, de `requirements*.txt`; el uso, de los `import` de 
 
 | Librería | Versión | Quién la usa |
 |---|---|---|
-| `fastapi` | 0.115.6 | `main.py`, `tests/test_anulaciones.py`, `tests/test_cobro_repetido.py`, `tests/test_plata.py` |
+| `fastapi` | 0.115.6 | `main.py`, `tests/test_anulaciones.py`, `tests/test_clarity.py`, `tests/test_cobro_repetido.py` y 1 más |
 | `httpx` | 0.28.1 | sin import directo |
 | `openpyxl` | 3.1.5 | `main.py` |
 | `psycopg2-binary` | 2.9.10 | sin import directo |
 | `pydantic` | 2.10.4 | `main.py` |
-| `pytest` | 8.3.4 | `tests/test_anulaciones.py`, `tests/test_backup.py`, `tests/test_cobro_repetido.py`, `tests/test_plata.py` |
+| `pytest` | 8.3.4 | `tests/test_anulaciones.py`, `tests/test_backup.py`, `tests/test_clarity.py`, `tests/test_cobro_repetido.py` y 1 más |
 | `sqlalchemy` | 2.0.36 | `cargar_depilacion.py`, `database.py`, `levantar_local.py`, `main.py` y 5 más |
 | `uvicorn` | 0.34.0 | `levantar_local.py` |
 
