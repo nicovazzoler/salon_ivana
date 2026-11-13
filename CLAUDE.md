@@ -21,6 +21,7 @@ database.py      SQLite local / PostgreSQL en producción (env DATABASE_URL)
 auth.py          Contraseñas y tokens
 seed_datos.py    Siembra inicial, idempotente
 config_extra.py  Datos del negocio. main.py lo importa EN VIVO, no está en la base
+pwa.py           La versión de los archivos y el service worker que se sirve en /sw.js
 static/
   *.html         Una por pantalla, solo estructura
   css/           tokens → base → layout → components → app  (el orden importa).
@@ -50,6 +51,9 @@ static/
                  se parten, así que abajo de 600px desbordaban la PÁGINA y en el
                  celular el botón de la última columna quedaba fuera
   escpos.js      Generador del papel de la comandera (ticket.html y facturar.js)
+  pwa.js         Registra el service worker y pone los carteles de sin conexión
+                 y de versión nueva. sw.js es el MOLDE del service worker,
+                 manifest.json e iconos/ lo que pide la app instalable
 ```
 
 ## Levantarlo para probar
@@ -597,6 +601,28 @@ arreglos. Hoy el middleware manda `no-cache` a las páginas, el CSS y el JS
 (guardalo pero preguntá siempre, y el ETag contesta 304 vacío), y un año a las
 tipografías y el ícono.
 
+**Y es una app instalable (PWA).** El service worker guarda las pantallas, el
+CSS, el JS y los íconos para que abran rápido con el internet del local, y no
+toca NUNCA `/api/`: turnos, caja y pagos van siempre al servidor. Sin conexión
+la pantalla abre igual, sin datos y con un cartel arriba; no es una app offline.
+
+Lo que hace que no vuelva el problema de arriba es la versión. `/sw.js` no es un
+archivo: lo arma `pwa.py` al arrancar, con un hash de TODO `static/` adentro.
+Cambia una coma de un CSS, cambia el hash, el navegador ve un `sw.js` distinto,
+baja todo de cero a una caché nueva y borra la vieja; un deploy que solo toca el
+backend no baja nada. Toma el control solo (`skipWaiting`) y la versión nueva
+entra al cambiar de pantalla. Facturar, que queda abierta todo el día, pregunta
+cada media hora y muestra un cartel con "Actualizar" (`data-avisar-version` en
+el `<body>`): recargar sola podría cortar un cobro.
+
+**Una pantalla nueva va en `PANTALLAS` de `main.py`**, que arma las rutas y la
+lista que se guarda, y lleva en el `<head>` el bloque del manifest y `pwa.js`.
+`tests/test_pwa.py` controla las dos cosas y que cada archivo de la lista
+exista: si uno falla, el service worker no se instala.
+
+En iPhone/iPad la app instalada guarda su sesión aparte de Safari: hay que
+loguearse una vez adentro. Se instala desde Compartir → "Agregar a inicio".
+
 ## Cómo verificar antes de dar algo por terminado
 
 No alcanza con que compile. Lo que se usa acá, de menor a mayor:
@@ -611,13 +637,14 @@ No alcanza con que compile. Lo que se usa acá, de menor a mayor:
 4. **Comparación píxel a píxel** cuando el cambio es un refactor que no debería
    cambiar nada: capturas completas antes y después, en tema claro y oscuro.
 
-**Hay tres suites versionados y corren en cada PR** (`.github/workflows/tests.yml`):
+**Las suites versionadas corren en cada PR** (`.github/workflows/tests.yml`):
 
 ```bash
 pytest tests/test_plata.py           # la aritmética de plata del backend
 pytest tests/test_backup.py          # que el backup JSON vuelva entero al restaurarlo
 pytest tests/test_anulaciones.py     # quién puede anular plata y qué queda escrito
 pytest tests/test_cobro_repetido.py  # que un cobro reintentado no cobre dos veces
+pytest tests/test_pwa.py             # que la app instalable guarde lo justo y cambie de versión
 node --test "tests/escpos/**/*.test.js"   # el papel, byte a byte contra los golden
 ```
 
