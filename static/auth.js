@@ -222,3 +222,10 @@ function titulo(str){
     return pal.charAt(0).toUpperCase() + pal.slice(1);
   });
 }
+/* El estudio de uso: /clarity.js viene vacío mientras no esté prendido. Desde
+   acá y no desde cada página para que el login no se grabe. */
+(function(){
+  const s=document.createElement("script");
+  s.src="/clarity.js"; s.async=true;
+  document.head.appendChild(s);
+})();

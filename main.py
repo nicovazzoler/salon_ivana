@@ -320,6 +320,29 @@ async def cabeceras_de_cache(request, call_next):
         resp.headers["Cache-Control"] = "no-cache"
     return resp
 
+# ---------- estudio de uso ----------
+# Microsoft Clarity graba cómo se usan las pantallas, para el rediseño. Se prende
+# con CLARITY_ID en Railway y se apaga borrándola: sin la variable no se carga
+# nada, y en una copia local no existe.
+CLARITY = """(function(c,l,a,r,i,t,y){c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};
+t=l.createElement(r);t.async=1;t.src="https://www.clarity.ms/tag/"+i;
+y=l.getElementsByTagName(r)[0];y.parentNode.insertBefore(t,y);})(window,document,"clarity","script","__ID__");
+document.documentElement.setAttribute("data-clarity-mask","True");
+clarity("set","rol",localStorage.getItem("pelu_rol")||"");
+"""
+
+def script_clarity(id_proyecto):
+    """El script que carga Clarity, o nada si el id no es uno de verdad."""
+    if not id_proyecto or not re.fullmatch(r"[a-z0-9]{6,20}", id_proyecto.strip(), re.I):
+        return ""
+    return CLARITY.replace("__ID__", id_proyecto.strip())
+
+@app.get("/clarity.js")
+def clarity_js():
+    from fastapi.responses import Response
+    return Response(script_clarity(os.environ.get("CLARITY_ID")), media_type="text/javascript",
+                    headers={"Cache-Control": "no-cache"})
+
 # ---------- esquemas ----------
 # La tabla `ventas` ya no se escribe: los modelos quedan para que el backup
 # levante las filas históricas de una base que todavía las tenga.
