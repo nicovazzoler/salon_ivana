@@ -107,6 +107,10 @@ graph LR
   Preporteshtml["reportes.html"]
   Preporteshtml --> Tclientes
   Preporteshtml --> Tcomprobantes
+  Pswjs["sw.js"]
+  Pswjs --> Titems
+  Pswjs --> Tcomprobantes
+  Pswjs --> Tegresos
   Ptickethtml["ticket.html"]
   Ptickethtml --> Tclientes
   Ptickethtml --> Tcomprobantes
@@ -119,12 +123,12 @@ De dónde sale: la versión, de `requirements*.txt`; el uso, de los `import` de 
 
 | Librería | Versión | Quién la usa |
 |---|---|---|
-| `fastapi` | 0.115.6 | `main.py`, `tests/test_anulaciones.py`, `tests/test_cobro_repetido.py`, `tests/test_plata.py` |
+| `fastapi` | 0.115.6 | `main.py`, `tests/test_anulaciones.py`, `tests/test_cobro_repetido.py`, `tests/test_plata.py` y 1 más |
 | `httpx` | 0.28.1 | sin import directo |
 | `openpyxl` | 3.1.5 | `main.py` |
 | `psycopg2-binary` | 2.9.10 | sin import directo |
 | `pydantic` | 2.10.4 | `main.py` |
-| `pytest` | 8.3.4 | `tests/test_anulaciones.py`, `tests/test_backup.py`, `tests/test_cobro_repetido.py`, `tests/test_plata.py` |
+| `pytest` | 8.3.4 | `tests/test_anulaciones.py`, `tests/test_backup.py`, `tests/test_cobro_repetido.py`, `tests/test_plata.py` y 1 más |
 | `sqlalchemy` | 2.0.36 | `cargar_depilacion.py`, `database.py`, `levantar_local.py`, `main.py` y 5 más |
 | `uvicorn` | 0.34.0 | `levantar_local.py` |
 
@@ -409,6 +413,11 @@ De dónde sale: la versión, de `requirements*.txt`; el uso, de los `import` de 
 |---|---|---|---|
 | POST | `/api/login` | `login` | usuarios |
 
+### pwa.js
+
+- Endpoints que usa: **0**
+- Tablas que tocan esos endpoints: —
+
 ### reportes.html
 
 - Endpoints que usa: **6**
@@ -427,6 +436,54 @@ De dónde sale: la versión, de `requirements*.txt`; el uso, de los `import` de 
 
 - Endpoints que usa: **0**
 - Tablas que tocan esos endpoints: —
+
+### sw.js
+
+- Endpoints que usa: **123**
+- Tablas que tocan esos endpoints: `ajustes_item`, `alias_transferencia`, `clientes`, `comprobante_extras`, `comprobante_lineas`, `comprobantes`, `config`, `descuentos`, `egresos`, `empleados`, `excepciones_horario`, `fondo_caja`, `formas_pago`, `horarios_empleado`, `horas_trabajadas`, `items`, `liquidaciones`, `movimientos_stock`, `notas_diarias`, `pagos`, `senas`, `sesiones_depilacion`, `tipos_egreso`, `trabajos_comision`, `turnos`, `usuarios`, `ventas`
+
+| Método | Endpoint | Función | Tablas |
+|---|---|---|---|
+| POST | `/api/admin/recalcular-transfer` | `recalcular_transfer` | items |
+| POST | `/api/agenda/abrir-dia` | `abrir_dia` | empleados, excepciones_horario |
+| GET | `/api/agenda/dia` | `agenda_dia` | empleados, horarios_empleado, turnos |
+| GET | `/api/ajustes-item` | `listar_ajustes_item` | ajustes_item |
+| POST | `/api/ajustes-item` | `crear_ajuste_item` | ajustes_item |
+| PUT | `/api/ajustes-item/{aj_id}` | `editar_ajuste_item` | ajustes_item |
+| DELETE | `/api/ajustes-item/{aj_id}` | `borrar_ajuste_item` | ajustes_item |
+| GET | `/api/alias` | `listar_alias` | alias_transferencia |
+| POST | `/api/alias` | `crear_alias` | alias_transferencia |
+| PUT | `/api/alias/{alias_id}` | `editar_alias` | alias_transferencia, pagos |
+| DELETE | `/api/alias/{alias_id}` | `borrar_alias` | alias_transferencia |
+| GET | `/api/backup` | `backup_completo` | — |
+| GET | `/api/caja/dia` | `caja_dia` | comprobantes, egresos |
+| GET | `/api/caja/diario` | `caja_diario` | — |
+| GET | `/api/caja/semanal` | `caja_semanal` | — |
+| GET | `/api/catalogo` | `catalogo` | items |
+| GET | `/api/categorias` | `categorias` | items |
+| PUT | `/api/categorias` | `renombrar_categoria` | items |
+| GET | `/api/clientes` | `listar_clientes` | clientes |
+| POST | `/api/clientes` | `crear_cliente` | clientes |
+| GET | `/api/clientes/deudas` | `deudas_clientes` | — |
+| GET | `/api/clientes/{cliente_id}` | `ver_cliente` | clientes |
+| PUT | `/api/clientes/{cliente_id}` | `editar_cliente` | clientes |
+| DELETE | `/api/clientes/{cliente_id}` | `borrar_cliente` | clientes, comprobantes |
+| GET | `/api/clientes/{cliente_id}/cuenta` | `cuenta_cliente` | clientes, comprobantes |
+| GET | `/api/clientes/{cliente_id}/proximo-turno` | `proximo_turno` | turnos |
+| GET | `/api/comprobantes` | `listar_comprobantes` | comprobantes |
+| POST | `/api/comprobantes` | `crear_comprobante` | clientes, comprobante_extras, comprobante_lineas, comprobantes, items, pagos, sesiones_depilacion |
+| GET | `/api/comprobantes/proximo-numero` | `proximo_numero` | — |
+| GET | `/api/comprobantes/{comp_id}` | `ver_comprobante` | comprobantes, pagos, senas |
+| DELETE | `/api/comprobantes/{comp_id}` | `anular_comprobante` | items, pagos, senas, sesiones_depilacion |
+| POST | `/api/comprobantes/{comp_id}/aplicar-senas` | `aplicar_senas` | — |
+| POST | `/api/comprobantes/{comp_id}/convertir` | `convertir_a_ticket` | comprobante_extras, comprobante_lineas, comprobantes, items |
+| POST | `/api/comprobantes/{comp_id}/pagos` | `registrar_pago` | pagos |
+| PUT | `/api/comprobantes/{comp_id}/peluquero` | `poner_peluquero` | comprobantes, empleados |
+| GET | `/api/config` | `config` | alias_transferencia, config, empleados, formas_pago, items, tipos_egreso |
+| PUT | `/api/config/fondo-caja` | `set_fondo` | fondo_caja |
+| PUT | `/api/config/sueldos` | `set_config_sueldos` | config, empleados |
+| POST | `/api/depilacion/abrir` | `abrir_sesion_depilacion` | — |
+| POST | `/api/depilacion/cerrar` | `cerrar_depilacion` | egresos, liquidaciones, sesiones_depilacion |
 
 ### ticket.html
 
@@ -447,5 +504,5 @@ De dónde sale: la versión, de `requirements*.txt`; el uso, de los `import` de 
 
 ## Lo que no se pudo probar
 
-- Endpoints que ninguna pantalla nombra: **35**. Pueden ser internos, llamarse con la ruta armada en tiempo de ejecución, o estar muertos.
+- Endpoints que ninguna pantalla nombra: **0**. Pueden ser internos, llamarse con la ruta armada en tiempo de ejecución, o estar muertos.
 - Tablas declaradas: **29**; las que no aparecen arriba no las toca ningún endpoint que el front nombre.

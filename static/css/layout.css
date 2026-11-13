@@ -21,6 +21,24 @@
   white-space:nowrap;
 }
 
+/* Sin conexión y versión nueva (pwa.js). Arriba de todo y sin pegarse, por lo
+   mismo que el de la contraseña. */
+.cartel-app{
+  display:flex; flex-wrap:wrap; align-items:center; justify-content:center; gap:var(--sp-3);
+  padding:var(--sp-2) var(--sp-6);
+  font-size:var(--fs-base); font-weight:var(--fw-bold);
+  text-align:center;
+}
+.cartel-app[hidden]{ display:none; }
+.cartel-app.peligro{ background:var(--danger); color:var(--text-invertido); }
+.cartel-app.info{ background:var(--acento); color:var(--text-invertido); }
+.cartel-app button{
+  padding:4px 14px;
+  background:var(--bg-card); color:var(--text-titulo);
+  border:none; border-radius:var(--r-md);
+  font:inherit; cursor:pointer;
+}
+
 header{
   position:sticky; top:0; z-index:var(--z-header);
   display:flex;
