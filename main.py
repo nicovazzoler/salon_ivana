@@ -1,6 +1,6 @@
 from fastapi import FastAPI, Depends, HTTPException, Header, Request
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse, Response
 from sqlalchemy.orm import Session, selectinload
 from sqlalchemy import text, inspect, func, or_, String
 from sqlalchemy.exc import IntegrityError
@@ -14,6 +14,7 @@ from database import get_db, engine, Base
 import models
 from config_extra import TIPOS_EGRESO, NEGOCIO, DIAS_CERRADO
 import auth
+import pwa
 
 Base.metadata.create_all(engine)
 
@@ -5401,33 +5402,29 @@ def backup_completo(_ = Depends(solo_dueno), db: Session = Depends(get_db)):
         headers={"Content-Disposition": f"attachment; filename={nombre}"})
 
 # ---------- frontend ----------
+# Ruta → página. De acá salen las rutas y la lista de lo que guarda la app instalada.
+PANTALLAS = {
+    "/": "facturar", "/login": "login", "/facturar": "facturar", "/agenda": "agenda",
+    "/depilacion": "depilacion", "/admin": "admin", "/caja": "caja",
+    "/inventario": "inventario", "/sueldos": "sueldos", "/clientes": "clientes",
+    "/reportes": "reportes", "/cuenta": "cuenta", "/historial": "historial",
+    "/ticket": "ticket",
+}
+
+def _pagina(archivo):
+    return lambda: FileResponse(f"static/{archivo}.html")
+
 if os.path.isdir("static"):
-    @app.get("/login")
-    def p_login(): return FileResponse("static/login.html")
-    @app.get("/")
-    def p_root(): return FileResponse("static/facturar.html")
-    @app.get("/facturar")
-    def pagina_facturar(): return FileResponse("static/facturar.html")
-    @app.get("/agenda")
-    def p_agenda(): return FileResponse("static/agenda.html")
-    @app.get("/depilacion")
-    def p_depilacion(): return FileResponse("static/depilacion.html")
-    @app.get("/admin")
-    def p_admin(): return FileResponse("static/admin.html")
-    @app.get("/caja")
-    def p_caja(): return FileResponse("static/caja.html")
-    @app.get("/inventario")
-    def p_inv(): return FileResponse("static/inventario.html")
-    @app.get("/sueldos")
-    def p_sueldos(): return FileResponse("static/sueldos.html")
-    @app.get("/clientes")
-    def pagina_clientes(): return FileResponse("static/clientes.html")
-    @app.get("/reportes")
-    def p_rep(): return FileResponse("static/reportes.html")
+    for _ruta, _archivo in PANTALLAS.items():
+        app.add_api_route(_ruta, _pagina(_archivo), methods=["GET"])
     app.mount("/static", StaticFiles(directory="static"), name="static")
-    @app.get("/cuenta")
-    def pagina_cuenta(): return FileResponse("static/cuenta.html")
-    @app.get("/historial")
-    def pagina_historial(): return FileResponse("static/historial.html")
-    @app.get("/ticket")
-    def pagina_ticket(): return FileResponse("static/ticket.html")
+
+    # Se arma una vez al arrancar: cada deploy arranca de nuevo y trae su versión.
+    SERVICE_WORKER = pwa.armar_sw("static", list(PANTALLAS))
+
+    # En la raíz y no en /static/: un service worker solo controla lo que está
+    # debajo de donde se sirve.
+    @app.get("/sw.js")
+    def service_worker():
+        return Response(SERVICE_WORKER, media_type="text/javascript",
+                        headers={"Cache-Control": "no-cache"})

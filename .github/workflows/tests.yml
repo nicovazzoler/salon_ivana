@@ -76,5 +76,5 @@ jobs:
       # código de salida distinto de cero y este paso (y con él, el job y
       # el chequeo del PR) queda marcado como fallido.
       - name: Correr los tests de plata y del backup
-        run: pytest tests/test_plata.py tests/test_backup.py tests/test_anulaciones.py tests/test_cobro_repetido.py
+        run: pytest tests/test_plata.py tests/test_backup.py tests/test_anulaciones.py tests/test_cobro_repetido.py tests/test_pwa.py
 
