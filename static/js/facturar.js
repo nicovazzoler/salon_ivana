@@ -106,8 +106,9 @@ async function init(){
   pintarRail();
   renderCategorias(); restaurarBorrador(); pintarOtroDia(); renderTicket(); mostrarBotones();
   cargarEgresosHoy(); avisoEgresoPrivado();
-  const cliParam=new URLSearchParams(location.search).get("cliente");
-  if(cliParam){ $("#cliente").value=cliParam; }
+  const deLaFicha=sessionStorage.getItem("facturar_cliente");
+  sessionStorage.removeItem("facturar_cliente");
+  if(deLaFicha){ $("#cliente").value=deLaFicha; }
 }
 
 /* Quién atendió sale de la lista de empleados y es obligatorio: de este nombre
