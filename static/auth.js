@@ -6,7 +6,14 @@ function logout(){localStorage.removeItem(TKEY);localStorage.removeItem(RKEY);lo
 async function authFetch(url,opts){
   opts=opts||{};
   opts.headers=Object.assign({},opts.headers||{},{"Authorization":"Bearer "+getToken()});
-  const r=await fetch(url,opts);
+  let r;
+  try{ r=await fetch(url,opts); }
+  catch(e){
+    // Un pedido que se cortó a propósito (cambiar de pantalla) no es la red
+    if(e.name !== "AbortError" && window.avisarConexion) avisarConexion(false);
+    throw e;
+  }
+  if(window.avisarConexion) avisarConexion(true);
   if(r.status===401){logout();throw new Error("sesion vencida");}
   return r;
 }
