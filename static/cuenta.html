@@ -332,7 +332,7 @@ function renderComprobantes(){
            </div>
            ${comp.convertido_a
               ? `<div class="muted" style="margin-top:8px;">Convertido → N-${String(comp.convertido_a).padStart(5,"0")}</div>`
-              : ''}`
+              : `<button class="btnConv" style="margin-top:8px;">Convertir a ticket</button>`}`
         : `<div class="comp-cifras">
              <div><span class="lbl">Total</span><span class="val">${fmt(comp.total_final)}</span></div>
              <div><span class="lbl">Pagado</span><span class="val">${fmt(comp.pagado)}</span></div>
@@ -416,6 +416,13 @@ function renderComprobantes(){
         if(r.status === 409){ toast((await r.json().catch(()=>({}))).detail); cargar(); return; }
         if(!r.ok){ const e=await r.json(); toast(e.detail||"No se pudo"); return; }
         toast("Abono registrado"); cargar();
+      };
+    }
+    if(esPresu && !comp.convertido_a){
+      div.querySelector(".btnConv").onclick = async (e)=>{
+        const msg = await convertirPresupuesto(comp.id, e.currentTarget);
+        if(msg === null) return;
+        toast(msg); cargar();
       };
     }
     div.querySelector(".btnAnular").onclick = async (e)=>{

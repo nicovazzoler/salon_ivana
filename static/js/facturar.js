@@ -5,7 +5,8 @@ const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&
 let CATALOGO=[], DESCUENTOS=[], CLIENTES=[], ticket=[], NEGOCIO={};
 let EMPLEADOS=[];               // los nombres que pueden aparecer en "Atendió"
 let TIPOS_PRIVADOS=new Set();   // tipos de egreso que son privados siempre (vacío para el empleado)
-let tipo="ticket", descPct=0, descNombre=null, formaPago="efectivo";
+// La forma arranca sin elegir en cada ticket: venía en Efectivo y se cobraba sin mirarla
+let tipo="ticket", descPct=0, descNombre=null, formaPago="";
 let totalActual=0;
 let mxDeudaActual=0;
 let totalEfActual=0;     // el mismo ticket entero en la lista de efectivo
@@ -759,7 +760,7 @@ function restaurarBorrador(){
     EXTRAS = Array.isArray(d.extras) ? d.extras : [];
     renderExtras();
     if(EXTRAS.length) $("#extrasBox").open = true;   // si hay extras cargados, que se vean
-    formaPago = d.formaPago || "efectivo";
+    formaPago = d.formaPago || "";
     $("#formaPago").value = formaPago;
     CLAVE = d.clave || null;
   }catch(e){ localStorage.removeItem(BORRADOR_KEY); }
@@ -786,10 +787,9 @@ function mostrarBotones(){
   $("#formaPago").querySelector('option[value="mixto"]').style.display  = esT ? "block" : "none";
   $("#formaPago").querySelector('option[value="cuenta"]').style.display = esT ? "block" : "none";
 
-  // Si venías en mixto/cuenta y pasás a presupuesto, lo reseteamos a efectivo
   if(!esT && (formaPago==="mixto" || formaPago==="cuenta")){
-    formaPago = "efectivo";
-    $("#formaPago").value = "efectivo";
+    formaPago = "";
+    $("#formaPago").value = "";
     $("#aliasBox").style.display = "none";
   }
   renderTicket();   // repinta con la forma correcta
@@ -797,6 +797,7 @@ function mostrarBotones(){
 
 function actualizarAcciones(){
   const listo    = ticketListo();
+  $("#formaPago").classList.toggle("sin-elegir", tipo === "ticket" && !formaPago);
   if(tipo === "presupuesto"){
     $("#crearPresu").disabled = !listo;   // el presupuesto solo necesita ítems + cliente
     return;
@@ -812,7 +813,7 @@ function actualizarAcciones(){
 
   const enProgreso = !!compActual;
   ["cobrarTodo","cobrarParte","dejarCuenta","cobrarMixto"].forEach(id=>{
-    const b = $("#"+id); if(b) b.disabled = !listo || enProgreso;
+    const b = $("#"+id); if(b) b.disabled = !listo || !formaPago || enProgreso;
   });
   bloquearControles(enProgreso);
 }
@@ -961,6 +962,7 @@ async function crearComprobante(cobro = {}){
     toast("Elegí quién atendió: hay un trabajo a comisión");
     $("#peluquero").focus(); return null;
   }
+  if(tipo === "ticket" && !formaPago){ toast("Elegí la forma de pago"); $("#formaPago").focus(); return null; }
  let cliId = clienteIdSel;                     // lo que elegiste del dropdown (o null)
 
   // Si no elegiste del dropdown, resolvemos por nombre: match exacto, o crear con confirmación.
@@ -991,7 +993,8 @@ async function crearComprobante(cobro = {}){
     cliente_id: cliId,
     cliente_nombre: null,
     peluquero: $("#peluquero").value || null,
-    forma_pago: formaPago,
+    // Al presupuesto la forma no le cambia nada: muestra e imprime las dos listas
+    forma_pago: formaPago || "efectivo",
     descuento_pct: descPct,
     descuento_nombre: descNombre,
     mostrar_motivo: true,
@@ -1149,7 +1152,8 @@ function limpiar(){
   if(hayOtroDia()){ $("#fechaServicio").value=""; $("#otroDiaBox").open=false; }
   pintarOtroDia();
   $("#descuento").value=""; descPct=0; descNombre=null;
-  $("#aliasTransfer").value="";
+  $("#aliasTransfer").value=""; $("#aliasBox").style.display="none";
+  formaPago=""; $("#formaPago").value="";
   EXTRAS=[]; renderExtras(); $("#extrasBox").open=false;
   $("#panelCobro").style.display="none"; compActual=null;
   CLAVE = null; CLAVE_ABONO = null;

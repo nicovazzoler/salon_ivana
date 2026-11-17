@@ -43,6 +43,11 @@ graph LR
   Pagendahtml --> Texcepcionesh
   Tclientes[("clientes")]
   Pagendahtml --> Tclientes
+  Pauthjs["auth.js"]
+  Pauthjs --> Tcomprobantes
+  Pauthjs --> Tclientes
+  Tcomprobantee[("comprobante_extras")]
+  Pauthjs --> Tcomprobantee
   Pcajahtml["caja.html"]
   Pcajahtml --> Tegresos
   Tpagos[("pagos")]
@@ -63,7 +68,6 @@ graph LR
   Phistorialhtml["historial.html"]
   Phistorialhtml --> Tcomprobantes
   Phistorialhtml --> Tclientes
-  Tcomprobantee[("comprobante_extras")]
   Phistorialhtml --> Tcomprobantee
   Pinventariohtml["inventario.html"]
   Pinventariohtml --> Titems
@@ -178,11 +182,13 @@ De dónde sale: la versión, de `requirements*.txt`; el uso, de los `import` de 
 
 ### auth.js
 
-- Endpoints que usa: **1**
-- Tablas que tocan esos endpoints: —
+- Endpoints que usa: **3**
+- Tablas que tocan esos endpoints: `clientes`, `comprobante_extras`, `comprobante_lineas`, `comprobantes`, `items`, `pagos`, `sesiones_depilacion`
 
 | Método | Endpoint | Función | Tablas |
 |---|---|---|---|
+| GET | `/api/comprobantes` | `listar_comprobantes` | comprobantes |
+| POST | `/api/comprobantes` | `crear_comprobante` | clientes, comprobante_extras, comprobante_lineas, comprobantes, items, pagos, sesiones_depilacion |
 | GET | `/api/yo` | `yo` | — |
 
 ### caja.html

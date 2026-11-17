@@ -535,12 +535,9 @@ function crearFila(comp){
     if(comp.tipo==="presupuesto" && !comp.convertido_a){
       div.querySelector(".btnConv").onclick=async(e)=>{
         e.stopPropagation();
-        if(!confirm("¿Convertir este presupuesto en ticket? Se crea un ticket nuevo con los mismos ítems.")) return;
-        const r=await authFetch("/api/comprobantes/"+comp.id+"/convertir",{method:"POST"});
-        if(!r.ok){ const er=await r.json(); toast(er.detail||"No se pudo"); return; }
-        const d=await r.json();
-        toast("Convertido a N-"+String(d.numero).padStart(5,"0"));
-        traer(true);
+        const msg = await convertirPresupuesto(comp.id, e.currentTarget);
+        if(msg === null) return;
+        toast(msg); traer(true);
       };
     }
     return div;

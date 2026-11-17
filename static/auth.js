@@ -17,6 +17,17 @@ async function authFetch(url,opts){
   if(r.status===401){logout();throw new Error("sesion vencida");}
   return r;
 }
+/* Pasa un presupuesto a ticket, que nace a cuenta. Lo usan Historial y la ficha
+   de la clienta. Devuelve el mensaje para mostrar, o null si se canceló. */
+async function convertirPresupuesto(id, boton){
+  if(!confirm("¿Convertir este presupuesto en ticket?\n\nSe crea un ticket con los mismos ítems y queda a cuenta: el cobro se registra después.")) return null;
+  if(boton) boton.disabled = true;
+  try{
+    const r = await authFetch("/api/comprobantes/"+id+"/convertir", {method:"POST"});
+    const d = await r.json().catch(()=>({}));
+    return r.ok ? "Convertido a N-"+String(d.numero).padStart(5,"0") : (d.detail || "No se pudo convertir");
+  }catch(e){ return "Sin conexión: fijate en la lista si se convirtió antes de volver a tocar"; }
+}
 /* La clave de un cobro: se arma una vez y viaja en cada reintento, así el
    backend reconoce el pedido que ya hizo y no cobra dos veces. randomUUID solo
    existe en https y en localhost. */
