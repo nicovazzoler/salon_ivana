@@ -839,3 +839,12 @@ body.con-panel{ overflow:hidden; }
 .arranque.puesto{ font-size:var(--fs-xs); }
 .arranque .arrVer{ color:var(--text-tenue); text-decoration:underline; }
 .arranque .arrCajon{ display:flex; align-items:center; gap:var(--sp-2); }
+
+/* Facturar: la forma de pago sin elegir tiene que saltar a la vista */
+#formaPago.sin-elegir{
+  border:2px solid var(--danger);
+  background:var(--danger-bg);
+  color:var(--danger);
+  font-weight:600;
+}
+#formaPago.sin-elegir option{ color:var(--tinta-900); background:var(--bg-input); font-weight:400; }
