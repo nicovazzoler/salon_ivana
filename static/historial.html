@@ -16,44 +16,23 @@
   /* Única línea angosta */
   .wrap{ max-width:800px; }
 
-  /* ----- Barra de orden -----
-     Va debajo de los filtros y con la etiqueta adelante, para que se lea como
-     una frase ("Ordenar por: Fecha") y no se confunda con otro filtro. */
-  .orden{
-    display:flex; flex-wrap:wrap; align-items:center; gap:6px;
+  /* ----- Filtros -----
+     Una sola fila y sin rótulos: cada control dice lo que filtra con lo que
+     muestra. Las fechas a mano se abren abajo, que es lo que se usa de a ratos. */
+  .filtros{
+    display:flex; flex-wrap:wrap; align-items:center; gap:8px 12px;
     margin-bottom:var(--sp-3);
   }
-  .orden .eti{
-    margin-right:2px;
-    font-size:var(--fs-xs);
-    font-weight:var(--fw-bold);
-    text-transform:uppercase;
-    letter-spacing:var(--tracking-eti);
-    color:var(--text-tenue);
-  }
-  /* La flecha en tabular para que el botón no cambie de ancho al darla vuelta */
-  .orden .flecha{ font-variant-numeric:tabular-nums; }
-
-  /* ----- Período -----
-     Mismo gesto que la barra de orden: la etiqueta adelante y las pastillas al
-     lado, para que se lea como una frase ("Período: 30 días"). El rango a mano
-     va al final, separado, porque es lo que se usa de vez en cuando. */
-  .periodo{
-    display:flex; flex-wrap:wrap; align-items:center; gap:6px;
-    margin-bottom:var(--sp-3);
-  }
-  .periodo .eti{
-    margin-right:2px;
-    font-size:var(--fs-xs); font-weight:var(--fw-bold);
-    text-transform:uppercase; letter-spacing:var(--tracking-eti);
-    color:var(--text-tenue);
-  }
-  .periodo .rango{ display:flex; align-items:center; gap:4px; margin-left:auto; }
-  .periodo .rango input{ padding:5px 8px; font-size:var(--fs-sm); width:auto; }
-  .periodo .rango .hasta{ font-size:var(--fs-sm); color:var(--text-tenue); }
+  .filtros .grupo{ display:flex; flex-wrap:wrap; gap:6px; }
+  .filtros select{ width:auto; padding:6px 10px; font-size:var(--fs-base); }
+  .filtros .fechas{ display:inline-flex; align-items:center; padding-inline:10px; }
+  .filtros .fechas svg{ width:16px; height:16px; }
+  #resumenFiltro{ margin-left:auto; }
+  .rango{ display:flex; align-items:center; gap:6px; margin:-4px 0 var(--sp-3); }
+  .rango input{ padding:5px 8px; font-size:var(--fs-sm); width:auto; }
+  .rango .hasta{ font-size:var(--fs-sm); color:var(--text-tenue); }
   @media (max-width:560px){
-    .periodo .rango{ margin-left:0; width:100%; }
-    .periodo .rango input{ flex:1; min-width:0; }
+    .rango input{ flex:1; min-width:0; }
   }
 
   /* Aviso de que la búsqueda se llevó puesto el período elegido. Va pegado a la
@@ -151,51 +130,44 @@
     <input id="filtroNum" placeholder="N° serv." style="width:110px;" inputmode="numeric">
   </div>
 
-  <!-- Período. Arranca en el último mes, que es lo que se mira el 99% de las
-       veces, pero "Todo" y el rango a mano siguen estando a un toque: poder
-       buscar de cualquier fecha y de cualquier año es de las cosas que más se
-       usan de esta pantalla. -->
-  <div class="periodo" id="periodo">
-    <span class="eti">Período</span>
-    <button class="pill on" data-p="30">30 días</button>
-    <button class="pill" data-p="90">90 días</button>
-    <button class="pill" data-p="anio">Este año</button>
-    <button class="pill" data-p="todo">Todo</button>
-    <span class="rango">
-      <input type="date" id="desde" aria-label="Desde">
-      <span class="hasta">a</span>
-      <input type="date" id="hasta" aria-label="Hasta">
-    </span>
+  <!-- Período: arranca en el último mes, que es lo que se mira casi siempre;
+       "Todo" y las fechas a mano están a un toque. Negocio y "Con deuda" son
+       dos preguntas distintas y se combinan: la deuda de depilación son las dos. -->
+  <div class="filtros">
+    <div class="grupo" id="periodo" role="group" aria-label="Período">
+      <button class="pill" data-p="7">7 días</button>
+      <button class="pill on" data-p="30">30 días</button>
+      <button class="pill" data-p="todo">Todo</button>
+      <button class="pill fechas" id="btnFechas" title="Elegir fechas" aria-label="Elegir fechas" aria-expanded="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg></button>
+    </div>
+    <select id="filtroDe" aria-label="Negocio">
+      <option value="todo">Todo el local</option>
+      <option value="pelu">Peluquería</option>
+      <option value="depi">Depilación</option>
+    </select>
+    <div class="grupo" id="filtroEstado">
+      <button class="pill" data-f="deuda">Con deuda</button>
+      <button class="pill" data-f="convertidos">Pasados a ticket</button>
+      <button class="pill" data-f="sinconvertir">Sin convertir</button>
+    </div>
+    <span id="resumenFiltro" class="muted"></span>
+    <!-- El orden lo resuelve el servidor: ordenar lo dibujado pondría arriba el
+         más caro de la primera página, no el más caro de todos. -->
+    <select id="orden" aria-label="Orden">
+      <option value="fecha:1">Más nuevos primero</option>
+      <option value="fecha:0">Más viejos primero</option>
+      <option value="numero:1">Por N° de servicio</option>
+      <option value="monto:1">Mayor monto primero</option>
+      <option value="monto:0">Menor monto primero</option>
+    </select>
   </div>
-
+  <div class="rango" id="rango" hidden>
+    <input type="date" id="desde" aria-label="Desde">
+    <span class="hasta">a</span>
+    <input type="date" id="hasta" aria-label="Hasta">
+  </div>
   <div class="nota-periodo" id="notaPeriodo" style="display:none;"></div>
 
-  <!-- Peluquería y depilación son dos negocios, y acá se miran juntos o por
-       separado. Va en su propia fila y no con "Con deuda": son dos preguntas
-       distintas y se combinan —la deuda de depilación necesita las dos—. -->
-  <div class="periodo" id="filtroDe">
-    <span class="eti">Negocio</span>
-    <button class="pill on" data-de="todo">Todo</button>
-    <button class="pill" data-de="pelu">Peluquería</button>
-    <button class="pill" data-de="depi">Depilación</button>
-  </div>
-
-  <div class="pills" id="filtroEstado">
-    <button class="pill on" data-f="todos">Todos</button>
-    <button class="pill" data-f="deuda">Con deuda</button>
-    <button class="pill" data-f="convertidos">Pasados a ticket</button>
-    <button class="pill" data-f="sinconvertir">Sin convertir</button>
-    <span id="resumenFiltro" class="muted" style="margin-left:auto;align-self:center;"></span>
-  </div>
-
-  <!-- Ordenar. Tocar el que ya está activo da vuelta la dirección. -->
-  <div class="orden" id="orden">
-    <span class="eti">Ordenar por</span>
-    <button class="pill on" data-o="fecha">Fecha</button>
-    <button class="pill" data-o="numero">N° de servicio</button>
-    <button class="pill" data-o="cliente">Cliente</button>
-    <button class="pill" data-o="monto">Monto</button>
-  </div>
   <div id="lista"></div>
   <div id="verMas" class="ver-mas"></div>
 </div>
@@ -217,15 +189,13 @@ let deFiltro="todo";        // todo | pelu | depi
    cosa es algo que elegís, y con un toque volvés. */
 let orden = { campo:"fecha", desc:true };
 
-/* Cada campo arranca en la dirección que uno espera: las fechas y los montos
-   de mayor a menor, los nombres de la A a la Z. */
-const ORDEN_INICIAL = { fecha:true, numero:true, monto:true, cliente:false };
 
 /* ---------- Período ----------
    Se pide una ventana, no el historial entero: arranca en el último mes y
    "Todo" está a un toque. Lo que NO se recorta nunca es la búsqueda: al escribir
    un cliente o un número el período salta solo a "Todo", y se ve saltar. */
-let periodo="30";           // 30 | 90 | anio | todo | rango
+let periodo="30";           // 7 | 30 | todo | rango
+let fechasAbiertas=false;   // el rango a mano a la vista, aunque todavía no tenga fechas
 const POR_TRAMO=60;
 
 let CARGADOS=[];            // los comprobantes que están dibujados
@@ -255,7 +225,6 @@ function ventana(){
     if(h) w.hasta = h;
     return w;
   }
-  if(periodo === "anio") return { desde: `${hoy.getFullYear()}-01-01` };
   const dias = parseInt(periodo);
   const atras = new Date(hoy); atras.setDate(atras.getDate() - dias);
   return { desde: isoLocal(atras) };
@@ -266,8 +235,11 @@ function hayBusqueda(){
 }
 
 function pintarPeriodo(){
-  document.querySelectorAll("#periodo .pill").forEach(b =>
+  document.querySelectorAll("#periodo .pill[data-p]").forEach(b =>
     b.classList.toggle("on", b.dataset.p === periodo));
+  $("#btnFechas").classList.toggle("on", periodo === "rango");
+  $("#rango").hidden = !(periodo === "rango" || fechasAbiertas);
+  $("#btnFechas").setAttribute("aria-expanded", String(!$("#rango").hidden));
   const nota = $("#notaPeriodo");
   // El renglón solo aparece cuando la búsqueda movió el período sola: si lo
   // pusiste vos en "Todo", no hay nada que explicar.
@@ -546,16 +518,18 @@ function crearFila(comp){
 /* "Con deuda" solo tiene sentido en tickets; "pasados a ticket" / "sin convertir",
    solo en presupuestos. Se muestran los que aplican a la pestaña abierta. */
 function ajustarFiltros(){
-  const paraTicket = ["todos","deuda"];
-  const paraPresu  = ["todos","convertidos","sinconvertir"];
-  const validos = tipo==="ticket" ? paraTicket : paraPresu;
+  const validos = tipo==="ticket" ? ["deuda"] : ["convertidos","sinconvertir"];
   document.querySelectorAll("#filtroEstado .pill").forEach(b=>{
     b.style.display = validos.includes(b.dataset.f) ? "" : "none";
   });
-  if(!validos.includes(estadoFiltro)){          // el filtro activo ya no aplica
+  if(estadoFiltro !== "todos" && !validos.includes(estadoFiltro)){   // el filtro activo ya no aplica
     estadoFiltro = "todos";
-    document.querySelectorAll("#filtroEstado .pill").forEach(x=>x.classList.toggle("on", x.dataset.f==="todos"));
+    pintarEstado();
   }
+}
+
+function pintarEstado(){
+  document.querySelectorAll("#filtroEstado .pill").forEach(x=>x.classList.toggle("on", x.dataset.f===estadoFiltro));
 }
 
 $("#tabTicket").onclick=()=>{ tipo="ticket"; $("#tabTicket").classList.add("on"); $("#tabPresu").classList.remove("on"); ajustarFiltros(); traer(true); };
@@ -577,9 +551,10 @@ function buscarDespacio(){
 $("#filtroCliente").oninput = buscarDespacio;
 $("#filtroNum").oninput = buscarDespacio;
 
-document.querySelectorAll("#periodo .pill").forEach(b=>{
+document.querySelectorAll("#periodo .pill[data-p]").forEach(b=>{
   b.onclick=()=>{
     periodo = b.dataset.p;
+    fechasAbiertas = false;
     $("#desde").value = ""; $("#hasta").value = "";
     pintarPeriodo(); traer(true);
   };
@@ -593,54 +568,31 @@ document.querySelectorAll("#periodo .pill").forEach(b=>{
   };
 });
 
-document.querySelectorAll("#filtroDe .pill").forEach(b=>{
-  b.onclick=()=>{
-    deFiltro=b.dataset.de;
-    document.querySelectorAll("#filtroDe .pill").forEach(x=>x.classList.toggle("on", x===b));
-    traer(true);
-  };
-});
+/* Mientras haya fechas puestas el rango queda abierto: es el filtro activo. */
+$("#btnFechas").onclick = () => {
+  if(periodo === "rango") return;
+  fechasAbiertas = !fechasAbiertas;
+  pintarPeriodo();
+};
 
+$("#filtroDe").onchange = () => { deFiltro = $("#filtroDe").value; traer(true); };
+
+/* "Con deuda" se prende y se apaga; apagado es "todos". */
 document.querySelectorAll("#filtroEstado .pill").forEach(b=>{
   b.onclick=()=>{
-    estadoFiltro=b.dataset.f;
-    document.querySelectorAll("#filtroEstado .pill").forEach(x=>x.classList.toggle("on", x===b));
+    estadoFiltro = estadoFiltro === b.dataset.f ? "todos" : b.dataset.f;
+    pintarEstado();
     traer(true);
   };
 });
 
-/* Tocar un criterio nuevo lo activa en su dirección natural; tocar el que ya
-   está activo la da vuelta. El orden lo resuelve el servidor: ordenar solo lo
-   que está dibujado dejaría el más caro de la primera página arriba, no el más
-   caro de todos. */
-document.querySelectorAll("#orden .pill").forEach(b=>{
-  b.onclick=()=>{
-    const campo = b.dataset.o;
-    orden = (orden.campo === campo)
-      ? { campo, desc: !orden.desc }
-      : { campo, desc: ORDEN_INICIAL[campo] };
-    pintarOrden();
-    traer(true);
-  };
-});
+$("#orden").onchange = () => {
+  const [campo, desc] = $("#orden").value.split(":");
+  orden = { campo, desc: desc === "1" };
+  traer(true);
+};
 
-/* La flecha va solo en el criterio activo: apunta para abajo cuando ordena de
-   mayor a menor (o de la Z a la A). */
-function pintarOrden(){
-  document.querySelectorAll("#orden .pill").forEach(b=>{
-    const activo = b.dataset.o === orden.campo;
-    b.classList.toggle("on", activo);
-    const flecha = b.querySelector(".flecha");
-    if(flecha) flecha.remove();
-    if(activo){
-      const s = document.createElement("span");
-      s.className = "flecha";
-      s.textContent = orden.desc ? " ↓" : " ↑";
-      b.appendChild(s);
-    }
-    b.title = activo ? "Tocá de nuevo para dar vuelta el orden" : "";
-  });
-}
+function pintarOrden(){ $("#orden").value = `${orden.campo}:${orden.desc ? 1 : 0}`; }
 
 pintarOrden();
 pintarPeriodo();
