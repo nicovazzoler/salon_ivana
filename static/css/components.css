@@ -343,6 +343,11 @@ input.buscador{
   font-weight:var(--fw-bold);
   color:var(--text-titulo);
 }
+/* Media tablet (pantalla dividida): las cuatro entran, con el número más chico */
+@media (max-width:820px){
+  .nums .num{ padding:4px 14px 6px; }
+  .nums .num .val{ font-size:24px; }
+}
 @media (max-width:560px){
   .nums{ grid-template-columns:1fr 1fr; row-gap:18px; }
   .nums .num{ padding:0 0 0 14px; }
