@@ -75,7 +75,8 @@
   .turno-notas{ margin-top:2px; font-size:var(--fs-sm); color:var(--text-tenue); }
   .turno-actions{ display:flex; flex-direction:column; gap:6px; }
   .turno-actions button{ padding:5px 10px; font-size:var(--fs-sm); }
-  .btn-cancelar{ background:transparent; border:1px solid var(--danger); color:var(--danger); }
+  .btn-cancelar{ background:transparent; border:0; color:var(--text-tenue); }
+  .btn-cancelar:hover{ background:var(--danger-bg); color:var(--danger); }
   .sin-turnos{ padding:var(--sp-5); text-align:center; color:var(--text-tenue); }
 
   /* La lista del día: una tabla por franja, lado a lado, así el día entero entra
@@ -339,14 +340,16 @@
   .nota-item{
     display:flex; justify-content:space-between; align-items:flex-start; gap:var(--sp-3);
     padding:var(--sp-2) 0;
-    border-bottom:1px solid var(--border);
+    border-bottom:1px solid var(--border-sutil);
   }
   .nota-item .cuerpo{ flex:1; }
   .nota-item .meta{ margin-top:2px; font-size:var(--fs-xs); color:var(--text-tenue); }
   .nota-item .btn-borrar{
-    background:transparent; border:1px solid var(--danger); color:var(--danger);
-    padding:3px 8px; font-size:var(--fs-sm);
+    display:inline-flex; align-items:center; justify-content:center;
+    min-width:32px; min-height:32px; padding:0;
+    background:transparent; border:0; color:var(--text-tenue);
   }
+  .nota-item .btn-borrar:hover{ background:var(--danger-bg); color:var(--danger); }
 
   /* --- notas de la semana --- */
   .notas-sem{ margin-top:var(--sp-4); }
