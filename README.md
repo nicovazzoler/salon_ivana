@@ -218,9 +218,9 @@ va a dar de más por ese monto.
 
 Para acceder desde otro dispositivo en la misma red (ej: una tablet), levantar con `--host 0.0.0.0` y entrar a `http://[IP-de-la-PC]:8000`.
 
-### Dos utilidades para desarrollar
+### Tres utilidades para desarrollar
 
-Las dos se niegan a trabajar contra cualquier cosa que no sea `127.0.0.1`: escriben en la base y una de ellas la recrea, así que el día que alguien las corra apuntando sin querer a producción, el que avisa del problema llega tarde.
+Las tres se niegan a trabajar contra cualquier cosa que no sea `127.0.0.1`: escriben en la base y dos de ellas la recrean, así que el día que alguien las corra apuntando sin querer a producción, el que avisa del problema llega tarde.
 
 ```bash
 # Abrir una copia de producción en la máquina de uno.
@@ -231,7 +231,35 @@ python levantar_local.py --a-json copia.dump  # pasa el .dump a JSON, que es lo 
 # Cargar un ciclo entero de trabajo para mirar la pantalla de Sueldos con números.
 python simular_sueldos.py                     # factura por la API, como un cobro de verdad
 python simular_sueldos.py --borrar            # deshace lo que cargó
+
+# Armar una base de DEMO, con cinco semanas de movimiento, para mostrar la app.
+python sembrar_demo.py
+DATABASE_URL=sqlite:///pelu_demo.db python -m uvicorn main:app --port 8000
 ```
+
+#### La base de demo
+
+`sembrar_demo.py` deja en `pelu_demo.db` un salón andando: cinco semanas de
+ventas con sus formas de pago, cuentas corrientes a medio saldar, cuatro
+empleadas con sus horarios, comisiones y sueldos cerrados, la agenda de las dos
+semanas que vienen, egresos, stock con faltantes y dos jornadas de depilación con
+su reparto. Los datos son **inventados**: ninguna clienta, teléfono ni importe
+sale del local.
+
+Factura por la API en el mismo proceso, sin levantar un servidor, así que los
+totales, las comisiones, el stock y el reparto los calcula el mismo código que un
+cobro de verdad. Con `--semilla` repite exactamente los mismos números, que es lo
+que hace falta para volver a sacar una captura igual.
+
+No toca la base de todos los días: escribe en la que le diga `--base` o
+`DATABASE_URL`, se niega a trabajar fuera de SQLite o de un PostgreSQL local, y
+antes de rehacer una base pide ver la marca que ella misma deja en `config`.
+
+Entra con `dueno` / `ivanademo26` y `empleado` / `mostrador26`. No son las de
+fábrica a propósito: con las de `seed_datos.py` la app pone en todas las
+pantallas la barra de "tu contraseña sigue siendo la que vino de fábrica", que
+está bien puesta y arruina cualquier captura. Los códigos de sueldo de las
+empleadas los imprime al terminar.
 
 `levantar_local.py` deja un usuario `local` / `local1234`: el backup trae los usuarios de producción y sus contraseñas no las sabe nadie, porque lo que se guarda es el hash.
 
