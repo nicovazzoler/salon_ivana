@@ -77,6 +77,21 @@ viaja: el `.dump` sin `pg_restore` no se abre.
 `cargar_depilacion.py depilacion_precios.txt` carga la lista de precios de
 depilación sin pasar por la app. Ver más abajo, en las reglas.
 
+`sembrar_demo.py` arma una base de DEMO aparte —`pelu_demo.db`— con cinco semanas
+de ventas, agenda, sueldos, stock y depilación, todo inventado, para mostrar la
+app con datos. Un comando y queda lista:
+
+```bash
+python3 sembrar_demo.py
+DATABASE_URL=sqlite:///pelu_demo.db python3 -m uvicorn main:app --host 127.0.0.1 --port 8000
+```
+
+Entra con `dueno`/`ivanademo26` y `empleado`/`mostrador26`: las de fábrica dejan
+la barra roja de "tu contraseña sigue siendo la que vino de fábrica" arriba de
+todas las pantallas. Se niega a escribir fuera de una base local y a rehacer una
+que no tenga su marca en `config`, así que no puede pisar `pelu.db` ni una copia
+de producción.
+
 `simular_sueldos.py` carga un ciclo entero de trabajo para tres empleadas y
 después se juega con el valor hora y la comisión desde la app. Factura por la
 API, así los precios y las comisiones son los de un cobro de verdad; la duración
