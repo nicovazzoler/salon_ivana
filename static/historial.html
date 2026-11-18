@@ -157,9 +157,8 @@
        usan de esta pantalla. -->
   <div class="periodo" id="periodo">
     <span class="eti">Período</span>
+    <button class="pill" data-p="7">7 días</button>
     <button class="pill on" data-p="30">30 días</button>
-    <button class="pill" data-p="90">90 días</button>
-    <button class="pill" data-p="anio">Este año</button>
     <button class="pill" data-p="todo">Todo</button>
     <span class="rango">
       <input type="date" id="desde" aria-label="Desde">
@@ -193,7 +192,6 @@
     <span class="eti">Ordenar por</span>
     <button class="pill on" data-o="fecha">Fecha</button>
     <button class="pill" data-o="numero">N° de servicio</button>
-    <button class="pill" data-o="cliente">Cliente</button>
     <button class="pill" data-o="monto">Monto</button>
   </div>
   <div id="lista"></div>
@@ -217,15 +215,14 @@ let deFiltro="todo";        // todo | pelu | depi
    cosa es algo que elegís, y con un toque volvés. */
 let orden = { campo:"fecha", desc:true };
 
-/* Cada campo arranca en la dirección que uno espera: las fechas y los montos
-   de mayor a menor, los nombres de la A a la Z. */
-const ORDEN_INICIAL = { fecha:true, numero:true, monto:true, cliente:false };
+/* Cada campo arranca de mayor a menor: lo más nuevo y lo más caro arriba. */
+const ORDEN_INICIAL = { fecha:true, numero:true, monto:true };
 
 /* ---------- Período ----------
    Se pide una ventana, no el historial entero: arranca en el último mes y
    "Todo" está a un toque. Lo que NO se recorta nunca es la búsqueda: al escribir
    un cliente o un número el período salta solo a "Todo", y se ve saltar. */
-let periodo="30";           // 30 | 90 | anio | todo | rango
+let periodo="30";           // 7 | 30 | todo | rango
 const POR_TRAMO=60;
 
 let CARGADOS=[];            // los comprobantes que están dibujados
@@ -255,7 +252,6 @@ function ventana(){
     if(h) w.hasta = h;
     return w;
   }
-  if(periodo === "anio") return { desde: `${hoy.getFullYear()}-01-01` };
   const dias = parseInt(periodo);
   const atras = new Date(hoy); atras.setDate(atras.getDate() - dias);
   return { desde: isoLocal(atras) };
