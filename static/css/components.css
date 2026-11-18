@@ -30,19 +30,22 @@
 }
 .b-tinta:hover{ background:var(--tinta-700); color:var(--papel-100); }
 
-.b-out{                              /* botón "fantasma": solo borde */
-  background:transparent;
-  border:1px solid var(--papel-600);
+.b-out{                              /* secundario: relleno apenas, sin borde */
+  background:var(--bg-sutil);
+  border:1px solid transparent;
   color:var(--text);
 }
-.b-out:hover{ background:var(--bg-sutil); border-color:var(--tinta-400); color:var(--text-titulo); }
+.b-out:hover{ background:var(--bg-sutil-hover); color:var(--text-titulo); }
+a.b-out{ display:inline-flex; align-items:center; gap:6px; padding:8px 14px; border-radius:9px; text-decoration:none; }
 
-.b-del{                              /* acción destructiva */
+/* Destructivo: texto callado que se pone rojo recién al tocarlo. Va en cada fila
+   y en rojo sería lo que más se ve de la lista. Igual pide motivo antes. */
+.b-del{
   background:transparent;
-  border:1px solid var(--bronce-a30);
-  color:var(--danger);
+  border:1px solid transparent;
+  color:var(--text-tenue);
 }
-.b-del:hover{ background:var(--danger-bg); border-color:var(--danger); color:var(--danger); }
+.b-del:hover, .b-del:focus-visible{ background:var(--danger-bg); color:var(--danger); }
 .confirmar{                          /* botón grande de cerrar venta */
   width:100%;
   padding:var(--sp-3);
@@ -55,8 +58,8 @@
     display:inline-flex; align-items:center; justify-content:center; gap:5px;
     min-height:34px;
     padding:5px 12px;
-    background:transparent; color:var(--text-marca);
-    border:1px solid var(--bronce-a30); border-radius:var(--r-md);
+    background:var(--bg-sutil); color:var(--text-marca);
+    border:0; border-radius:9px;
     font-size:var(--fs-sm); font-weight:var(--fw-bold);
     text-decoration:none;
     transition:background .15s ease, border-color .15s ease;
@@ -66,30 +69,41 @@
     border-color:var(--bronce-500);
   }
 
+/* ----- Ícono de línea (icono() en auth.js) ----- */
+.ico{ width:18px; height:18px; flex:none; vertical-align:-4px; }
+
+/* Botón de solo ícono: sin caja, el blanco táctil queda igual */
+.btn-icono, .editar-lista{
+  display:inline-flex; align-items:center; justify-content:center;
+}
+
+/* Buscador: la lupa va dibujada adentro del campo */
+input.buscador{
+  padding-left:40px;
+  background:var(--bg-input) var(--lupa) no-repeat 13px 50%;
+}
+
 /* ----- Pills: filtros de categoría (cápsula) ----- */
 .pill{
-  padding:6px 14px;
-  border:1px solid var(--border-sutil);
+  padding:7px 14px;
+  border:0;
   border-radius:var(--r-full);
   background:var(--bg-sutil);
   color:var(--text-suave);
   font-family:var(--font-ui);
   font-size:var(--fs-base);
-  font-weight:var(--fw-medium);
-  cursor:pointer;
-  transition:background .15s, border-color .15s, color .15s;
-}
-.pill:hover{ border-color:var(--papel-600); color:var(--text-titulo); }
-/* Activo = relleno de bronce con tinta oscura encima. El apagado tiene apenas
-   un tinte, así que la diferencia entre puesto y no puesto se ve de lejos. */
-.pill.on{
-  background:var(--bronce-400);
-  color:var(--text-sobre-oro);
-  border-color:var(--bronce-500);
   font-weight:var(--fw-bold);
+  cursor:pointer;
+  transition:background .15s, color .15s;
 }
-
-/* Contenedor de pills */
+.pill:hover{ background:var(--bg-sutil-hover); color:var(--text-titulo); }
+/* Lo elegido es un tinte con filete, no otro relleno dorado: el relleno queda
+   para la acción principal de la pantalla. */
+.pill.on{
+  background:var(--bg-elegido);
+  color:var(--text-marca);
+  box-shadow:inset 0 0 0 1px var(--bronce-a30);
+}
 .pills{
   display:flex;
   flex-wrap:wrap;
@@ -97,35 +111,37 @@
   margin-bottom:var(--sp-4);
 }
 
-/* ----- Segmentado: Ticket / Presupuesto, Productos / Categorías ----- */
+/* ----- Pestañas: Ticket / Presupuesto, Día / Semana / Mes -----
+   Con subrayado, igual que el menú de arriba */
 .seg{
   display:flex;
-  gap:var(--sp-2);
-  margin-bottom:var(--sp-4);
+  gap:28px;
+  margin-bottom:var(--sp-5);
+  border-bottom:1px solid var(--border-sutil);
 }
 .seg button{
-  flex:1;
-  padding:var(--sp-3);
-  background:transparent;            /* el inactivo se corre al fondo, no es un bloque */
-  border:1px solid var(--border-sutil);
-  color:var(--text-suave);
+  flex:0 0 auto;
+  padding:10px 2px;
+  margin-bottom:-1px;
+  background:transparent;
+  border:0;
+  border-bottom:2px solid transparent;
+  border-radius:0;
+  color:var(--text-tenue);
   font-family:var(--font-ui);
-  text-transform:uppercase;
-  font-size:var(--fs-base);
-  letter-spacing:.08em;
+  font-size:var(--fs-lg);
 }
+.seg button:hover{ background:transparent; color:var(--text-titulo); }
 .seg button.on{
-  background:var(--bronce-400);
-  color:var(--text-sobre-oro);
-  border-color:var(--bronce-500);
-  font-weight:var(--fw-bold);
+  border-bottom-color:var(--bronce-400);
+  color:var(--text-titulo);
 }
 
 /* ----- Tag: etiqueta informativa ----- */
 .tag{
   display:inline-block;
-  padding:2px var(--sp-2);
-  border-radius:var(--r-sm);
+  padding:1px var(--sp-2);
+  border-radius:var(--r-full);
   background:var(--acento-bg);
   color:var(--text-marca);
   font-size:var(--fs-xs);
@@ -136,15 +152,15 @@
 
 /* ----- Badge: estado de un comprobante ----- */
 .badge{
-  padding:3px var(--sp-2);
-  border-radius:var(--r-sm);
+  display:inline-block;
+  padding:3px 10px;
+  border-radius:var(--r-full);
   font-family:var(--font-ui);
   font-size:var(--fs-xs);
   font-weight:var(--fw-bold);
   white-space:nowrap;
-  text-transform:uppercase;
-  letter-spacing:.08em;
 }
+.badge::first-letter{ text-transform:uppercase; }
 .badge.pendiente   { background:var(--est-pend-bg);  color:var(--est-pend-fg);  }
 .badge.parcial     { background:var(--est-parc-bg);  color:var(--est-parc-fg);  }
 .badge.pagado      { background:var(--est-pago-bg);  color:var(--est-pago-fg);  }
@@ -190,24 +206,22 @@
   text-align:right;
   font-variant-numeric:tabular-nums;   /* los números no bailan al actualizarse */
 }
-/* Los montos van en la serif: es lo que más se mira en toda la app */
-.comp-total, .fila-total, .tot-final, .num .val, .kpi .val, .saldo-box .val{
+/* Los montos grandes van en la serif; los de una lista, en la de la interfaz,
+   que se compara mejor en columna */
+.fila-total, .tot-final, .num .val, .kpi .val, .saldo-box .val{
   font-family:var(--font-display);
   font-variant-numeric:tabular-nums;
 }
 .neto-pos{ color:var(--acento); font-weight:var(--fw-bold); }
 .neto-neg{ color:var(--danger); font-weight:var(--fw-bold); }
 
-/* ----- Comprobante: tarjeta de ticket / presupuesto -----
+/* ----- Comprobante: una fila de la lista -----
    Esqueleto para historial.html y cuenta.html */
 .comp{
-  padding:16px;
-  margin-bottom:10px;
-  border:1px solid var(--border-sutil);
-  border-radius:var(--r-lg);
-  background:var(--bg-card);
-  box-shadow:var(--sombra-card);
+  padding:14px 12px;
+  border-bottom:1px solid var(--border-sutil);
 }
+.comp:hover{ background:var(--bg-hover); }
 .comp-head{
   display:flex;
   justify-content:space-between;
@@ -240,8 +254,10 @@
 }
 .comp-acciones .b-del{ min-height:34px; display:inline-flex; align-items:center; }
 
-/* Botón de solo ícono (imprimir): sin el padding ancho de un botón con texto */
-.btn-icono{ padding:5px 9px; font-size:var(--fs-lg); line-height:1.2; }
+/* Botón de solo ícono (imprimir): sin caja y en tinta tenue */
+.btn-icono{ min-width:36px; min-height:36px; padding:0; }
+.btnAbonar.btn-icono{ background:transparent; color:var(--text-tenue); }
+.btnAbonar.btn-icono:hover{ background:var(--bg-sutil); color:var(--text-titulo); }
 
 /* Cifras del comprobante en columnas iguales: los números de cada tarjeta
    caen en la misma vertical y se pueden comparar de un vistazo. */
@@ -257,8 +273,6 @@
   display:block;
   font-size:var(--fs-xs);
   color:var(--text-tenue);
-  text-transform:uppercase;
-  letter-spacing:.04em;
 }
 .comp-cifras .val{
   font-size:var(--fs-lg);
@@ -274,26 +288,26 @@
   .comp-acciones{ width:100%; justify-content:flex-end; }
 }
 
-/* Detalle desplegable (arranca oculto, el JS lo abre) */
+/* Detalle desplegable (arranca oculto, el JS lo abre). Es lo único de la lista
+   que se despega: se apoya sobre la superficie */
 .detalle-box{
-    margin-top:10px;
-    padding:14px;
-    border:1px solid var(--border-sutil);
-    border-left:2px solid var(--bronce-500);
-    border-radius:var(--r-md);
-    background:var(--papel-200);
+    margin-top:14px;
+    padding:16px 18px;
+    border-radius:12px;
+    background:var(--bg-elevado);
+    box-shadow:var(--sombra-elevada);
   }
 
 /* ----- Botón "Ver detalle" ----- */
 .btnDetalle{
-    border:1px solid var(--border);
+    border:0;
     border-radius:8px;
-    background: var(--oro-a12);
+    background:var(--bg-sutil);
     color:var(--text);
     padding:6px 12px;
     font-size:var(--fs-sm);
   }
-  .btnDetalle:hover{ border-color:var(--acento); color:var(--acento); }
+  .btnDetalle:hover{ background:var(--bg-sutil-hover); color:var(--text-titulo); }
 
 /* ----- Campo: etiqueta arriba, control abajo ----- */
 .campo{ display:flex; flex-direction:column; gap:var(--sp-1); }
@@ -309,24 +323,31 @@
 .nums{
   display:grid;
   grid-template-columns:repeat(auto-fit, minmax(110px, 1fr));
-  gap:var(--sp-3);
-  margin-bottom:14px;
+  gap:0;
+  margin:var(--sp-5) 0 var(--sp-6);
 }
 /* Acotada a su grilla a propósito: "num" se usa además para la columna de
    números de una tabla y para el número de un comprobante, y suelta les pintaba
    a los dos el fondo y las esquinas de una tarjeta. */
 .nums .num{
-  padding:14px;
-  border-radius:12px;
-  background:var(--blanco-a04);
-  text-align:center;
+  padding:4px 20px 6px;
+  border-left:1px solid var(--border-sutil);
 }
-.num .lbl{ font-size:var(--fs-sm); color:var(--text-tenue); }
-.num .val{
-  margin-top:var(--sp-1);
-  font-size:22px;
-  font-weight:var(--fw-black);
+.nums .num:first-child{ padding-left:0; border-left:0; }
+.nums .num .lbl{ font-size:13px; font-weight:var(--fw-bold); color:var(--text-tenue); }
+.nums .num .lbl + .val + .lbl{ margin-top:2px; font-size:var(--fs-xs); font-weight:var(--fw-normal); }
+.nums .num .val{
+  margin-top:4px;
+  text-align:left;
+  font-size:30px;
+  font-weight:var(--fw-bold);
   color:var(--text-titulo);
+}
+@media (max-width:560px){
+  .nums{ grid-template-columns:1fr 1fr; row-gap:18px; }
+  .nums .num{ padding:0 0 0 14px; }
+  .nums .num:nth-child(odd){ padding-left:0; border-left:0; }
+  .nums .num .val{ font-size:24px; }
 }
 .num.ing .val{ color:var(--acento); }
 .num.egr .val{ color:var(--danger); }
@@ -334,12 +355,13 @@
 /* ----- Desglose en columnas (caja, reportes) ----- */
 .desg{
   display:flex; flex-wrap:wrap;
-  gap:var(--sp-5);
+  gap:var(--sp-6);
   font-size:var(--fs-md);
+  line-height:1.65;
   color:var(--text-suave);
 }
 .desg > div{ flex:1; min-width:200px; }
-.desg b{ color:var(--text-titulo); }
+.desg b{ display:block; margin-bottom:4px; font-size:13px; color:var(--text-tenue); }
 
 /* ----- Filas del detalle de un comprobante (historial + cuenta) ----- */
 .fila-total{
@@ -515,14 +537,13 @@ body.con-panel{ overflow:hidden; }
    días, y no tiene que competir con el campo que está al lado. */
 .editar-lista{
   flex:0 0 auto;
-  width:34px; height:34px; padding:0;
-  font-size:15px; line-height:1;
-  color:var(--text-marca);
-  background:var(--bg-sutil);
-  border:1px solid var(--border-sutil);
-  border-radius:var(--r-md);
+  width:36px; height:36px; padding:0;
+  color:var(--text-tenue);
+  background:transparent;
+  border:0;
+  border-radius:9px;
 }
-.editar-lista:hover{ background:var(--bg-sutil-hover); }
+.editar-lista:hover{ background:var(--bg-sutil); color:var(--text-titulo); }
 
 @media (max-width:560px){
   .panel-lista-fondo{ padding:0; align-items:flex-end; }
@@ -533,21 +554,20 @@ body.con-panel{ overflow:hidden; }
    Estaban duplicadas en reportes.html y en inventario.html, y las dos copias ya
    habían divergido (150px contra 140px, y un margen de más en una). Vive acá una
    sola vez. */
+/* Sin caja: el rótulo chico, el número grande, y un filete entre uno y otro */
 .kpis{
   display:grid;
   grid-template-columns:repeat(auto-fit, minmax(150px, 1fr));
-  gap:var(--sp-3);
+  gap:0;
 }
 .kpi{
-  padding:var(--sp-3) var(--sp-4);
-  border:1px solid var(--border-sutil);
-  border-radius:var(--r-lg);
-  background:var(--bg-sutil);
+  padding:2px 18px 4px;
+  border-left:1px solid var(--border-sutil);
 }
+.kpi:first-child{ padding-left:0; border-left:0; }
 .kpi .lbl{
   display:block;
-  font-size:var(--fs-xs); color:var(--text-tenue);
-  text-transform:uppercase; letter-spacing:.04em;
+  font-size:13px; font-weight:var(--fw-bold); color:var(--text-tenue);
 }
 .kpi .val{
   display:block; margin-top:2px;
@@ -570,12 +590,13 @@ body.con-panel{ overflow:hidden; }
 .card-head.con-datos .kpis{
   flex:0 1 auto;
   display:flex; flex-wrap:wrap;
-  gap:var(--sp-2);
+  gap:var(--sp-2) 0;
   margin:0;
 }
 /* Al lado de un título tienen que pesar menos que él: son el dato de apoyo, no
    el encabezado de la tarjeta. */
-.card-head.con-datos .kpi{ padding:var(--sp-2) var(--sp-3); }
+.card-head.con-datos .kpi{ padding:2px 18px; }
+.card-head.con-datos .kpi:first-child{ padding-left:0; }
 .card-head.con-datos .kpi .val{ font-size:var(--fs-xl); margin-top:0; }
 
 @media (max-width:640px){
@@ -591,10 +612,7 @@ body.con-panel{ overflow:hidden; }
   margin-top:var(--sp-3); padding-top:var(--sp-3);
   border-top:1px solid var(--border-sutil);
 }
-.quien-atendio .lbl{
-  font-size:var(--fs-xs); color:var(--text-tenue);
-  text-transform:uppercase; letter-spacing:.04em;
-}
+.quien-atendio .lbl{ font-size:13px; font-weight:var(--fw-bold); color:var(--text-tenue); }
 .quien-atendio .quien{ font-weight:var(--fw-bold); }
 .quien-atendio select{ width:auto; min-width:140px; }
 .quien-atendio button{ padding:4px 10px; font-size:var(--fs-sm); }
@@ -617,53 +635,51 @@ body.con-panel{ overflow:hidden; }
 .catalogo-items{ min-width:0; }
 
 .cat-rail{
-  display:flex; flex-direction:column; gap:4px;
+  display:flex; flex-direction:column; gap:2px;
   max-height:560px; overflow-y:auto;
-  padding-right:4px;
+  padding:0 4px 28px 0;
+  /* El fundido de abajo avisa que la lista sigue */
+  -webkit-mask-image:linear-gradient(to bottom, #000 88%, transparent);
+          mask-image:linear-gradient(to bottom, #000 88%, transparent);
 }
 .cat-pill{
   display:flex; align-items:center; gap:6px;
-  min-height:44px;                    /* objetivo táctil cómodo */
+  min-height:40px;                    /* objetivo táctil cómodo */
   padding:8px 12px;
   background:transparent;
-  border:1px solid transparent;
-  border-radius:var(--r-md);
-  font-size:var(--fs-base);
+  border:0;
+  border-radius:9px;
+  font-size:var(--fs-md);
   font-weight:var(--fw-medium);
   color:var(--text-suave);
   text-align:left;
   cursor:pointer;
-  /* Siempre en mayúscula. Además empareja los datos: casi todas las categorías
-     están cargadas en mayúscula pero alguna quedó como "Productos". */
-  text-transform:uppercase;
-  letter-spacing:.03em;               /* la versalita necesita aire para respirar */
 }
-.cat-pill:hover{ background:var(--bg-sutil); color:var(--text); }
+/* Casi todas las categorías están cargadas en mayúscula y alguna no: se
+   muestran todas igual, con la inicial en mayúscula. */
+.cat-pill .nom{ display:inline-block; text-transform:lowercase; }
+.cat-pill .nom::first-letter{ text-transform:uppercase; }
+.cat-pill:hover{ background:var(--bg-tile); color:var(--text-titulo); }
 .cat-pill.on{
-  background:var(--bronce-400);
-  border-color:var(--bronce-500);
-  color:var(--text-sobre-oro);
-  font-weight:var(--fw-bold);
+  background:var(--bg-elegido);
+  color:var(--text-marca);
+  font-weight:var(--fw-black);
 }
-.cat-pill.on .cuenta{ color:var(--text-sobre-oro); opacity:.65; }
+.cat-pill.on .cuenta{ color:var(--text-marca); opacity:.7; }
 .cat-pill .cuenta{
   margin-left:auto;
   font-size:var(--fs-xs); font-weight:var(--fw-normal);
   color:var(--text-tenue);
 }
-/* "A comisión" es un atajo y no una categoría: se despega del resto con el
-   filete y una línea abajo, para que no se lea como una categoría más que
-   alguien cargó y después no encuentra en Admin. */
+/* "A comisión" es un atajo y no una categoría: se separa con un filete abajo,
+   para que no se lea como una categoría más que después no está en Admin. */
 .cat-pill.especial{
-  border-color:var(--acento-border);
-  background:var(--acento-bg);
+  border-radius:0;
+  border-bottom:1px solid var(--border-sutil);
   color:var(--text-marca);
-  margin-bottom:var(--sp-2);
+  margin-bottom:6px;
 }
-.cat-pill.especial:hover{ background:var(--bronce-a15); color:var(--text-marca); }
-@media (max-width:900px){
-  .cat-pill.especial{ margin-bottom:0; margin-right:var(--sp-2); }
-}
+.cat-pill.especial.on{ border-radius:9px; }
 
 /* --- grilla del catálogo --- */
 .grid-items{
@@ -673,25 +689,25 @@ body.con-panel{ overflow:hidden; }
 }
 .btn-item{
   display:flex; flex-direction:column; align-items:stretch; gap:6px;
-  min-height:72px;                    /* que el dedo no falle */
-  padding:11px 13px;
-  background:var(--blanco-a04);
-  border:1px solid var(--border-sutil);
-  border-radius:var(--r-lg);
+  min-height:84px;                    /* que el dedo no falle */
+  padding:13px 14px 12px;
+  background:var(--bg-tile);
+  border:0;
+  border-radius:12px;
   color:var(--text);
   text-align:left;
   cursor:pointer;
 }
-.btn-item:hover{ background:var(--bg-sutil); border-color:var(--border); }
-.btn-item:active{ border-color:var(--acento); background:var(--acento-bg); }
+.btn-item:hover{ background:var(--bg-tile-hover); }
+.btn-item:active{ background:var(--bg-elegido); }
 .btn-item .n{
   font-size:var(--fs-md);
   font-weight:var(--fw-medium);
   line-height:1.3;
   overflow-wrap:anywhere;             /* corta nombres largos en vez de desbordar */
   color:var(--text-titulo);           /* tinta firme: el nombre es lo que se busca */
-  text-transform:uppercase;
-  letter-spacing:.02em;
+  font-size:var(--fs-lg);
+  font-weight:var(--fw-bold);
 }
 /* Precios: el de lista lleva el peso, el otro queda de apoyo.
    Antes los dos iban en dorado y negrita y competían entre sí. */
@@ -700,7 +716,7 @@ body.con-panel{ overflow:hidden; }
   margin-top:auto;                    /* pegado abajo: las tarjetas quedan parejas */
 }
 /* El precio en bronce: al facturar rápido el ojo va derecho al número. */
-.btn-item .p-tr{ font-size:var(--fs-lg); font-weight:var(--fw-bold); color:var(--text-marca); }
+.btn-item .p-tr{ font-size:16px; font-weight:var(--fw-bold); color:var(--text-marca); }
 .btn-item .p-ef{ font-size:var(--fs-xs); color:var(--text-tenue); }
 .btn-item .cat-mini{ font-size:var(--fs-xs); color:var(--text-tenue); }
 
@@ -709,17 +725,22 @@ body.con-panel{ overflow:hidden; }
 @media (max-width:900px){
   .catalogo-cuerpo{ grid-template-columns:minmax(0,1fr); }
   .cat-rail{
-    flex-direction:row; flex-wrap:nowrap;
+    flex-direction:row; flex-wrap:nowrap; gap:6px;
     max-height:none; overflow-x:auto; overflow-y:hidden;
     padding-bottom:4px;
     scrollbar-width:thin;
+    -webkit-mask-image:linear-gradient(to right, #000 85%, transparent);
+            mask-image:linear-gradient(to right, #000 85%, transparent);
   }
   .cat-pill{
     flex:0 0 auto;
+    min-height:38px;
     border-radius:var(--r-full);
-    border-color:var(--border-sutil);
+    background:var(--bg-sutil);
     white-space:nowrap;
   }
+  .cat-pill.on, .cat-pill.especial{ box-shadow:inset 0 0 0 1px var(--bronce-a30); }
+  .cat-pill.especial{ border:0; border-radius:var(--r-full); margin:0; background:transparent; }
   .cat-pill .cuenta{ margin-left:4px; }
 }
 
@@ -732,13 +753,11 @@ body.con-panel{ overflow:hidden; }
    todas las que no tengan el suyo. */
 .generales{
   display:flex; flex-wrap:wrap; align-items:flex-end; gap:var(--sp-2) var(--sp-4);
-  background:var(--bg-header); border:1px solid var(--border-sutil);
-  border-radius:var(--r-md); padding:var(--sp-3) var(--sp-4);
+  background:var(--bg-tile); border-radius:12px; padding:14px 18px;
   margin-bottom:var(--sp-3);
 }
 .generales .campo{ display:flex; flex-direction:column; gap:3px; }
-.generales label{ margin:0; font-size:var(--fs-xs); letter-spacing:var(--tracking-eti);
-                  text-transform:uppercase; color:var(--acento); font-weight:var(--fw-bold); }
+.generales label{ margin:0; font-size:13px; color:var(--text-tenue); font-weight:var(--fw-bold); }
 .generales input{ width:6.5rem; font-variant-numeric:tabular-nums; }
 .generales .con-signo{ display:inline-flex; align-items:center; gap:4px; }
 .generales .con-signo i{ font-style:normal; color:var(--text-tenue); }
@@ -748,8 +767,7 @@ body.con-panel{ overflow:hidden; }
    escritos y no en casilleros: el bloque es una ficha, y editar se pide. */
 .generales{ flex-direction:column; align-items:stretch; gap:var(--sp-3); }
 .gral-cab{ display:flex; align-items:center; gap:var(--sp-3); }
-.gral-cab h3{ margin:0; font-size:var(--fs-sm); text-transform:uppercase;
-              letter-spacing:var(--tracking-eti); color:var(--acento); }
+.gral-cab h3{ margin:0; font-family:var(--font-ui); font-size:var(--fs-md); color:var(--text-suave); }
 .gral-cab .gral-acc, .gral-cab > button:last-child{ margin-left:auto; }
 .gral-cab .gral-acc{ display:flex; gap:var(--sp-2); }
 .gral-valores{ display:flex; flex-wrap:wrap; align-items:flex-end; gap:var(--sp-3) var(--sp-4); }
@@ -760,8 +778,8 @@ body.con-panel{ overflow:hidden; }
 /* El número escrito ocupa lo mismo que su casillero: al entrar y salir del modo
    edición, el bloque no salta. */
 .gral-valores .val{ display:flex; align-items:center; min-height:2.35rem;
-                    font-family:var(--font-display); font-size:var(--fs-lg);
-                    font-weight:var(--fw-black); font-variant-numeric:tabular-nums; }
+                    font-family:var(--font-display); font-size:22px;
+                    font-weight:var(--fw-bold); font-variant-numeric:tabular-nums; }
 .gral-valores input{ width:9rem; }
 .gral-valores select{ width:auto; min-width:10rem; }
 .generales .nota{ flex:none; margin:0; }

@@ -24,7 +24,15 @@
     margin-bottom:var(--sp-3);
   }
   .filtros .grupo{ display:flex; flex-wrap:wrap; gap:6px; }
-  .filtros select{ width:auto; padding:6px 10px; font-size:var(--fs-base); }
+  /* Los desplegables de la fila se ven como un chip más */
+  .filtros select{
+    width:auto; padding:7px 30px 7px 14px;
+    border:0; border-radius:var(--r-full);
+    background-color:var(--bg-sutil); color:var(--text-suave);
+    font-size:var(--fs-base); font-weight:var(--fw-bold);
+  }
+  .filtros select:hover{ background-color:var(--bg-sutil-hover); color:var(--text-titulo); }
+  .filtros .fechas{ min-height:34px; color:var(--text-suave); }
   .filtros .fechas{ display:inline-flex; align-items:center; padding-inline:10px; }
   .filtros .fechas svg{ width:16px; height:16px; }
   #resumenFiltro{ margin-left:auto; }
@@ -47,15 +55,18 @@
   .ver-mas button{ padding:10px 22px; }
   .ver-mas .muted{ font-weight:var(--fw-normal); }
 
-  /* Tarjeta de comprobante */
-  .comp{ background:var(--bg-card); }
+  /* La lista de comprobantes: filas, la primera con su filete arriba */
+  #lista{ margin-top:var(--sp-5); border-top:1px solid var(--border-sutil); }
   .comp-head{
     cursor:pointer;
   }
-  .comp-head .sub{ margin-top:3px; font-size:var(--fs-lg); color:var(--text); }
+  .comp-head .sub{ margin-top:3px; font-size:var(--fs-md); color:var(--text-tenue); }
+  /* El nombre es lo que se busca con la vista: va en tinta firme */
+  .comp-head .sub .cli{ color:var(--text-titulo); font-weight:var(--fw-bold); }
+  .comp:has(.detalle-box[style*="block"]){ background:var(--bg-hover); }
   /* Servicio cargado un día después del que se atendió: se marca en bronce y
      más chico, para que se lea sin competir con la fecha del servicio. */
-  .comp-head .anotado{ color:var(--text-marca); font-size:var(--fs-sm); }
+  .comp-head .anotado{ color:var(--text-marca); font-size:var(--fs-xs); }
 
   /* .comp-datos / .comp-acciones viven en components.css (los comparte con cuenta.html) */
 
@@ -63,7 +74,7 @@
      acciones cambia de ancho, el badge de estado queda en otra columna en cada
      renglón. Reservando el ancho, la columna de estado es siempre la misma. */
   @media (min-width:561px){
-    .comp-acciones{ min-width:236px; justify-content:flex-end; }
+    .comp-acciones{ min-width:236px; justify-content:flex-end; gap:4px; }
   }
   .comp-datos .badge{ min-width:76px; text-align:center; }
 
@@ -77,12 +88,12 @@
   }
   
   .comp-total{
-    margin-top:4px;
-    font-size:15px;
+    margin-top:3px;
+    font-size:17px;
     font-weight:700;
   }
-  .comp-total .fp{        
-    font-size:13px;
+  .comp-total .fp{
+    font-size:var(--fs-md);
     font-weight:400;
     color:var(--text-tenue);
   }
@@ -112,7 +123,7 @@
 </style>
 </head><body>
 <header>
-  <span>📜 Historial</span>
+  <span>Historial</span>
   <nav class="menu">
     <a href="/facturar">Facturar</a>
     <a href="/clientes">Clientes</a>
@@ -391,7 +402,7 @@ function crearFila(comp){
       <div class="comp-head">
         <div class="comp-datos">
           <div>
-            <div class="sub">${fecha} · <span class="num">${numComp(comp.tipo,comp.numero)}</span> · ${titulo(quien)}${anotado}${
+            <div class="sub">${fecha} · <span class="num">${numComp(comp.tipo,comp.numero)}</span> · <span class="cli">${titulo(quien)}</span>${anotado}${
               /* Filtrando por depilación la dice el filtro: en las 60 filas es ruido. */
               comp.depilacion && deFiltro !== "depi" ? ` <span class="tag">depilación</span>` : ""}</div>
             <div class="comp-total">${fmt(monto)} <span class="fp">· ${formaTxt}</span></div>
@@ -400,8 +411,8 @@ function crearFila(comp){
         </div>
         <div class="comp-acciones">
         ${(comp.tipo==="ticket" && comp.saldo>0 && comp.cliente_id)
-          ? `<a class="btnAbonar" href="/cuenta?id=${comp.cliente_id}&comp=${comp.id}">Abonar 💵</a>` : ''}
-        <a class="btnAbonar btn-icono btnPrint" href="/ticket?id=${comp.id}" title="Imprimir ticket">🖨️</a>
+          ? `<a class="btnAbonar" href="/cuenta?id=${comp.cliente_id}&comp=${comp.id}">Abonar</a>` : ''}
+        <a class="btnAbonar btn-icono btnPrint" href="/ticket?id=${comp.id}" title="Imprimir ticket" aria-label="Imprimir ticket">${icono("impresora")}</a>
         <button class="btnAnular b-del" data-id="${comp.id}">Anular</button>
         </div>
       </div>
@@ -481,7 +492,7 @@ function crearFila(comp){
         ${totales}
         ${d.tipo==="ticket"?`<div style="font-weight:700;margin:10px 0 6px;">Pagos</div>${pagos}${filaPendiente}`:''}
         ${d.tipo==="ticket"?`<div class="quien-atendio"></div>`:''}
-        <a class="btnAbonar" href="/ticket?id=${d.id}" style="margin-top:10px;">🖨️ Imprimir</a>`;
+        <a class="btnAbonar" href="/ticket?id=${d.id}" style="margin-top:10px;">${icono("impresora")} Imprimir</a>`;
       // Acá se completa quién atendió: es la única pantalla donde aparece un
       // ticket de mostrador, que no tiene cuenta de cliente adónde ir a buscarlo.
       pintarPeluquero(box.querySelector(".quien-atendio"), d);

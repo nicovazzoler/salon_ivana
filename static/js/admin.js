@@ -469,7 +469,7 @@ $("#btnEditarTodos").onclick=async()=>{
   CAMBIOS.clear();
   modoEdicion=!modoEdicion;
   const b=$("#btnEditarTodos");
-  b.textContent = modoEdicion ? "✓ Listo" : "✏️ Editar todos";
+  b.textContent = modoEdicion ? "✓ Listo" : "Editar todos";
   b.className = modoEdicion ? "b-tinta" : "b-out";
   $("#panelNuevoItem").innerHTML="";
   cerrarPaneles();
@@ -493,7 +493,7 @@ function fichaItem(it){
   pan.innerHTML = `
     <div class="ficha-cab">
       <h3>${nuevo ? "Ítem nuevo" : "Editar ítem"}</h3>
-      <button type="button" class="cerrar" aria-label="Cerrar">✕</button>
+      <button type="button" class="cerrar" aria-label="Cerrar">${icono("cruz")}</button>
     </div>
     <div class="ficha-campos">
       <div class="campo ancho"><label>Nombre</label>

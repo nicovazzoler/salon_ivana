@@ -22,6 +22,14 @@
   th,td{ text-align:right; }
   th:first-child,
   td:first-child{ text-align:left; }
+  /* El servicio y el motivo son texto: se leen de izquierda a derecha */
+  #detalle table:not(.t-egresos) th:nth-child(2),
+  #detalle table:not(.t-egresos) td:nth-child(2),
+  #detalle .t-anuladas th:nth-child(4),
+  #detalle .t-anuladas td:nth-child(4){ text-align:left; }
+  #detalle td{ padding-block:11px; }
+  #detalle .money{ font-weight:var(--fw-bold); color:var(--text-titulo); }
+  #detalle .t-anuladas td, #detalle .t-anuladas .money{ color:var(--text-tenue); font-weight:var(--fw-normal); }
   /* Las cuatro en fila solo donde entran; abajo manda el auto-fit de
      components.css. Ojo con el minmax(0,…): `1fr` es minmax(auto,1fr) y ese
      `auto` es min-content, así que la columna no achica abajo del número que
@@ -43,7 +51,13 @@
   .col-conc{ width:99%; white-space:normal; word-break:break-word; }
   .col-tipo .celda-input{ width:10rem; }
   .col-conc .celda-input{ width:100%; }
-  .mini{ padding:6px 9px; font-size:var(--fs-sm); border-radius:7px; }
+  .mini{ min-height:34px; padding:6px 9px; font-size:var(--fs-sm); border-radius:8px; }
+  .mini.b-out:has(.ico), .mini.b-del:has(.ico){
+    display:inline-flex; align-items:center; justify-content:center;
+    min-width:34px; padding:0;
+  }
+  .mini.b-out:has(.ico){ background:transparent; color:var(--text-tenue); }
+  .mini.b-out:has(.ico):hover{ background:var(--bg-sutil); color:var(--text-titulo); }
 
   /* ----- El detalle en el celular -----
      Cada fila pasa a ser un bloque de dos renglones, con el botón al final. Como
@@ -89,7 +103,14 @@
     #detalle .mini{ min-height:40px; padding:6px 12px; }
     #detalle td:last-child{ display:flex; gap:6px; justify-content:flex-end; }
   }
-  .sub-titulo{ display:block; margin-top:14px; color:var(--text-titulo); }
+  /* Cada tabla es una sección: el subtítulo hace de encabezado */
+  .sub-titulo{
+    display:block; margin-top:var(--sp-6);
+    font-family:var(--font-display); font-size:18px; font-weight:var(--fw-bold);
+    color:var(--text-titulo);
+  }
+  .sub-titulo .muted{ font-family:var(--font-ui); font-size:13px; font-weight:var(--fw-normal); }
+  #aqEsperado{ font-family:var(--font-display); font-size:24px; font-weight:var(--fw-bold); color:var(--acento); }
   /* Egreso que el empleado no ve. Solo aparece en la caja de la dueña: el
      backend ni siquiera se los manda a los demás. */
   /* El número no compite con los datos: está para poder nombrar el egreso en
@@ -109,7 +130,7 @@
 </style>
 </head><body>
 <header>
-  <span class="tit">💰 Caja</span>
+  <span class="tit">Caja</span>
   <nav class="menu">
   <a href="/">Facturación</a>
   <a href="/agenda">Agenda</a>
@@ -145,7 +166,7 @@
   </div>
 
   <div class="card">
-    <h2>💵 Arqueo de caja (efectivo del día)</h2>
+    <h2>Arqueo de caja (efectivo del día)</h2>
     <div class="fila" id="fondoEdit" style="margin-bottom:14px;">
       <div style="max-width:220px;"><label>Fondo inicial del día</label><input id="fondo" type="number"></div>
       <button class="b-out" id="btnFondo">Guardar fondo</button>
@@ -155,7 +176,7 @@
         <tr><td>Fondo inicial</td><td class="money" id="aqFondo">$0</td></tr>
         <tr><td>+ Ventas en efectivo</td><td class="money" id="aqVentas">$0</td></tr>
         <tr><td>− Egresos en efectivo</td><td class="money" id="aqEgresos">$0</td></tr>
-        <tr style="border-top:2px solid var(--acento);"><td><b>= Caja </b></td><td class="money" id="aqEsperado" style="font-weight:800;color:var(--acento);font-size:18px;">$0</td></tr>
+        <tr style="border-top:2px solid var(--acento);"><td><b>= Caja </b></td><td class="money" id="aqEsperado">$0</td></tr>
       </tbody>
     </table>
     <p class="muted" style="margin-top:8px;">Lo que tendría que haber en el cajón. El fondo se arrastra.</p>
@@ -270,10 +291,10 @@ async function cargarDia(){
         <td><span id="ec_montotxt_${e.id}">${money(e.monto)}</span>
            <input id="ec_monto_${e.id}" type="number" value="${e.monto}" class="celda-input" style="max-width:80px;display:none;"></td>
         <td style="white-space:nowrap;">${e.no_se_toca ? "" : `
-            <button id="ec_edit_${e.id}" class="mini b-out" onclick="editarEgresoCaja(${e.id})">✏</button>
+            <button id="ec_edit_${e.id}" class="mini b-out" onclick="editarEgresoCaja(${e.id})" title="Corregir" aria-label="Corregir">${icono("lapiz")}</button>
             <button id="ec_save_${e.id}" class="mini b-ok" onclick="guardarEgresoCaja(${e.id})" style="display:none;">✓</button>
             <button id="ec_cancel_${e.id}" class="mini b-out" onclick="cancelarEgresoCaja(${e.id})" style="display:none;">↩</button>
-            <button class="mini b-del" onclick="anularEgresoCaja(${e.id})">×</button>`}</td></tr>`;
+            <button class="mini b-del" onclick="anularEgresoCaja(${e.id})" title="Anular" aria-label="Anular">${icono("cruz")}</button>`}</td></tr>`;
     });
     html += '</tbody></table></div>';
   }
