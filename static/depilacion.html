@@ -646,8 +646,9 @@ async function mostrarSenas(avisar){
         </div>`).join("")}</div>`;
   caja.querySelectorAll(".borrar-sena").forEach(b => {
     b.onclick = async () => {
-      if(!confirm("¿Se le devolvió esta seña?\n\nSale de las que están a favor y queda anotada como devuelta.")) return;
-      const motivo = pedirMotivo("esta seña"); if(motivo === null) return;
+      const motivo = await pedirMotivo("¿Se le devolvió esta seña?",
+        { texto: "Sale de las que están a favor y queda anotada como devuelta.", si: "Devolver", opciones: MOTIVOS_SENA });
+      if(motivo === null) return;
       const r = await authFetch("/api/senas/" + b.dataset.id
                                 + "?motivo=" + encodeURIComponent(motivo), {method:"DELETE"});
       if(!r.ok){ toast((await r.json().catch(()=>({}))).detail || "No se pudo"); return; }
@@ -1273,9 +1274,9 @@ async function cargarTickets(id){
     : `<p class="muted">Esta sesión no tiene tickets.</p>`;
   caja.querySelectorAll(".anular").forEach(b => {
     b.onclick = async () => {
-      if(!confirm(`¿Anular el N-${b.dataset.num}?\n\nSe le devuelven las señas que haya usado `
-                + `y sale de la sesión. Esto no se puede deshacer.`)) return;
-      const motivo = pedirMotivo(`el N-${b.dataset.num}`); if(motivo === null) return;
+      const motivo = await pedirMotivo(`¿Anular el N-${b.dataset.num}?`,
+        { texto: "Se le devuelven las señas que haya usado y sale de la sesión." });
+      if(motivo === null) return;
       const r = await authFetch("/api/comprobantes/" + b.dataset.id
                                 + "?motivo=" + encodeURIComponent(motivo), {method:"DELETE"});
       if(!r.ok){ toast((await r.json().catch(()=>({}))).detail || "No se pudo anular"); return; }

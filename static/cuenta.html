@@ -427,8 +427,7 @@ function renderComprobantes(){
     }
     div.querySelector(".btnAnular").onclick = async (e)=>{
       e.stopPropagation();
-      if(!confirm("¿Anular este servicio?")) return;
-      const motivo = pedirMotivo("este servicio"); if(motivo === null) return;
+      const motivo = await pedirMotivo(`¿Anular el ${numComp(comp)}?`); if(motivo === null) return;
       const r = await authFetch("/api/comprobantes/"+comp.id+"?motivo="+encodeURIComponent(motivo), {method:"DELETE"});
       // El motivo lo dice el backend, y la lista se refresca pase lo que pase:
       // el caso más común de fallo es que la pantalla quedó vieja.
@@ -546,8 +545,8 @@ async function refrescarSenas(){
   const cont = $("#listaSenas"); if(!cont) return;
   const senas = await (await authFetch(`/api/senas?cliente_id=${id}`)).json().catch(()=>[]);
   pintarSenas(cont, senas, async s => {
-    if(!confirm(`Devolver la seña de ${fmt(s.monto)}. ¿Seguimos?`)) return;
-    const motivo = pedirMotivo("esta seña"); if(motivo === null) return;
+    const motivo = await pedirMotivo(`¿Devolver la seña de ${fmt(s.monto)}?`, { si: "Devolver", opciones: MOTIVOS_SENA });
+    if(motivo === null) return;
     const r = await authFetch(`/api/senas/${s.id}?motivo=${encodeURIComponent(motivo)}`, {method:"DELETE"});
     if(!r.ok){ toast((await r.json().catch(()=>({}))).detail || "No se pudo"); return; }
     toast("Seña devuelta"); refrescarSenas();
