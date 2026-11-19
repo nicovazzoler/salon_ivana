@@ -587,7 +587,7 @@ function enganchar(){
   document.querySelectorAll(".borrar-suelto").forEach(a => {
     a.onclick = async e => {
       e.preventDefault();
-      if(!confirm("¿Borrar este trabajo cargado a mano?")) return;
+      if(!await confirmar("¿Borrar este trabajo cargado a mano?", { si: "Borrar", peligro: true })) return;
       await mandar("/api/sueldos/trabajo-suelto/"+a.dataset.trabajo, "DELETE");
     };
   });
@@ -607,7 +607,7 @@ function enganchar(){
         : `Se le pagan ${fmt(c.total)} a ${D.empleado.nombre} por ${rangoLargo(c.desde, c.hasta)}, y la semana queda cerrada.`;
       const fecha = caja.querySelector(".fechaCierre").value || hoyArg();
       const dia = fecha === hoyArg() ? "la caja de hoy" : "la caja del " + fechaCorta(fecha);
-      if(!confirm(`${que}\n\nSe paga en ${forma} y el egreso queda anotado en ${dia}.\n\nEsto no se puede deshacer. ¿Seguimos?`)) return;
+      if(!await confirmar(`${que}\n\nSe paga en ${forma} y el egreso queda anotado en ${dia}.\n\nEsto no se puede deshacer. ¿Seguimos?`, { si: "Pagar" })) return;
       if(await mandar("/api/sueldos/cerrar", "POST", {empleado_id: EMP, desde: ciclo, forma_pago: forma,
                                                       anticipado, fecha,
                                                       notas: caja.querySelector(".notaCierre").value.trim() || null}))

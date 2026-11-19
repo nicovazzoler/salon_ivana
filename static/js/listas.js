@@ -257,7 +257,7 @@ function dibujar(cont, nombreLista, alCambiar){
           if(alCambiar) alCambiar();
         };
         fila.querySelector(".borrar").onclick = async () => {
-          if(!confirm(`¿Eliminar "${dato.nombre || "esto"}"?`)) return;
+          if(!await confirmar(`¿Eliminar "${dato.nombre || "esto"}"?`, { si: "Eliminar", peligro: true })) return;
           if(!await mandar("DELETE", `${cfg.ruta}/${dato.id}`, undefined)) return;
           avisar("Eliminado");
           await recargar();

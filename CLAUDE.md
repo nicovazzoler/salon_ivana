@@ -32,7 +32,7 @@ static/
   js/            El JS de facturar y admin, que son las grandes
   auth.js        Sesión, menú y helpers compartidos. También icono(), los
                  íconos de línea: la app no usa emojis, y preguntar(), el cartel
-                 de la app, que va reemplazando a confirm() y prompt()
+                 de la app: no se usa confirm(), prompt() ni alert()
   js/listas.js   Las cinco listas configurables (formas de pago, tipos de egreso,
                  descuentos, ajustes por ítem, alias): un solo dibujante que usan
                  Admin y el panel del lapicito de facturar
@@ -760,8 +760,10 @@ Dos lugares donde el texto sí rinde, y son los únicos: el **cartel** antes de
 algo que mueve plata y no es lo de todos los días, con la cuenta hecha, y el
 **estado vacío**, que contesta por qué no hay nada. Un cartel que sale en cada
 cobro se acepta sin leer: ahí el que confirma es el botón, que dice cuánto y
-cómo. Los carteles son de la app (`preguntar()`), y anular es UNO solo, con la
-pregunta y el motivo juntos (`pedirMotivo()`). Un aviso dice las excepciones que hay, no que no hay
+cómo. Los carteles son de la app (`preguntar()`, o `confirmar()` para un mensaje
+escrito como confirm: el primer párrafo es el título), con el verbo en el botón
+—"Borrar", "Agendar igual"— y no "Aceptar"; y anular es UNO solo, con la pregunta
+y el motivo juntos (`pedirMotivo()`). Un aviso dice las excepciones que hay, no que no hay
 ninguna: "Menos Carolina, que cobra la suya" sirve; "ninguna tiene una hora
 propia" es un renglón para decir que no pasa nada.
 

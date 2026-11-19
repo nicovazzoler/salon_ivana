@@ -124,7 +124,7 @@ function panelSena(clienteId, nombre, alGuardar){
       const igual = res.find(c => c.nombre.toLowerCase() === nom.toLowerCase());
       if(igual){ elegido = igual.id; }
       else {
-        if(!confirm(`"${nom}" no está en la lista de clientes.\n\n¿Lo creamos?`)) return;
+        if(!await confirmar(`"${nom}" no está en la lista de clientes.\n\n¿Lo creamos?`, { si: "Crear" })) return;
         const rc = await authFetch("/api/clientes", {method:"POST",
           headers:{"Content-Type":"application/json"}, body: JSON.stringify({nombre: nom})});
         if(!rc.ok){ toast((await rc.json().catch(()=>({}))).detail || "No se pudo crear"); return; }
@@ -143,7 +143,7 @@ function panelSena(clienteId, nombre, alGuardar){
     if(alGuardar) alGuardar(s);
     // El papel es opcional: la seña ya quedó registrada. Se ofrece acá y no se
     // imprime solo porque casi siempre alcanza con que esté anotada.
-    if(confirm(`Seña anotada: entraron ${_plataSena(s.monto)}.\n\n¿Le imprimimos el recibo?`))
+    if(await confirmar(`Seña anotada: entraron ${_plataSena(s.monto)}.\n\n¿Le imprimimos el recibo?`, { si: "Imprimir", no: "No" }))
       location.href = `/ticket?tipo=sena&id=${s.id}`;
   };
   pan.querySelector(".sMonto").addEventListener("keydown", e => {

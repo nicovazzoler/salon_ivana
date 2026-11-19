@@ -513,7 +513,7 @@ async function renderNotasDia(){
       </div>
       <button class="btn-borrar" aria-label="Quitar">${icono("cruz")}</button>`;
     div.querySelector(".btn-borrar").onclick = async () => {
-      if(!confirm("¿Borrar esta nota?")) return;
+      if(!await confirmar("¿Borrar esta nota?", { si: "Borrar", peligro: true })) return;
       await authFetch("/api/notas/"+n.id, { method: "DELETE" });
       renderNotasDia();
     };
@@ -792,7 +792,7 @@ function panelAbrirDia(){
   pan.querySelector(".aGuardar").onclick = async () => {
     const ids = [...chips.querySelectorAll(".chip-emp.on")].map(c => +c.dataset.id);
     const desde = pan.querySelector(".aDesde").value, hasta = pan.querySelector(".aHasta").value;
-    if(!ids.length && !confirm("No marcaste a nadie. ¿Dejamos el día cerrado para todas?")) return;
+    if(!ids.length && !await confirmar("No marcaste a nadie. ¿Dejamos el día cerrado para todas?", { si: "Cerrar el día" })) return;
     const r = await authFetch("/api/agenda/abrir-dia", {method:"POST",
       headers:{"Content-Type":"application/json"},
       body: JSON.stringify({fecha:fechaActual, empleados:ids, desde, hasta,
@@ -860,11 +860,11 @@ function panelAusencia(){
     const dias = Math.round((parseISO(hasta) - parseISO(desde)) / 86400000) + 1;
     const cuando = dias === 1 ? "el " + fechaCorta(desde)
                  : `${dias} días, del ${fechaCorta(desde)} al ${fechaCorta(hasta)}`;
-    if(!confirm(`${quien}: ${cuando}${razon ? " · " + razon : ""}.\n\n`
+    if(!await confirmar(`${quien}: ${cuando}${razon ? " · " + razon : ""}.\n\n`
       + (parte.checked
           ? `Esos días trabaja solo de ${pan.querySelector(".auD").value} a ${pan.querySelector(".auH").value}.`
           : "Esos días no viene.")
-      + "\n\nLe gana al horario de siempre. ¿Guardamos?")) return;
+      + "\n\nLe gana al horario de siempre. ¿Guardamos?", { si: "Guardar" })) return;
     const r = await authFetch("/api/excepciones", {method:"POST",
       headers:{"Content-Type":"application/json"},
       body: JSON.stringify({empleado_id: Number(sel.value), fecha: desde, hasta_fecha: hasta,
@@ -921,8 +921,8 @@ function panelExcepcion(c){
     ...(doble.checked ? {desde2: pan.querySelector(".eDesde2").value,
                          hasta2: pan.querySelector(".eHasta2").value} : {}),
     motivo: pan.querySelector(".eMotivo").value});
-  pan.querySelector(".eNoViene").onclick = () => {
-    if(!confirm(`${titulo(c.nombre)} no viene este día. ¿Guardamos?`)) return;
+  pan.querySelector(".eNoViene").onclick = async () => {
+    if(!await confirmar(`${titulo(c.nombre)} no viene este día. ¿Guardamos?`, { si: "Guardar" })) return;
     mandar({motivo: pan.querySelector(".eMotivo").value});
   };
   const volver = pan.querySelector(".eVolver");
@@ -972,7 +972,7 @@ function pintarLista(turnos, cont){
     const ed = r.querySelector(".editar"), ca = r.querySelector(".cancelar");
     if(ed) ed.onclick = () => cargarEnForm(t);
     if(ca) ca.onclick = async () => {
-      if(!confirm(`¿Cancelar el turno de ${t.cliente}?`)) return;
+      if(!await confirmar(`¿Cancelar el turno de ${t.cliente}?`, { si: "Cancelar el turno", peligro: true })) return;
       await authFetch("/api/turnos/" + t.id, {method:"DELETE"});
       toast("Turno cancelado"); renderDia();
     };
@@ -1012,7 +1012,7 @@ function cargarEnForm(t){
   btn.onclick=async()=>{
     const body=formBody(); if(!body)return;
     const choque = await buscarChoque(body, t.id);
-    if(choque && !confirm(choque + "\n\n¿Lo movemos igual?")) return;
+    if(choque && !await confirmar(choque + "\n\n¿Lo movemos igual?", { si: "Mover igual" })) return;
     await authFetch("/api/turnos/"+t.id,{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
     toast("Turno actualizado"); limpiarForm(); renderDia();
   };
@@ -1050,7 +1050,7 @@ async function buscarChoque(b, exceptoId){
 async function agregarTurno(){
   const body=formBody(); if(!body)return;
   const choque = await buscarChoque(body, null);
-  if(choque && !confirm(choque + "\n\n¿Lo agendamos igual?")) return;
+  if(choque && !await confirmar(choque + "\n\n¿Lo agendamos igual?", { si: "Agendar igual" })) return;
   await authFetch("/api/turnos",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
   toast(`Turno de ${body.cliente} agendado`); limpiarForm(); renderDia();
 }

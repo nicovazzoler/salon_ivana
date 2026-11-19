@@ -522,7 +522,7 @@ function pintarRanking(){
 async function descargarExcel(){
   const q = qbase(state);
   const r = await authFetch("/api/reportes/excel?" + q);
-  if(!r.ok){ alert("No se pudo generar el Excel"); return; }
+  if(!r.ok){ await confirmar("No se pudo generar el Excel", { si: "Entendido", no: null }); return; }
   const blob = await r.blob();
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
