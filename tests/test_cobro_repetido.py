@@ -176,8 +176,33 @@ def test_a_cuenta_repetido_con_otra_forma_es_el_mismo_ticket(db, api):
     r = api.post("/api/comprobantes", json={**pedido, "forma_pago": "transfer", "cobrar": True})
 
     assert r.status_code == 200 and r.json()["id"] == primero["id"]
-    assert primero["saldo"] == 18000 and r.json()["saldo"] == 20000
+    assert primero["saldo"] == 18000 and r.json()["saldo"] == 0
     assert cuantos(db, models.Comprobante) == 1
+    pago = db.query(models.Pago).one()
+    assert (pago.forma_pago, pago.monto) == ("Transferencia", 20000)
+
+
+def test_avisa_el_ticket_de_hoy_sin_cobrar_con_lo_mismo(db, api):
+    # Lo dejaron a cuenta sin querer y lo volvieron a cargar para cobrarlo.
+    item, cli = un_item(db), una_clienta(db)
+    api.post("/api/comprobantes", json=ticket(item, cli, clave="k1-ticket"))
+    otro = ticket(item, cli, forma_pago="transfer", cobrar=True, clave="k2-ticket")
+
+    igual = api.post("/api/comprobantes/igual", json=otro).json()["igual"]
+
+    assert (igual["numero"], igual["clave"], igual["total"]) == (1, "k1-ticket", 18000)
+
+
+def test_no_avisa_si_ya_se_cobro_o_es_otra_cosa(db, api):
+    item, cli = un_item(db), una_clienta(db)
+    api.post("/api/comprobantes", json=ticket(item, cli, cobrar=True, clave="k1-ticket"))
+    assert api.post("/api/comprobantes/igual", json=ticket(item, cli)).json()["igual"] is None
+
+    api.post("/api/comprobantes", json=ticket(item, cli, clave="k2-ticket"))
+    dos = ticket(item, cli); dos["lineas"][0]["cantidad"] = 2
+    assert api.post("/api/comprobantes/igual", json=dos).json()["igual"] is None
+    otra = models.Cliente(nombre="Bea", activo=True); db.add(otra); db.commit()
+    assert api.post("/api/comprobantes/igual", json=ticket(item, otra)).json()["igual"] is None
 
 
 def test_cobrado_repetido_con_otra_forma_no_se_toca(db, api):
