@@ -104,6 +104,31 @@
     #detalle td:last-child{ display:flex; gap:6px; justify-content:flex-end; }
   }
   /* Cada tabla es una sección: el subtítulo hace de encabezado */
+  #fondoEdit .fondo{ max-width:220px; }
+  .t-arqueo{ max-width:420px; }
+  /* En la tablet apaisada el arqueo va al costado y queda a la vista mientras se
+     recorren las tablas. En vertical o en pantalla dividida no entra: baja. */
+  @media (min-width:1000px){
+    .wrap{
+      max-width:1180px;
+      display:grid; grid-template-columns:minmax(0,1fr) 320px;
+      column-gap:40px; align-items:start;
+    }
+    .wrap > .card:first-child{ grid-column:1; grid-row:1; }
+    .wrap > .card.arqueo{
+      grid-column:2; grid-row:1;
+      position:sticky; top:84px;
+      margin:0; padding:20px 22px;
+      border:0; border-radius:16px;
+      background:var(--bg-elevado);
+      box-shadow:var(--sombra-elevada);
+    }
+    .arqueo h2{ font-size:19px; }
+    #fondoEdit{ flex-wrap:wrap; }
+    #fondoEdit .fondo{ max-width:none; flex:1 1 140px; }
+    .t-arqueo{ max-width:none; }
+  }
+
   .sub-titulo{
     display:block; margin-top:var(--sp-6);
     font-family:var(--font-display); font-size:18px; font-weight:var(--fw-bold);
@@ -165,13 +190,13 @@
     <div id="detalle" style="margin-top:16px;"></div>
   </div>
 
-  <div class="card">
+  <div class="card arqueo">
     <h2>Arqueo de caja (efectivo del día)</h2>
     <div class="fila" id="fondoEdit" style="margin-bottom:14px;">
-      <div style="max-width:220px;"><label>Fondo inicial del día</label><input id="fondo" type="number"></div>
+      <div class="fondo"><label>Fondo inicial del día</label><input id="fondo" type="number"></div>
       <button class="b-out" id="btnFondo">Guardar fondo</button>
     </div>
-    <table style="max-width:420px;">
+    <table class="t-arqueo">
       <tbody>
         <tr><td>Fondo inicial</td><td class="money" id="aqFondo">$0</td></tr>
         <tr><td>+ Ventas en efectivo</td><td class="money" id="aqVentas">$0</td></tr>

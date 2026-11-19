@@ -1323,8 +1323,41 @@ function hayTicketSinCobrar(){
 /* La marca de borrador vive en el MENÚ, no acá: en facturar el ticket está a la
    vista y el cartel repetía lo que ya se ve. En las otras pantallas sí hace
    falta, que es donde uno se olvida de que dejó algo sin cobrar. */
+/* Barra de cobro de las pantallas angostas. Repite el total y el botón principal
+   del ticket y no cobra por su cuenta: toca ese mismo botón. Si todavía no se
+   puede cobrar, lleva al ticket, que es donde se ve qué falta. */
+function engancharBarraCobro(){
+  const barra = $("#barraCobro");
+  if(!barra) return;
+  const btn = barra.querySelector("button");
+  const principal = () => ["#cobrarTodo", "#cobrarMixto", "#crearPresu", "#dejarCuenta"]
+    .map(s => $(s)).find(b => b && b.offsetParent !== null);
+  let ticketALaVista = false;
+
+  function pintar(){
+    const n = ticket.length;
+    const b = principal();
+    barra.hidden = n === 0 || !b || ticketALaVista;
+    if(barra.hidden) return;
+    barra.querySelector(".tot").textContent = $("#total").textContent;
+    barra.querySelector(".cant").textContent = `· ${n} ${n === 1 ? "ítem" : "ítems"}`;
+    btn.textContent = b.disabled ? "Ir al ticket" : b.textContent;
+    btn.className = b.disabled ? "b-out" : "b-ok";
+  }
+  btn.onclick = () => {
+    const b = principal(); if(!b) return;
+    b.scrollIntoView({ block:"center", behavior:"smooth" });
+    if(!b.disabled) b.click();
+  };
+  new MutationObserver(pintar).observe($("#totales").closest(".card"),
+    { subtree:true, childList:true, characterData:true, attributes:true, attributeFilter:["style", "disabled"] });
+  new IntersectionObserver(e => { ticketALaVista = e[0].isIntersecting; pintar(); }).observe($("#totales"));
+  pintar();
+}
+
 function pintarAvisoBorrador(){
   if(window.marcarBorradorEnMenu) window.marcarBorradorEnMenu();
 }
 
 init();
+engancharBarraCobro();

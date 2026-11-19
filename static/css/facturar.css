@@ -17,6 +17,40 @@
   .wrap > .col:first-child{ flex:1.4 1 430px; }
   .wrap > .col:nth-child(2){ flex:1 1 330px; }
 
+  /* Tablet en vertical: catálogo y ticket lado a lado, como en la apaisada. El
+     ticket acompaña al scroll; si es más alto que la pantalla, scrollea él. */
+  @media (min-width:760px) and (max-width:1100px){
+    .wrap{ gap:24px; padding-top:20px; }
+    .wrap > .col:first-child{ flex:1 1 0; min-width:0; }
+    .wrap > .col:nth-child(2){
+      flex:0 0 340px; min-width:0;
+      position:sticky; top:72px;
+      max-height:calc(100vh - 84px); overflow-y:auto;
+    }
+    .wrap > .col:nth-child(2) > .card{ padding:16px 18px 18px; }
+    .grid-items{ grid-template-columns:repeat(auto-fill, minmax(140px, 1fr)); }
+  }
+
+  /* Más angosto (pantalla dividida, celular) el ticket queda abajo del catálogo:
+     el total y el botón principal van en una barra fija abajo */
+  .barra-cobro{ display:none; }
+  @media (max-width:759px){
+    .barra-cobro{
+      position:fixed; left:0; right:0; bottom:0; z-index:40;
+      display:flex; align-items:center; gap:16px;
+      padding:12px max(16px, env(safe-area-inset-right, 0px)) calc(12px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px));
+      background:var(--bg-elevado);
+      border-top:1px solid var(--border-sutil);
+      box-shadow:0 -10px 30px -16px rgba(0,0,0,.45);
+    }
+    body:has(.barra-cobro:not([hidden])){ padding-bottom:84px; }
+    body:has(.barra-cobro:not([hidden])) .toast{ bottom:100px; }
+    .barra-cobro .lbl{ display:block; font-size:var(--fs-xs); font-weight:var(--fw-bold); color:var(--text-tenue); }
+    .barra-cobro .tot{ font-family:var(--font-display); font-size:24px; font-weight:var(--fw-bold); color:var(--text-marca); line-height:1.1; font-variant-numeric:tabular-nums; }
+    .barra-cobro .cant{ font-size:var(--fs-sm); color:var(--text-tenue); }
+    .barra-cobro button{ margin-left:auto; padding:14px 22px; border-radius:12px; font-size:16px; }
+  }
+
   .grid-items{ gap:10px; }
   .btn-item.cat{                       /* tarjeta de categoría (vista de búsqueda) */
     align-items:center; justify-content:center; text-align:center;
