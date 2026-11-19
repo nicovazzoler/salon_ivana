@@ -115,7 +115,7 @@
      una abajo de la otra y sin el filete se leían todas de corrido. */
   .card > h3{ margin:0 0 var(--sp-3); padding-bottom:var(--sp-2);
               border-bottom:1px solid var(--border-sutil); }
-  .formas, .quien{ padding-bottom:var(--sp-3); margin-bottom:var(--sp-3);
+  .quien{ padding-bottom:var(--sp-3); margin-bottom:var(--sp-3);
                    border-bottom:1px solid var(--border-sutil); }
   .lineas{ margin:0 0 var(--sp-3); }
   .lineas .vacio{ padding:var(--sp-5) 0; }
@@ -160,11 +160,6 @@
                         color:var(--text-titulo); }
   .totales .ren.grande b{ font-weight:var(--fw-black); color:var(--text-marca); }
   .totales .ren .btn-mini{ margin-left:var(--sp-2); padding:1px 7px; }
-  .totales .falta-forma{ color:var(--text-tenue); font-size:var(--fs-sm); padding:var(--sp-2) 0; }
-  .formas{ display:flex; gap:var(--sp-2); }
-  .formas button{ flex:1; }
-  .formas button.on{ background:var(--bg-elegido); color:var(--text-marca);
-                     box-shadow:inset 0 0 0 1px var(--bronce-a30); font-weight:var(--fw-bold); }
   .acc-cobrar{ display:flex; flex-direction:column; gap:var(--sp-2); }
   .hecho{ margin-top:var(--sp-3); padding:var(--sp-3); border-radius:var(--r-md);
           background:var(--verde-bg); border:1px solid var(--verde-borde); }
@@ -295,10 +290,6 @@
     <div class="card ticket">
       <h3>Facturar</h3>
       <div class="a-que-sesion" id="aQueSesion"></div>
-      <div class="formas" id="formas">
-        <button class="b-out" data-forma="efectivo">Efectivo</button>
-        <button class="b-out" data-forma="transfer">Transferencia</button>
-      </div>
       <div class="quien">
         <div class="campo cli">
           <label for="cliente">Cliente</label>
@@ -309,6 +300,13 @@
           <select id="atiende"></select></div>
       </div>
       <div class="lineas" id="lineas"><p class="vacio">Todavía no hay zonas elegidas.</p></div>
+      <div class="como-paga" id="comoPaga">
+        <h3 class="cp-titulo">Forma de pago</h3>
+        <div class="cp-grandes">
+          <button type="button" class="cp" data-forma="efectivo"><span class="n">Efectivo</span><span class="m" id="cpEfectivo"></span></button>
+          <button type="button" class="cp" data-forma="transfer"><span class="n">Transferencia</span><span class="m" id="cpTransfer"></span></button>
+        </div>
+      </div>
       <div class="totales" id="totales"></div>
       <div class="acc-cobrar">
         <button class="b-ok" id="btnCobrar" disabled>Cobrar</button>
@@ -341,7 +339,6 @@ let ZONAS = [], TICKET = [], CLI = null, SENAS = [], FORMA = null;
 // Lo que la pantalla muestra como Total y como seña aplicada. Lo escribe pintar()
 // y lo lee el confirm de cobrar: con su propia cuenta, el cartel decía un número
 // y el papel salía por otro.
-let TOTAL_HOY = 0, SENA_TAPA = 0;
 /* La del cobro en curso. Vive hasta que el cobro sale bien, y en el borrador:
    un reintento —aunque sea después de recargar— manda la misma. */
 let CLAVE = null;
@@ -365,8 +362,6 @@ async function restaurarBorrador(){
   try{ b = JSON.parse(localStorage.getItem(BORRADOR) || "null"); }catch(e){}
   if(b && b.TICKET && b.TICKET.length){
     TICKET = b.TICKET; CLI = b.CLI || null; FORMA = b.FORMA || null; CLAVE = b.CLAVE || null;
-    document.querySelectorAll("#formas button").forEach(x =>
-      x.classList.toggle("on", x.dataset.forma === FORMA));
     if(CLI) $("#cliente").value = CLI.nombre;
   }
   await mostrarSenas();
@@ -529,7 +524,8 @@ function pintar(){
   const tapaT = Math.min(trans, SENAS.reduce((a, s) => a + valorSena(s), 0));   // la seña, en transfer
   const tapaE = Math.min(efvo, SENAS.reduce((a, s) => a + valorSenaEfectivo(s), 0)); // y en efectivo
   const restoT = Math.max(trans - tapaT, 0);
-  const total = enEfvo ? Math.max(efvo - tapaE, 0) : restoT;
+  const totalEf = Math.max(efvo - tapaE, 0);
+  const total = enEfvo ? totalEf : restoT;
   const desc = restoT - total;
   // Mismo rótulo y mismos decimales que cuentaDeComprobante(): el papel dice esto.
   const pct = restoT ? (desc / restoT * 100).toFixed(2) : 0;
@@ -549,20 +545,22 @@ function pintar(){
     : ren(`Seña ${botonSena}`, `<span class="sin">sin seña</span>`, "sena");
   if(SENAS.length && enEfvo) filas += ren("Subtotal", fmt(restoT), "sub");
   if(enEfvo) filas += ren(`Descuento ${pct}%`, "−" + fmt(desc), "desc");
-  TOTAL_HOY = FORMA ? total : 0;
-  // Siempre el valor de la lista de transferencia, igual que el renglón de arriba
-  // y que valorSena(): es el número que se le dijo al tomarla.
-  SENA_TAPA = FORMA ? tapaT : 0;
-  filas += FORMA
-    ? ren("Total", fmt(total), "grande")
-    : `<div class="falta-forma">Elegí arriba cómo paga para ver el total.</div>`;
+  filas += ren("Total", fmt(total), "grande");
   $("#totales").innerHTML = TICKET.length ? filas : "";
   const mas = $("#masSena");
   if(mas) mas.onclick = abrirPanelSena;
 
+  $("#cpEfectivo").textContent = fmt(totalEf);
+  $("#cpTransfer").textContent = fmt(restoT);
+  document.querySelectorAll("#comoPaga .cp").forEach(x => x.classList.toggle("on", x.dataset.forma === FORMA));
   // Sin forma de pago no se cobra: es lo que decide con qué lista se cobra y,
   // con una puesta de entrada, el día que se cobre distinto nadie la cambia.
-  $("#btnCobrar").disabled = !TICKET.length || !FORMA;
+  // El botón dice cuánto y cómo: es la confirmación del cobro, que no tiene cartel.
+  const b = $("#btnCobrar");
+  b.disabled = !TICKET.length || !FORMA;
+  b.textContent = !FORMA ? "Elegí cómo paga"
+    : total === 0 && SENAS.length ? "Cobrar con la seña"
+    : `Cobrar ${fmt(total)} ${FORMA === "efectivo" ? "en efectivo" : "por transferencia"}`;
   $("#btnVaciar").disabled = !TICKET.length;
   guardarBorrador();
   document.querySelectorAll(".zona").forEach(b => {
@@ -603,6 +601,16 @@ $("#cliente").addEventListener("input", () => {
       </div>`).join("");
     $("#cliDrop").style.display = "block";
   }, 200);
+});
+// Escrita entera sin elegirla de la lista: si existe tal cual, es esa, y se ven sus señas antes de cobrar
+$("#cliente").addEventListener("change", async () => {
+  const nombre = $("#cliente").value.trim();
+  if(CLI || !nombre) return;
+  const res = await (await authFetch("/api/clientes?q=" + encodeURIComponent(nombre))).json().catch(() => []);
+  const igual = res.find(c => c.nombre.toLowerCase() === nombre.toLowerCase());
+  if(!igual || $("#cliente").value.trim() !== nombre) return;
+  CLI = {id: igual.id, nombre: igual.nombre};
+  await mostrarSenas(true);
 });
 $("#cliDrop").addEventListener("click", async e => {
   const o = e.target.closest(".cli-opt"); if(!o) return;
@@ -668,13 +676,12 @@ function abrirPanelSena(){
 }
 $("#btnSena").onclick = abrirPanelSena;
 
-document.querySelectorAll("#formas button").forEach(b => {
-  b.onclick = () => {
-    FORMA = b.dataset.forma;
-    document.querySelectorAll("#formas button").forEach(x => x.classList.toggle("on", x === b));
-    pintar();
-  };
-});
+$("#comoPaga").onclick = e => {
+  const b = e.target.closest("[data-forma]");
+  if(!b) return;
+  FORMA = b.dataset.forma;
+  pintar();
+};
 
 $("#btnVaciar").onclick = () => { TICKET = []; pintar(); };
 
@@ -687,6 +694,7 @@ $("#btnCobrar").onclick = async () => {
   if(!nombre){ toast("Falta el nombre del cliente"); $("#cliente").focus(); return; }
   if(!TICKET.length) return;
   const b = $("#btnCobrar");
+  const loQueDecia = b.textContent;
   b.disabled = true;
 
   if(!FORMA){ toast("Elegí cómo paga"); b.disabled = false; return; }
@@ -695,14 +703,10 @@ $("#btnCobrar").onclick = async () => {
     CLI = await resolverCliente(nombre);
     if(!CLI){ b.disabled = false; return; }
     $("#cliente").value = CLI.nombre;
-    await mostrarSenas();
+    await mostrarSenas(true);
+    // El botón es la confirmación: si al reconocerla apareció una seña, el monto ya no es el que se tocó
+    if($("#btnCobrar").textContent !== loQueDecia){ b.disabled = false; return; }
   }
-  const detalle = TICKET.map(l => (l.cantidad > 1 ? l.cantidad + "× " : "") + l.nombre).join(" · ");
-  if(!await confirmar(`${nombre}\n${detalle}`
-            + `${SENA_TAPA ? `\n\nSeña que ya dejó: −${fmt(SENA_TAPA)}` : ""}`
-            + `\n\nPone ${fmt(TOTAL_HOY)} en ${FORMA === "efectivo" ? "efectivo" : "transferencia"}.`
-            + `\n\n¿Lo cobramos?`, { si: "Cobrar" })){ b.disabled = false; return; }
-
   /* Crear, aplicar las señas y cobrar, todo en UN pedido: en tres llamadas, la
      que no llega —internet del local, la tablet que se duerme— deja el ticket
      cobrado a medias y sin avisar. O queda cobrado o no queda nada. */
@@ -718,8 +722,15 @@ $("#btnCobrar").onclick = async () => {
     r = await authFetch("/api/comprobantes", {method:"POST",
       headers:{"Content-Type":"application/json"}, body: JSON.stringify(cuerpo)});
   }catch(e){ toast("Sin conexión: tocá Cobrar de nuevo, no se cobra dos veces"); b.disabled = false; return; }
-  // 409: con esa clave ya entró otra cosa. El que sigue es un cobro nuevo.
-  if(r.status === 409){ CLAVE = null; guardarBorrador(); }
+  // 409: con esa clave ya entró otra cosa. Hacer uno más es una decisión, no un reintento.
+  if(r.status === 409){
+    const detalle = (await r.json().catch(()=>({}))).detail || "Este cobro ya había entrado con otros datos.";
+    b.disabled = false;
+    if(await preguntar({ titulo: "Ya había entrado", texto: detalle, si: "Hacer uno nuevo" })){
+      CLAVE = null; guardarBorrador(); b.click();
+    }
+    return;
+  }
   if(!r.ok){ toast((await r.json().catch(()=>({}))).detail || "No se pudo cobrar"); b.disabled = false; return; }
   const d = await r.json();
   CLAVE = null;
@@ -731,13 +742,9 @@ $("#btnCobrar").onclick = async () => {
       d.saldo > 0 ? ` · queda debiendo ${fmt(d.saldo)}` : ""}</span>
     <a class="b-out" href="/ticket?id=${d.id}">${icono("impresora")} Imprimir</a>`;
   toast(d.saldo > 0 ? `${num} con saldo pendiente` : `${num} cobrado ✓`);
-  /* El papel se ofrece y no sale solo: imprimir es una navegación a RawBT y se
-     lleva la pantalla puesta, así que primero se guarda y recién después se
-     pregunta. El que dice que no tiene el botón de Imprimir ahí abajo. */
-  if(await confirmar(`${num} cobrado.\n\n¿Le imprimimos el comprobante?`, { si: "Imprimir", no: "No" }))
-    location.href = "/ticket?id=" + d.id;
+  // El papel no sale solo: imprimir navega a la vista del ticket y se lleva la
+  // pantalla puesta. Queda el botón de Imprimir en el aviso de cobrado.
   TICKET = []; CLI = null; FORMA = null;
-  document.querySelectorAll("#formas button").forEach(x => x.classList.remove("on"));
   $("#cliente").value = ""; $("#panelSena").innerHTML = "";
   // mostrarSenas() y no pintar(): sin esto la caja de señas seguía mostrando las
   // de la clienta anterior, ya aplicadas, como si todavía las tuviera a favor.
