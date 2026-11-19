@@ -863,6 +863,31 @@ body.con-panel{ overflow:hidden; }
 .arranque .arrVer{ color:var(--text-tenue); text-decoration:underline; }
 .arranque .arrCajon{ display:flex; align-items:center; gap:var(--sp-2); }
 
+/* ----- Forma de pago: fichas con el total de cada lista (Facturar y Depilación) ----- */
+.como-paga{
+  margin:var(--sp-4) 0 var(--sp-3); padding-top:var(--sp-4);
+  border-top:1px solid var(--border-sutil);
+}
+.cp-titulo{ margin:0 0 var(--sp-3); font-family:var(--font-display); font-size:var(--fs-xl); color:var(--text-titulo); }
+.como-paga[hidden]{ display:none; }
+.cp-grandes, .cp-chicas{ display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+.cp-chicas{ margin-top:8px; }
+.como-paga .cp{
+  display:flex; flex-direction:column; align-items:flex-start; gap:2px;
+  padding:12px 14px; min-height:0; text-align:left;
+  background:var(--sup-campo); color:var(--text);
+  border:1.5px solid var(--campo-borde); border-radius:14px;
+  font:inherit; cursor:pointer;
+}
+.como-paga .cp:hover{ background:var(--bg-tile-hover); color:var(--text); }
+.cp .n{ font-size:var(--fs-sm); font-weight:var(--fw-bold); color:var(--text-tenue); }
+.cp .m{ font-family:var(--font-display); font-size:22px; font-weight:var(--fw-bold); color:var(--text-titulo);
+        font-variant-numeric:tabular-nums; line-height:1.15; }
+.cp-chicas .cp{ flex-direction:row; justify-content:center; align-items:center; padding:11px 10px; }
+.cp-chicas .cp .n{ font-size:var(--fs-md); color:var(--text); }
+.como-paga .cp.on{ border-color:var(--border-marca); background:var(--bg-elegido); }
+.cp.on .m, .cp-chicas .cp.on .n{ color:var(--text-marca); }
+
 /* ----- Los carteles de la app (preguntar() en auth.js) -----
    Reemplazan confirm() y prompt() del navegador. En el celular salen desde abajo. */
 /* Por encima de cualquier panel: lo abren también desde adentro de uno (el de las listas) */

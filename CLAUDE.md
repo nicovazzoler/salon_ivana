@@ -514,10 +514,11 @@ lo que falte— y **a cuenta** con `forma_pago: "cuenta"` y, si deja algo hoy,
 (`_cobrar_deja()`). En dos pedidos, el segundo que no llegaba dejaba el ticket
 cobrado a medias. Las banderas vienen apagadas por defecto.
 
-**En Facturar el cobro es un solo botón que dice lo que va a pasar**: "Cobrar
-$53.000 en efectivo", "Dejar todo a cuenta". La forma se elige en cuatro fichas
-pegadas a la cuenta, con el total de cada lista a la vista, y no hay otro camino
-para lo mismo: con un botón "Dejar a cuenta" al lado de la forma elegida, un
+**En Facturar y en Depilación el cobro es un solo botón que dice lo que va a
+pasar**: "Cobrar $53.000 en efectivo", "Dejar todo a cuenta". La forma se elige
+en fichas pegadas a la cuenta (cuatro en Facturar, dos en Depilación, que cobra
+siempre entero), con el total de cada lista a la vista —en Depilación ya con la
+seña descontada—, y no hay otro camino para lo mismo: con un botón "Dejar a cuenta" al lado de la forma elegida, un
 ticket en efectivo quedaba a cuenta sin querer (N-00661 a cuenta y N-00662
 cobrado, la misma clienta, dos minutos después). Por eso el cobro normal no
 tiene cartel: el botón es la confirmación.
