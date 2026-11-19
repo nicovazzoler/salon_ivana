@@ -167,6 +167,60 @@ def test_la_clave_de_un_abono_anulado_no_contesta_registrado(db, api):
     assert r.status_code == 409 and "anuló" in r.json()["detail"]
 
 
+def test_a_cuenta_repetido_con_otra_forma_es_el_mismo_ticket(db, api):
+    # Se cortó "Dejar a cuenta" en efectivo y la clienta dijo "te transfiero".
+    item, cli = un_item(db), una_clienta(db)
+    pedido = ticket(item, cli, clave="k-ticket")
+    primero = api.post("/api/comprobantes", json=pedido).json()
+
+    r = api.post("/api/comprobantes", json={**pedido, "forma_pago": "transfer", "cobrar": True})
+
+    assert r.status_code == 200 and r.json()["id"] == primero["id"]
+    assert primero["saldo"] == 18000 and r.json()["saldo"] == 20000
+    assert cuantos(db, models.Comprobante) == 1
+
+
+def test_cobrado_repetido_con_otra_forma_no_se_toca(db, api):
+    # Ya entró cobrado en efectivo: cambiarle la forma dejaría el arqueo sin esa plata.
+    item, cli = un_item(db), una_clienta(db)
+    pedido = ticket(item, cli, cobrar=True, clave="k-ticket")
+    api.post("/api/comprobantes", json=pedido)
+
+    r = api.post("/api/comprobantes", json={**pedido, "forma_pago": "transfer"})
+
+    assert r.status_code == 409
+    db.expire_all()
+    assert db.query(models.Comprobante).one().forma_pago == "efectivo"
+    assert db.query(models.Pago).one().forma_pago == "Efectivo"
+
+
+def test_a_cuenta_de_otro_dia_con_otra_forma_no_se_toca(db, api):
+    # La deuda de ayer ya figura en la ficha: un borrador viejo no la cambia.
+    from datetime import timedelta
+    item, cli = un_item(db), una_clienta(db)
+    pedido = ticket(item, cli, clave="k-ticket")
+    api.post("/api/comprobantes", json=pedido)
+    comp = db.query(models.Comprobante).one()
+    comp.cargado -= timedelta(days=1); db.commit()
+
+    r = api.post("/api/comprobantes", json={**pedido, "forma_pago": "transfer"})
+
+    assert r.status_code == 409
+    db.expire_all()
+    assert db.query(models.Comprobante).one().forma_pago == "efectivo"
+
+
+def test_depilacion_a_cuenta_con_otra_forma_no_se_toca(db, api):
+    # Cambiarle la forma movería el reparto de la sesión sin dejarlo anotado.
+    item, cli = un_item(db, depilacion=True), una_clienta(db)
+    pedido = ticket(item, cli, clave="k-ticket")
+    api.post("/api/comprobantes", json=pedido)
+
+    r = api.post("/api/comprobantes", json={**pedido, "forma_pago": "transfer"})
+
+    assert r.status_code == 409
+
+
 def test_el_mismo_pedido_de_facturar_se_reconoce(db, api):
     # Con ajuste de línea, ítem a mano y extra: todo lo que compara _mismo_pedido.
     item = un_item(db)

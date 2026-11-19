@@ -1013,8 +1013,14 @@ async function crearComprobante(cobro = {}){
   try{
     r=await authFetch("/api/comprobantes",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
   }catch(e){ toast(SIN_CONEXION); return null; }
-  // 409: con esa clave ya entró otra cosa. El que sigue es un comprobante nuevo.
-  if(r.status === 409){ CLAVE = null; guardarBorrador(); }
+  // 409: con esta clave ya entró otro comprobante (se perdió la respuesta y en el
+  // medio cambió algo). Hacer uno más es una decisión, no un reintento.
+  if(r.status === 409){
+    const detalle = (await r.json().catch(()=>({}))).detail || "Este cobro ya había entrado con otros datos.";
+    if(!confirm(detalle + "\n\n¿Hacer igual uno nuevo?")) return null;
+    CLAVE = null; guardarBorrador();
+    return crearComprobante(cobro);
+  }
   if(!r.ok){
     // El backend rechaza fechas futuras o demasiado viejas: conviene decir cuál
     // fue el motivo y no un "no se pudo" que no explica nada.
@@ -1088,34 +1094,47 @@ document.addEventListener("click", e=>{         // cerrar si clickeás afuera
   if(!cliInput.contains(e.target) && !cliDrop.contains(e.target)) cliDrop.style.display="none";
 });
 
+/* Un solo pedido: el backend crea el ticket y lo cobra en la misma transacción.
+   Así no queda nunca un ticket creado y sin cobrar si se corta en el medio. */
 $("#cobrarTodo").onclick=async()=>{
   disableBotones(true);
   const otroDia = esDeOtroDia();
-  const d=await crearComprobante();
+  const d=await crearComprobante({ cobrar:true });
   if(!d){ renderTicket(); return; }
-  let r;
-  try{
-    const c=await (await authFetch("/api/comprobantes/"+d.id)).json();
-
-    const forma = formaPago==="efectivo" ? "Efectivo" : "Transferencia";
-    const monto = c.saldo;            // el total ya trae el descuento: se salda 1:1
-    if(monto <= 0){ limpiar(); if(!otroDia) imprimirComprobante(d.id); return; }
-
-    r=await authFetch("/api/comprobantes/"+d.id+"/pagos",{method:"POST",headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({monto, saldado:monto, forma_pago:forma, alias:null, del_servicio:true,
-                           clave: CLAVE + "-todo"})});
-  }catch(e){ toast(SIN_CONEXION); renderTicket(); return; }
-  if(r.ok){ toast("Cobrado ✓"); } else { toast("Se creó, pero el cobro falló — cobralo desde la cuenta"); }
+  // Con esta clave ya había entrado el ticket sin cobrar: se perdió la respuesta
+  // de "Dejar a cuenta" y después se tocó "Cobrar todo". Se cobra ahora.
+  if(d.saldo > 0){
+    let r;
+    try{
+      r=await authFetch("/api/comprobantes/"+d.id+"/pagos",{method:"POST",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({monto:d.saldo, saldado:d.saldo, alias:null, del_servicio:true,
+                             forma_pago: formaPago==="efectivo" ? "Efectivo" : "Transferencia",
+                             clave: CLAVE + "-todo"})});
+    }catch(e){ toast(SIN_CONEXION); renderTicket(); return; }
+    if(!r.ok){ toast("Se creó, pero el cobro falló — cobralo desde la cuenta"); limpiar(); return; }
+  }
+  toast("Cobrado ✓");
   limpiar();
-  if(r.ok && !otroDia) imprimirComprobante(d.id);
+  if(!otroDia) imprimirComprobante(d.id);
 };
 
 // Cobrar una parte: NO crea nada todavía; el comprobante se crea en el primer pago.
+/* Con esta clave ya había entrado el ticket cobrado entero: se perdió la respuesta
+   de "Cobrar todo" y después se tocó otro botón. No queda nada por cobrar. */
+function yaEstabaCobrado(d, otroDia){
+  if(!(d.saldo === 0 && d.total_final > 0)) return false;
+  toast(`N-${String(d.numero).padStart(5,"0")} ya estaba cobrado`);
+  limpiar();
+  if(!otroDia) imprimirComprobante(d.id);
+  return true;
+}
+
 $("#cobrarParte").onclick=async()=>{
   disableBotones(true);
   compEsDeOtroDia = esDeOtroDia();    // se recuerda: al finalizar decide si imprime
   const d=await crearComprobante();
   if(!d){ renderTicket(); return; }
+  if(yaEstabaCobrado(d, compEsDeOtroDia)) return;
   compActual=d.id; abrirCobro();     // ← esta línea es la que setea compActual
 };
 
@@ -1127,6 +1146,7 @@ $("#dejarCuenta").onclick=async()=>{
   const nom=$("#cliente").value.trim();
   const d=await crearComprobante();
   if(!d){ renderTicket(); return; }
+  if(yaEstabaCobrado(d, otroDia)) return;
   toast("Queda a cuenta de "+nom);
   limpiar();
   // Se imprime igual: el papel dice PENDIENTE y es el respaldo de lo que debe.
