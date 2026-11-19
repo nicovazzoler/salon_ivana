@@ -67,6 +67,8 @@
   /* Servicio cargado un día después del que se atendió: se marca en bronce y
      más chico, para que se lea sin competir con la fecha del servicio. */
   .comp-head .anotado{ color:var(--text-marca); font-size:var(--fs-xs); }
+  .comp.anulado .comp-total{ color:var(--text-tenue); }
+  .comp-head .por-que{ margin-top:4px; font-size:var(--fs-sm); color:var(--text-suave); overflow-wrap:anywhere; }
 
   /* .comp-datos / .comp-acciones viven en components.css (los comparte con cuenta.html) */
 
@@ -160,6 +162,7 @@
       <button class="pill" data-f="deuda">Con deuda</button>
       <button class="pill" data-f="convertidos">Pasados a ticket</button>
       <button class="pill" data-f="sinconvertir">Sin convertir</button>
+      <button class="pill" data-f="anulados">Anulados</button>
     </div>
     <span id="resumenFiltro" class="muted"></span>
     <!-- El orden lo resuelve el servidor: ordenar lo dibujado pondría arriba el
@@ -191,8 +194,9 @@
 requireLogin(); pintarNav();
 const $=s=>document.querySelector(s);
 const fmt=n=>"$"+(n||0).toLocaleString("es-AR");
+const esc=t=>String(t??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 let tipo="ticket";
-let estadoFiltro="todos";   // todos | deuda | convertidos | sinconvertir
+let estadoFiltro="todos";   // todos | deuda | convertidos | sinconvertir | anulados
 let deFiltro="todo";        // todo | pelu | depi
 
 /* Orden. Por defecto fecha de la más nueva a la más vieja: eso es lo que hace
@@ -333,6 +337,7 @@ function pintar(tanda, reiniciar){
     if(estadoFiltro==="deuda") partes.push("con deuda");
     if(estadoFiltro==="convertidos") partes.push("pasados a ticket");
     if(estadoFiltro==="sinconvertir") partes.push("sin convertir");
+    if(estadoFiltro==="anulados") partes.push("anulados");
     if(periodo !== "todo") partes.push("en este período");
     cont.innerHTML = `<p class="muted">No hay ${partes.join(" ")} para mostrar.`
       + (periodo !== "todo" ? ` <a href="#" id="verTodo">Buscar en todo el historial</a>.` : "") + `</p>`;
@@ -384,7 +389,8 @@ function fechaHora(comp){
 }
 
 function crearFila(comp){
-    const div=document.createElement("div"); div.className="comp";
+    const anulado = comp.estado === "anulado";
+    const div=document.createElement("div"); div.className="comp" + (anulado ? " anulado" : "");
     const fecha=fechaHora(comp);
     const quien=comp.cliente_nombre||"Mostrador";
     const pendiente = (comp.tipo==="ticket" && comp.saldo>0)
@@ -405,19 +411,21 @@ function crearFila(comp){
             <div class="sub">${fecha} · <span class="num">${numComp(comp.tipo,comp.numero)}</span> · <span class="cli">${titulo(quien)}</span>${anotado}${
               /* Filtrando por depilación la dice el filtro: en las 60 filas es ruido. */
               comp.depilacion && deFiltro !== "depi" ? ` <span class="tag">depilación</span>` : ""}</div>
-            <div class="comp-total">${fmt(monto)} <span class="fp">· ${formaTxt}</span></div>
+            <div class="comp-total">${anulado ? `<s>${fmt(comp.total_final)}</s>` : fmt(monto)} <span class="fp">· ${formaTxt}</span></div>
+            ${anulado ? `<div class="por-que">Anulado${comp.anulado_en ? " el " + new Date(comp.anulado_en+"Z").toLocaleDateString("es-AR") : ""}${
+              comp.anulado_por ? " por " + esc(comp.anulado_por) : ""}: ${esc(comp.anulado_motivo || "sin motivo")}</div>` : ""}
           </div>
           <span class="badge ${comp.estado}">${comp.estado}</span>
         </div>
-        <div class="comp-acciones">
+        ${anulado ? "" : `<div class="comp-acciones">
         ${(comp.tipo==="ticket" && comp.saldo>0 && comp.cliente_id)
           ? `<a class="btnAbonar" href="/cuenta?id=${comp.cliente_id}&comp=${comp.id}">Abonar</a>` : ''}
         <a class="btnAbonar btn-icono btnPrint" href="/ticket?id=${comp.id}" title="Imprimir ticket" aria-label="Imprimir ticket">${icono("impresora")}</a>
         <button class="btnAnular b-del" data-id="${comp.id}">Anular</button>
-        </div>
+        </div>`}
       </div>
        <div class="detalle-box" style="display:none;"></div>
-      ${comp.tipo==="presupuesto"
+      ${comp.tipo==="presupuesto" && !anulado
         ? (comp.convertido_a
             ? `<div class="muted" style="margin-top:8px;">Convertido → N-${String(comp.convertido_a).padStart(5,"0")}</div>`
             : `<button class="btnConv" style="margin-top:8px;">Convertir a ticket</button>`)
@@ -426,7 +434,7 @@ function crearFila(comp){
     const box=div.querySelector(".detalle-box");
     head.onclick=async()=>{
       if(box.style.display==="block"){ box.style.display="none"; return; }
-      const d=await (await authFetch("/api/comprobantes/"+comp.id)).json();
+      const d=await (await authFetch("/api/comprobantes/"+comp.id + (anulado ? "?anulado=true" : ""))).json();
       const esPresu = d.tipo==="presupuesto";
       const {pu, pe, hayAjuste, textoAjuste} = EscPos;
       // el ajuste de cada línea se aclara abajo del renglón (en % o en pesos)
@@ -464,8 +472,13 @@ function crearFila(comp){
         : (d.tipo!=="ticket" ? ''
            : q.senaT > 0 ? '<div class="muted">Lo cubrió la seña que ya había dejado.</div>'
            : '<div class="muted">Sin pagos.</div>');
-      const filaPendiente = d.saldo > 0
+      const filaPendiente = d.saldo > 0 && !anulado
         ? `<div class="fila fila-desc"><span>Pendiente</span><span>${fmt(d.saldo)}</span></div>` : "";
+      // Lo que había entrado antes de anularlo: ya no cuenta en ninguna caja
+      const cobradosAntes = anulado && d.pagos_anulados.length
+        ? d.pagos_anulados.map(p => `<div class="fila" style="color:var(--text-tenue);"><s>${new Date(p.fecha+"Z").toLocaleDateString("es-AR")} · ${
+            p.es_sena ? "Seña" : esc(p.forma_pago)}${p.alias ? " (" + esc(p.alias) + ")" : ""}</s><s>${fmt(p.monto)}</s></div>`).join("")
+        : (anulado ? '<div class="muted">No se había cobrado nada.</div>' : "");
 
       let totales;
       if(esPresu){
@@ -490,14 +503,17 @@ function crearFila(comp){
           <span class="cuando">${fechaHora(d)}</span></div>
         ${lineas}${extra}${esPresu?'':filasCuenta}
         ${totales}
-        ${d.tipo==="ticket"?`<div style="font-weight:700;margin:10px 0 6px;">Pagos</div>${pagos}${filaPendiente}`:''}
+        ${anulado
+          ? (d.tipo==="ticket" ? `<div style="font-weight:700;margin:10px 0 6px;">Se había cobrado</div>${cobradosAntes}` : "")
+          : `${d.tipo==="ticket"?`<div style="font-weight:700;margin:10px 0 6px;">Pagos</div>${pagos}${filaPendiente}`:''}
         ${d.tipo==="ticket"?`<div class="quien-atendio"></div>`:''}
-        <a class="btnAbonar" href="/ticket?id=${d.id}" style="margin-top:10px;">${icono("impresora")} Imprimir</a>`;
+        <a class="btnAbonar" href="/ticket?id=${d.id}" style="margin-top:10px;">${icono("impresora")} Imprimir</a>`}`;
       // Acá se completa quién atendió: es la única pantalla donde aparece un
       // ticket de mostrador, que no tiene cuenta de cliente adónde ir a buscarlo.
-      pintarPeluquero(box.querySelector(".quien-atendio"), d);
+      if(!anulado) pintarPeluquero(box.querySelector(".quien-atendio"), d);
       box.style.display="block";
     };
+    if(anulado) return div;              // sin acciones: no se imprime, no se cobra, no se anula de nuevo
     div.querySelector(".btnPrint").onclick = e=>e.stopPropagation();   // que no despliegue el detalle
     div.querySelector(".btnAnular").onclick = async (e)=>{
       e.stopPropagation();
@@ -528,7 +544,7 @@ function crearFila(comp){
 /* "Con deuda" solo tiene sentido en tickets; "pasados a ticket" / "sin convertir",
    solo en presupuestos. Se muestran los que aplican a la pestaña abierta. */
 function ajustarFiltros(){
-  const validos = tipo==="ticket" ? ["deuda"] : ["convertidos","sinconvertir"];
+  const validos = tipo==="ticket" ? ["deuda","anulados"] : ["convertidos","sinconvertir","anulados"];
   document.querySelectorAll("#filtroEstado .pill").forEach(b=>{
     b.style.display = validos.includes(b.dataset.f) ? "" : "none";
   });
