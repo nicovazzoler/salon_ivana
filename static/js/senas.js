@@ -39,8 +39,6 @@ function panelSena(clienteId, nombre, alGuardar){
   pan.innerHTML = `
     <div class="cab">
       <b>${eligeCliente ? "Tomar una seña" : "Seña de " + _escSena(nombre || "")}</b>
-      <span class="det">Entra a la caja de hoy y se usa sola cuando se le facture la
-        depilación, la jornada que sea.</span>
     </div>
     <div class="campos">
       ${eligeCliente ? `<div class="campo ancho sCli"><label>Cliente</label>

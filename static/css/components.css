@@ -839,8 +839,7 @@ body.con-panel{ overflow:hidden; }
 /* El rótulo arriba del casillero, en el dorado de la marca y separado: pegado y
    en gris se leía como parte de lo tipeado. */
 .panel-sena .campo label{
-  margin:0; font-size:var(--fs-sm); font-weight:var(--fw-bold);
-  text-transform:uppercase; letter-spacing:var(--tracking-eti); color:var(--acento);
+  margin:0; font-size:var(--fs-sm); font-weight:var(--fw-bold); color:var(--acento);
 }
 .panel-sena .campo input, .panel-sena .campo select{ width:100%; }
 .panel-sena .montos{ display:flex; flex-wrap:wrap; gap:var(--sp-2); margin-top:var(--sp-4); }
@@ -862,6 +861,31 @@ body.con-panel{ overflow:hidden; }
 .arranque.puesto{ font-size:var(--fs-xs); }
 .arranque .arrVer{ color:var(--text-tenue); text-decoration:underline; }
 .arranque .arrCajon{ display:flex; align-items:center; gap:var(--sp-2); }
+
+/* ----- La barra de cobro de abajo (engancharBarraCobro en auth.js) -----
+   Sale mientras el botón de cobrar está fuera de la vista: en el celular siempre,
+   y en la tablet cuando el ticket es largo. */
+.barra-cobro{
+  position:fixed; left:0; right:0; bottom:0; z-index:40;
+  display:flex; align-items:center; gap:16px;
+  padding:12px max(16px, env(safe-area-inset-right, 0px)) calc(12px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px));
+  background:var(--bg-elevado);
+  border-top:1px solid var(--border-sutil);
+  box-shadow:0 -10px 30px -16px rgba(0,0,0,.45);
+}
+.barra-cobro[hidden]{ display:none; }
+body:has(.barra-cobro:not([hidden])){ padding-bottom:84px; }
+body:has(.barra-cobro:not([hidden])) .toast{ bottom:100px; }
+.barra-cobro .lbl{ display:block; font-size:var(--fs-xs); font-weight:var(--fw-bold); color:var(--text-tenue); }
+.barra-cobro .tot{ font-family:var(--font-display); font-size:24px; font-weight:var(--fw-bold); color:var(--text-marca); line-height:1.1; font-variant-numeric:tabular-nums; }
+.barra-cobro .cant{ font-size:var(--fs-sm); color:var(--text-tenue); }
+.barra-cobro button{ margin-left:auto; padding:14px 22px; border-radius:12px; font-size:16px; }
+/* En pantalla ancha va del lado del ticket, que está a la derecha */
+@media (min-width:760px){
+  .barra-cobro{ justify-content:flex-end; gap:24px; padding-right:max(32px, env(safe-area-inset-right, 0px)); }
+  .barra-cobro > div{ text-align:right; }
+  .barra-cobro button{ margin-left:0; min-width:240px; }
+}
 
 /* ----- Forma de pago: fichas con el total de cada lista (Facturar y Depilación) ----- */
 .como-paga{

@@ -203,6 +203,14 @@ nav.menu a.actual{ color:var(--text-titulo); border-bottom-color:var(--bronce-40
 
    El corte está en 860px y no en 640: una tablet en vertical también parte el
    menú en tres filas, y la tablet es el aparato del local. */
+/* En la tablet apaisada el menú de la dueña entra en un renglón con cualquier
+   título, "Administración" incluido: si no, unas pantallas lo partían en dos y
+   otras no, y el menú saltaba de lugar al cambiar de pantalla. */
+@media (min-width: 861px) and (max-width: 1180px){
+  header{ padding-left:var(--sp-4); padding-right:var(--sp-4); }
+  nav.menu .links{ gap:12px; }
+}
+
 @media (max-width: 860px){
   nav.menu .hamb{
     display:inline-flex; align-items:center; justify-content:center;

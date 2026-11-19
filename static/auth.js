@@ -297,6 +297,44 @@ function preguntar({ titulo, texto = "", si = "Aceptar", no = "Volver", peligro 
   });
 }
 
+/* La altura del encabezado, para lo que se pega justo debajo (las pestañas de Admin):
+   con un número fijo, cuando el encabezado ocupaba dos renglones lo tapaban. */
+(function(){
+  const h = document.querySelector("header");
+  if(h && window.ResizeObserver)
+    new ResizeObserver(() => document.documentElement.style.setProperty("--alto-header", h.offsetHeight + "px")).observe(h);
+})();
+
+/* La barra de cobro de abajo (Facturar y Depilación): repite el total y el botón
+   principal mientras ese botón está fuera de la vista. No cobra por su cuenta:
+   toca ese mismo botón, o lleva hasta él si todavía no se puede. */
+function engancharBarraCobro({ barra, botones, total, cantidad, observar }){
+  if(!barra) return;
+  const btn = barra.querySelector("button");
+  const principal = () => botones.find(b => b && b.offsetParent !== null);
+  const aLaVista = new Map();
+  function pintar(){
+    const n = cantidad(), b = principal();
+    barra.hidden = n === 0 || !b || aLaVista.get(b);
+    if(barra.hidden) return;
+    barra.querySelector(".tot").textContent = total();
+    barra.querySelector(".cant").textContent = `· ${n} ${n === 1 ? "ítem" : "ítems"}`;
+    btn.textContent = b.disabled ? "Ir al ticket" : (b.dataset.corto || b.textContent);
+    btn.className = b.disabled ? "b-out" : "b-ok";
+  }
+  btn.onclick = () => {
+    const b = principal(); if(!b) return;
+    b.scrollIntoView({ block:"center", behavior:"smooth" });
+    if(!b.disabled) b.click();
+  };
+  new MutationObserver(pintar).observe(observar,
+    { subtree:true, childList:true, characterData:true, attributes:true, attributeFilter:["style", "disabled", "hidden"] });
+  const io = new IntersectionObserver(es => { es.forEach(e => aLaVista.set(e.target, e.isIntersecting)); pintar(); },
+                                      { threshold: 0.6 });
+  botones.forEach(b => b && io.observe(b));
+  pintar();
+}
+
 /* Para los mensajes que ya vienen escritos como un confirm(): el primer párrafo
    va de título y el resto de texto. `si` es el verbo del botón. */
 function confirmar(mensaje, { si = "Seguir", no = "Volver", peligro = false } = {}){

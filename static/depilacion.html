@@ -296,7 +296,7 @@
           <input id="cliente" autocomplete="off" placeholder="Buscar o escribir el nombre">
           <div class="cli-drop" id="cliDrop"></div>
         </div>
-        <div class="campo"><label for="atiende">Atiende</label>
+        <div class="campo"><label for="atiende">Atendió</label>
           <select id="atiende"></select></div>
       </div>
       <div class="lineas" id="lineas"><p class="vacio">Todavía no hay zonas elegidas.</p></div>
@@ -321,6 +321,10 @@
   <div class="hoja" id="hHistorial" hidden></div>
 </div>
 
+<div class="barra-cobro" id="barraCobro" hidden>
+  <div><span class="lbl">Total</span><span class="tot"></span> <span class="cant"></span></div>
+  <button type="button"></button>
+</div>
 <div class="toast" id="toast"></div>
 
 <script src="/static/auth.js"></script>
@@ -563,6 +567,8 @@ function pintar(){
     : !FORMA ? "Elegí cómo paga"
     : total === 0 && SENAS.length ? "Cobrar con la seña"
     : `Cobrar ${fmt(total)} ${FORMA === "efectivo" ? "en efectivo" : "por transferencia"}`;
+  // En la barra de abajo el total ya está al lado: va sin el monto
+  b.dataset.corto = !FORMA || total === 0 ? "" : FORMA === "efectivo" ? "Cobrar en efectivo" : "Cobrar por transf.";
   $("#btnVaciar").disabled = !TICKET.length;
   guardarBorrador();
   document.querySelectorAll(".zona").forEach(b => {
@@ -651,7 +657,7 @@ async function mostrarSenas(avisar){
             : (s.forma_pago || "") === "Efectivo"
             ? `entraron ${fmt(s.monto)} en efectivo` : esc(s.forma_pago || "")}</span>
           <span class="cuando">${esc(s.fecha || "")}</span>
-          ${s.parcial ? "" : `<button class="b-out btn-mini borrar-sena" data-id="${s.id}"
+          ${s.parcial ? "" : `<button class="b-del btn-mini borrar-sena" data-id="${s.id}"
                   title="Se le devolvió la plata" aria-label="Se le devolvió la plata">${icono("cruz")}</button>`}
         </div>`).join("")}</div>`;
   caja.querySelectorAll(".borrar-sena").forEach(b => {
@@ -829,7 +835,7 @@ function pintarDia(){
   const acciones = e => !abierta ? "" : `
       <button class="b-out btn-mini editar-gasto" data-id="${e.id}" data-monto="${e.monto}"
               data-forma="${esc(e.forma_pago || "Efectivo")}" title="Corregir" aria-label="Corregir">${icono("lapiz")}</button>
-      <button class="b-out btn-mini borrar-gasto" data-id="${e.id}"
+      <button class="b-del btn-mini borrar-gasto" data-id="${e.id}"
               title="Sacar este gasto de la sesión" aria-label="Sacar este gasto de la sesión">${icono("cruz")}</button>`;
   const gasto = (e, rot) => `<div class="ren chico" data-gasto="${e.id}">
       <span>${rot}${e.fecha && d.dias.length > 1 ? ` <em class="det">${fechaCorta(e.fecha)}</em>` : ""}${
@@ -1063,8 +1069,7 @@ function repartoHTML(d){
   const q = d.cuenta;
   const pagado = d.cerrado ? d.cerrado.total : 0;
   return `<div class="cuenta">
-      <div class="ren"><span>Lo facturado en la sesión
-          <em class="det">los trabajos de depilación, en efectivo o por transferencia</em></span><b>${fmt(q.base)}</b></div>
+      <div class="ren"><span>Lo facturado en la sesión</span><b>${fmt(q.base)}</b></div>
       <div class="ren"><span>Gastos de la sesión</span><b class="${q.gastos ? "resta" : ""}">${q.gastos ? "−" : ""}${fmt(q.gastos)}</b></div>
       <div class="ren total"><span>Queda</span><b>${fmt(q.resto)}</b></div>
       <div class="ren mitad"><span>Para ${d.a_cargo ? esc(d.a_cargo) : "quien la lleva"}</span><b>${fmt(q.parte_empleada)}</b></div>
@@ -1356,5 +1361,8 @@ const fechaLarga = iso => {
 };
 
 cargar();
+engancharBarraCobro({ barra: $("#barraCobro"), botones: [$("#btnCobrar")],
+                      total: () => ($("#totales .ren.grande b") || {}).textContent || "",
+                      cantidad: () => TICKET.length, observar: $(".ticket") });
 </script>
 </body></html>
