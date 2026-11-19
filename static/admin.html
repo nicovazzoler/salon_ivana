@@ -19,7 +19,7 @@
 </head>
 <body>
 <header>
-  <span>⚙️ Administración</span>
+  <span>Administración</span>
 <nav class="menu">
   <a href="/">Facturación</a>
   <a href="/agenda">Agenda</a>
@@ -33,10 +33,10 @@
 <div class="wrap">
 
   <nav class="indice">
-    <a class="pill" href="#catalogo">✂️ Catálogo</a>
-    <a class="pill" href="#miclave">🔑 Mi contraseña</a>
-    <a class="pill" href="#usuarios" data-dueno>👥 Usuarios</a>
-    <a class="pill" href="#backup" data-dueno>💾 Backup</a>
+    <a class="pill" href="#catalogo">Catálogo</a>
+    <a class="pill" href="#miclave">Mi contraseña</a>
+    <a class="pill" href="#usuarios" data-dueno>Usuarios</a>
+    <a class="pill" href="#backup" data-dueno>Backup</a>
   </nav>
 
   <!-- Las cinco listas configurables —formas de pago, tipos de egreso,
@@ -46,17 +46,17 @@
        pantallas obligaba a irse de un cobro a medio hacer para venir hasta acá. -->
   <div class="card" id="catalogo">
     <div class="card-head">
-      <h2>✂️ Servicios y productos</h2>
+      <h2>Servicios y productos</h2>
       <p>El precio de transferencia se calcula solo.</p>
     </div>
     <div style="margin-bottom:12px;">
-      <input id="buscarItem" placeholder="🔎 Buscar por nombre (en todas las categorías)..." style="width:100%;">
+      <input id="buscarItem" class="buscador" placeholder="Buscar por nombre (en todas las categorías)…" style="width:100%;">
     </div>
     <!-- Ver de una cuáles están marcados a comisión. Están repartidos entre
          categorías, así que sin esto la única forma de saber cuáles son es
          abrirlas todas y acordarse. -->
     <div class="pills" style="margin-bottom:12px;">
-      <button type="button" class="pill" id="soloComision">✂️ Solo los que van a comisión</button>
+      <button type="button" class="pill" id="soloComision">Solo los que van a comisión</button>
       <span class="muted" id="cuentaComision"></span>
     </div>
     <div class="fila">
@@ -64,7 +64,7 @@
       <!-- Modo edición. Se mira de a un ítem casi siempre, pero cuando hay que
            actualizar precios son veinte de una sentada: ahí se prende esto y la
            grilla se convierte en una lista con todos los casilleros abiertos. -->
-      <button class="b-out" id="btnEditarTodos">✏️ Editar todos</button>
+      <button class="b-out" id="btnEditarTodos">Editar todos</button>
       <!-- Atajo: prende el filtro de comisión y el modo edición de una. Es lo
            que se viene a hacer cuando se toca este tema —revisar los
            porcentajes— y son dos botones separados que hay que saber combinar. -->
@@ -107,7 +107,7 @@
        pide cambiar—. -->
   <div class="card" id="miclave" data-empleado>
     <div class="card-head">
-      <h2>🔑 Mi contraseña</h2>
+      <h2>Mi contraseña</h2>
     </div>
     <div class="fila">
       <div style="max-width:280px;"><label>Nueva contraseña</label>
@@ -122,7 +122,7 @@
        no en medio de un cobro. -->
   <div class="card" id="empleados" data-dueno>
     <div class="card-head">
-      <h2>✂️ Empleados</h2>
+      <h2>Empleados</h2>
       <p>Dar de baja no borra nada: deja de ofrecerse. Sin <b>código</b> no puede
          abrir su sueldo.</p>
     </div>
@@ -149,7 +149,7 @@
        contestar abriendo panel por panel. El día suelto sigue en la agenda. -->
   <div class="card" id="horarios" data-dueno>
     <div class="card-head">
-      <h2>🕗 Horarios</h2>
+      <h2>Horarios</h2>
       <p>Un día suelto se carga desde la agenda, no acá.</p>
     </div>
     <div id="barraHorario"></div>
@@ -163,7 +163,7 @@
        para una pantalla que se toca dos veces por año. -->
   <div class="card" id="usuarios" data-dueno>
     <div class="card-head">
-      <h2>👥 Usuarios</h2>
+      <h2>Usuarios</h2>
     </div>
     <div id="listaUsuarios"></div>
     <div id="crearUsuario"></div>
@@ -171,7 +171,7 @@
 
   <div class="card" id="backup" data-dueno>
     <div class="card-head">
-      <h2>💾 Backup completo</h2>
+      <h2>Backup completo</h2>
       <p>Guardalo en un lugar seguro.</p>
     </div>
     <button class="b-tinta" id="btnBackup">Descargar backup</button>

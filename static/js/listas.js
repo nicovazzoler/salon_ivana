@@ -226,7 +226,7 @@ function dibujar(cont, nombreLista, alCambiar){
           `<span class="celda"><label>${esc(c.etiqueta)}</label>${control(c, vals[c.k])}</span>`).join("")
         + `<span class="acc">`
         + (trabada
-            ? `<span class="candado" title="${esc(trabada)}">🔒</span>`
+            ? `<span class="candado" title="${esc(trabada)}">${icono("candado")}</span>`
             : `<button class="b-tinta guardar">Guardar</button><button class="b-del borrar">Eliminar</button>`)
         + `</span>`;
 
@@ -294,7 +294,7 @@ function abrir(nombreLista, alCerrar){
           <h2>${esc(cfg.titulo)}</h2>
           ${cfg.ayuda ? `<p>${esc(cfg.ayuda)}</p>` : ""}
         </div>
-        <button class="b-out cerrar" aria-label="Cerrar">✕</button>
+        <button class="b-out cerrar" aria-label="Cerrar">${icono("cruz")}</button>
       </div>
       <div class="panel-lista-cuerpo"></div>
     </div>`;
@@ -330,7 +330,7 @@ function botonEditar(nombreLista, alCerrar){
   b.className = "editar-lista";
   b.title = "Editar la lista de " + LISTAS[nombreLista].titulo.toLowerCase();
   b.setAttribute("aria-label", b.title);
-  b.innerHTML = "✎";
+  b.innerHTML = icono("lapiz");
   b.onclick = e => { e.preventDefault(); abrir(nombreLista, alCerrar); };
   return b;
 }

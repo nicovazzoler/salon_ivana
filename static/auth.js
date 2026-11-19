@@ -94,7 +94,7 @@ function pintarNav(){
   html+=`<button type="button" class="sw-tema" id="btnTema" role="switch" aria-label="Modo oscuro">`
       + `<span class="pista">${ICONO_SOL}${ICONO_LUNA}<span class="perilla"></span></span></button>`;
   html+=`<button type="button" class="hamb" id="btnMenu" aria-label="Menú"`
-      + ` aria-expanded="false">☰</button>`;
+      + ` aria-expanded="false">${icono("menu")}</button>`;
   nav.innerHTML=html;
   engancharHamburguesa(nav);
   pintarBotonTema();
@@ -148,7 +148,7 @@ async function avisarPasswordDeFabrica(){
   const barra = document.createElement("div");
   barra.id = "avisoSeguridad";
   barra.className = "aviso-seguridad";
-  barra.innerHTML = `<span>🔓 ${partes.join(" ")} Cualquiera que sepa la dirección de la app puede entrar.</span>`
+  barra.innerHTML = `<span>${partes.join(" ")} Cualquiera que sepa la dirección de la app puede entrar.</span>`
     + (getRol()==="dueno" ? ` <a href="/admin#usuarios">Cambiarla ahora</a>` : "");
   document.body.insertBefore(barra, document.body.firstChild);
 }
@@ -195,6 +195,23 @@ const ICONO_LUNA = `<svg viewBox="0 0 24 24" width="16" height="16" fill="none"
   stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" aria-hidden="true">
   <path d="M20.5 14.6A8.6 8.6 0 0 1 9.4 3.5a8.6 8.6 0 1 0 11.1 11.1Z"/>
 </svg>`;
+
+/* Íconos de línea (Lucide, licencia ISC) en vez de emojis: cada aparato dibuja
+   los emojis a su manera y con sus colores. Estos toman el color del texto. */
+const ICONOS = {
+  lapiz: '<path d="M21.17 6.81a1 1 0 0 0-3.99-3.99L3.84 16.17a2 2 0 0 0-.5.83l-1.32 4.35a.5.5 0 0 0 .62.62l4.35-1.32a2 2 0 0 0 .83-.5z"/><path d="m15 5 4 4"/>',
+  cruz: '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
+  impresora: '<path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><path d="M6 9V3a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v6"/><rect x="6" y="14" width="12" height="8" rx="1"/>',
+  calendario: '<rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/>',
+  candado: '<rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>',
+  guardar: '<path d="M20 6 9 17l-5-5"/>',
+  nota: '<path d="M15.5 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V8.5z"/><path d="M15 3v6h6"/>',
+  menu: '<path d="M4 6h16M4 12h16M4 18h16"/>',
+};
+function icono(nombre){
+  return `<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"`
+       + ` stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONOS[nombre]}</svg>`;
+}
 
 /* En el interruptor los dos íconos están siempre a la vista y lo que se mueve es
    la perilla: se entiende de un vistazo en cuál de los dos modos estás, sin

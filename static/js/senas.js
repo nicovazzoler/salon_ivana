@@ -185,7 +185,7 @@ function pintarSenas(cont, senas, alAnular, todas){
         : "a favor"}${
         (s.estuvo_en || []).length ? ` · estuvo en ${s.estuvo_en.join(", ")}, anulado` : ""}</span>`;
     const imp = document.createElement("a");
-    imp.className = "b-out"; imp.textContent = "🖨️ Recibo";
+    imp.className = "b-out"; imp.innerHTML = icono("impresora") + " Recibo";
     imp.href = `/ticket?tipo=sena&id=${s.id}`;
     fila.appendChild(imp);
     if(!s.usada && !s.parcial && !s.anulada && alAnular && getRol() === "dueno"){

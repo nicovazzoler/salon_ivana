@@ -18,27 +18,17 @@
   body{
     display:flex; align-items:center; justify-content:center;
     min-height:100vh; padding:24px;
-    background:var(--papel-300);
+    background:var(--bg-app);
   }
 
   .box{
     width:100%; max-width:360px;
     padding:40px 36px 34px;
-    background:var(--papel-100);
-    border:1px solid var(--papel-500);
-    border-radius:var(--r-xl);
-    box-shadow:var(--sombra-card);
+    background:var(--bg-elevado);
+    border-radius:18px;
+    box-shadow:var(--sombra-elevada);
   }
 
-  /* Marca: versalita espaciada arriba, nombre en la serif abajo */
-  .marca{
-    font-family:var(--font-ui);
-    font-size:var(--fs-xs);
-    font-weight:var(--fw-bold);
-    text-transform:uppercase;
-    letter-spacing:.22em;
-    color:var(--bronce-600);
-  }
   .box h1{
     margin:10px 0 0;
     font-family:var(--font-display);
@@ -64,26 +54,24 @@
   .box input{
     width:100%;
     padding:12px 14px;
-    background:var(--papel-200);
-    border:1px solid var(--papel-600);
-    border-radius:var(--r-md);
+    background:var(--bg-input);
+    border:1px solid var(--border);
+    border-radius:9px;
     font-size:16px;               /* 16px: evita que el celular haga zoom al enfocar */
   }
-  .box input:focus{ background:var(--papel-100); }
+
 
   .box button{
     width:100%;
     margin-top:8px;
     padding:14px;
-    border-radius:var(--r-md);
-    background:var(--tinta-900);
-    color:var(--papel-100);
-    font-size:var(--fs-md);
+    border-radius:10px;
+    background:var(--acento-fuerte);
+    color:var(--text-sobre-oro);
+    font-size:16px;
     font-weight:var(--fw-bold);
-    text-transform:uppercase;
-    letter-spacing:.14em;
   }
-  .box button:hover{ background:var(--tinta-700); color:var(--papel-100); }
+  .box button:hover{ background:var(--bronce-500); color:var(--text-sobre-oro); }
 
   .err{
     margin-top:14px;
@@ -92,19 +80,9 @@
     color:var(--danger);
   }
 
-  .pie{
-    margin-top:26px; padding-top:18px;
-    border-top:1px solid var(--papel-400);
-    font-family:var(--font-ui);
-    font-size:var(--fs-xs);
-    letter-spacing:.12em;
-    text-transform:uppercase;
-    color:var(--tinta-300);
-  }
 </style>
 </head><body>
 <div class="box">
-  <div class="marca">Peluquería</div>
   <h1>Ivana Salón</h1>
   <div class="filete"></div>
   <p class="sub">Ingresá para continuar.</p>
@@ -121,7 +99,6 @@
   <button id="btn">Ingresar</button>
   <div class="err" id="err" role="alert"></div>
 
-  <div class="pie">Sistema de gestión</div>
 </div>
 <script>
 async function entrar(){

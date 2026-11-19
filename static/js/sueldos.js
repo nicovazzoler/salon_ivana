@@ -115,7 +115,7 @@ async function arranque(){
     $("#tituloDetalle").textContent = "Detalle";
     $("#rotuloQuien").textContent = VOS.quien;
   } else {
-    $("#tituloDetalle").textContent = "👛 Tu semana";
+    $("#tituloDetalle").textContent = "Tu semana";
   }
   // Ordenados por nombre: el desplegable se usa buscando uno puntual, y el orden
   // en que los devuelve la base no le dice nada al que busca.
@@ -283,7 +283,7 @@ async function pintarLiquidaciones(){
     };
   }
   if(!DUENO){
-    $("#tituloPagado").textContent = "🧾 Lo que ya cobraste";
+    $("#tituloPagado").textContent = "Lo que ya cobraste";
   }
 
   // Se agrupa por el rango del ciclo. La clave es desde+hasta: dos empleadas de
@@ -430,7 +430,7 @@ function dibujarDia(d, c){
   const comisiones = d.trabajos.reduce((a, t) => a + (t.minutos ? t.comision : 0), 0);
   const horasBoton = d.horas_pagadas ? ""
     : `<button class="b-out btn-mini editar-horas" data-fecha="${d.fecha}"
-               data-min="${d.minutos}">${d.minutos ? "✎" : "Poner horas"}</button>`;
+               data-min="${d.minutos}">${d.minutos ? icono("lapiz") : "Poner horas"}</button>`;
   const horas = `<span class="dia-horas${falta ? " falta" : ""}">
       <span class="rot-horas">Horas trabajadas:</span>
       <span class="valor">${d.horas_pagadas ? "ya cobradas"
@@ -489,7 +489,7 @@ function dibujarTrabajo(t){
     </div>
     <span class="dia-horas">
       ${falta ? `<span class="falta-tiempo">falta el tiempo</span>` : `<span class="valor">${hhmm(t.minutos)}</span>`}
-      <button class="b-out btn-mini editar-min" ${clave} data-min="${t.minutos}">${falta ? "Poner" : "✎"}</button>
+      <button class="b-out btn-mini editar-min" ${clave} data-min="${t.minutos}">${falta ? "Poner" : icono("lapiz")}</button>
     </span>
     <span class="plata${falta ? " no-cuenta" : ""}"${
       falta ? ` title="Todavía no se cuenta: falta cargarle la duración"` : ""}>${fmt(t.comision)}</span>
@@ -505,9 +505,9 @@ function filaCerrar(c, listo){
   // ">" el cierre normal de todas las semanas salía como "pago parcial".
   const termino = hoyArg() >= c.hasta;
   const aviso = c.sin_tiempo
-    ? `<div class="aviso">⚠️ ${c.sin_tiempo} ${c.sin_tiempo===1?"trabajo":"trabajos"} sin duración. Hasta que la tengan no se sabe cuántas horas hay que pagar aparte, así que este ciclo no se puede cerrar.</div>`
+    ? `<div class="aviso">${c.sin_tiempo} ${c.sin_tiempo===1?"trabajo":"trabajos"} sin duración. Hasta que la tengan no se sabe cuántas horas hay que pagar aparte, así que este ciclo no se puede cerrar.</div>`
     : c.sin_horas
-    ? `<div class="aviso">⚠️ ${c.sin_horas} ${c.sin_horas===1?"día":"días"} sin horas declaradas. Un día en cero se paga solo por comisión y las horas de ese día se pierden, así que este ciclo no se puede cerrar.</div>`
+    ? `<div class="aviso">${c.sin_horas} ${c.sin_horas===1?"día":"días"} sin horas declaradas. Un día en cero se paga solo por comisión y las horas de ese día se pierden, así que este ciclo no se puede cerrar.</div>`
     : (termino ? "" : `<div class="aviso">Esta semana no terminó todavía. Lo que se pague ahora es lo que va hasta hoy: lo que trabaje después vuelve a aparecer en este mismo ciclo.</div>`);
   // Horas declaradas en un día sin ningún trabajo detrás. Avisa, no frena: se
   // puede venir a ordenar el local y no facturar nada. Es lo único de este
@@ -549,7 +549,7 @@ function abrirEditor(ancla, minutos, alGuardar){
     <input type="number" min="0" max="59" step="5" inputmode="numeric" value="${m||""}" class="em" aria-label="Minutos">
     <span class="u">min</span>
     <button class="b-ok btn-mini ok">Guardar</button>
-    <button class="b-out btn-mini no">✕</button>`;
+    <button class="b-out btn-mini no" aria-label="Quitar">${icono("cruz")}</button>`;
   ancla.replaceWith(caja);
   const leer = () => Math.max(0, parseInt(caja.querySelector(".eh").value,10)||0) * 60
                    + Math.max(0, parseInt(caja.querySelector(".em").value,10)||0);

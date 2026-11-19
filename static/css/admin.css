@@ -13,13 +13,12 @@
     font-size:var(--fs-base);
     color:var(--text-tenue);
   }
-  .sub-h{                                  /* subtítulo dentro de una card */
+  .sub-h{                                  /* subtítulo dentro de una sección */
     margin:0 0 var(--sp-2);
-    font-size:var(--fs-base);
+    font-family:var(--font-display);
+    font-size:17px;
     font-weight:var(--fw-bold);
-    text-transform:uppercase;
-    letter-spacing:.05em;
-    color:var(--text-tenue);
+    color:var(--text-titulo);
   }
 
   /* ----- Índice de secciones ----- */
@@ -27,9 +26,7 @@
     position:sticky; top:76px; z-index:var(--z-dropdown);
     display:flex; flex-wrap:wrap; gap:6px;
     margin-bottom:var(--sp-4);
-    padding:var(--sp-2);
-    border:1px solid var(--border-sutil);
-    border-radius:var(--r-full);
+    padding:var(--sp-2) 0;
     background:var(--bg-header);
   }
   .indice a{ text-decoration:none; }
@@ -249,7 +246,7 @@
   .panel-edicion input, .panel-edicion select{ flex:1 1 160px; min-width:0; }
   .usuario-panel .acc, .panel-edicion .acc{ display:flex; gap:6px; }
   /* El de crear no cuelga de ninguna fila: lleva el borde completo. */
-  .usuario-panel.crear, .panel-edicion.crear{ border-top:1px solid var(--border-sutil); border-radius:var(--r-md); margin-top:var(--sp-3); }
+  .usuario-panel.crear, .panel-edicion.crear{ padding:12px 14px; border:0; border-radius:12px; margin-top:var(--sp-3); background:var(--bg-tile); }
 
   /* El panel del catálogo tiene varios campos: cada uno con su rótulo arriba,
      en su propia columna, en vez de la fila de un solo campo de usuarios. */
@@ -300,10 +297,7 @@
     padding-bottom:var(--sp-3); margin-bottom:var(--sp-2);
     border-bottom:1px solid var(--border);
   }
-  .de-una .rot{
-    font-size:var(--fs-xs); letter-spacing:var(--tracking-eti); text-transform:uppercase;
-    color:var(--acento); font-weight:var(--fw-bold);
-  }
+  .de-una .rot{ font-size:13px; color:var(--text-tenue); font-weight:var(--fw-bold); }
   /* La casilla y su texto van juntos: con el label en bloque, la casilla queda
      arriba y el texto abajo, y a 420 px parecen dos controles. */
   .de-una .marca{
@@ -316,13 +310,13 @@
   .de-una input[type=time]{ width:auto; padding:5px 7px; }
   .chips{ display:flex; gap:4px; flex-wrap:wrap; }
   .chip-dia{
-    padding:5px 10px; border-radius:var(--r-full);
-    background:var(--bg-card); border:1px solid var(--border-sutil);
-    font-size:var(--fs-sm); color:var(--text-tenue); cursor:pointer;
+    padding:5px 10px; border:0; border-radius:var(--r-full);
+    background:var(--bg-sutil);
+    font-size:var(--fs-sm); color:var(--text-suave); cursor:pointer;
   }
   .chip-dia.on{
-    background:var(--bronce-400); border-color:var(--bronce-500);
-    color:var(--text-sobre-oro); font-weight:var(--fw-bold);
+    background:var(--bg-elegido); color:var(--text-marca);
+    box-shadow:inset 0 0 0 1px var(--bronce-a30); font-weight:var(--fw-bold);
   }
 
   /* El resumen de lo guardado, para que esconder los días no esconda el dato. */
@@ -394,10 +388,12 @@
   .emp-fila .meta{ font-size:var(--fs-sm); color:var(--text-tenue); }
   .emp-fila .marcas{ display:flex; gap:5px; flex-wrap:wrap; justify-content:flex-end; }
   .chip-emp{
-    font-size:var(--fs-xs); letter-spacing:var(--tracking-eti); text-transform:uppercase;
+    display:inline-block;
+    font-size:var(--fs-xs);
     font-weight:var(--fw-bold); padding:2px 8px; border-radius:var(--r-full);
     background:var(--rojo-bg); color:var(--danger); white-space:nowrap;
   }
+  .chip-emp::first-letter{ text-transform:uppercase; }
   .chip-emp.gris{ background:var(--bg-sutil); color:var(--text-tenue); }
 
   /* Todo lo de una persona junto, que es lo que antes eran cinco botones. */

@@ -24,9 +24,7 @@
     position:sticky; top:76px; z-index:var(--z-dropdown);
     display:flex; flex-wrap:wrap; gap:6px;
     margin-bottom:var(--sp-4);
-    padding:var(--sp-2);
-    border:1px solid var(--border-sutil);
-    border-radius:var(--r-full);
+    padding:var(--sp-2) 0;
     background:var(--bg-header);
   }
   .indice a{ text-decoration:none; }
@@ -34,17 +32,18 @@
   /* --- filtro de período (manda sobre resumen, gráficos y registro) --- */
   .periodo{ display:flex; align-items:center; flex-wrap:wrap; gap:6px; }
   .periodo button[data-d]{
-    padding:6px 12px;
+    padding:7px 14px;
     background:var(--bg-sutil);
-    border:1px solid var(--border);
-    border-radius:9px;
+    border:0;
+    border-radius:var(--r-full);
     font-size:var(--fs-base);
+    font-weight:var(--fw-bold);
     color:var(--text-suave);
   }
   .periodo button[data-d].on{
-    background:var(--acento);
-    border-color:var(--acento);
-    color:var(--text-invertido);
+    background:var(--bg-elegido);
+    color:var(--text-marca);
+    box-shadow:inset 0 0 0 1px var(--bronce-a30);
   }
   .rango{
     display:flex; align-items:center; flex-wrap:wrap; gap:5px;
@@ -65,19 +64,19 @@
     margin-bottom:var(--sp-3);
   }
   .segmentado{
-    display:flex;
-    border:1px solid var(--border);
-    border-radius:9px;
-    overflow:hidden;           /* recorta las esquinas de los botones internos */
+    display:flex; gap:2px;
+    padding:3px;
+    background:var(--bg-sutil);
+    border-radius:12px;
   }
   .segmentado button{
     padding:7px 14px;
-    border-radius:0;
-    background:var(--bg-sutil);
+    border-radius:9px;
+    background:transparent;
     color:var(--text-suave);
     font-size:var(--fs-base);
   }
-  .segmentado button.on{ background:var(--acento); color:var(--text-invertido); }
+  .segmentado button.on{ background:var(--bg-elegido); color:var(--text-marca); box-shadow:inset 0 0 0 1px var(--bronce-a30); }
 
   .topn{
     display:flex; align-items:center; gap:6px;
@@ -171,7 +170,7 @@
 </style>
 </head><body>
 <header>
-  <span class="tit">📊 Reportes</span>
+  <span class="tit">Reportes</span>
   <nav class="menu">
   <a href="/">Facturación</a>
   <a href="/agenda">Agenda</a>
@@ -185,12 +184,12 @@
 <div class="wrap">
 
   <nav class="indice">
-    <a class="pill" href="#resumen">📈 Resumen</a>
-    <a class="pill" href="#evolucion">📉 Evolución</a>
-    <a class="pill" href="#ranking">🏆 Lo más vendido</a>
-    <a class="pill" href="#pagos">💳 Formas de pago</a>
-    <a class="pill" href="#deuda">🧾 Cuenta corriente</a>
-    <a class="pill" href="#registro">📋 Movimientos</a>
+    <a class="pill" href="#resumen">Resumen</a>
+    <a class="pill" href="#evolucion">Evolución</a>
+    <a class="pill" href="#ranking">Lo más vendido</a>
+    <a class="pill" href="#pagos">Formas de pago</a>
+    <a class="pill" href="#deuda">Cuenta corriente</a>
+    <a class="pill" href="#registro">Movimientos</a>
   </nav>
 
   <!-- FILTRO GLOBAL: manda sobre resumen, gráficos y registro (la deuda NO depende del período) -->
@@ -208,7 +207,7 @@
   <div class="card" id="resumen">
     <div class="card-head con-datos">
       <div class="titulo">
-        <h2>📈 Resumen del período</h2>
+        <h2>Resumen del período</h2>
       </div>
       <div class="kpis" id="kpis"></div>
     </div>
@@ -216,14 +215,14 @@
 
   <div class="card" id="evolucion">
     <div class="card-head">
-      <h2>📉 Evolución de la caja</h2>
+      <h2>Evolución de la caja</h2>
     </div>
     <div class="grafico" id="gEvolucion"></div>
   </div>
 
   <div class="card" id="ranking">
     <div class="card-head">
-      <h2>🏆 Lo más vendido</h2>
+      <h2>Lo más vendido</h2>
     </div>
     <div class="controles">
       <div class="segmentado">
@@ -237,7 +236,7 @@
 
   <div class="card" id="pagos">
     <div class="card-head">
-      <h2>💳 Ingresos por forma de pago</h2>
+      <h2>Ingresos por forma de pago</h2>
     </div>
     <div class="barras" id="gPagos"></div>
   </div>
@@ -245,7 +244,7 @@
   <div class="card" id="deuda">
     <div class="card-head con-datos">
       <div class="titulo">
-        <h2>🧾 Cuenta corriente</h2>
+        <h2>Cuenta corriente</h2>
         <p>No depende del período de arriba.</p>
       </div>
       <div class="kpis">
@@ -259,7 +258,7 @@
 
   <div class="card" id="registro">
     <div class="card-head">
-      <h2>📋 Registro de movimientos</h2>
+      <h2>Registro de movimientos</h2>
     </div>
     <div class="barra-excel" style="margin-bottom:var(--sp-3);"><button id="wkexcel">Descargar excel</button></div>
     <div id="reg"></div>
@@ -502,7 +501,7 @@ async function loadDeuda(){
 function pintarRanking(){
   const btn = $("#verTodos");
   if(DEUDORES.length === 0){
-    $("#rankDeuda").innerHTML = '<div class="vacio-graf">Nadie debe nada. 🎉</div>';
+    $("#rankDeuda").innerHTML = '<div class="vacio-graf">Nadie debe nada.</div>';
     btn.style.display = "none";
     return;
   }

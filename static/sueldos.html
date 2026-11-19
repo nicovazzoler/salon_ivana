@@ -60,11 +60,20 @@
   .quien-empleada button{ font-size:var(--fs-sm); padding:4px 10px; }
 
   /* Un ciclo: la semana de trabajo (sábado a viernes) con sus días adentro. */
-  .ciclo{ border:1px solid var(--border-sutil); border-radius:var(--r-lg);
+  /* Cada semana sí es un objeto aparte: es lo que se cierra y se paga */
+  .ciclo{ border-radius:14px; background:var(--bg-elevado); box-shadow:var(--sombra-elevada);
           margin-top:var(--sp-4); overflow:hidden; }
   .ciclo-cab{ display:flex; flex-wrap:wrap; align-items:baseline; gap:var(--sp-2);
-              padding:var(--sp-3) var(--sp-4); background:var(--bg-sutil);
+              padding:var(--sp-3) var(--sp-4);
               border-bottom:1px solid var(--border-sutil); }
+  /* Se repiten en cada día: como botones, una semana suma quince */
+  .dia .agregar-trabajo, .dia .editar-horas, .dia .editar-min{
+    min-height:30px; background:transparent; color:var(--text-tenue);
+  }
+  .dia .agregar-trabajo:hover, .dia .editar-horas:hover, .dia .editar-min:hover{
+    background:var(--bg-sutil); color:var(--text-titulo);
+  }
+  .dia .editar-horas .ico, .dia .editar-min .ico{ width:15px; height:15px; }
   .ciclo-cab h3{ margin:0; font-size:var(--fs-lg); }
   .ciclo-cab .plata{ margin-left:auto; font-family:var(--font-display);
                      font-size:var(--fs-xl); font-weight:var(--fw-black);
@@ -72,12 +81,12 @@
   .ciclo-cab .det{ font-size:var(--fs-sm); color:var(--text-tenue); }
   .ciclo-cuerpo{ padding:0 var(--sp-4) var(--sp-3); }
   /* El ciclo de esta semana, el que todavía se está llenando. */
-  .ciclo.en-curso .ciclo-cab{ background:var(--bg-header); }
+
   .ciclo.en-curso .ciclo-cab h3::after{ content:" · en curso"; font-weight:var(--fw-normal);
                                         font-size:var(--fs-sm); color:var(--text-tenue); }
 
   /* El día de depilación: en vez de días con horas, la cuenta del reparto. */
-  .ciclo.depi .ciclo-cab{ background:var(--bg-header); }
+
   .cuenta-depi{ margin:var(--sp-3) 0; }
   .cuenta-depi .ren{ display:flex; align-items:baseline; gap:var(--sp-2);
                      padding:var(--sp-2) 0; border-bottom:1px solid var(--border-sutil); }
@@ -226,7 +235,7 @@
 </style>
 </head><body>
 <header>
-  <span>👛 Sueldos</span>
+  <span>Sueldos</span>
   <nav class="menu"></nav>
 </header>
 
@@ -240,7 +249,7 @@
   <div class="card">
     <div class="card-head">
       <div class="titulo">
-        <h2>👛 Sueldos</h2>
+        <h2>Sueldos</h2>
         <p id="puertaAyuda">Elegí quién sos y poné tu código.</p>
       </div>
     </div>
@@ -255,7 +264,7 @@
   <div class="card" id="cardDueno" data-dueno style="display:none;">
     <div class="card-head con-datos">
       <div class="titulo">
-        <h2>💰 A pagar</h2>
+        <h2>A pagar</h2>
       </div>
       <div class="kpis" id="kpisDueno"></div>
     </div>
@@ -263,7 +272,7 @@
   </div>
 
   <div class="card" data-dueno>
-    <div class="card-head"><div class="titulo"><h2>⚙️ Cómo se calcula</h2>
+    <div class="card-head"><div class="titulo"><h2>Cómo se calcula</h2>
       <p>Cambiarlos no toca lo ya pagado.</p></div></div>
     <div id="cfgGenerales"></div>
     <div id="cfgArranque"></div>
@@ -274,7 +283,7 @@
   <div class="card">
     <div class="card-head con-datos">
       <div class="titulo">
-        <h2 id="tituloDetalle">👛 Sueldos</h2>
+        <h2 id="tituloDetalle">Sueldos</h2>
       </div>
       <div class="quien">
         <label for="quien" id="rotuloQuien">Quién sos</label>
@@ -291,7 +300,7 @@
        suyos (el servidor no le contesta otra cosa). -->
   <div class="card" id="cardLiquidaciones" style="display:none;">
     <div class="card-head con-datos">
-      <div class="titulo"><h2 id="tituloPagado">🧾 Ya pagado</h2></div>
+      <div class="titulo"><h2 id="tituloPagado">Ya pagado</h2></div>
       <button class="b-out" id="verPagado">Ver</button></div>
     <div id="listaLiq" style="display:none;"></div>
   </div>

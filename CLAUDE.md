@@ -30,7 +30,8 @@ static/
                  un comprobante, así que las celdas se dibujaban con el fondo y
                  las esquinas de una tarjeta. Va acotada a su grilla (`.nums .num`)
   js/            El JS de facturar y admin, que son las grandes
-  auth.js        Sesión, menú y helpers compartidos
+  auth.js        Sesión, menú y helpers compartidos. También icono(), los
+                 íconos de línea: la app no usa emojis
   js/listas.js   Las cinco listas configurables (formas de pago, tipos de egreso,
                  descuentos, ajustes por ítem, alias): un solo dibujante que usan
                  Admin y el panel del lapicito de facturar
@@ -545,6 +546,26 @@ al crearlo y al renombrarlo.
 
 **Ajuste por línea: porcentaje O monto fijo**, nunca los dos. Va por unidad y
 con signo. El monto se resta igual de las dos listas.
+
+## Cómo se ve
+
+Papel, tinta y bronce, con Lora para los títulos y los montos grandes y Karla
+para todo lo demás. Las reglas que la mantienen así:
+
+- **Un solo fondo.** Una sección no es una caja: va sobre el fondo y la separan
+  el aire y un filete (`.card` no tiene fondo ni borde). Lo único que se despega
+  (`--bg-elevado` y `--sombra-elevada`) es lo que flota o se está armando: el
+  ticket de Facturar y de Depilación, el detalle abierto de un comprobante, una
+  semana de Sueldos, un modal. Una lista es filas con un filete, no tarjetas.
+- **Un solo relleno dorado por pantalla**, el de la acción principal (Cobrar,
+  Agendar, Ingresar). Lo elegido —pestaña, chip, categoría— es un tinte con
+  filete (`--bg-elegido`), y lo secundario un relleno apenas (`.b-out`).
+- **Mayúsculas espaciadas solo en los encabezados de tabla.** Rótulos, menú,
+  categorías y servicios van como están escritos.
+- **Íconos con `icono()`**, nunca emojis: cada aparato dibuja un emoji distinto
+  y con sus colores. "Anular" y la cruz van en tinta tenue y se ponen rojos al
+  tocarlos; en rojo fijo, en cada fila, eran lo que más se veía.
+- Nada de letra más chica que 12px (`--fs-xs`): la tablet se mira a un brazo.
 
 ## El papel impreso
 

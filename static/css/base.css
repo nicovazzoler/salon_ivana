@@ -30,26 +30,25 @@ h2{ font-size:21px; line-height:1.25; }
 h3{ font-size:var(--fs-xl); }
 
 /* ----- Formularios ----- */
-/* La etiqueta chiquita de arriba de cada campo: versalita espaciada en bronce.
-   Es el gesto que se repite en toda la app y la ata visualmente. */
+/* La etiqueta de cada campo: chica y en minúscula. La versalita queda para los
+   encabezados de tabla: puesta en todos lados, no destaca nada. */
 label{
-  color:var(--text-marca);
+  color:var(--text-suave);
   font-family:var(--font-ui);
-  font-size:var(--fs-xs);
+  font-size:13px;
   font-weight:var(--fw-bold);
-  text-transform:uppercase;
-  letter-spacing:var(--tracking-eti);
 }
 
 input,select,textarea{
   padding:10px 12px;
-  border:1px solid var(--papel-600);
-  border-radius:var(--r-md);
+  border:1px solid var(--border);
+  border-radius:9px;
   font-size:var(--fs-lg);
   font-family:var(--font-control);
   background:var(--bg-input);
   color:var(--tinta-900);
 }
+input:hover,select:hover,textarea:hover{ border-color:var(--tinta-400); }
 input::placeholder,
 textarea::placeholder{
   color:var(--gris-300);
@@ -87,7 +86,7 @@ button{
   font-weight:var(--fw-bold);
   padding:10px 16px;
   border:1px solid transparent;
-  border-radius:var(--r-md);
+  border-radius:9px;
   cursor:pointer;
   background:var(--acento-fuerte);
   color:var(--tinta-900);
@@ -120,8 +119,8 @@ th{
   font-size:var(--fs-xs);
   font-weight:var(--fw-bold);
   text-transform:uppercase;
-  letter-spacing:var(--tracking-eti);
-  border-bottom:1px solid var(--border);
+  letter-spacing:.08em;
+  border-bottom:1px solid var(--border-sutil);
 }
 td{
   border-bottom:1px solid var(--border-sutil);

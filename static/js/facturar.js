@@ -85,7 +85,7 @@ async function cargarEgresosHoy(){
       <span class="hora">${e.numero ? "#"+e.numero+" · " : ""}${e.hora}</span>
       <span class="que"><b>${e.tipo}</b>${marca}${detalle?' <span class="det">'+detalle+'</span>':''}</span>
       <span class="monto">−${fmt(e.monto)}</span>
-      <button class="quitar" title="Anular este egreso">×</button>`;
+      <button class="quitar" title="Anular este egreso" aria-label="Anular este egreso">${icono("cruz")}</button>`;
     row.querySelector(".quitar").onclick=async()=>{
       if(!confirm("¿Anular este egreso?"))return;
       const r=await authFetch("/api/egresos/"+e.id,{method:"DELETE"});
@@ -358,7 +358,7 @@ function renderExtras(){
     const row=document.createElement("div"); row.className="extra-linea";
     row.innerHTML=`<span class="cn">${esc(e.concepto)}</span>
                    <span class="mt">${fmt(e.monto)}</span>
-                   <button class="quitar" title="Quitar">×</button>`;
+                   <button class="quitar" title="Quitar" aria-label="Quitar">${icono("cruz")}</button>`;
     row.querySelector(".quitar").onclick=()=>{ EXTRAS.splice(i,1); renderExtras(); actualizarTotales(); };
     cont.appendChild(row);
   });
@@ -420,10 +420,10 @@ function htmlPrecios(l, dosColumnas){
   const tachado = base => aj ? `<span class="precio-viejo">${fmt(base)}</span> ` : "";
   return dosColumnas
     ? `<span style="display:flex;gap:12px;font-size:13px;min-width:130px;text-align:right;">
-         <span><span style="font-size:11px;color:var(--text-tenue);">Lista</span><br>${tachado(l.precioTransfer)}${fmt(precioAjTr(l))}</span>
-         <span><span style="font-size:11px;color:var(--text-tenue);">Con desc.</span><br>${tachado(l.precio)}${fmt(precioAjEf(l))}</span>
+         <span><span style="font-size:var(--fs-xs);color:var(--text-tenue);">Lista</span><br>${tachado(l.precioTransfer)}${fmt(precioAjTr(l))}</span>
+         <span><span style="font-size:var(--fs-xs);color:var(--text-tenue);">Con desc.</span><br>${tachado(l.precio)}${fmt(precioAjEf(l))}</span>
        </span>`
-    : `<span style="min-width:110px;text-align:right;">${tachado(l.precioTransfer)}${fmt(precioAjTr(l))} <span style="color:var(--text-tenue);font-size:11px;">(c/desc ${fmt(precioAjEf(l))} )</span></span>`;
+    : `<span style="min-width:110px;text-align:right;">${tachado(l.precioTransfer)}${fmt(precioAjTr(l))} <span style="color:var(--text-tenue);font-size:var(--fs-xs);">(c/desc ${fmt(precioAjEf(l))} )</span></span>`;
 }
 
 $("#item-extra").onclick=()=>agregarItem();
@@ -480,9 +480,9 @@ function renderTicket(){
         ?`<input class="nombre-item-extra" placeholder="Nombre del ítem" value="${esc(l.nombre)}">
           <div class="precio-extra-box"><span class="pfx">$</span><input class="precio-item-extra" inputmode="numeric" placeholder="Precio efvo." value="${l.precio>0?l.precio:''}"></div>
           <span class="transfer-vivo">transf ${fmt(l.precioTransfer)}</span>
-          <button class="check-item-extra" title="Listo">💾</button>`
+          <button class="check-item-extra" title="Listo" aria-label="Listo">${icono("guardar")}</button>`
         : esExtra
-        ?`<span class="n">${esc(l.nombre)}<button class="edit-item-extra" title="Editar ítem">✏️</button></span>
+        ?`<span class="n">${esc(l.nombre)}<button class="edit-item-extra" title="Editar ítem" aria-label="Editar ítem">${icono("lapiz")}</button></span>
           ${preciosHTML}`
         :`<span class="n">${l.nombre}</span>
           ${preciosHTML}`
@@ -491,7 +491,7 @@ function renderTicket(){
       <div class="controles">
         ${editando ? "" : `<button class="${ajClase}" title="${ajTitulo}">${ajTexto}</button>`}
         <div class="qty separa"><button class="menos">−</button><span>${l.cantidad}</span><button class="mas">+</button></div>
-        <button class="quitar">×</button>
+        <button class="quitar" aria-label="Quitar">${icono("cruz")}</button>
       </div>
       ${l.ajusteAbierto && !editando ? `
       <div class="aj-panel">
@@ -508,7 +508,7 @@ function renderTicket(){
           <option value="libre"${aj && !AJUSTES.some(a=>coincideAj(l,a))?" selected":""}>Otro…</option>
         </select>
         <button class="editar-lista aj-editar" type="button"
-                title="Editar la lista de ajustes por ítem" aria-label="Editar la lista de ajustes por ítem">✎</button>
+                title="Editar la lista de ajustes por ítem" aria-label="Editar la lista de ajustes por ítem">${icono("lapiz")}</button>
         <div class="aj-unidad">
           <button class="u-pct${enPesos?"":" on"}" type="button" title="Ajuste en porcentaje">Porc. %</button>
           <button class="u-mon${enPesos?" on":""}" type="button" title="Ajuste en pesos">Pesos</button>
@@ -1035,7 +1035,7 @@ async function crearComprobante(cobro = {}){
   // dejar a mano el botón para imprimir el comprobante recién creado
   const pu=$("#printUltimo");
   pu.href="/ticket?id="+d.id;
-  pu.textContent=`🖨️ Imprimir ${pref}${String(d.numero).padStart(5,"0")}`;
+  pu.innerHTML=`${icono("impresora")} Imprimir ${pref}${String(d.numero).padStart(5,"0")}`;
   pu.style.display="block";
   return d;
 }
@@ -1343,8 +1343,41 @@ function hayTicketSinCobrar(){
 /* La marca de borrador vive en el MENÚ, no acá: en facturar el ticket está a la
    vista y el cartel repetía lo que ya se ve. En las otras pantallas sí hace
    falta, que es donde uno se olvida de que dejó algo sin cobrar. */
+/* Barra de cobro de las pantallas angostas. Repite el total y el botón principal
+   del ticket y no cobra por su cuenta: toca ese mismo botón. Si todavía no se
+   puede cobrar, lleva al ticket, que es donde se ve qué falta. */
+function engancharBarraCobro(){
+  const barra = $("#barraCobro");
+  if(!barra) return;
+  const btn = barra.querySelector("button");
+  const principal = () => ["#cobrarTodo", "#cobrarMixto", "#crearPresu", "#dejarCuenta"]
+    .map(s => $(s)).find(b => b && b.offsetParent !== null);
+  let ticketALaVista = false;
+
+  function pintar(){
+    const n = ticket.length;
+    const b = principal();
+    barra.hidden = n === 0 || !b || ticketALaVista;
+    if(barra.hidden) return;
+    barra.querySelector(".tot").textContent = $("#total").textContent;
+    barra.querySelector(".cant").textContent = `· ${n} ${n === 1 ? "ítem" : "ítems"}`;
+    btn.textContent = b.disabled ? "Ir al ticket" : b.textContent;
+    btn.className = b.disabled ? "b-out" : "b-ok";
+  }
+  btn.onclick = () => {
+    const b = principal(); if(!b) return;
+    b.scrollIntoView({ block:"center", behavior:"smooth" });
+    if(!b.disabled) b.click();
+  };
+  new MutationObserver(pintar).observe($("#totales").closest(".card"),
+    { subtree:true, childList:true, characterData:true, attributes:true, attributeFilter:["style", "disabled"] });
+  new IntersectionObserver(e => { ticketALaVista = e[0].isIntersecting; pintar(); }).observe($("#totales"));
+  pintar();
+}
+
 function pintarAvisoBorrador(){
   if(window.marcarBorradorEnMenu) window.marcarBorradorEnMenu();
 }
 
 init();
+engancharBarraCobro();

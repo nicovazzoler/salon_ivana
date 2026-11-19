@@ -160,7 +160,7 @@ function panelGenerales(cont, alGuardar, opciones){
             <b>${_escGral(e.nombre)}</b>
             <span class="vh${e.valor_hora == null ? " es-general" : ""}">${
               e.valor_hora == null ? "GENERAL" : _pesos(e.valor_hora)}</span>
-            <button class="b-out btn-mini lapiz" title="Cambiar el valor hora de ${_escGral(e.nombre)}">✎</button>
+            <button class="b-out btn-mini lapiz" title="Cambiar el valor hora de ${_escGral(e.nombre)}">${icono("lapiz")}</button>
           </div>`).join("")}
       </div>`;
   }

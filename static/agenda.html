@@ -15,13 +15,14 @@
 <style>
   /* --- barra de navegación de fechas --- */
   .navbar{ display:flex; align-items:center; gap:var(--sp-2); margin-bottom:var(--sp-4); }
-  .navbar .lbl{ flex:1; text-align:center; font-weight:var(--fw-strong); color:var(--text-titulo); }
-  .navbar button{ background:var(--bg-sutil); color:var(--text); }
-  .nav-cal{ position:relative; display:inline-flex; align-items:center; cursor:pointer; padding:6px 8px; background:var(--bg-sutil); border:1px solid var(--border); border-radius:var(--r-md); }
+  .navbar .lbl{ flex:1; text-align:center; font-family:var(--font-display); font-size:20px; font-weight:var(--fw-bold); color:var(--text-titulo); }
+  .navbar button{ min-width:40px; min-height:40px; background:var(--bg-sutil); color:var(--text-suave); }
+  .navbar button:hover{ background:var(--bg-sutil-hover); color:var(--text-titulo); }
+  .nav-cal{ position:relative; display:inline-flex; align-items:center; justify-content:center; min-width:40px; min-height:40px; cursor:pointer; background:var(--bg-sutil); border-radius:9px; color:var(--text-suave); }
   .nav-cal input[type=date]{ position:absolute; inset:0; opacity:0; cursor:pointer; }
   .navbar .lbl{ display:flex; align-items:center; gap:var(--sp-3); }
   .navbar .lbl::before,
-  .navbar .lbl::after{ content:""; flex:1; height:1px; background:var(--oro-a25); }
+  .navbar .lbl::after{ content:""; flex:1; height:1px; background:var(--border-sutil); }
 
   /* --- formulario de turno --- */
   /* Los formularios de esta pantalla van todos en la misma grilla, con columnas
@@ -45,10 +46,16 @@
   .marca{ display:inline-flex; align-items:center; gap:8px; font-size:var(--fs-md);
           color:var(--text-tenue); cursor:pointer; }
   .marca input{ width:auto; margin:0; }
-  .dia-panel{ display:flex; flex-wrap:wrap; align-items:flex-start; gap:var(--sp-3); margin-bottom:var(--sp-4); }
+  .dia-panel{ display:flex; flex-wrap:wrap; align-items:flex-start; gap:var(--sp-8); margin-bottom:var(--sp-6); }
   .dia-panel > .card{ margin-bottom:0; }
   #formCard{ flex:1.4 1 300px; }
-  #notasDia{ flex:1 1 240px; display:flex; flex-direction:column; }
+  #notasDia{ flex:1 1 240px; display:flex; flex-direction:column; padding-left:var(--sp-6); border-left:1px solid var(--border-sutil); }
+  #btnNota{ background:var(--bg-sutil); color:var(--text-marca); }
+  #btnNota:hover{ background:var(--bg-sutil-hover); color:var(--text-titulo); }
+  /* Cuando las notas bajan abajo del formulario, el filete va arriba */
+  @media (max-width:640px){
+    #notasDia{ padding:var(--sp-4) 0 0; border-left:0; border-top:1px solid var(--border-sutil); }
+  }
   #listaNotas{ flex:1; min-height:0; overflow-y:auto; }
 
   /* --- vista DÍA --- */
@@ -68,7 +75,8 @@
   .turno-notas{ margin-top:2px; font-size:var(--fs-sm); color:var(--text-tenue); }
   .turno-actions{ display:flex; flex-direction:column; gap:6px; }
   .turno-actions button{ padding:5px 10px; font-size:var(--fs-sm); }
-  .btn-cancelar{ background:transparent; border:1px solid var(--danger); color:var(--danger); }
+  .btn-cancelar{ background:transparent; border:0; color:var(--text-tenue); }
+  .btn-cancelar:hover{ background:var(--danger-bg); color:var(--danger); }
   .sin-turnos{ padding:var(--sp-5); text-align:center; color:var(--text-tenue); }
 
   /* La lista del día: una tabla por franja, lado a lado, así el día entero entra
@@ -117,9 +125,9 @@
   .vista-dia{ display:none; gap:6px; margin-bottom:var(--sp-3); }
   .vista-dia.hay{ display:flex; }
   .vista-dia .chip{
-    padding:6px 14px; border-radius:var(--r-full);
-    background:var(--bg-sutil); border:1px solid var(--border-sutil);
-    font-size:var(--fs-sm); color:var(--text); cursor:pointer;
+    padding:7px 14px; border:0; border-radius:var(--r-full);
+    background:var(--bg-sutil);
+    font-size:var(--fs-base); font-weight:var(--fw-bold); color:var(--text-suave); cursor:pointer;
   }
   /* Los chips de quiénes vienen el día que se abre suelto. */
   .chips-emp{ display:flex; gap:6px; flex-wrap:wrap; }
@@ -134,32 +142,38 @@
   }
 
   .vista-dia .chip.on{
-    background:var(--bronce-400); border-color:var(--bronce-500);
-    color:var(--text-sobre-oro); font-weight:var(--fw-bold);
+    background:var(--bg-elegido);
+    color:var(--text-marca);
+    box-shadow:inset 0 0 0 1px var(--bronce-a30);
   }
 
   /* La grilla puede ser más ancha que la pantalla: scrollea ELLA, no la página. */
-  .grilla-wrap{
-    overflow-x:auto; padding:var(--sp-2) var(--sp-2) var(--sp-3);
-    background:var(--bg-card); border:1px solid var(--border-sutil);
-    border-radius:var(--r-lg); box-shadow:var(--sombra-card);
-  }
+  .grilla-wrap{ overflow-x:auto; padding-bottom:var(--sp-3); }
   .grilla{ display:grid; min-width:min-content; }
   .g-cab{
     position:sticky; top:0; z-index:2;
-    padding:8px 6px; background:var(--bg-card);
-    border-bottom:2px solid var(--acento-border);
+    padding:10px 6px 12px; background:var(--bg-app);
+    border-bottom:1px solid var(--border-sutil);
     text-align:center;
   }
-  .g-cab .nom{ font-family:var(--font-display); font-size:var(--fs-md); color:var(--text-titulo); }
+  .g-cab .nom{ font-family:var(--font-display); font-size:17px; font-weight:var(--fw-bold); color:var(--text-titulo); }
+  /* El punto de color ata cada nombre con sus turnos */
+  .g-cab .nom::before{
+    content:""; display:inline-block; width:9px; height:9px; margin-right:7px;
+    border-radius:50%; background:var(--turno-1-punto); vertical-align:1px;
+  }
+  .grilla > .g-cab:first-child .nom::before{ display:none; }
+  .grilla > .g-cab:nth-child(3n+3 of .g-cab) .nom::before{ background:var(--turno-2-punto); }
+  .grilla > .g-cab:nth-child(3n+4 of .g-cab) .nom::before{ background:var(--turno-3-punto); }
   .g-cab .est{ display:block; margin-top:2px; font-size:var(--fs-xs); color:var(--text-tenue); }
   .g-cab .est.fuera{ color:var(--danger); }
   .g-cab .est.cambio{ color:var(--warn); }
   .g-cab button{
-    margin-top:4px; padding:2px 8px;
-    font-size:var(--fs-xs); background:transparent;
-    border:1px solid var(--border-sutil); color:var(--text-tenue);
+    margin-top:6px; padding:3px 10px;
+    font-size:var(--fs-xs); background:var(--bg-sutil);
+    border:0; border-radius:var(--r-full); color:var(--text-suave);
   }
+  .g-cab button:hover{ background:var(--bg-sutil-hover); color:var(--text-titulo); }
   .g-horas{ position:relative; }
   .g-hora{
     position:absolute; right:6px; transform:translateY(-50%);
@@ -168,7 +182,6 @@
   .g-col{
     position:relative;
     border-left:1px solid var(--border-sutil);
-    background:var(--bg-hundido);
   }
   .g-col.vacia{ opacity:.55; }
   /* Las rayas de las horas, una sola vez y en el fondo: cuarenta divs de línea
@@ -178,30 +191,42 @@
      adentro del horario es donde hay que poder leer a qué hora cae un hueco. */
   .g-col .rayas{ position:absolute; inset:0; pointer-events:none; z-index:1; }
   .g-raya{ position:absolute; left:0; right:0; border-top:1px solid var(--border-sutil); }
-  .g-raya.media{ border-top-style:dotted; opacity:.6; }
+  .g-raya.media{ border-top-style:dotted; opacity:.45; }
+  /* El horario de cada una se apoya en la superficie; lo de afuera queda en el fondo */
   .g-tramo{
-    position:absolute; left:2px; right:2px; z-index:0;
-    background:var(--bg-card);
-    border:1px solid var(--border-sutil); border-radius:var(--r-sm);
+    position:absolute; left:0; right:0; z-index:0;
+    background:var(--bg-elevado);
   }
   .g-hueco{ position:absolute; left:3px; right:3px; z-index:2; cursor:pointer; border-radius:var(--r-sm); }
   .g-hueco:hover{ background:var(--acento-bg); box-shadow:inset 0 0 0 1px var(--acento-border); }
+  /* El turno va lleno, con el color de su columna: tiene que leerse de lejos.
+     Opaco, que si no las rayas de la hora se ven a través. */
   .g-turno{
+    --t-fondo:var(--turno-1-bg); --t-nombre:var(--turno-1-tx);
     position:absolute; left:3px; right:3px; z-index:3;
-    padding:3px 6px; overflow:hidden;
-    background:var(--acento-bg);
-    border:1px solid var(--acento-border); border-left:3px solid var(--acento);
-    border-radius:var(--r-sm);
+    padding:4px 8px; overflow:hidden;
+    background:linear-gradient(var(--t-fondo), var(--t-fondo)), var(--bg-elevado);
+    border-radius:7px;
+    box-shadow:0 0 0 1px var(--bg-elevado);
     cursor:pointer;
+    container-type:size;
   }
-  .g-turno:hover{ background:var(--bronce-a15); }
-  .g-turno .c{ font-size:var(--fs-sm); font-weight:var(--fw-bold); color:var(--text-marca); line-height:1.2; }
-  .g-turno .s{ font-size:var(--fs-xs); color:var(--text-tenue); line-height:1.2; }
-  .g-turno .h{ font-size:10px; color:var(--text-tenue); font-variant-numeric:tabular-nums; }
+  .grilla > .g-col:nth-child(3n+2 of .g-col) .g-turno{ --t-fondo:var(--turno-2-bg); --t-nombre:var(--turno-2-tx); }
+  .grilla > .g-col:nth-child(3n+3 of .g-col) .g-turno{ --t-fondo:var(--turno-3-bg); --t-nombre:var(--turno-3-tx); }
+  .g-turno:hover{ filter:brightness(1.08); }
+  .g-turno .c{ font-size:13px; font-weight:var(--fw-bold); color:var(--t-nombre); line-height:1.25; }
+  .g-turno .s{ font-size:var(--fs-xs); color:var(--text); line-height:1.3; }
+  .g-turno .h{ font-size:var(--fs-xs); color:var(--text-suave); font-variant-numeric:tabular-nums; }
+  /* Uno corto no entra en dos renglones: nombre y servicio van en uno */
+  @container (max-height:46px){ .g-turno .h{ display:none; } }
+  @container (max-height:36px){
+    .g-turno .c, .g-turno .s{ display:inline; }
+    .g-turno .s::before{ content:" · "; color:var(--text-tenue); }
+  }
+  @container (max-height:18px){ .g-turno .c{ font-size:var(--fs-xs); } .g-turno .s{ display:none; } }
   /* Fuera del horario: el turno existe igual y hay que verlo, pero marcado, que
      es la señal de que alguien agendó donde esa persona no estaba. */
-  .g-turno.afuera{ border-color:var(--danger); border-left-color:var(--danger); background:var(--danger-bg); }
-  .g-turno.afuera .c{ color:var(--danger); }
+  .grilla > .g-col .g-turno.afuera{ --t-fondo:var(--danger-bg); --t-nombre:var(--danger); box-shadow:inset 0 0 0 1px var(--rojo-borde); }
   .g-vacio{
     position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
     padding:var(--sp-3); text-align:center;
@@ -315,14 +340,16 @@
   .nota-item{
     display:flex; justify-content:space-between; align-items:flex-start; gap:var(--sp-3);
     padding:var(--sp-2) 0;
-    border-bottom:1px solid var(--border);
+    border-bottom:1px solid var(--border-sutil);
   }
   .nota-item .cuerpo{ flex:1; }
   .nota-item .meta{ margin-top:2px; font-size:var(--fs-xs); color:var(--text-tenue); }
   .nota-item .btn-borrar{
-    background:transparent; border:1px solid var(--danger); color:var(--danger);
-    padding:3px 8px; font-size:var(--fs-sm);
+    display:inline-flex; align-items:center; justify-content:center;
+    min-width:32px; min-height:32px; padding:0;
+    background:transparent; border:0; color:var(--text-tenue);
   }
+  .nota-item .btn-borrar:hover{ background:var(--danger-bg); color:var(--danger); }
 
   /* --- notas de la semana --- */
   .notas-sem{ margin-top:var(--sp-4); }
@@ -336,7 +363,7 @@
 </style>
 </head><body>
 <header>
-  <span>📅 Agenda</span>
+  <span>Agenda</span>
   <nav class="menu">
     <a href="/facturar">Facturar</a>
     <a href="/clientes">Clientes</a>
@@ -356,7 +383,7 @@
     <button id="btnPrev">←</button>
     <span class="lbl" id="rangoLabel"></span>
     <button id="btnNext">→</button>
-    <label class="nav-cal" title="Ir a una fecha">📅
+    <label class="nav-cal" title="Ir a una fecha"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
       <input type="date" id="fechaPicker">
     </label>
   </div>
@@ -484,7 +511,7 @@ async function renderNotasDia(){
       <div class="cuerpo">
         <div>${n.texto}</div>
       </div>
-      <button class="btn-borrar">✕</button>`;
+      <button class="btn-borrar" aria-label="Quitar">${icono("cruz")}</button>`;
     div.querySelector(".btn-borrar").onclick = async () => {
       if(!confirm("¿Borrar esta nota?")) return;
       await authFetch("/api/notas/"+n.id, { method: "DELETE" });
@@ -1059,7 +1086,7 @@ async function renderSemana(){
   let html=`<div class="grid-sem" style="grid-template-columns:44px repeat(7,1fr);">`;
   html+=`<div></div>`;
   fechas.forEach((f,i)=>{ const d=parseISO(f);
-    const ind = fechasConNota.has(f) ? ' <span class="nota-ind">📝</span>' : '';
+    const ind = fechasConNota.has(f) ? ` <span class="nota-ind">${icono("nota")}</span>` : '';
     html+=`<div class="gs-dayhead">${DIAS_SEM_LARGO[i]} ${d.getDate()}${ind}</div>`;
   });
   horas.forEach(h=>{
@@ -1127,7 +1154,7 @@ async function renderMes(){
       const d=new Date(cursor); d.setDate(d.getDate()+i);
       if(d.getMonth()!==mes){ html+=`<div class="gm-cell fuera"></div>`; continue; }
       const f=iso(d), c=conteo[f]||0, esHoy=(f===hoyStr());
-      const ind = fechasConNota.has(f) ? '<div class="gm-nota">📝</div>' : ''; 
+      const ind = fechasConNota.has(f) ? `<div class="gm-nota">${icono("nota")}</div>` : ''; 
       html+=`<div class="gm-cell" data-f="${f}">
         <div class="gm-num ${esHoy?'hoy':''}">${d.getDate()}</div>
         ${c>0?`<div class="gm-count"><span class="gm-dot"></span>${c} turno${c>1?'s':''}</div>`:''}
