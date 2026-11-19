@@ -233,17 +233,61 @@ window.pintarBotonTema = pintarBotonTema;
 const PARTICULAS = new Set(["de","del","la","las","los","y","e","da","das","do",
                             "dos","van","von","di","der","el"]);
 
-/* Pide el motivo de una anulación. Devuelve el texto, o null si se canceló.
-
-   El backend lo exige siempre, así que sin esto los botones de anular
-   contestaban 400 y no se podía anular nada. Acá se valida el largo nada más
-   para no hacer un viaje al servidor por un campo vacío: la regla la pone el
-   backend, no esta función. */
-function pedirMotivo(que){
-  const m = prompt(`¿Por qué se anula ${que}?\n\nQueda anotado con tu usuario y la hora.`);
+/* Pregunta si se anula y por qué, en un solo cartel. Devuelve el motivo, o null
+   si se canceló. El backend lo exige siempre; acá se valida el largo nada más,
+   para no hacer un viaje al servidor por un campo vacío. */
+const MOTIVOS_ANULAR = ["Cargado dos veces", "Se cargó mal", "No se hizo"];
+const MOTIVOS_SENA = ["Se le devolvió la plata", "Cargada dos veces", "Se cargó mal"];
+async function pedirMotivo(titulo, { texto = "", si = "Anular", opciones = MOTIVOS_ANULAR } = {}){
+  const m = await preguntar({ titulo, texto, si, peligro: true, pideTexto: true, opciones });
   if(m === null) return null;            // canceló: no es un motivo vacío
   if(m.trim().length < 3){ toast("Hace falta decir por qué"); return null; }
   return m.trim();
+}
+
+/* Los carteles de la app, en lugar de confirm() y prompt() del navegador. Con
+   pideTexto devuelve el texto o null; sin él, true o false. Las `opciones` se
+   tocan para no tipear en la tablet. */
+function preguntar({ titulo, texto = "", si = "Aceptar", no = "Volver", peligro = false,
+                     pideTexto = false, opciones = [] }){
+  return new Promise(resolver => {
+    const fondo = document.createElement("div");
+    fondo.className = "dlg-fondo";
+    fondo.innerHTML = `<div class="dlg" role="dialog" aria-modal="true" aria-labelledby="dlgTitulo">
+      <h3 id="dlgTitulo"></h3><p class="dlg-p"></p>
+      ${pideTexto ? '<div class="dlg-cuerpo"><div class="chips"></div><textarea rows="2" placeholder="¿Por qué?"></textarea></div>' : ""}
+      <div class="dlg-acciones"><button type="button" class="b-out dlg-no"></button>
+        <button type="button" class="dlg-si${peligro ? " peligro" : ""}"></button></div></div>`;
+    // "N-00303" no se parte en el guion
+    fondo.querySelector("h3").textContent = titulo.replace(/\b([NP])-(\d)/g, "$1\u2011$2");
+    const p = fondo.querySelector(".dlg-p");
+    if(texto) p.textContent = texto; else p.remove();
+    const bSi = fondo.querySelector(".dlg-si"), bNo = fondo.querySelector(".dlg-no");
+    bSi.textContent = si; bNo.textContent = no;
+    const campo = fondo.querySelector("textarea");
+    const valor = () => campo ? campo.value.trim() : true;
+    if(campo){
+      const chips = fondo.querySelector(".chips");
+      opciones.forEach(o => {
+        const c = document.createElement("button");
+        c.type = "button"; c.textContent = o;
+        c.onclick = () => { campo.value = o; habilitar(); chips.querySelectorAll("button").forEach(x => x.classList.toggle("on", x === c)); };
+        chips.appendChild(c);
+      });
+      if(!opciones.length) chips.remove();
+      campo.oninput = habilitar;
+    }
+    function habilitar(){ bSi.disabled = !!campo && campo.value.trim().length < 3; }
+    function cerrar(v){ fondo.remove(); removeEventListener("keydown", tecla, true); resolver(v); }
+    function tecla(e){ if(e.key === "Escape"){ e.preventDefault(); cerrar(campo ? null : false); } }
+    bSi.onclick = () => cerrar(valor());
+    bNo.onclick = () => cerrar(campo ? null : false);
+    fondo.onclick = e => { if(e.target === fondo) cerrar(campo ? null : false); };
+    addEventListener("keydown", tecla, true);
+    habilitar();
+    document.body.appendChild(fondo);
+    (campo || bSi).focus();
+  });
 }
 
 function titulo(str){

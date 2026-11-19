@@ -377,6 +377,10 @@ class ExtraIn(BaseModel):
 class MixtoIn(BaseModel):
     efectivo: int                         # la plata que entrega; lo que queda va por transferencia
     alias: str | None = None
+class DejaIn(BaseModel):
+    monto: int                            # la plata que deja hoy; el resto queda a cuenta
+    forma: str = "efectivo"               # "efectivo" | "transfer"
+    alias: str | None = None
 class ComprobanteIn(BaseModel):
     tipo: str; cliente_id: int | None = None; cliente_nombre: str | None = None; peluquero: str | None = None
     forma_pago: str = "efectivo"
@@ -389,7 +393,9 @@ class ComprobanteIn(BaseModel):
     # que no llega deja el ticket cobrado a medias y con deuda.
     aplicar_senas: bool = False
     cobrar: bool = False
+    alias: str | None = None              # a qué cuenta entró, cuando `cobrar` es por transferencia
     mixto: MixtoIn | None = None          # cobrar entero, parte en efectivo y el resto por transferencia
+    deja: DejaIn | None = None            # a cuenta, con una parte que paga hoy
     # La arma la pantalla una vez por cobro y la repite en cada reintento.
     clave: str | None = Field(None, max_length=64)
 class PagoIn(BaseModel):
@@ -3670,10 +3676,14 @@ def crear_comprobante(c: ComprobanteIn, user = Depends(usuario_actual), db: Sess
             forma = "Efectivo" if comp.forma_pago == "efectivo" else "Transferencia"
             db.add(models.Pago(comprobante_id=comp.id, monto=saldo, saldado=saldo,
                                fecha=comp.fecha, forma_pago=forma, desc_aplicado=0,
+                               alias=c.alias if forma == "Transferencia" else None,
                                usuario=user.get("usuario")))
     if c.tipo == "ticket" and c.mixto:
         db.flush()
         _cobrar_mixto(db, comp, c.mixto, user)
+    if c.tipo == "ticket" and c.deja:
+        db.flush()
+        _cobrar_deja(db, comp, c.deja, user)
     # Facturado dentro de una sesión que ya se había cerrado, esto es una
     # corrección: la cuenta sube y la diferencia se paga con otro cierre.
     if comp.sesion_id:
@@ -3684,6 +3694,24 @@ def crear_comprobante(c: ComprobanteIn, user = Depends(usuario_actual), db: Sess
                               parte_previa, user.get("usuario"))
     db.commit(); db.refresh(comp)
     return _comprobante_creado(db, comp)
+
+def _cobrar_deja(db, comp, d: DejaIn, user):
+    """Lo que deja hoy un ticket que queda a cuenta, en la transacción que lo crea.
+
+    En efectivo tapa como efectivo (saldado_por_efectivo): pagando el resto también
+    en efectivo, la suma da justo la lista de efectivo.
+    """
+    est = estado_comprobante(db, comp)
+    if d.monto <= 0: raise HTTPException(400, "Poné cuánto deja")
+    if d.forma not in ("efectivo", "transfer"): raise HTTPException(400, f'"{d.forma}" no es una forma de pago')
+    efectivo = d.forma == "efectivo"
+    tapa = saldado_por_efectivo(est, d.monto) if efectivo else d.monto
+    if tapa >= est["saldo"]:
+        raise HTTPException(400, "Con eso paga todo: cobralo entero, no a cuenta")
+    db.add(models.Pago(comprobante_id=comp.id, monto=d.monto, saldado=tapa, fecha=comp.fecha,
+                       forma_pago="Efectivo" if efectivo else "Transferencia",
+                       alias=None if efectivo else d.alias, desc_aplicado=tapa - d.monto,
+                       usuario=user.get("usuario")))
 
 def _cobrar_mixto(db, comp, m: MixtoIn, user):
     """Los dos abonos del pago mixto, en la transacción que crea el ticket: o
@@ -3721,7 +3749,8 @@ def _repetido(db, comp, c: ComprobanteIn) -> dict:
         comp.forma_pago = c.forma_pago
         db.commit()
         return _comprobante_creado(db, comp)
-    if not _mismo_pedido(comp, c) or (c.mixto and not _mismo_mixto(db, comp, c.mixto)):
+    if (not _mismo_pedido(comp, c) or (c.mixto and not _mismo_mixto(db, comp, c.mixto))
+            or (c.forma_pago == "cuenta" and not _misma_deja(db, comp, c.deja))):
         total = estado_comprobante(db, comp)["total_final"]
         raise HTTPException(409, f"Ese cobro ya había entrado como {num} ({_pesos(total)}), "
                                  "con otros datos. Revisalo antes de cobrar de nuevo.")
@@ -3734,7 +3763,7 @@ def _solo_cambio_la_forma(db, comp, c: ComprobanteIn) -> bool:
     lo que se haría a mano. Trabado: un abono en paralelo leería el saldo viejo.
     """
     # Depilación no: movería el reparto de la sesión. Y de otro día ya se le dijo la deuda.
-    if (comp.tipo != "ticket" or comp.depilacion or c.mixto
+    if (comp.tipo != "ticket" or comp.depilacion or c.mixto or c.deja
             or (comp.forma_pago or "") == (c.forma_pago or "")
             or hora_argentina(comp.cargado).date() != hoy_argentina()):
         return False
@@ -3760,6 +3789,15 @@ def _mismo_pedido(comp, c: ComprobanteIn, con_forma: bool = True) -> bool:
             and (not con_forma or (comp.forma_pago or "") == (c.forma_pago or ""))
             and (comp.descuento_pct or 0) == (c.descuento_pct or 0)
             and pedidas == guardadas and extras_pedidos == extras_guardados)
+
+def _misma_deja(db, comp, d: DejaIn | None) -> bool:
+    """Si lo que dejó a cuenta es lo que pide el reintento. Sin comparar, "Dejar a
+    cuenta" y después "Deja ahora $9.000" contestaba lo viejo y esa plata no se anotaba."""
+    pagos = [(p.monto, p.forma_pago, p.alias or None) for p in db.query(models.Pago).filter(
+                 models.Pago.comprobante_id == comp.id, models.Pago.sena_id.is_(None), _pago_cuenta())]
+    if not d: return not pagos
+    forma = "Efectivo" if d.forma == "efectivo" else "Transferencia"
+    return pagos == [(d.monto, forma, None if forma == "Efectivo" else (d.alias or None))]
 
 def _mismo_mixto(db, comp, m: MixtoIn) -> bool:
     pagos = db.query(models.Pago).filter(models.Pago.comprobante_id == comp.id, _pago_cuenta()).all()

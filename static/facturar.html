@@ -45,21 +45,6 @@
         <button id="btnPresu">Presupuesto</button>
       </div>
       <div class="fila" style="margin-top:8px;">
-        <label>Forma de pago</label>
-        <select id="formaPago" class="sin-elegir" style="flex:1;">
-          <option value="" disabled selected>Elegí…</option>
-          <option value="efectivo">Efectivo</option>
-          <option value="transfer">Transferencia</option>
-          <option value="mixto">Pago mixto</option>
-          <option value="cuenta">A cuenta</option>
-        </select>
-      </div>
-      <div class="fila" id="aliasBox" style="display:none;">
-        <label>Alias</label>
-        <input id="aliasTransfer" list="aliasList" placeholder="¿A qué cuenta se transfiere?" style="flex:1;">
-      </div>
-
-      <div class="fila">
         <label>Cliente <span style="color:var(--danger);">*</span></label>
           <div style="position:relative;flex:1;">
           <input id="cliente" autocomplete="off" placeholder="Nombre del cliente (obligatorio)" style="width:100%;">
@@ -80,7 +65,7 @@
            caja de un día a la de otro, y esa decisión no es de quien atiende.
            El backend rebota el intento igual. -->
       <details class="otro-dia" id="otroDiaBox" data-dueno>
-        <summary>Es de otro día <span class="aclara">(se olvidaron de cargarlo)</span></summary>
+        <summary><span class="od-btn">Es de otro día</span></summary>
         <div class="fila alta-fecha">
           <label>Fecha del servicio</label>
           <input id="fechaServicio" type="date" style="flex:1;">
@@ -110,6 +95,31 @@
         </div>
       </details>
 
+      <!-- La forma se elige al cobrar, con los dos totales a la vista: es lo que
+           pregunta la clienta, y el botón de abajo dice lo que va a pasar. -->
+      <div class="como-paga" id="comoPaga">
+        <div class="cp-grandes">
+          <button type="button" class="cp" data-forma="efectivo"><span class="n">Efectivo</span><span class="m" id="cpEfectivo"></span></button>
+          <button type="button" class="cp" data-forma="transfer"><span class="n">Transferencia</span><span class="m" id="cpTransfer"></span></button>
+        </div>
+        <div class="cp-chicas">
+          <button type="button" class="cp" data-forma="mixto"><span class="n">Mixto</span></button>
+          <button type="button" class="cp" data-forma="cuenta"><span class="n">A cuenta</span></button>
+        </div>
+        <div class="cp-deja" id="dejaBox" hidden>
+          <label for="dejaMonto">Deja ahora</label>
+          <input id="dejaMonto" type="number" inputmode="numeric" placeholder="$ 0">
+          <div class="forma-abono">
+            <button type="button" class="on" data-abono="efectivo">Efectivo</button>
+            <button type="button" data-abono="transfer">Transf.</button>
+          </div>
+        </div>
+        <div class="fila" id="aliasBox" hidden>
+          <label for="aliasTransfer">Alias</label>
+          <input id="aliasTransfer" list="aliasList" placeholder="¿A qué cuenta se transfiere?" style="flex:1;">
+          <datalist id="aliasList"></datalist>
+        </div>
+      </div>
       <!-- En presupuesto cada renglón lleva DOS importes. Los encabezados van una
            sola vez arriba y las columnas se alinean debajo: antes cada fila
            repetía "Lista / Con descuento", y en la del Total —que va en cuerpo
@@ -125,34 +135,12 @@
       </div>
 
       <div id="botsTicket">
-        <button class="crear" id="cobrarTodo" disabled>Cobrar todo</button>
-        <div style="display:flex;gap:8px;margin-top:8px;">
-          <button class="crear-sec" id="cobrarParte" disabled>Cobrar una parte</button>
-          <button class="crear-sec" id="dejarCuenta" disabled>Dejar a cuenta</button>
-        </div>
-        <button class="crear" id="cobrarMixto" disabled style="display:none;">Cobrar (pago mixto)</button>
+        <button class="crear" id="cobrar" disabled>Elegí cómo paga</button>
       </div>
       <button class="crear" id="crearPresu" disabled style="display:none;">Crear presupuesto</button>
       <a id="printUltimo" class="crear-sec" href="#"
          style="display:none;margin-top:8px;text-align:center;text-decoration:none;padding:10px;border-radius:var(--r-md);"></a>
 
-      <div id="panelCobro" class="panel-cobro" style="display:none;">
-        <div class="panel-titulo" id="cobroTitulo"> Cobrar</div>
-        <div class="tot-row"><span>Total</span><span id="cobroTotal">$0</span></div>
-        <div class="tot-row principal"><span>Saldo</span><span id="cobroSaldo">$0</span></div>
-        <div id="cobroAbonos" style="margin:8px 0;"></div>
-        <div class="fila" style="margin-top:10px;">
-          <select id="cobroForma" style="flex:1;"></select>
-          <input id="cobroMonto" type="number" placeholder="Cuánto saldar" style="width:110px;">
-        </div>
-        <div class="fila" id="cobroAliasBox" style="display:none;">
-          <label>Alias</label>
-          <input id="cobroAlias" list="aliasList" placeholder="¿A qué cuenta?" style="flex:1;">
-          <datalist id="aliasList"></datalist>
-        </div>
-        <button id="cobroRegistrar" style="width:100%;">Registrar pago</button>
-        <button id="cobroCerrar" class="b-out" style="width:100%;margin-top:8px;">Listo (dejar saldo pendiente)</button>
-      </div>
       <div id="panelMixto" class="panel-cobro" style="display:none;">
         <div class="panel-titulo">Pago mixto</div>
 
@@ -215,7 +203,7 @@
            el de un lunes de depilación tiene que entrar en el reparto de ESE
            lunes. Cargado hoy, la cuenta del lunes le queda alta a la empleada. -->
       <details class="otro-dia" id="egOtroDiaBox" data-dueno>
-        <summary>Es de otro día <span class="aclara">(se olvidaron de cargarlo)</span></summary>
+        <summary><span class="od-btn">Es de otro día</span></summary>
         <div class="fila alta-fecha">
           <label for="egFecha">Fecha del gasto</label>
           <input id="egFecha" type="date" style="flex:1;">

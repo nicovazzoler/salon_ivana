@@ -33,12 +33,21 @@
 
   // Sin uno de antes, el que toma el control es el primero, no una versión nueva
   const habiaUno = !!navigator.serviceWorker.controller;
+  /* En la pantalla que queda abierta todo el día, la versión nueva entra sola
+     apenas no hay un cobro a medias: dos vueltas seguidas sin ticket ni cartel,
+     porque el papel sale unos segundos DESPUÉS de limpiar y recargar lo cortaría. */
   navigator.serviceWorker.addEventListener("controllerchange", () => {
     if(!habiaUno || !document.body.hasAttribute("data-avisar-version")) return;
-    const c = cartel("cartelVersion", "info");
-    c.innerHTML = '<span>Hay una versión nueva de la app</span> <button type="button">Actualizar</button>';
+    const c = cartel("cartelVersion", "info version");
+    c.innerHTML = '<span>Versión nueva: se actualiza sola al terminar el cobro</span> <button type="button">Actualizar ahora</button>';
     c.querySelector("button").onclick = () => location.reload();
     c.hidden = false;
+    let libre = 0;
+    setInterval(() => {
+      const ocupada = (window.hayTicketSinCobrar && window.hayTicketSinCobrar()) || document.querySelector(".dlg-fondo");
+      libre = ocupada ? 0 : libre + 1;
+      if(libre >= 2) location.reload();
+    }, 5000);
   });
 
   navigator.serviceWorker.register("/sw.js").then(reg => {

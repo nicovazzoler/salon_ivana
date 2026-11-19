@@ -342,8 +342,8 @@ $("#btnFondo").onclick=async()=>{
 };
 
 async function anularPagoCaja(id){
-  if(!confirm("¿Anular este cobro? El comprobante vuelve a quedar con saldo pendiente."))return;
-  const motivo = pedirMotivo("este cobro"); if(motivo === null) return;
+  const motivo = await pedirMotivo("¿Anular este cobro?", { texto: "El comprobante vuelve a quedar con saldo pendiente." });
+  if(motivo === null) return;
   const r=await authFetch("/api/pagos/"+id+"?motivo="+encodeURIComponent(motivo),{method:"DELETE"});
   if(!r.ok){toast((await r.json().catch(()=>({}))).detail || "No se pudo");return;}
   toast("Cobro anulado"); cargarDia();

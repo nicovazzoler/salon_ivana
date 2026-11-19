@@ -31,7 +31,8 @@ static/
                  las esquinas de una tarjeta. Va acotada a su grilla (`.nums .num`)
   js/            El JS de facturar y admin, que son las grandes
   auth.js        Sesión, menú y helpers compartidos. También icono(), los
-                 íconos de línea: la app no usa emojis
+                 íconos de línea: la app no usa emojis, y preguntar(), el cartel
+                 de la app, que va reemplazando a confirm() y prompt()
   js/listas.js   Las cinco listas configurables (formas de pago, tipos de egreso,
                  descuentos, ajustes por ítem, alias): un solo dibujante que usan
                  Admin y el panel del lapicito de facturar
@@ -505,11 +506,21 @@ llamadas —crear, aplicar señas, cobrar— y con el internet del local la que 
 llegaba dejaba el ticket cobrado a medias: con seña quedaba cobrado SOLO con la
 seña y el resto como deuda, y si lo que fallaba era la consulta del saldo, el
 `if (c.saldo > 0)` con `c.saldo` en `undefined` se saltaba el cobro **sin
-avisar**. Facturar sigue cobrando en dos pasos porque ahí el cobro no siempre es
-entero —cobrar una parte, dejar a cuenta—; las dos banderas vienen apagadas por
-defecto. **El pago mixto sí va en uno** (`mixto: {efectivo, alias}`): el backend
-anota el efectivo, calcula cuánto tapa y la transferencia es lo que falte. En dos
-pedidos, el de la transferencia que no llegaba dejaba el ticket pagado a medias.
+avisar**. **Facturar también cobra en uno**, sea como sea: entero con `cobrar`
+(y el `alias` de la transferencia), el **pago mixto** con `mixto: {efectivo,
+alias}` —el backend anota el efectivo, calcula cuánto tapa y la transferencia es
+lo que falte— y **a cuenta** con `forma_pago: "cuenta"` y, si deja algo hoy,
+`deja: {monto, forma, alias}`, que en efectivo tapa como efectivo
+(`_cobrar_deja()`). En dos pedidos, el segundo que no llegaba dejaba el ticket
+cobrado a medias. Las banderas vienen apagadas por defecto.
+
+**En Facturar el cobro es un solo botón que dice lo que va a pasar**: "Cobrar
+$53.000 en efectivo", "Dejar todo a cuenta". La forma se elige en cuatro fichas
+pegadas a la cuenta, con el total de cada lista a la vista, y no hay otro camino
+para lo mismo: con un botón "Dejar a cuenta" al lado de la forma elegida, un
+ticket en efectivo quedaba a cuenta sin querer (N-00661 a cuenta y N-00662
+cobrado, la misma clienta, dos minutos después). Por eso el cobro normal no
+tiene cartel: el botón es la confirmación.
 
 **Y cada cobro lleva su `clave`.** Un pedido puede llegar y perderse la
 respuesta: la pantalla dice "no se pudo" y el segundo toque creaba otro ticket
@@ -650,8 +661,10 @@ Cambia una coma de un CSS, cambia el hash, el navegador ve un `sw.js` distinto,
 baja todo de cero a una caché nueva y borra la vieja; un deploy que solo toca el
 backend no baja nada. Toma el control solo (`skipWaiting`) y la versión nueva
 entra al cambiar de pantalla. Facturar, que queda abierta todo el día, pregunta
-cada media hora y muestra un cartel con "Actualizar" (`data-avisar-version` en
-el `<body>`): recargar sola podría cortar un cobro.
+cada media hora y, con una versión nueva, muestra el cartel y **se recarga sola**
+apenas queda unos segundos sin ticket a medias ni cartel abierto
+(`data-avisar-version` en el `<body>`): recargar en cualquier momento podría
+cortar un cobro, y el papel sale unos segundos después de limpiar.
 
 **Una pantalla nueva va en `PANTALLAS` de `main.py`**, que arma las rutas y la
 lista que se guarda, y lleva en el `<head>` el bloque del manifest y `pwa.js`.
@@ -743,9 +756,12 @@ entra en una línea. Todo lo demás se va: lo que describe qué es una pantalla
 resumen), lo que cuenta cómo está armada la app por dentro, y lo que los
 rótulos, los números o el botón ya dicen.
 
-Dos lugares donde el texto sí rinde, y son los únicos: el **confirm** antes de
-algo que mueve plata, con la cuenta hecha, y el **estado vacío**, que contesta
-por qué no hay nada. Un aviso dice las excepciones que hay, no que no hay
+Dos lugares donde el texto sí rinde, y son los únicos: el **cartel** antes de
+algo que mueve plata y no es lo de todos los días, con la cuenta hecha, y el
+**estado vacío**, que contesta por qué no hay nada. Un cartel que sale en cada
+cobro se acepta sin leer: ahí el que confirma es el botón, que dice cuánto y
+cómo. Los carteles son de la app (`preguntar()`), y anular es UNO solo, con la
+pregunta y el motivo juntos (`pedirMotivo()`). Un aviso dice las excepciones que hay, no que no hay
 ninguna: "Menos Carolina, que cobra la suya" sirve; "ninguna tiene una hora
 propia" es un renglón para decir que no pasa nada.
 

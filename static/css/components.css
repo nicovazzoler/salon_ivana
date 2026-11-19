@@ -863,11 +863,42 @@ body.con-panel{ overflow:hidden; }
 .arranque .arrVer{ color:var(--text-tenue); text-decoration:underline; }
 .arranque .arrCajon{ display:flex; align-items:center; gap:var(--sp-2); }
 
-/* Facturar: la forma de pago sin elegir tiene que saltar a la vista */
-#formaPago.sin-elegir{
-  border:2px solid var(--danger);
-  background:var(--danger-bg);
-  color:var(--danger);
-  font-weight:600;
+/* ----- Los carteles de la app (preguntar() en auth.js) -----
+   Reemplazan confirm() y prompt() del navegador. En el celular salen desde abajo. */
+.dlg-fondo{
+  position:fixed; inset:0; z-index:var(--z-modal);
+  display:grid; place-items:center; padding:16px;
+  background:rgba(10,8,5,.55);
+  animation:dlg-fondo .15s ease-out;
 }
-#formaPago.sin-elegir option{ color:var(--tinta-900); background:var(--bg-input); font-weight:400; }
+.dlg{
+  width:100%; max-width:420px;
+  padding:22px 22px 18px;
+  background:var(--bg-elevado, var(--bg-card)); color:var(--text);
+  border-radius:18px;
+  box-shadow:0 24px 70px -20px rgba(0,0,0,.6), var(--sombra-elevada, var(--sombra-card));
+  animation:dlg-entra .18s ease-out;
+}
+.dlg h3{ margin:0 0 4px; font-family:var(--font-display); font-size:21px; color:var(--text-titulo); text-wrap:balance; }
+.dlg .dlg-p{ margin:0; color:var(--text-suave); font-size:var(--fs-md); }
+.dlg .dlg-cuerpo{ margin-top:14px; }
+.dlg .chips{ display:flex; flex-wrap:wrap; gap:6px; margin-bottom:10px; }
+.dlg .chips button{
+  padding:7px 12px; min-height:0; border-radius:999px; border:0;
+  background:var(--bg-tile, var(--bg-sutil)); color:var(--text); font-size:var(--fs-sm);
+}
+.dlg .chips button.on{ background:var(--bg-elegido, var(--acento-bg)); color:var(--text-marca); box-shadow:inset 0 0 0 1.5px var(--border-marca, var(--acento)); }
+.dlg textarea{ width:100%; min-height:64px; resize:vertical; }
+.dlg-acciones{ display:flex; justify-content:flex-end; gap:10px; margin-top:20px; }
+.dlg-acciones button{ width:auto; min-width:110px; margin:0; padding:12px 18px; border-radius:12px; font-size:var(--fs-md); }
+.dlg-acciones .dlg-si{ background:var(--acento); color:var(--text-sobre-oro, var(--text-invertido)); font-weight:var(--fw-bold); }
+.dlg-acciones .dlg-si.peligro{ background:var(--danger); color:var(--text-invertido); }
+.dlg-acciones .dlg-si:disabled{ opacity:.45; cursor:not-allowed; }
+@keyframes dlg-fondo{ from{ opacity:0; } }
+@keyframes dlg-entra{ from{ opacity:0; transform:translateY(8px) scale(.98); } }
+@media (prefers-reduced-motion:reduce){ .dlg-fondo, .dlg{ animation:none; } }
+@media (max-width:560px){
+  .dlg-fondo{ place-items:end stretch; padding:0; }
+  .dlg{ max-width:none; border-radius:18px 18px 0 0; padding-bottom:calc(18px + env(safe-area-inset-bottom, 0px)); }
+  .dlg-acciones button{ flex:1; }
+}
