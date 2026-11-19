@@ -3749,7 +3749,8 @@ def _repetido(db, comp, c: ComprobanteIn) -> dict:
         comp.forma_pago = c.forma_pago
         db.commit()
         return _comprobante_creado(db, comp)
-    if not _mismo_pedido(comp, c) or (c.mixto and not _mismo_mixto(db, comp, c.mixto)):
+    if (not _mismo_pedido(comp, c) or (c.mixto and not _mismo_mixto(db, comp, c.mixto))
+            or (c.forma_pago == "cuenta" and not _misma_deja(db, comp, c.deja))):
         total = estado_comprobante(db, comp)["total_final"]
         raise HTTPException(409, f"Ese cobro ya había entrado como {num} ({_pesos(total)}), "
                                  "con otros datos. Revisalo antes de cobrar de nuevo.")
@@ -3788,6 +3789,15 @@ def _mismo_pedido(comp, c: ComprobanteIn, con_forma: bool = True) -> bool:
             and (not con_forma or (comp.forma_pago or "") == (c.forma_pago or ""))
             and (comp.descuento_pct or 0) == (c.descuento_pct or 0)
             and pedidas == guardadas and extras_pedidos == extras_guardados)
+
+def _misma_deja(db, comp, d: DejaIn | None) -> bool:
+    """Si lo que dejó a cuenta es lo que pide el reintento. Sin comparar, "Dejar a
+    cuenta" y después "Deja ahora $9.000" contestaba lo viejo y esa plata no se anotaba."""
+    pagos = [(p.monto, p.forma_pago, p.alias or None) for p in db.query(models.Pago).filter(
+                 models.Pago.comprobante_id == comp.id, models.Pago.sena_id.is_(None), _pago_cuenta())]
+    if not d: return not pagos
+    forma = "Efectivo" if d.forma == "efectivo" else "Transferencia"
+    return pagos == [(d.monto, forma, None if forma == "Efectivo" else (d.alias or None))]
 
 def _mismo_mixto(db, comp, m: MixtoIn) -> bool:
     pagos = db.query(models.Pago).filter(models.Pago.comprobante_id == comp.id, _pago_cuenta()).all()
