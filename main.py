@@ -3717,13 +3717,33 @@ def _repetido(db, comp, c: ComprobanteIn) -> dict:
     if not comp.activo:
         raise HTTPException(409, f"Ese cobro ya había entrado como {num} y después se anuló. "
                                  "Revisalo antes de cobrar de nuevo.")
+    if _solo_cambio_la_forma(db, comp, c):
+        comp.forma_pago = c.forma_pago
+        db.commit()
+        return _comprobante_creado(db, comp)
     if not _mismo_pedido(comp, c) or (c.mixto and not _mismo_mixto(db, comp, c.mixto)):
         total = estado_comprobante(db, comp)["total_final"]
         raise HTTPException(409, f"Ese cobro ya había entrado como {num} ({_pesos(total)}), "
                                  "con otros datos. Revisalo antes de cobrar de nuevo.")
     return _comprobante_creado(db, comp)
 
-def _mismo_pedido(comp, c: ComprobanteIn) -> bool:
+def _solo_cambio_la_forma(db, comp, c: ComprobanteIn) -> bool:
+    """Se perdió la respuesta y la clienta dijo "te transfiero": es el mismo ticket.
+
+    Sin respuesta no se imprimió ni se cobró nada, así que cambiarle la forma es
+    lo que se haría a mano. Trabado: un abono en paralelo leería el saldo viejo.
+    """
+    # Depilación no: movería el reparto de la sesión. Y de otro día ya se le dijo la deuda.
+    if (comp.tipo != "ticket" or comp.depilacion or c.mixto
+            or (comp.forma_pago or "") == (c.forma_pago or "")
+            or hora_argentina(comp.cargado).date() != hoy_argentina()):
+        return False
+    _trabar_comprobante(db, comp.id)
+    if db.query(models.Pago).filter(models.Pago.comprobante_id == comp.id).count():
+        return False
+    return _mismo_pedido(comp, c, con_forma=False)
+
+def _mismo_pedido(comp, c: ComprobanteIn, con_forma: bool = True) -> bool:
     """Si el comprobante guardado es el que pide `c`: lo que mueve plata, no el texto."""
     def de_lineas(lineas):
         return sorted((l[0] or 0, l[1], l[2], l[3], l[4] or 0) for l in lineas)
@@ -3737,7 +3757,7 @@ def _mismo_pedido(comp, c: ComprobanteIn) -> bool:
                             if (e.concepto or "").strip() and e.monto)
     extras_guardados = sorted((e.concepto, e.monto) for e in comp.extras)
     return (comp.tipo == c.tipo and comp.cliente_id == c.cliente_id
-            and (comp.forma_pago or "") == (c.forma_pago or "")
+            and (not con_forma or (comp.forma_pago or "") == (c.forma_pago or ""))
             and (comp.descuento_pct or 0) == (c.descuento_pct or 0)
             and pedidas == guardadas and extras_pedidos == extras_guardados)
 
