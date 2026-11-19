@@ -782,7 +782,7 @@ function mostrarBotones(){
   $("#crearPresu").style.display = esT ? "none" : "block";
 
   // Al presupuesto la forma no le cambia nada: muestra e imprime las dos listas
-  $("#comoPaga").hidden = !esT;
+  $("#comoPaga").hidden = !esT || !ticket.length;
   if(!esT && formaPago){ formaPago = ""; pintarFormas(); }
   renderTicket();   // repinta con la forma correcta
 }
@@ -793,6 +793,7 @@ function actualizarAcciones(){
     $("#crearPresu").disabled = !listo;   // el presupuesto solo necesita ítems + cliente
     return;
   }
+  $("#comoPaga").hidden = !ticket.length;
   const b = $("#cobrar");
   b.disabled = !listo || !formaPago || $("#panelMixto").style.display === "block";
   b.textContent = textoCobrar();
@@ -805,6 +806,7 @@ function actualizarAcciones(){
    normal, que por eso no tiene cartel. */
 function textoCobrar(){
   const deja = montoDeja();
+  if(!ticket.length) return "Cobrar";
   switch(formaPago){
     case "efectivo": return `Cobrar ${fmt(totalEfActual)} en efectivo`;
     case "transfer": return `Cobrar ${fmt(totalTrActual)} por transferencia`;
