@@ -465,7 +465,7 @@ $("#btnComisiones").onclick = () => {
 $("#btnEditarTodos").onclick=async()=>{
   const pendientes=CAMBIOS.size;
   if(modoEdicion && pendientes &&
-     !confirm(`Hay ${pendientes} ${pendientes===1?"cambio":"cambios"} sin guardar.\n\n¿Salir igual y perderlos?`)) return;
+     !await confirmar(`Hay ${pendientes} ${pendientes===1?"cambio":"cambios"} sin guardar.\n\n¿Salir igual y perderlos?`, { si: "Salir sin guardar", peligro: true })) return;
   CAMBIOS.clear();
   modoEdicion=!modoEdicion;
   const b=$("#btnEditarTodos");
@@ -587,7 +587,7 @@ function fichaItem(it){
 
   const borrar = $$(".borrar");
   if(borrar) borrar.onclick = async () => {
-    if(!confirm(`¿Eliminar "${it.nombre}"?\n\nDeja de aparecer al facturar. Los tickets viejos que lo tienen no se tocan.`)) return;
+    if(!await confirmar(`¿Eliminar "${it.nombre}"?\n\nDeja de aparecer al facturar. Los tickets viejos que lo tienen no se tocan.`, { si: "Eliminar", peligro: true })) return;
     const r = await authFetch(`/api/items/${it.id}`, {method:"DELETE"});
     if(!r.ok){ toast("No se pudo eliminar"); return; }
     toast("Eliminado");
@@ -623,7 +623,7 @@ $("#btnRenombrar").onclick=async()=>{
   // ninguna elegida, y antes esto abría un prompt que decía "undefined".
   const cat = catFiltro || catActual;
   if(!cat){ toast("Elegí una categoría para renombrarla"); return; }
-  const nuevo=prompt(`Renombrar la categoría "${cat}" a:`,cat);
+  const nuevo=await preguntar({ titulo: `Renombrar "${cat}"`, si: "Renombrar", pideTexto: true, linea: true, valor: cat, minimo: 1 });
   if(!nuevo||nuevo.trim()===cat)return;
   await authFetch("/api/categorias",{method:"PUT",headers:{"Content-Type":"application/json"},
     body:JSON.stringify({viejo:cat,nuevo:nuevo.trim()})});
@@ -706,7 +706,7 @@ async function cargarUsuarios(){
       const bDel = Object.assign(document.createElement("button"),
                                  {className: "b-del", textContent: "Eliminar"});
       bDel.onclick = async () => {
-        if (!confirm(`¿Eliminar al usuario "${u.usuario}"?`)) return;
+        if (!await confirmar(`¿Eliminar al usuario "${u.usuario}"?`, { si: "Eliminar", peligro: true })) return;
         const r = await authFetch(`/api/usuarios/${u.id}`, {method: "DELETE"});
         if (!r.ok) { const e = await r.json(); toast(e.detail || "No se pudo"); return; }
         toast("Eliminado"); cargarUsuarios();
@@ -1045,7 +1045,7 @@ async function bajaOReactivar(e){
   }
   // El DELETE decide solo: si nunca hizo nada lo borra de verdad, y si tiene
   // historia lo da de baja. Por eso el aviso cuenta las dos cosas.
-  if(!confirm(`Sacar a "${e.nombre}" de la lista.\n\nSi nunca trabajó, se borra del todo. Si ya tiene comprobantes o sueldos, queda dado de baja: deja de aparecer para elegir y no puede entrar a su sueldo, pero lo suyo sigue estando.\n\n¿Seguimos?`)) return;
+  if(!await confirmar(`Sacar a "${e.nombre}" de la lista.\n\nSi nunca trabajó, se borra del todo. Si ya tiene comprobantes o sueldos, queda dado de baja: deja de aparecer para elegir y no puede entrar a su sueldo, pero lo suyo sigue estando.\n\n¿Seguimos?`, { si: "Sacar de la lista", peligro: true })) return;
   const r = await authFetch(`/api/empleados/${e.id}`, {method:"DELETE"});
   if(!r.ok){ toast((await r.json().catch(()=>({}))).detail || "No se pudo"); return; }
   const d = await r.json();
@@ -1088,7 +1088,7 @@ function panelEmpleado(e, tipo){
   pan.querySelector(".cancelar").onclick = () => pan.remove();
   const sacar = pan.querySelector(".sacar");
   if(sacar) sacar.onclick = async () => {
-    if(!confirm(`Sin código, ${e.nombre} no va a poder entrar a su sueldo. ¿Se lo sacamos?`)) return;
+    if(!await confirmar(`Sin código, ${e.nombre} no va a poder entrar a su sueldo. ¿Se lo sacamos?`, { si: "Sacar el código" })) return;
     await guardarEmpleado(`/api/empleados/${e.id}/pin`, {pin: null}, "Código sacado");
   };
   const general = pan.querySelector(".general");
@@ -1419,9 +1419,9 @@ function pintarBarraHorario(emps){
       if(!t.desde || !t.hasta || t.hasta <= t.desde){ toast("Revisá las horas: la de salida va después"); return; }
     }
     const nombres = ids.map(id => (emps.find(e => e.id === id) || {}).nombre).filter(Boolean);
-    if(!confirm(`Se les pone ${tramos.map(t => `${hm(t.desde)} a ${hm(t.hasta)}`).join(" y ")} `
+    if(!await confirmar(`Se les pone ${tramos.map(t => `${hm(t.desde)} a ${hm(t.hasta)}`).join(" y ")} `
       + `los ${dias.map(d => DIAS_SEM[d].toLowerCase()).join(", ")} a: ${nombres.join(", ")}.\n\n`
-      + `Lo que tuvieran esos días se reemplaza. El resto de la semana no se toca.`)) return;
+      + `Lo que tuvieran esos días se reemplaza. El resto de la semana no se toca.`, { si: "Aplicar" })) return;
 
     aplicar.disabled = true;
     let listas = 0;
@@ -1465,9 +1465,9 @@ if($("#btnFusion")) $("#btnFusion").onclick = async () => {
   if(origen === destino){ toast("Elegí dos nombres distintos"); return; }
   const nOrigen  = $("#fusOrigen").selectedOptions[0].textContent.trim();
   const nDestino = $("#fusDestino").selectedOptions[0].textContent.trim();
-  if(!confirm(`Todo lo de "${nOrigen}" pasa a "${nDestino}" y "${nOrigen}" desaparece de la lista.\n\n`
+  if(!await confirmar(`Todo lo de "${nOrigen}" pasa a "${nDestino}" y "${nOrigen}" desaparece de la lista.\n\n`
             + `Sus comprobantes y turnos van a decir "${nDestino}", y sus horas y sueldos también.\n\n`
-            + `Esto no se puede deshacer. ¿Seguimos?`)) return;
+            + `Esto no se puede deshacer. ¿Seguimos?`, { si: "Unificar", peligro: true })) return;
   const r = await authFetch("/api/empleados/fusionar", {method:"POST",
     headers:{"Content-Type":"application/json"}, body:JSON.stringify({origen_id:origen, destino_id:destino})});
   if(!r.ok){ toast((await r.json().catch(()=>({}))).detail || "No se pudo unificar"); return; }

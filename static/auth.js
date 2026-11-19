@@ -20,7 +20,7 @@ async function authFetch(url,opts){
 /* Pasa un presupuesto a ticket, que nace a cuenta. Lo usan Historial y la ficha
    de la clienta. Devuelve el mensaje para mostrar, o null si se canceló. */
 async function convertirPresupuesto(id, boton){
-  if(!confirm("¿Convertir este presupuesto en ticket?\n\nSe crea un ticket con los mismos ítems y queda a cuenta: el cobro se registra después.")) return null;
+  if(!await confirmar("¿Convertir este presupuesto en ticket?\n\nSe crea un ticket con los mismos ítems y queda a cuenta: el cobro se registra después.", { si: "Convertir" })) return null;
   if(boton) boton.disabled = true;
   try{
     const r = await authFetch("/api/comprobantes/"+id+"/convertir", {method:"POST"});
@@ -247,15 +247,16 @@ async function pedirMotivo(titulo, { texto = "", si = "Anular", opciones = MOTIV
 
 /* Los carteles de la app, en lugar de confirm() y prompt() del navegador. Con
    pideTexto devuelve el texto o null; sin él, true o false. Las `opciones` se
-   tocan para no tipear en la tablet. */
+   tocan para no tipear en la tablet; `linea` pide un texto corto con `valor` puesto. */
 function preguntar({ titulo, texto = "", si = "Aceptar", no = "Volver", peligro = false,
-                     pideTexto = false, opciones = [] }){
+                     pideTexto = false, opciones = [], linea = false, valor = "", minimo = 3 }){
   return new Promise(resolver => {
     const fondo = document.createElement("div");
     fondo.className = "dlg-fondo";
+    const entrada = linea ? '<input type="text">' : '<textarea rows="2" placeholder="¿Por qué?"></textarea>';
     fondo.innerHTML = `<div class="dlg" role="dialog" aria-modal="true" aria-labelledby="dlgTitulo">
       <h3 id="dlgTitulo"></h3><p class="dlg-p"></p>
-      ${pideTexto ? '<div class="dlg-cuerpo"><div class="chips"></div><textarea rows="2" placeholder="¿Por qué?"></textarea></div>' : ""}
+      ${pideTexto ? `<div class="dlg-cuerpo"><div class="chips"></div>${entrada}</div>` : ""}
       <div class="dlg-acciones"><button type="button" class="b-out dlg-no"></button>
         <button type="button" class="dlg-si${peligro ? " peligro" : ""}"></button></div></div>`;
     // "N-00303" no se parte en el guion
@@ -263,10 +264,13 @@ function preguntar({ titulo, texto = "", si = "Aceptar", no = "Volver", peligro 
     const p = fondo.querySelector(".dlg-p");
     if(texto) p.textContent = texto; else p.remove();
     const bSi = fondo.querySelector(".dlg-si"), bNo = fondo.querySelector(".dlg-no");
-    bSi.textContent = si; bNo.textContent = no;
-    const campo = fondo.querySelector("textarea");
-    const valor = () => campo ? campo.value.trim() : true;
+    bSi.textContent = si;
+    if(no === null) bNo.remove(); else bNo.textContent = no;   // null: es un aviso, no una pregunta
+    const campo = fondo.querySelector("textarea, input");
+    const respuesta = () => campo ? campo.value.trim() : true;
+    const nada = () => campo ? null : false;
     if(campo){
+      campo.value = valor;
       const chips = fondo.querySelector(".chips");
       opciones.forEach(o => {
         const c = document.createElement("button");
@@ -277,17 +281,27 @@ function preguntar({ titulo, texto = "", si = "Aceptar", no = "Volver", peligro 
       if(!opciones.length) chips.remove();
       campo.oninput = habilitar;
     }
-    function habilitar(){ bSi.disabled = !!campo && campo.value.trim().length < 3; }
+    function habilitar(){ bSi.disabled = !!campo && campo.value.trim().length < minimo; }
     function cerrar(v){ fondo.remove(); removeEventListener("keydown", tecla, true); resolver(v); }
-    function tecla(e){ if(e.key === "Escape"){ e.preventDefault(); cerrar(campo ? null : false); } }
-    bSi.onclick = () => cerrar(valor());
-    bNo.onclick = () => cerrar(campo ? null : false);
-    fondo.onclick = e => { if(e.target === fondo) cerrar(campo ? null : false); };
+    function tecla(e){
+      if(e.key === "Escape"){ e.preventDefault(); cerrar(nada()); }
+      else if(e.key === "Enter" && linea && !bSi.disabled){ e.preventDefault(); cerrar(respuesta()); }
+    }
+    bSi.onclick = () => cerrar(respuesta());
+    if(no !== null) bNo.onclick = () => cerrar(nada());
+    fondo.onclick = e => { if(e.target === fondo) cerrar(nada()); };
     addEventListener("keydown", tecla, true);
     habilitar();
     document.body.appendChild(fondo);
-    (campo || bSi).focus();
+    if(campo){ campo.focus(); if(linea) campo.select(); } else bSi.focus();
   });
+}
+
+/* Para los mensajes que ya vienen escritos como un confirm(): el primer párrafo
+   va de título y el resto de texto. `si` es el verbo del botón. */
+function confirmar(mensaje, { si = "Seguir", no = "Volver", peligro = false } = {}){
+  const [titulo, ...resto] = String(mensaje).split("\n\n");
+  return preguntar({ titulo, texto: resto.join("\n\n"), si, no, peligro });
 }
 
 function titulo(str){

@@ -579,7 +579,7 @@ async function resolverCliente(nombre){
   const res = await (await authFetch("/api/clientes?q=" + encodeURIComponent(nombre))).json();
   const igual = res.find(c => c.nombre.toLowerCase() === nombre.toLowerCase());
   if(igual) return {id: igual.id, nombre: igual.nombre};
-  if(!confirm(`"${nombre}" no está en la lista de clientes.\n\n¿Lo creamos?`)) return null;
+  if(!await confirmar(`"${nombre}" no está en la lista de clientes.\n\n¿Lo creamos?`, { si: "Crear" })) return null;
   const r = await authFetch("/api/clientes", {method:"POST",
     headers:{"Content-Type":"application/json"}, body: JSON.stringify({nombre})});
   if(!r.ok){ toast((await r.json().catch(()=>({}))).detail || "No se pudo crear"); return null; }
@@ -698,10 +698,10 @@ $("#btnCobrar").onclick = async () => {
     await mostrarSenas();
   }
   const detalle = TICKET.map(l => (l.cantidad > 1 ? l.cantidad + "× " : "") + l.nombre).join(" · ");
-  if(!confirm(`${nombre}\n${detalle}`
+  if(!await confirmar(`${nombre}\n${detalle}`
             + `${SENA_TAPA ? `\n\nSeña que ya dejó: −${fmt(SENA_TAPA)}` : ""}`
             + `\n\nPone ${fmt(TOTAL_HOY)} en ${FORMA === "efectivo" ? "efectivo" : "transferencia"}.`
-            + `\n\n¿Lo cobramos?`)){ b.disabled = false; return; }
+            + `\n\n¿Lo cobramos?`, { si: "Cobrar" })){ b.disabled = false; return; }
 
   /* Crear, aplicar las señas y cobrar, todo en UN pedido: en tres llamadas, la
      que no llega —internet del local, la tablet que se duerme— deja el ticket
@@ -734,7 +734,7 @@ $("#btnCobrar").onclick = async () => {
   /* El papel se ofrece y no sale solo: imprimir es una navegación a RawBT y se
      lleva la pantalla puesta, así que primero se guarda y recién después se
      pregunta. El que dice que no tiene el botón de Imprimir ahí abajo. */
-  if(confirm(`${num} cobrado.\n\n¿Le imprimimos el comprobante?`))
+  if(await confirmar(`${num} cobrado.\n\n¿Le imprimimos el comprobante?`, { si: "Imprimir", no: "No" }))
     location.href = "/ticket?id=" + d.id;
   TICKET = []; CLI = null; FORMA = null;
   document.querySelectorAll("#formas button").forEach(x => x.classList.remove("on"));
@@ -961,7 +961,7 @@ function pintarDia(){
   });
   $("#hDia").querySelectorAll(".borrar-gasto").forEach(b => {
     b.onclick = async () => {
-      if(!confirm("¿Sacar este gasto de la sesión? El reparto se recalcula solo.")) return;
+      if(!await confirmar("¿Sacar este gasto de la sesión? El reparto se recalcula solo.", { si: "Sacar", peligro: true })) return;
       const r = await pedir(`/api/depilacion/gasto/${b.dataset.id}`, {method:"DELETE"});
       if(!r.ok){ toast((await r.json().catch(()=>({}))).detail || "No se pudo"); return; }
       verDia();
@@ -970,7 +970,7 @@ function pintarDia(){
   const cerrar = $("#cCerrar");
   if(cerrar) cerrar.onclick = async () => {
     // Sin nada que mover no hay formulario: la sesión se cierra y nada más.
-    if(!confirm(d.de_mas > 0
+    if(!await confirmar(d.de_mas > 0
         ? `Vuelven ${fmt(d.de_mas)} a la caja de hoy, como “Ajuste sesión #${d.numero}”.\n\n`
           + `A ${d.a_cargo} se le pagaron ${fmt(pagado)} y le tocan ${fmt(d.cuenta.parte_empleada)}. `
           + `El egreso del cierre viejo no se toca.`
@@ -978,7 +978,7 @@ function pintarDia(){
         ? `Se le pagan ${fmt(d.pendiente)} a ${d.a_cargo} por la sesión #${d.numero}.\n\n`
           + `Queda la foto del reparto y el egreso anotado. Esto no se puede deshacer.`
         : `Cerrar la sesión #${d.numero} sin pagar nada.\n\n`
-          + `Deja de aceptar trabajo y no anota ningún egreso.`)) return;
+          + `Deja de aceptar trabajo y no anota ningún egreso.`, { si: "Cerrar la sesión" })) return;
     const r = await pedir("/api/depilacion/cerrar", {method:"POST",
       headers:{"Content-Type":"application/json"},
       body: JSON.stringify(mueve
@@ -1231,9 +1231,9 @@ function pintarSesiones(){
      frena es el backend; acá solo se esconde el botón. */
   $("#hSesiones").querySelectorAll(".reabrir").forEach(b => {
     b.onclick = async () => {
-      if(!confirm(`¿Reabrir la sesión #${b.dataset.num}?\n\n`
+      if(!await confirmar(`¿Reabrir la sesión #${b.dataset.num}?\n\n`
                 + `Vuelve a aceptar trabajo y gastos, y se puede anular un ticket que no iba. `
-                + `Lo que ya se pagó queda pagado.`)) return;
+                + `Lo que ya se pagó queda pagado.`, { si: "Reabrir" })) return;
       const r = await pedir("/api/depilacion/reabrir", {method:"POST",
         headers:{"Content-Type":"application/json"},
         body: JSON.stringify({sesion_id: Number(b.dataset.id)})});

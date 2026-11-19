@@ -352,7 +352,7 @@ async function anularPagoCaja(id){
 /* Borrar de verdad: solo la dueña, y solo algo ya anulado. El motivo vive en la
    fila, así que borrar en un paso no dejaría nada escrito. */
 async function borrarAnulado(tipo, id){
-  if(!confirm("Esto borra el registro para siempre: deja de estar incluso como anulado.\n\n¿Seguro?"))return;
+  if(!await confirmar("Esto borra el registro para siempre: deja de estar incluso como anulado.\n\n¿Seguro?", { si: "Borrar para siempre", peligro: true }))return;
   const r=await authFetch(`/api/${tipo}/${id}/definitivo`,{method:"DELETE"});
   if(!r.ok){toast((await r.json().catch(()=>({}))).detail || "No se pudo");return;}
   toast("Borrado"); cargarDia();
@@ -376,7 +376,7 @@ async function guardarEgresoCaja(id){
   cargarDia();
 }
 async function anularEgresoCaja(id){
-  if(!confirm("¿Anular este egreso?"))return;
+  if(!await confirmar("¿Anular este egreso?", { si: "Anular", peligro: true }))return;
   const r = await authFetch("/api/egresos/"+id,{method:"DELETE"});
   if(!r.ok){ toast((await r.json().catch(()=>({}))).detail || "No se pudo anular"); return; }
   toast("Egreso anulado"); cargarDia();

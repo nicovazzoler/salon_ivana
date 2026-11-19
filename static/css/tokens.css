@@ -199,7 +199,7 @@
      no lee variables; ese gris se lee en los dos temas. */
   --lupa:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='18' height='18' viewBox='0 0 24 24' fill='none' stroke='%238a8071' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cpath d='m20 20-3.5-3.5'/%3E%3C/svg%3E");
 
-  --z-header:5; --z-dropdown:20; --z-modal:50; --z-toast:100;
+  --z-header:5; --z-dropdown:20; --z-modal:50; --z-cartel:90; --z-toast:100;
 }
 
 /* ==========================================================================

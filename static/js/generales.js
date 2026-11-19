@@ -127,7 +127,7 @@ function panelGenerales(cont, alGuardar, opciones){
         + "Las que ya están abiertas no cambian."
       : "Las sesiones nuevas vuelven a arrancar con la que más facture.");
     if(!cambios.length){ editando = false; pintar(); return; }
-    if(!confirm(cambios.join("\n\n") + "\n\nLo ya cerrado no cambia. ¿Guardamos?")) return;
+    if(!await confirmar(cambios.join("\n\n") + "\n\nLo ya cerrado no cambia. ¿Guardamos?", { si: "Guardar" })) return;
 
     const r = await authFetch("/api/config/sueldos", {method:"PUT",
       headers:{"Content-Type":"application/json"},
@@ -209,9 +209,9 @@ function panelGenerales(cont, alGuardar, opciones){
 
   async function mandarPropio(e, valor){
     if(valor === (e.valor_hora ?? -1)){ toast("No cambiaste nada"); return; }
-    if(!confirm(valor < 0
+    if(!await confirmar(valor < 0
         ? `${e.nombre} vuelve a cobrar el general, ${_pesos(cfg.valor_hora)} la hora.\n\nLo ya cerrado no cambia. ¿Guardamos?`
-        : `${e.nombre} pasa a cobrar ${_pesos(valor)} la hora, en vez del general.\n\nLo ya cerrado no cambia. ¿Guardamos?`)) return;
+        : `${e.nombre} pasa a cobrar ${_pesos(valor)} la hora, en vez del general.\n\nLo ya cerrado no cambia. ¿Guardamos?`, { si: "Guardar" })) return;
     const r = await authFetch(`/api/empleados/${e.id}`, {method:"PUT",
       headers:{"Content-Type":"application/json"}, body: JSON.stringify({valor_hora: valor})});
     if(!r.ok){ toast((await r.json().catch(()=>({}))).detail || "No se pudo"); return; }
@@ -279,19 +279,19 @@ function panelCorteSueldos(cont, alGuardar){
       }catch(e){ /* sin el detalle igual se puede poner: el cartel dice menos */ }
       const lista = (afuera.detalle || []).map(d =>
         `· ${d.nombre}: ${d.ciclos} ${d.ciclos === 1 ? "ciclo" : "ciclos"}, ${_pesos(d.total)}`).join("\n");
-      if(!confirm(`Los sueldos de TODAS van a contar desde el ${corto(f)}.\n\n`
+      if(!await confirmar(`Los sueldos de TODAS van a contar desde el ${corto(f)}.\n\n`
         + (afuera.ciclos
             ? `Dejan de aparecer ${afuera.ciclos} ${afuera.ciclos === 1 ? "ciclo" : "ciclos"} `
               + `de ${afuera.empleadas} ${afuera.empleadas === 1 ? "empleada" : "empleadas"}, `
               + `por ${_pesos(afuera.total)}:\n${lista}\n\n`
             : "No deja afuera ningún ciclo pendiente.\n\n")
-        + "No se borra nada: si te equivocás, corrés el corte para atrás y vuelve todo.")) return;
+        + "No se borra nada: si te equivocás, corrés el corte para atrás y vuelve todo.", { si: "Mover el corte" })) return;
       await guardar(f, "Corte puesto ✓");
     };
     const quitar = cont.querySelector(".arrNo");
     if(quitar) quitar.onclick = async () => {
-      if(!confirm("Van a volver a aparecer todos los ciclos anteriores al corte, "
-                + "de todas las empleadas. ¿Seguimos?")) return;
+      if(!await confirmar("Van a volver a aparecer todos los ciclos anteriores al corte, "
+                + "de todas las empleadas. ¿Seguimos?", { si: "Quitar el corte" })) return;
       await guardar(null, "Corte quitado ✓");
     };
   }

@@ -262,7 +262,7 @@ async function cargar(){
   
 if($("#btnEliminar")) $("#btnEliminar").onclick=async()=>{
     if(data.saldo_total<=0){
-      if(!confirm(`¿Eliminar a ${c.nombre}?\n\nSus tickets quedan en el historial.`)) return;
+      if(!await confirmar(`¿Eliminar a ${c.nombre}?\n\nSus tickets quedan en el historial.`, { si: "Eliminar", peligro: true })) return;
     }
     const btn=$("#btnEliminar"); btn.disabled=true;
     const r=await authFetch("/api/clientes/"+id,{method:"DELETE"});
