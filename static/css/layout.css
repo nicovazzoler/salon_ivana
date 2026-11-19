@@ -38,6 +38,8 @@
   border:none; border-radius:var(--r-md);
   font:inherit; cursor:pointer;
 }
+.cartel-app.version{ padding:var(--sp-3) var(--sp-6); font-size:var(--fs-lg); }
+.cartel-app.version button{ padding:10px 20px; }
 
 header{
   position:sticky; top:0; z-index:var(--z-header);
