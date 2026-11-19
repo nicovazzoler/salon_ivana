@@ -951,18 +951,6 @@ function marcarAtendio(){
 }
 
 // Valida el cliente (obligatorio) y crea el comprobante. Devuelve el objeto creado o null.
-/* El ticket de hoy de esta clienta que ya tiene lo mismo y no se cobró: se está
-   por cargar dos veces. El que entró con esta misma clave no cuenta, ese es un
-   reintento. Si la consulta no llega, se sigue: no puede frenar un cobro. */
-async function ticketIgualSinCobrar(body){
-  if(body.tipo !== "ticket" || !body.cliente_id) return null;
-  try{
-    const r = await authFetch("/api/comprobantes/igual",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
-    const igual = r.ok ? (await r.json()).igual : null;
-    return igual && igual.clave !== CLAVE + "-ticket" ? igual : null;
-  }catch(e){ return null; }
-}
-
 async function crearComprobante(cobro = {}){
   const nom=$("#cliente").value.trim();
   if(!nom){ toast("Falta el nombre del cliente"); $("#cliente").focus(); return null; }
@@ -994,6 +982,12 @@ async function crearComprobante(cobro = {}){
       CLIENTES.push({id:nuevo.id, nombre:nom});
     }
   }
+  /* Última parada antes de que exista: se dice qué número va a llevar, a nombre
+     de quién, cuánto y con qué se cobra. Es lo que sale impreso y lo que entra a
+     la caja, y el papel se manda apenas se guarda: revisarlo después ya es
+     anular y volver a hacerlo. */
+  if(!await confirmarAntesDeGenerar(tipo, nom)) return null;
+
   const body={
     tipo,
     cliente_id: cliId,
@@ -1013,17 +1007,6 @@ async function crearComprobante(cobro = {}){
     ...cobro
   };
   if(!CLAVE){ CLAVE = claveDeCobro(); guardarBorrador(); }
-  const igual = await ticketIgualSinCobrar(body);
-  if(igual && confirm(`${nom} ya tiene el N-${String(igual.numero).padStart(5,"0")} de hoy sin cobrar, `
-                      + `con lo mismo (${fmt(igual.total)}).\n\n¿Usar ese en vez de hacer otro ticket?`)){
-    // Con su clave, el backend contesta ese ticket con la forma de ahora en vez de crear otro
-    CLAVE = igual.clave.replace(/-ticket$/, ""); guardarBorrador();
-  }
-  /* Última parada antes de que exista: se dice qué número va a llevar, a nombre
-     de quién, cuánto y con qué se cobra. Es lo que sale impreso y lo que entra a
-     la caja, y el papel se manda apenas se guarda: revisarlo después ya es
-     anular y volver a hacerlo. */
-  else if(!await confirmarAntesDeGenerar(tipo, nom)) return null;
   // Con el tipo adentro: el presupuesto que se armó primero no es el ticket.
   body.clave = CLAVE + "-" + tipo;
   let r;
@@ -1048,7 +1031,7 @@ async function crearComprobante(cobro = {}){
   }
   const d=await r.json();
   const pref = d.tipo==="ticket" ? "N-" : "P-";
-  if(!igual) toast(`${d.tipo} ${pref}${String(d.numero).padStart(5,"0")} creado`);
+  toast(`${d.tipo} ${pref}${String(d.numero).padStart(5,"0")} creado`);
   // dejar a mano el botón para imprimir el comprobante recién creado
   const pu=$("#printUltimo");
   pu.href="/ticket?id="+d.id;

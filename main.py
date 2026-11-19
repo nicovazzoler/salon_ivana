@@ -3558,7 +3558,7 @@ def crear_comprobante(c: ComprobanteIn, user = Depends(usuario_actual), db: Sess
     # Si el pedido ya había llegado y lo que se perdió fue la respuesta, el
     # reintento trae la misma clave: se contesta lo que se creó esa vez.
     ya = _comprobante_por_clave(db, c.clave)
-    if ya: return _repetido(db, ya, c, user)
+    if ya: return _repetido(db, ya, c)
     if c.tipo not in ("ticket", "presupuesto"): raise HTTPException(400, "Tipo inválido")
     if not c.lineas: raise HTTPException(400, "El comprobante no tiene líneas")
     nombre_cli = None
@@ -3593,7 +3593,7 @@ def crear_comprobante(c: ComprobanteIn, user = Depends(usuario_actual), db: Sess
         db.rollback()
         ya = _comprobante_por_clave(db, c.clave)
         if not ya: raise
-        return _repetido(db, ya, c, user)
+        return _repetido(db, ya, c)
     total = 0
     # Un comprobante es de depilación cuando TODAS sus líneas lo son. Todas y no
     # alguna: media mitad de cada cosa no se puede mandar entera ni al reparto ni
@@ -3662,19 +3662,6 @@ def crear_comprobante(c: ComprobanteIn, user = Depends(usuario_actual), db: Sess
     if c.tipo == "ticket" and comp.cliente_id and c.aplicar_senas:
         db.flush()
         senas_usadas, _ = _aplicar_senas(db, comp)
-    _cobrar_al_crear(db, comp, c, user)
-    # Facturado dentro de una sesión que ya se había cerrado, esto es una
-    # corrección: la cuenta sube y la diferencia se paga con otro cierre.
-    if comp.sesion_id:
-        ses_nueva = db.get(models.SesionDepilacion, comp.sesion_id)
-        if ses_nueva:
-            db.flush()
-            anotar_correccion(db, ses_nueva, f"Se agregó el N-{comp.numero or 0:05d}",
-                              parte_previa, user.get("usuario"))
-    db.commit(); db.refresh(comp)
-    return _comprobante_creado(db, comp)
-
-def _cobrar_al_crear(db, comp, c: ComprobanteIn, user):
     if c.tipo == "ticket" and c.cobrar:
         db.flush()
         saldo = estado_comprobante(db, comp)["saldo"]
@@ -3687,6 +3674,16 @@ def _cobrar_al_crear(db, comp, c: ComprobanteIn, user):
     if c.tipo == "ticket" and c.mixto:
         db.flush()
         _cobrar_mixto(db, comp, c.mixto, user)
+    # Facturado dentro de una sesión que ya se había cerrado, esto es una
+    # corrección: la cuenta sube y la diferencia se paga con otro cierre.
+    if comp.sesion_id:
+        ses_nueva = db.get(models.SesionDepilacion, comp.sesion_id)
+        if ses_nueva:
+            db.flush()
+            anotar_correccion(db, ses_nueva, f"Se agregó el N-{comp.numero or 0:05d}",
+                              parte_previa, user.get("usuario"))
+    db.commit(); db.refresh(comp)
+    return _comprobante_creado(db, comp)
 
 def _cobrar_mixto(db, comp, m: MixtoIn, user):
     """Los dos abonos del pago mixto, en la transacción que crea el ticket: o
@@ -3709,7 +3706,7 @@ def _comprobante_por_clave(db, clave):
 def _pesos(n: int) -> str:
     return f"${n:,}".replace(",", ".")
 
-def _repetido(db, comp, c: ComprobanteIn, user) -> dict:
+def _repetido(db, comp, c: ComprobanteIn) -> dict:
     """Lo que se contesta a un pedido con una clave que ya entró.
 
     Si es el mismo pedido, lo que se hizo esa vez. Si cambió algo en el medio
@@ -3720,48 +3717,31 @@ def _repetido(db, comp, c: ComprobanteIn, user) -> dict:
     if not comp.activo:
         raise HTTPException(409, f"Ese cobro ya había entrado como {num} y después se anuló. "
                                  "Revisalo antes de cobrar de nuevo.")
-    # Se perdió la respuesta y en el medio cambiaron la forma: es el mismo ticket.
-    if (comp.forma_pago or "") != (c.forma_pago or ""):
-        _trabar_comprobante(db, comp.id)
-        if _reusable(db, comp, c): return _reusar(db, comp, c, user)
+    if _solo_cambio_la_forma(db, comp, c):
+        comp.forma_pago = c.forma_pago
+        db.commit()
+        return _comprobante_creado(db, comp)
     if not _mismo_pedido(comp, c) or (c.mixto and not _mismo_mixto(db, comp, c.mixto)):
         total = estado_comprobante(db, comp)["total_final"]
         raise HTTPException(409, f"Ese cobro ya había entrado como {num} ({_pesos(total)}), "
                                  "con otros datos. Revisalo antes de cobrar de nuevo.")
     return _comprobante_creado(db, comp)
 
-def _reusable(db, comp, c: ComprobanteIn) -> bool:
-    """Si `comp` es lo que pide `c` y todavía no movió plata: se usa ese y no se hace otro.
+def _solo_cambio_la_forma(db, comp, c: ComprobanteIn) -> bool:
+    """Se perdió la respuesta y la clienta dijo "te transfiero": es el mismo ticket.
 
-    Solo un ticket de hoy sin ningún pago, ni anulado. Depilación no: moverle la
-    forma le cambia el reparto a la sesión.
+    Sin respuesta no se imprimió ni se cobró nada, así que cambiarle la forma es
+    lo que se haría a mano. Trabado: un abono en paralelo leería el saldo viejo.
     """
-    hoy = hoy_argentina()
-    if (c.tipo != "ticket" or comp.tipo != "ticket" or not comp.activo or comp.depilacion
-            or hora_argentina(comp.cargado).date() != hoy or hora_argentina(comp.fecha).date() != hoy):
+    # Depilación no: movería el reparto de la sesión. Y de otro día ya se le dijo la deuda.
+    if (comp.tipo != "ticket" or comp.depilacion or c.mixto
+            or (comp.forma_pago or "") == (c.forma_pago or "")
+            or hora_argentina(comp.cargado).date() != hoy_argentina()):
         return False
+    _trabar_comprobante(db, comp.id)
     if db.query(models.Pago).filter(models.Pago.comprobante_id == comp.id).count():
         return False
     return _mismo_pedido(comp, c, con_forma=False)
-
-def _reusar(db, comp, c: ComprobanteIn, user) -> dict:
-    """El ticket que ya estaba, con la forma y quién atendió de la pantalla, y cobrado si se pidió."""
-    comp.forma_pago = c.forma_pago
-    if c.peluquero: comp.peluquero = c.peluquero
-    _cobrar_al_crear(db, comp, c, user)
-    db.commit(); db.refresh(comp)
-    return _comprobante_creado(db, comp)
-
-def _igual_sin_cobrar(db, c: ComprobanteIn):
-    if c.tipo != "ticket" or not c.cliente_id: return None
-    ini, fin = _rango_dia(hoy_argentina())
-    candidatos = (db.query(models.Comprobante)
-                    .filter(models.Comprobante.activo == True, models.Comprobante.tipo == "ticket",
-                            models.Comprobante.cliente_id == c.cliente_id,
-                            models.Comprobante.clave.isnot(None),
-                            models.Comprobante.cargado >= ini, models.Comprobante.cargado < fin)
-                    .order_by(models.Comprobante.id.desc()))
-    return next((comp for comp in candidatos if _reusable(db, comp, c)), None)
 
 def _mismo_pedido(comp, c: ComprobanteIn, con_forma: bool = True) -> bool:
     """Si el comprobante guardado es el que pide `c`: lo que mueve plata, no el texto."""
@@ -3795,17 +3775,6 @@ def _comprobante_creado(db, comp) -> dict:
             "fecha": comp.fecha.isoformat(), "anotado_despues": anotado_despues(comp),
             "total_final": est["total_final"], "saldo": est["saldo"],
             "senas_usadas": senas_usadas}
-
-@app.post("/api/comprobantes/igual")
-def comprobante_igual(c: ComprobanteIn, _ = Depends(usuario_actual), db: Session = Depends(get_db)):
-    """El ticket de hoy de esa clienta, sin cobrar y con lo mismo: se está por cargar dos veces.
-
-    Facturar pregunta antes de hacer otro y, si es el mismo, lo manda con su clave.
-    """
-    comp = _igual_sin_cobrar(db, c)
-    if not comp: return {"igual": None}
-    return {"igual": {"numero": comp.numero, "clave": comp.clave, "forma": comp.forma_pago,
-                      "total": estado_comprobante(db, comp)["total_final"]}}
 
 @app.post("/api/comprobantes/{comp_id}/pagos")
 def registrar_pago(comp_id: int, pago: PagoIn, user = Depends(usuario_actual), db: Session = Depends(get_db)):
