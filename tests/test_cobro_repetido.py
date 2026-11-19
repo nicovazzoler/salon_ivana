@@ -290,3 +290,50 @@ def test_un_mixto_que_no_va_no_deja_nada(db, api, efectivo):
 
     assert r.status_code == 400
     assert cuantos(db, models.Comprobante) == 0 and cuantos(db, models.Pago) == 0
+
+
+def a_cuenta(item, monto, forma="efectivo", alias=None):
+    return ticket(item, forma_pago="cuenta", clave="cuenta-1",
+                  deja={"monto": monto, "forma": forma, "alias": alias})
+
+
+def test_lo_que_deja_en_efectivo_tapa_como_efectivo(db, api):
+    # $9.000 en efectivo sobre una cuenta de $20.000 (lista transfer) tapan $10.000:
+    # pagando el resto en efectivo, la suma da los $18.000 de la lista de efectivo.
+    r = api.post("/api/comprobantes", json=a_cuenta(un_item(db), 9000))
+
+    assert r.status_code == 200 and r.json()["saldo"] == 10000
+    pago = db.query(models.Pago).one()
+    assert (pago.monto, pago.saldado, pago.forma_pago, pago.desc_aplicado) == (9000, 10000, "Efectivo", 1000)
+
+
+def test_lo_que_deja_por_transferencia_tapa_lo_mismo(db, api):
+    r = api.post("/api/comprobantes", json=a_cuenta(un_item(db), 5000, "transfer", "ivana.mp"))
+
+    assert r.json()["saldo"] == 15000
+    pago = db.query(models.Pago).one()
+    assert (pago.monto, pago.saldado, pago.forma_pago, pago.alias) == (5000, 5000, "Transferencia", "ivana.mp")
+
+
+@pytest.mark.parametrize("monto", [0, 18000, 20000])
+def test_lo_que_deja_y_no_va_no_deja_nada(db, api, monto):
+    # 0 no es dejar nada, y $18.000 en efectivo ya es pagarlo entero: no es a cuenta
+    fabrica = sessionmaker(bind=db.get_bind(), autoflush=False)
+    def por_pedido():
+        s = fabrica()
+        try: yield s
+        finally: s.close()
+    item = un_item(db)
+    app.dependency_overrides[get_db] = por_pedido
+
+    r = api.post("/api/comprobantes", json=a_cuenta(item, monto))
+
+    assert r.status_code == 400
+    assert cuantos(db, models.Comprobante) == 0 and cuantos(db, models.Pago) == 0
+
+
+def test_cobrado_entero_por_transferencia_guarda_el_alias(db, api):
+    item = un_item(db)
+    api.post("/api/comprobantes", json=ticket(item, forma_pago="transfer", cobrar=True, alias="ivana.mp", clave="t"))
+    pago = db.query(models.Pago).one()
+    assert (pago.forma_pago, pago.monto, pago.alias) == ("Transferencia", 20000, "ivana.mp")

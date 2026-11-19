@@ -233,18 +233,21 @@
 
   /* --- Extras: cargos que no toca ningún descuento --- */
   .extras-box{ margin:var(--sp-2) 0 var(--sp-3); }
-  /* "Es de otro día" es la excepción, no un campo más: va como un renglón chico
-     debajo de los datos, sin caja, para que no pese lo mismo que el cliente o el
-     peluquero, que se llenan en todos los cobros. */
+  /* "Es de otro día" es la excepción, no un campo más: va chico y debajo de los
+     datos, pero con forma de botón, que como texto gris nadie lo tocaba. */
   .otro-dia{ margin:2px 0 var(--sp-2); padding:0; }
-  .otro-dia summary{
-    cursor:pointer; list-style:none;
-    font-size:13px; font-weight:var(--fw-normal);
-    color:var(--text-tenue);
-  }
-  .otro-dia summary:hover{ color:var(--text-suave); }
+  .otro-dia summary{ cursor:pointer; list-style:none; display:flex; }
   .otro-dia summary::-webkit-details-marker{ display:none; }
-  .otro-dia summary .aclara{ font-weight:var(--fw-normal); color:var(--text-tenue); }
+  .od-btn{
+    display:inline-flex; align-items:center; gap:7px;
+    padding:7px 12px; border-radius:10px;
+    background:var(--bronce-a12); color:var(--text-marca);
+    font-size:var(--fs-sm); font-weight:var(--fw-bold);
+    border:1.5px solid transparent;
+  }
+  .od-btn .ico{ width:16px; height:16px; }
+  .otro-dia summary:hover .od-btn{ background:var(--bronce-a15); }
+  .otro-dia[open] .od-btn{ border-color:var(--border-marca); background:var(--bg-elegido); }
   .otro-dia .alta-fecha{ margin:8px 0 0; gap:6px; }
   /* Cuando la fecha no es la de hoy hay que verlo sin buscarlo: el bloque se
      marca en bronce aunque esté plegado, porque una venta cargada sin querer en
@@ -255,12 +258,44 @@
     border:1px solid var(--bronce-500); background:var(--oro-a08);
     border-radius:var(--r-md); padding:8px 10px;
   }
-  .otro-dia.activo summary{ color:var(--text-marca); font-weight:var(--fw-bold); }
   .nota-otro-dia{
     margin-top:8px;
     font-size:var(--fs-sm);
     color:var(--text-marca);
   }
+  /* ----- Cómo paga: dos fichas grandes con el total de cada lista, dos chicas ----- */
+  .como-paga{ margin:var(--sp-4) 0 var(--sp-3); }
+  .como-paga[hidden]{ display:none; }
+  .cp-grandes, .cp-chicas{ display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+  .cp-chicas{ margin-top:8px; }
+  .como-paga .cp{
+    display:flex; flex-direction:column; align-items:flex-start; gap:2px;
+    padding:12px 14px; min-height:0; text-align:left;
+    background:var(--sup-campo); color:var(--text);
+    border:1.5px solid var(--campo-borde); border-radius:14px;
+    font:inherit; cursor:pointer;
+  }
+  .como-paga .cp:hover{ background:var(--bg-tile-hover); color:var(--text); }
+  .cp .n{ font-size:var(--fs-sm); font-weight:var(--fw-bold); color:var(--text-tenue); }
+  .cp .m{ font-family:var(--font-display); font-size:22px; font-weight:var(--fw-bold); color:var(--text-titulo);
+          font-variant-numeric:tabular-nums; line-height:1.15; }
+  .cp-chicas .cp{ flex-direction:row; justify-content:center; align-items:center; padding:11px 10px; }
+  .cp-chicas .cp .n{ font-size:var(--fs-md); color:var(--text); }
+  .como-paga .cp.on{ border-color:var(--border-marca); background:var(--bg-elegido); }
+  .cp.on .m, .cp-chicas .cp.on .n{ color:var(--text-marca); }
+  .cp-deja{ display:flex; align-items:center; gap:8px; margin-top:12px; }
+  .cp-deja[hidden]{ display:none; }
+  .cp-deja label{ font-size:var(--fs-sm); color:var(--text-tenue); white-space:nowrap; }
+  .cp-deja input{ flex:1; min-width:0; }
+  .forma-abono{ display:flex; gap:4px; flex:none; }
+  .forma-abono button{
+    padding:8px 11px; min-height:0; border-radius:10px; font-size:var(--fs-sm);
+    background:transparent; color:var(--text-tenue); border:1.5px solid var(--campo-borde);
+  }
+  .forma-abono button.on{ background:var(--bg-elegido); color:var(--text-marca); border-color:var(--border-marca); }
+  #aliasBox{ margin-top:12px; }
+  #aliasBox[hidden]{ display:none; }
+
   .extras-box summary{
     padding:6px 0;
     cursor:pointer; list-style:none;

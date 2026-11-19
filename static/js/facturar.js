@@ -10,6 +10,8 @@ let tipo="ticket", descPct=0, descNombre=null, formaPago="";
 let totalActual=0;
 let mxDeudaActual=0;
 let totalEfActual=0;     // el mismo ticket entero en la lista de efectivo
+let totalTrActual=0;     // y en la de transferencia
+let formaAbono="efectivo";   // con qué deja la parte que paga hoy, cuando queda a cuenta
 let vista="cats", catActual=null, grupoActual=null;
 const ORDEN_VAR=["S","M","L","XL","Mayor XL"];
 const ordenVar=v=>{const i=ORDEN_VAR.indexOf(v);return i<0?99:i;};
@@ -87,7 +89,7 @@ async function cargarEgresosHoy(){
       <span class="monto">−${fmt(e.monto)}</span>
       <button class="quitar" title="Anular este egreso" aria-label="Anular este egreso">${icono("cruz")}</button>`;
     row.querySelector(".quitar").onclick=async()=>{
-      if(!confirm("¿Anular este egreso?"))return;
+      if(!await preguntar({ titulo: `¿Anular el egreso de ${fmt(e.monto)}?`, texto: e.tipo || "", si: "Anular", peligro: true })) return;
       const r=await authFetch("/api/egresos/"+e.id,{method:"DELETE"});
       if(!r.ok){ toast("No se pudo"); return; }
       toast("Egreso anulado"); cargarEgresosHoy();
@@ -135,10 +137,8 @@ async function cargarEmpleados(){
 async function cargarListas(cfg){
   if(!cfg) cfg = await (await authFetch("/api/config")).json();
   const eraPago   = $("#egPago").value;
-  const eraCobro  = $("#cobroForma").value;
   const eraDesc   = descNombre;
 
-  $("#cobroForma").innerHTML=(cfg.formas_pago||[]).map(f=>`<option>${f}</option>`).join("");
   $("#egPago").innerHTML=(cfg.formas_pago||[]).map(f=>`<option>${f}</option>`).join("");
   TIPOS_PRIVADOS = new Set((cfg.tipos_privados||[]).map(t=>t.toLowerCase()));
   // El backend ya los manda con los privados primero. Acá solo se los rotula:
@@ -156,7 +156,6 @@ async function cargarListas(cfg){
 
   // reponer lo que estaba elegido, si sigue existiendo
   if(eraPago  && [...$("#egPago").options].some(o=>o.value===eraPago))       $("#egPago").value = eraPago;
-  if(eraCobro && [...$("#cobroForma").options].some(o=>o.value===eraCobro))  $("#cobroForma").value = eraCobro;
   if(eraDesc){
     const i = DESCUENTOS.findIndex(d => d.nombre === eraDesc);
     if(i >= 0){ $("#descuento").value = String(i); descPct = DESCUENTOS[i].porcentaje; }
@@ -190,10 +189,8 @@ function ponerLapiz(selCampo, cualLista){
 function ponerLapices(){
   ponerLapiz("#descuento",     "descuentos");
   ponerLapiz("#aliasTransfer", "alias");
-  ponerLapiz("#cobroAlias",    "alias");
   ponerLapiz("#egTipo",        "tipos");
   ponerLapiz("#egPago",        "formas");
-  ponerLapiz("#cobroForma",    "formas");
 }
 
 // El precio de lista lleva el peso; el de descuento va de apoyo, chiquito al lado.
@@ -287,12 +284,14 @@ function abrirGrupo(base,arr){
     b.onclick=()=>agregar(it); g.appendChild(b);
   });
 }
+const sinAcentos = t => String(t||"").normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
 function buscar(q){
   vista="buscar";
   marcarRail(null);                        // buscando no hay categoría activa
   $("#barraNav").style.display="flex";
   $("#volver").textContent="← Volver"; $("#tituloCat").textContent=`"${q}"`;
-  const res=CATALOGO.filter(i=>i.nombre.toLowerCase().includes(q.toLowerCase()));
+  const n=sinAcentos(q);
+  const res=CATALOGO.filter(i=>sinAcentos(i.nombre).includes(n) || sinAcentos(i.categoria).includes(n));
   const g=$("#items"); g.innerHTML="";
   if(res.length===0){ g.innerHTML='<p class="muted">Nada coincide.</p>'; return; }
   res.forEach(it=>{
@@ -349,7 +348,6 @@ let EXTRAS = [];                  // [{concepto, monto}]
 /* La del comprobante en curso: vive hasta limpiar() y en el borrador, así un
    reintento —aunque sea después de recargar— le pide al backend el mismo. */
 let CLAVE = null;
-let CLAVE_ABONO = null;           // la del abono suelto que se está mandando
 const SIN_CONEXION = "Sin conexión: volvé a tocar, no se cobra dos veces";
 
 function renderExtras(){
@@ -698,6 +696,9 @@ function actualizarTotales(){
   // total
   const total = baseCat - descCat + extrasTotal;
   totalEfActual = subEf - descCatEf + extrasTotal;
+  totalTrActual = subTr - descCatTr + extrasTotal;
+  $("#cpEfectivo").textContent = fmt(totalEfActual);
+  $("#cpTransfer").textContent = fmt(totalTrActual);
   if(esPresu){
     $("#total").textContent  = fmt(subTr - descCatTr + extrasTotal);
     $("#total2").textContent = fmt(subEf - descCatEf + extrasTotal);
@@ -708,9 +709,7 @@ function actualizarTotales(){
     totalActual = total;
   }
 
-  const vacio = ticket.length===0;
   actualizarAcciones();
-  $("#cobrarTodo").textContent = vacio ? "Cobrar todo" : "Cobrar todo "+fmt(total);
   guardarBorrador();
   
 }
@@ -729,7 +728,9 @@ function guardarBorrador(){
     descPct, descNombre,
     fechaServicio: hayOtroDia() ? $("#fechaServicio").value : "",
     descuentoSel: $("#descuento").value,   // el índice elegido en el select de descuento
-    formaPago,
+    formaPago, formaAbono,
+    deja: $("#dejaMonto").value,
+    alias: $("#aliasTransfer").value,
     extras: EXTRAS,
     clave: CLAVE
   }));
@@ -761,20 +762,17 @@ function restaurarBorrador(){
     renderExtras();
     if(EXTRAS.length) $("#extrasBox").open = true;   // si hay extras cargados, que se vean
     formaPago = d.formaPago || "";
-    $("#formaPago").value = formaPago;
+    formaAbono = d.formaAbono || "efectivo";
+    $("#dejaMonto").value = d.deja || "";
+    $("#aliasTransfer").value = d.alias || "";
+    pintarFormas();
     CLAVE = d.clave || null;
   }catch(e){ localStorage.removeItem(BORRADOR_KEY); }
 }
 
 function disableBotones(v){
-  ["cobrarTodo","cobrarParte","dejarCuenta","cobrarMixto","crearPresu"].forEach(id=>{
+  ["cobrar","crearPresu"].forEach(id=>{
     const b = $("#"+id); if(b) b.disabled = v;
-  });
-}
-
-function bloquearControles(v){
-  ["formaPago","btnTicket","btnPresu","cliente","peluquero","descuento"].forEach(id=>{
-    const el = $("#"+id); if(el) el.disabled = v;
   });
 }
 
@@ -783,39 +781,46 @@ function mostrarBotones(){
   $("#botsTicket").style.display = esT ? "block" : "none";
   $("#crearPresu").style.display = esT ? "none" : "block";
 
-  // En presupuesto, el selector de forma solo ofrece Efectivo / Transferencia
-  $("#formaPago").querySelector('option[value="mixto"]').style.display  = esT ? "block" : "none";
-  $("#formaPago").querySelector('option[value="cuenta"]').style.display = esT ? "block" : "none";
-
-  if(!esT && (formaPago==="mixto" || formaPago==="cuenta")){
-    formaPago = "";
-    $("#formaPago").value = "";
-    $("#aliasBox").style.display = "none";
-  }
+  // Al presupuesto la forma no le cambia nada: muestra e imprime las dos listas
+  $("#comoPaga").hidden = !esT;
+  if(!esT && formaPago){ formaPago = ""; pintarFormas(); }
   renderTicket();   // repinta con la forma correcta
 }
 
 function actualizarAcciones(){
   const listo    = ticketListo();
-  $("#formaPago").classList.toggle("sin-elegir", tipo === "ticket" && !formaPago);
   if(tipo === "presupuesto"){
     $("#crearPresu").disabled = !listo;   // el presupuesto solo necesita ítems + cliente
     return;
   }
-  const esMixto  = formaPago === "mixto";
-  const esCuenta = formaPago === "cuenta";
+  const b = $("#cobrar");
+  b.disabled = !listo || !formaPago || $("#panelMixto").style.display === "block";
+  b.textContent = textoCobrar();
+  // En la barra del celular el total ya está al lado: va sin el monto
+  b.dataset.corto = { efectivo: "Cobrar en efectivo", transfer: "Cobrar por transf.", mixto: "Cobrar mixto",
+                      cuenta: montoDeja() > 0 ? "Cobrar y dejar a cuenta" : "Dejar a cuenta" }[formaPago] || "";
+}
 
-  // Qué botones se ven según la forma de pago
-  $("#cobrarTodo").style.display  = (esMixto || esCuenta) ? "none" : "block";
-  $("#cobrarParte").style.display = (esMixto || esCuenta) ? "none" : "block";
-  $("#dejarCuenta").style.display = esMixto ? "none" : "block";
-  $("#cobrarMixto").style.display = esMixto ? "block" : "none";
+/* El botón dice lo que va a pasar: cuánto y cómo. Es la confirmación del cobro
+   normal, que por eso no tiene cartel. */
+function textoCobrar(){
+  const deja = montoDeja();
+  switch(formaPago){
+    case "efectivo": return `Cobrar ${fmt(totalEfActual)} en efectivo`;
+    case "transfer": return `Cobrar ${fmt(totalTrActual)} por transferencia`;
+    case "mixto":    return "Cobrar mixto";
+    case "cuenta":   return deja > 0 ? `Cobrar ${fmt(deja)} y dejar el resto a cuenta` : "Dejar todo a cuenta";
+    default:         return "Elegí cómo paga";
+  }
+}
+const montoDeja = () => formaPago === "cuenta" ? Math.max(0, parseInt($("#dejaMonto").value) || 0) : 0;
 
-  const enProgreso = !!compActual;
-  ["cobrarTodo","cobrarParte","dejarCuenta","cobrarMixto"].forEach(id=>{
-    const b = $("#"+id); if(b) b.disabled = !listo || !formaPago || enProgreso;
-  });
-  bloquearControles(enProgreso);
+function pintarFormas(){
+  document.querySelectorAll("#comoPaga .cp").forEach(b => b.classList.toggle("on", b.dataset.forma === formaPago));
+  document.querySelectorAll("#dejaBox [data-abono]").forEach(b => b.classList.toggle("on", b.dataset.abono === formaAbono));
+  $("#dejaBox").hidden = formaPago !== "cuenta";
+  // El alias va con la plata que entra por transferencia, sea el total o lo que deja
+  $("#aliasBox").hidden = !(formaPago === "transfer" || (formaPago === "cuenta" && formaAbono === "transfer" && montoDeja() > 0));
 }
 
 // El ticket está "listo" para cobrar si tiene al menos un ítem, un cliente cargado
@@ -827,17 +832,18 @@ function ticketListo(){
 $("#cliente").oninput = actualizarAcciones;
 $("#btnTicket").onclick=()=>{ tipo="ticket"; $("#btnTicket").classList.add("on"); $("#btnPresu").classList.remove("on"); mostrarBotones(); };
 $("#btnPresu").onclick=()=>{ tipo="presupuesto"; $("#btnPresu").classList.add("on"); $("#btnTicket").classList.remove("on"); mostrarBotones(); };
-$("#formaPago").onchange = e => {
-  formaPago = e.target.value;
-  $("#aliasBox").style.display = (formaPago === "transfer") ? "flex" : "none";
-  renderTicket();
+$("#comoPaga").onclick = e => {
+  const f = e.target.closest("[data-forma]"), a = e.target.closest("[data-abono]");
+  if(f){
+    formaPago = f.dataset.forma;
+    if(formaPago !== "mixto") $("#panelMixto").style.display = "none";
+    if(formaPago === "cuenta") $("#dejaMonto").focus();
+  } else if(a) formaAbono = a.dataset.abono;
+  else return;
+  pintarFormas(); renderTicket();
 };
-$("#cobrarMixto").onclick=()=>{
-  disableBotones(true)
-  if(!ticketListo()) return;
-  abrirMixto();
-};
-
+$("#dejaMonto").oninput = () => { pintarFormas(); actualizarAcciones(); guardarBorrador(); };
+$("#aliasTransfer").oninput = guardarBorrador;
 
 $("#descuento").onchange=e=>{
   const v=e.target.value;
@@ -846,8 +852,6 @@ $("#descuento").onchange=e=>{
   renderTicket();
 };
 
-let compActual=null;
-let compEsDeOtroDia=false;   // el servicio en curso es de un día anterior (no se imprime)
 
 /* ---- Servicio de otro día ----
    Se anota con la fecha en que se hizo, así la venta y la plata caen en la caja
@@ -910,32 +914,22 @@ async function imprimirComprobante(id){
   }
 }
 
-/* El número es el que la app va a usar, pedido justo antes: no se reserva nada.
-   Si no se puede saber, se pregunta igual sin el número —lo que importa es el
-   total y con qué se cobra—. */
-async function confirmarAntesDeGenerar(tipo, cliente){
-  const esTicket = tipo === "ticket";
-  let num = "";
-  try{
-    const r = await authFetch(`/api/comprobantes/proximo-numero?tipo=${tipo}`);
-    if(r.ok) num = " " + EscPos.numComp(tipo, (await r.json()).numero);
-  }catch(e){}
-  // Las cuatro formas, no dos: con "mixto" y "cuenta" cayendo en el else, el
-  // cartel decía "en Transferencia" antes de dejar algo a cuenta.
-  const forma = esTicket ? {
-    efectivo: " en Efectivo",
-    transfer: " en Transferencia",
-    mixto:    ", que se cobra en partes",
-    cuenta:   ", que queda a cuenta: hoy no entra nada",
-  }[formaPago] : "";
-  const total = $("#total") ? $("#total").textContent.trim() : "";
+/* El cobro normal no pregunta nada: el botón ya dice cuánto y cómo, y un cartel
+   que sale en cada cobro se acepta sin leer. Pregunta solo lo que es raro: un
+   servicio de otro día, que va a otra caja, o un ítem que el ajuste dejó en $0. */
+async function confirmarAntesDeGenerar(){
+  const f = fechaElegida();
+  if(f){
+    const [, m, d] = f.split("-");
+    const total = tipo === "ticket" ? totalActual : null;
+    if(!await preguntar({ titulo: `Se anota el ${Number(d)}/${Number(m)}`,
+                          texto: "Va a la caja de ese día y no se imprime.",
+                          si: total !== null && formaPago !== "cuenta" ? `Cobrar ${fmt(total)}` : "Anotar" })) return false;
+  }
   const comidos = ticket.filter(seLoComeElAjuste).map(l => l.nombre);
-  return confirm(
-    `¿Generamos el ${esTicket ? "ticket" : "presupuesto"}${num}?\n\n` +
-    `Cliente: ${cliente}\n` +
-    (total ? `Total: ${total}${forma || ""}\n` : "") +
-    (comidos.length ? `\nQueda en $0 por el ajuste: ${comidos.join(", ")}.\n` : "") +
-    "\nDespués solo se corrige anulándolo.");
+  if(comidos.length && !await preguntar({ titulo: "Queda en $0 por el ajuste",
+                                          texto: comidos.join(", "), si: "Seguir igual" })) return false;
+  return true;
 }
 
 /* Si en el ticket hay algún ítem a comisión. De eso depende que haga falta
@@ -962,7 +956,7 @@ async function crearComprobante(cobro = {}){
     toast("Elegí quién atendió: hay un trabajo a comisión");
     $("#peluquero").focus(); return null;
   }
-  if(tipo === "ticket" && !formaPago){ toast("Elegí la forma de pago"); $("#formaPago").focus(); return null; }
+  if(tipo === "ticket" && !formaPago){ toast("Elegí cómo paga"); $("#comoPaga").scrollIntoView({block:"center"}); return null; }
  let cliId = clienteIdSel;                     // lo que elegiste del dropdown (o null)
 
   // Si no elegiste del dropdown, resolvemos por nombre: match exacto, o crear con confirmación.
@@ -971,7 +965,7 @@ async function crearComprobante(cobro = {}){
     if(match){
       cliId = match.id;
     } else {
-      if(!confirm(`"${nom}" no está en tu lista de clientes. ¿Crearlo como cliente nuevo?`)){
+      if(!await preguntar({ titulo: `¿Crear a ${nom}?`, texto: "No está en la lista de clientes.", si: "Crear" })){
         toast("Revisá el nombre del cliente");
         return null;
       }
@@ -982,11 +976,7 @@ async function crearComprobante(cobro = {}){
       CLIENTES.push({id:nuevo.id, nombre:nom});
     }
   }
-  /* Última parada antes de que exista: se dice qué número va a llevar, a nombre
-     de quién, cuánto y con qué se cobra. Es lo que sale impreso y lo que entra a
-     la caja, y el papel se manda apenas se guarda: revisarlo después ya es
-     anular y volver a hacerlo. */
-  if(!await confirmarAntesDeGenerar(tipo, nom)) return null;
+  if(!await confirmarAntesDeGenerar()) return null;
 
   const body={
     tipo,
@@ -1017,7 +1007,7 @@ async function crearComprobante(cobro = {}){
   // medio cambió algo). Hacer uno más es una decisión, no un reintento.
   if(r.status === 409){
     const detalle = (await r.json().catch(()=>({}))).detail || "Este cobro ya había entrado con otros datos.";
-    if(!confirm(detalle + "\n\n¿Hacer igual uno nuevo?")) return null;
+    if(!await preguntar({ titulo: "Ya había entrado", texto: detalle, si: "Hacer uno nuevo" })) return null;
     CLAVE = null; guardarBorrador();
     return crearComprobante(cobro);
   }
@@ -1031,7 +1021,6 @@ async function crearComprobante(cobro = {}){
   }
   const d=await r.json();
   const pref = d.tipo==="ticket" ? "N-" : "P-";
-  toast(`${d.tipo} ${pref}${String(d.numero).padStart(5,"0")} creado`);
   // dejar a mano el botón para imprimir el comprobante recién creado
   const pu=$("#printUltimo");
   pu.href="/ticket?id="+d.id;
@@ -1094,70 +1083,72 @@ document.addEventListener("click", e=>{         // cerrar si clickeás afuera
   if(!cliInput.contains(e.target) && !cliDrop.contains(e.target)) cliDrop.style.display="none";
 });
 
+$("#cobrar").onclick = () =>
+    formaPago === "mixto"  ? abrirMixto()
+  : formaPago === "cuenta" ? dejarACuenta()
+  :                          cobrarTodo();
+
 /* Un solo pedido: el backend crea el ticket y lo cobra en la misma transacción.
    Así no queda nunca un ticket creado y sin cobrar si se corta en el medio. */
-$("#cobrarTodo").onclick=async()=>{
+async function cobrarTodo(){
   disableBotones(true);
   const otroDia = esDeOtroDia();
-  const d=await crearComprobante({ cobrar:true });
+  const alias = formaPago === "transfer" ? ($("#aliasTransfer").value.trim() || null) : null;
+  const d=await crearComprobante({ cobrar:true, alias });
   if(!d){ renderTicket(); return; }
   // Con esta clave ya había entrado el ticket sin cobrar: se perdió la respuesta
-  // de "Dejar a cuenta" y después se tocó "Cobrar todo". Se cobra ahora.
+  // de "Dejar a cuenta" y después se cobró entero. Se cobra ahora.
   if(d.saldo > 0){
     let r;
     try{
       r=await authFetch("/api/comprobantes/"+d.id+"/pagos",{method:"POST",headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({monto:d.saldo, saldado:d.saldo, alias:null, del_servicio:true,
+        body:JSON.stringify({monto:d.saldo, saldado:d.saldo, alias, del_servicio:true,
                              forma_pago: formaPago==="efectivo" ? "Efectivo" : "Transferencia",
                              clave: CLAVE + "-todo"})});
     }catch(e){ toast(SIN_CONEXION); renderTicket(); return; }
     if(!r.ok){ toast("Se creó, pero el cobro falló — cobralo desde la cuenta"); limpiar(); return; }
   }
-  toast("Cobrado ✓");
+  toast(`${numTicket(d)} cobrado ✓`);
   limpiar();
   if(!otroDia) imprimirComprobante(d.id);
-};
+}
 
-// Cobrar una parte: NO crea nada todavía; el comprobante se crea en el primer pago.
+const numTicket = d => "N-" + String(d.numero).padStart(5,"0");
+
 /* Con esta clave ya había entrado el ticket cobrado entero: se perdió la respuesta
-   de "Cobrar todo" y después se tocó otro botón. No queda nada por cobrar. */
+   del cobro y después se lo dejó a cuenta. No queda nada por cobrar. */
 function yaEstabaCobrado(d, otroDia){
   if(!(d.saldo === 0 && d.total_final > 0)) return false;
-  toast(`N-${String(d.numero).padStart(5,"0")} ya estaba cobrado`);
+  toast(`${numTicket(d)} ya estaba cobrado`);
   limpiar();
   if(!otroDia) imprimirComprobante(d.id);
   return true;
 }
 
-$("#cobrarParte").onclick=async()=>{
-  disableBotones(true);
-  compEsDeOtroDia = esDeOtroDia();    // se recuerda: al finalizar decide si imprime
-  const d=await crearComprobante();
-  if(!d){ renderTicket(); return; }
-  if(yaEstabaCobrado(d, compEsDeOtroDia)) return;
-  compActual=d.id; abrirCobro();     // ← esta línea es la que setea compActual
-};
-
-// Dejar a cuenta: crea el comprobante sin ningún pago. Queda pendiente en la cuenta.
-$("#dejarCuenta").onclick=async()=>{
+/* A cuenta, con o sin algo que deja hoy: el ticket y ese abono entran en el
+   mismo pedido. Cuánto tapa lo que deja lo calcula el backend. */
+async function dejarACuenta(){
   if(!ticketListo()) return;
   disableBotones(true);
   const otroDia = esDeOtroDia();
-  const nom=$("#cliente").value.trim();
-  const d=await crearComprobante();
+  const monto = montoDeja();
+  const deja = monto > 0 ? { monto, forma: formaAbono,
+                             alias: formaAbono === "transfer" ? ($("#aliasTransfer").value.trim() || null) : null } : null;
+  const d=await crearComprobante(deja ? { deja } : {});
   if(!d){ renderTicket(); return; }
   if(yaEstabaCobrado(d, otroDia)) return;
-  toast("Queda a cuenta de "+nom);
+  toast(`${numTicket(d)} a cuenta · debe ${fmt(d.saldo)}`);
   limpiar();
-  // Se imprime igual: el papel dice PENDIENTE y es el respaldo de lo que debe.
+  // Se imprime igual: el papel dice cuánto debe y es el respaldo de la deuda.
   if(!otroDia) imprimirComprobante(d.id);
-};
+}
 
 $("#crearPresu").onclick=async()=>{
   disableBotones(true);
   const otroDia = esDeOtroDia();
   const d=await crearComprobante();
   if(!d){ renderTicket(); return; }
+  toast(`P-${String(d.numero).padStart(5,"0")} creado`);
   limpiar();
   // El presupuesto también sale solo: es justamente el papel que se lleva el
   // cliente para pensarlo.
@@ -1168,69 +1159,20 @@ function limpiar(){
   // La fecha vuelve a hoy sí o sí. Si quedara pegada, el servicio siguiente se
   // cargaría sin querer en el día viejo y a nadie se le ocurriría mirar ahí.
   ticket=[]; $("#cliente").value=""; clienteIdSel=null; $("#peluquero").value="";
-  compEsDeOtroDia=false;
   if(hayOtroDia()){ $("#fechaServicio").value=""; $("#otroDiaBox").open=false; }
   pintarOtroDia();
   $("#descuento").value=""; descPct=0; descNombre=null;
-  $("#aliasTransfer").value=""; $("#aliasBox").style.display="none";
-  formaPago=""; $("#formaPago").value="";
+  $("#aliasTransfer").value=""; $("#dejaMonto").value="";
+  formaPago=""; formaAbono="efectivo"; pintarFormas();
   EXTRAS=[]; renderExtras(); $("#extrasBox").open=false;
-  $("#panelCobro").style.display="none"; compActual=null;
-  CLAVE = null; CLAVE_ABONO = null;
+  $("#panelMixto").style.display="none";
+  CLAVE = null;
   localStorage.removeItem(BORRADOR_KEY);
   renderTicket();
 }
 
-async function abrirCobro(){
-  let saldo, total, pagos, titulo;
-  const esEf = formaPago==="efectivo";
-  if(compActual){
-    const c=await (await authFetch("/api/comprobantes/"+compActual)).json();
-    const totalEf = totalEfectivoComp(c);            // deuda total en efectivo, lista real
-    /* Lo que falta lo dice el backend y no una resta de lo que entró: una seña
-       por transferencia sobre una cuenta en efectivo tapa el 10% menos de lo que
-       entró, así que restando se pide de menos y queda deuda sin que nada
-       avise. */
-    total = esEf ? totalEf : c.total_final;
-    saldo = Math.max(c.saldo, 0);
-    pagos = c.pagos;
-    titulo = c.cliente_nombre || $("#cliente").value.trim() || "Cliente";
-  } else {
-    saldo=totalActual; total=totalActual; pagos=[];  // totalActual ya está en efectivo
-    titulo=$("#cliente").value.trim() || "Cliente";
-  }
-  $("#panelCobro").style.display="block";
-  $("#cobroTitulo").textContent="Cobrar — "+titulo;
-  $("#cobroTotal").textContent=fmt(total);
-  $("#cobroSaldo").textContent=fmt(saldo);
-  $("#cobroMonto").value=saldo>0 ? saldo : "";
-  const ab=$("#cobroAbonos");
-  ab.innerHTML = pagos.length ? pagos.map(p=>`<div class="muted">✓ ${p.forma_pago} ${fmt(p.monto)}</div>`).join("") : "";
-  $("#cobroCerrar").textContent = saldo<=0 ? "Finalizar servicio" : "Finalizar (dejar saldo pendiente)";
-  if(saldo<=0){  
-    ab.innerHTML += '<div style="color:var(--acento);font-weight:700;margin-top:6px;">Saldado ✓</div>';
-    $("#cobroRegistrar").style.display="none";
-  } else { $("#cobroRegistrar").style.display="block"; }
-  $("#cobroForma").value = formaPago==="efectivo" ? "Efectivo" : "Transferencia";
-  $("#cobroForma").disabled = true;   // el panel no elige forma: la hereda del ticket
-  $("#cobroAliasBox").style.display = (formaPago==="transfer") ? "flex" : "none";
-  if(formaPago==="transfer") $("#cobroAlias").value = $("#aliasTransfer").value.trim();
-  actualizarAcciones();   // bloquea los botones de arriba mientras hay cobro en curso
-}
-
-/* Total efectivo REAL de un comprobante. Tiene que dar lo mismo que
-   estado_comprobante(), o el panel pide una plata que el servidor no acepta: va
-   con precio_efectivo_final, que ya trae el ajuste de la línea, y los extras se
-   suman al final, DESPUÉS del descuento, igual que allá. */
-function totalEfectivoComp(c){
-  const base = c.lineas.reduce((a,l)=>a + (l.precio_efectivo_final ?? l.precio_efectivo)*l.cantidad, 0)
-             + (c.extra_dificultad||0);          // el extra solo existe en comprobantes viejos
-  const desc = EscPos.redondear(base * (c.descuento_pct||0) / 100);
-  const extras = (c.extras||[]).reduce((a,e)=>a+(e.monto||0), 0);
-  return base - desc + extras;
-}
-
 async function abrirMixto(){
+  if(!ticketListo()) return;
   mxDeudaActual = totalActual;                 // deuda a precio transfer, tomada de la pantalla
   $("#mxDeuda").textContent = fmt(totalActual);
   $("#mxEfectivo").value = "";
@@ -1239,11 +1181,9 @@ async function abrirMixto(){
   $("#mxAviso").style.display = "none";
   $("#mxRegistrar").disabled = true;
   $("#panelMixto").style.display = "block";
+  actualizarAcciones();
+  $("#mxEfectivo").focus();
 }
-
-$("#cobroForma").onchange=()=>{
-  $("#cobroAliasBox").style.display = ($("#cobroForma").value==="Transferencia") ? "flex" : "none";
-};
 
 function calcularMixto(){
   const D = mxDeudaActual;                          
@@ -1303,35 +1243,6 @@ $("#mxRegistrar").onclick=async()=>{
 
 
 
-$("#cobroRegistrar").onclick=async()=>{
-  const saldado=parseInt($("#cobroMonto").value)||0;
-  if(saldado<=0){ toast("Poné un monto válido"); return; }
-  const forma=$("#cobroForma").value;
-  const body={ monto:saldado, saldado, forma_pago:forma,      // 1:1
-               alias: (forma==="Transferencia") ? ($("#cobroAlias").value.trim()||null) : null,
-               del_servicio: true };
-  if(!CLAVE_ABONO) CLAVE_ABONO = claveDeCobro();
-  body.clave = CLAVE_ABONO;
-  let r;
-  try{
-    r=await authFetch("/api/comprobantes/"+compActual+"/pagos",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
-  }catch(e){ toast(SIN_CONEXION); return; }
-  if(r.status === 409){ CLAVE_ABONO = null; toast((await r.json().catch(()=>({}))).detail); abrirCobro(); return; }
-  if(!r.ok){ const e=await r.json(); toast(e.detail||"No se pudo"); return; }
-  CLAVE_ABONO = null;
-  const est=await r.json();
-  toast(est.saldo<=0 ? "Ticket saldado ✓" : "Pago registrado");
-  abrirCobro();
-};
-
-/* "Finalizar" cierra el cobro parcial. Se imprime acá y no en cada abono:
-   el papel tiene que salir una sola vez y con todos los pagos ya anotados. */
-$("#cobroCerrar").onclick=()=>{
-  const id = compActual, otroDia = compEsDeOtroDia;
-  limpiar();
-  if(id && !otroDia) imprimirComprobante(id);
-};
-
 /* ---- Ticket a medio cargar ----
    El borrador se guarda solo en cada cambio y se restaura al volver, así que no
    hay nada que preguntar al salir: el aviso es una marca en la pantalla y otra
@@ -1350,7 +1261,7 @@ function engancharBarraCobro(){
   const barra = $("#barraCobro");
   if(!barra) return;
   const btn = barra.querySelector("button");
-  const principal = () => ["#cobrarTodo", "#cobrarMixto", "#crearPresu", "#dejarCuenta"]
+  const principal = () => ["#cobrar", "#crearPresu"]
     .map(s => $(s)).find(b => b && b.offsetParent !== null);
   let ticketALaVista = false;
 
@@ -1361,7 +1272,7 @@ function engancharBarraCobro(){
     if(barra.hidden) return;
     barra.querySelector(".tot").textContent = $("#total").textContent;
     barra.querySelector(".cant").textContent = `· ${n} ${n === 1 ? "ítem" : "ítems"}`;
-    btn.textContent = b.disabled ? "Ir al ticket" : b.textContent;
+    btn.textContent = b.disabled ? "Ir al ticket" : (b.dataset.corto || b.textContent);
     btn.className = b.disabled ? "b-out" : "b-ok";
   }
   btn.onclick = () => {
@@ -1379,5 +1290,6 @@ function pintarAvisoBorrador(){
   if(window.marcarBorradorEnMenu) window.marcarBorradorEnMenu();
 }
 
+document.querySelectorAll(".od-btn").forEach(b => b.insertAdjacentHTML("afterbegin", icono("calendario")));
 init();
 engancharBarraCobro();
