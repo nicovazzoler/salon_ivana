@@ -269,7 +269,7 @@
 <script>
 requireDueno(); pintarNav();
 const $=s=>document.querySelector(s);
-const money=n=>"$"+(n||0).toLocaleString("es-AR");
+const money=n=>((n||0)<0?"−":"")+"$"+Math.abs(n||0).toLocaleString("es-AR");
 const fmtNum=n=>(n||0).toLocaleString("es-AR");
 const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 

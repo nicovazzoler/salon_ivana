@@ -94,8 +94,11 @@ button{
 }
 button:hover{ background:var(--bronce-500); color:var(--text-invertido); }
 
-/* ----- Botones deshabilitados ----- */ 
-button:disabled{
+/* ----- Botones deshabilitados -----
+   Con :hover también: en la tablet el hover queda pegado después de tocar, y el
+   de .b-ok pintaba de dorado un botón que no se podía usar. */
+button:disabled,
+button:disabled:hover{
   background:var(--bg-disabled);
   color:var(--text-disabled);
   cursor:not-allowed;

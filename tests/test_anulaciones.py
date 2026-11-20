@@ -477,3 +477,29 @@ def test_anular_solo_el_abono_de_la_sena_no_dice_que_el_ticket_se_anulo(db, como
     assert cli.delete(f"/api/pagos/{p.id}", params={"motivo": "otra clienta"}).status_code == 200
 
     assert cli.get(f"/api/senas/{s.id}").json()["estuvo_en"] == []
+
+
+def test_los_anulados_se_ven_aparte_con_quien_y_por_que(db, como):
+    # Anulado, un ticket desaparecía de toda la app: ni en el historial ni en su detalle
+    p = un_cobro(db)
+    api = como(DUENO)
+    assert api.delete(f"/api/comprobantes/{p.comprobante_id}?motivo=Cargado dos veces").status_code == 200
+
+    normal = api.get("/api/comprobantes?de=todo").json()["comprobantes"]
+    anulados = api.get("/api/comprobantes?de=todo&estado=anulados").json()["comprobantes"]
+
+    assert normal == []
+    assert [(c["id"], c["estado"], c["anulado_por"], c["anulado_motivo"]) for c in anulados] == \
+           [(p.comprobante_id, "anulado", "ivana", "Cargado dos veces")]
+
+
+def test_el_detalle_de_un_anulado_se_pide_a_proposito(db, como):
+    # El papel y Facturar piden el comprobante sin la bandera: para ellos sigue sin existir
+    p = un_cobro(db)
+    api = como(EMPLEADO)
+    api.delete(f"/api/comprobantes/{p.comprobante_id}?motivo=Se cargó mal")
+
+    assert api.get(f"/api/comprobantes/{p.comprobante_id}").status_code == 404
+    d = api.get(f"/api/comprobantes/{p.comprobante_id}?anulado=true").json()
+    assert d["estado"] == "anulado" and d["pagos"] == []
+    assert [(x["monto"], x["forma_pago"]) for x in d["pagos_anulados"]] == [(5000, "Efectivo")]

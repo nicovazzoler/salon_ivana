@@ -220,7 +220,7 @@ const $=s=>document.querySelector(s);
 const esc = t => String(t ?? "").replace(/[&<>"']/g,
   c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 if(getRol()!=="dueno"){ const fe=document.getElementById("fondoEdit"); if(fe) fe.style.display="none"; }
-const money=n=>"$"+(n||0).toLocaleString("es-AR");
+const money=n=>((n||0)<0?"−":"")+"$"+Math.abs(n||0).toLocaleString("es-AR");
 function toast(m){const t=$("#toast");t.textContent=m;t.classList.add("show");setTimeout(()=>t.classList.remove("show"),2200);}
 
 const hoyISO=new Date().toLocaleDateString("en-CA"); // YYYY-MM-DD local
@@ -279,7 +279,7 @@ async function cargarDia(){
                   : '';
       const puedeAnular = !v.es_sena && !v.es_ajuste;
       html+=`<tr><td>${v.hora}</td><td>${esc(v.ref||'—')}${marca}</td><td>${esc(v.forma_pago||'')}${esc(al)}</td><td class="money">${money(v.total)}</td>
-             <td>${puedeAnular ? `<button class="mini b-del" onclick="anularPagoCaja('${v.id}')">Anular cobro</button>` : ''}</td></tr>`;
+             <td>${puedeAnular ? `<button class="mini b-del" onclick="anularPagoCaja('${v.id}')">Anular</button>` : ''}</td></tr>`;
     });
     html += '</tbody></table></div>';
   }
@@ -319,7 +319,7 @@ async function cargarDia(){
             <button id="ec_edit_${e.id}" class="mini b-out" onclick="editarEgresoCaja(${e.id})" title="Corregir" aria-label="Corregir">${icono("lapiz")}</button>
             <button id="ec_save_${e.id}" class="mini b-ok" onclick="guardarEgresoCaja(${e.id})" style="display:none;">✓</button>
             <button id="ec_cancel_${e.id}" class="mini b-out" onclick="cancelarEgresoCaja(${e.id})" style="display:none;">↩</button>
-            <button class="mini b-del" onclick="anularEgresoCaja(${e.id})" title="Anular" aria-label="Anular">${icono("cruz")}</button>`}</td></tr>`;
+            <button class="mini b-del" onclick="anularEgresoCaja(${e.id})">Anular</button>`}</td></tr>`;
     });
     html += '</tbody></table></div>';
   }

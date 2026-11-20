@@ -31,8 +31,10 @@ static/
                  las esquinas de una tarjeta. Va acotada a su grilla (`.nums .num`)
   js/            El JS de facturar y admin, que son las grandes
   auth.js        Sesión, menú y helpers compartidos. También icono(), los
-                 íconos de línea: la app no usa emojis, y preguntar(), el cartel
-                 de la app: no se usa confirm(), prompt() ni alert()
+                 íconos de línea: la app no usa emojis; preguntar(), el cartel
+                 de la app: no se usa confirm(), prompt() ni alert(); y
+                 engancharBarraCobro(), la barra de abajo de Facturar y
+                 Depilación, que sale mientras el botón de cobrar no se ve
   js/listas.js   Las cinco listas configurables (formas de pago, tipos de egreso,
                  descuentos, ajustes por ítem, alias): un solo dibujante que usan
                  Admin y el panel del lapicito de facturar
@@ -182,7 +184,11 @@ que imprime el papel y cuánta seña quedó libre. Eso es `_pago_cuenta()`, y va
 al día y le dejaba el ticket saldado igual —la clienta sin deuda y sin haber
 pagado—. La única que lo quiere todo es `armar_backup()`. Y se ve: la caja del
 día lista las anulaciones aparte y tachadas, con motivo y quién, sin sumar a
-ningún total; los reportes las cuentan en su propio renglón. Van por la fecha
+ningún total; los reportes las cuentan en su propio renglón; y el comprobante
+anulado tiene su filtro "Anulados" en Historial, tachado y con quién, cuándo y
+por qué —uno que estaba a cuenta no tenía cobros y no quedaba a la vista en
+ningún lado—. Su detalle se pide con `?anulado=true`: sin la bandera sigue siendo
+404, que es lo que necesitan el papel y Facturar. Van por la fecha
 **original** y no por la de la anulación: si contaran el día en que se anularon,
 la caja de hoy mostraría el descuento de una venta de la semana pasada y ninguno
 de los dos días cerraría solo.
