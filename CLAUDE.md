@@ -31,8 +31,10 @@ static/
                  las esquinas de una tarjeta. Va acotada a su grilla (`.nums .num`)
   js/            El JS de facturar y admin, que son las grandes
   auth.js        Sesión, menú y helpers compartidos. También icono(), los
-                 íconos de línea: la app no usa emojis, y preguntar(), el cartel
-                 de la app: no se usa confirm(), prompt() ni alert()
+                 íconos de línea: la app no usa emojis; preguntar(), el cartel
+                 de la app: no se usa confirm(), prompt() ni alert(); y
+                 engancharBarraCobro(), la barra de abajo de Facturar y
+                 Depilación, que sale mientras el botón de cobrar no se ve
   js/listas.js   Las cinco listas configurables (formas de pago, tipos de egreso,
                  descuentos, ajustes por ítem, alias): un solo dibujante que usan
                  Admin y el panel del lapicito de facturar

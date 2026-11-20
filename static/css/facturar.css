@@ -33,24 +33,6 @@
 
   /* Más angosto (pantalla dividida, celular) el ticket queda abajo del catálogo:
      el total y el botón principal van en una barra fija abajo */
-  .barra-cobro{ display:none; }
-  @media (max-width:759px){
-    .barra-cobro{
-      position:fixed; left:0; right:0; bottom:0; z-index:40;
-      display:flex; align-items:center; gap:16px;
-      padding:12px max(16px, env(safe-area-inset-right, 0px)) calc(12px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px));
-      background:var(--bg-elevado);
-      border-top:1px solid var(--border-sutil);
-      box-shadow:0 -10px 30px -16px rgba(0,0,0,.45);
-    }
-    body:has(.barra-cobro:not([hidden])){ padding-bottom:84px; }
-    body:has(.barra-cobro:not([hidden])) .toast{ bottom:100px; }
-    .barra-cobro .lbl{ display:block; font-size:var(--fs-xs); font-weight:var(--fw-bold); color:var(--text-tenue); }
-    .barra-cobro .tot{ font-family:var(--font-display); font-size:24px; font-weight:var(--fw-bold); color:var(--text-marca); line-height:1.1; font-variant-numeric:tabular-nums; }
-    .barra-cobro .cant{ font-size:var(--fs-sm); color:var(--text-tenue); }
-    .barra-cobro button{ margin-left:auto; padding:14px 22px; border-radius:12px; font-size:16px; }
-  }
-
   .grid-items{ gap:10px; }
   .btn-item.cat{                       /* tarjeta de categoría (vista de búsqueda) */
     align-items:center; justify-content:center; text-align:center;

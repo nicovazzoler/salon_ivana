@@ -23,7 +23,7 @@
 
   /* ----- Índice de secciones ----- */
   .indice{
-    position:sticky; top:76px; z-index:var(--z-dropdown);
+    position:sticky; top:var(--alto-header, 60px); z-index:var(--z-dropdown);
     display:flex; flex-wrap:wrap; gap:6px;
     margin-bottom:var(--sp-4);
     padding:var(--sp-2) 0;
