@@ -556,9 +556,11 @@ function pintar(){
   // Sin forma de pago no se cobra: es lo que decide con qué lista se cobra y,
   // con una puesta de entrada, el día que se cobre distinto nadie la cambia.
   // El botón dice cuánto y cómo: es la confirmación del cobro, que no tiene cartel.
+  $("#comoPaga").hidden = !TICKET.length;
   const b = $("#btnCobrar");
   b.disabled = !TICKET.length || !FORMA;
-  b.textContent = !FORMA ? "Elegí cómo paga"
+  b.textContent = !TICKET.length ? "Cobrar"
+    : !FORMA ? "Elegí cómo paga"
     : total === 0 && SENAS.length ? "Cobrar con la seña"
     : `Cobrar ${fmt(total)} ${FORMA === "efectivo" ? "en efectivo" : "por transferencia"}`;
   $("#btnVaciar").disabled = !TICKET.length;
