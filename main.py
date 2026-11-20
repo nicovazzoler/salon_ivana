@@ -3355,7 +3355,7 @@ TOPE_PAGINA = 200          # techo por si alguien pide una página enorme a mano
 # Ordenar por estas dos es barato: son columnas de la tabla. Por cliente y por
 # monto hay que calcular o comparar en Python, y por eso caen al camino largo.
 ORDEN_SQL = {"fecha": models.Comprobante.fecha, "numero": models.Comprobante.numero}
-ESTADOS_LISTA = ("todos", "deuda", "convertidos", "sinconvertir")
+ESTADOS_LISTA = ("todos", "deuda", "convertidos", "sinconvertir", "anulados")
 
 def _sin_acentos(s: str) -> str:
     """Para ordenar nombres como los ordena una persona: "Núñez" al lado de
@@ -3378,7 +3378,8 @@ def listar_comprobantes(tipo: str | None = None,
     offset = max(0, offset)
     if estado not in ESTADOS_LISTA: estado = "todos"
 
-    base = db.query(models.Comprobante).filter(models.Comprobante.activo == True)
+    # Los anulados son una lista aparte: en las demás no están, y en esta están solos
+    base = db.query(models.Comprobante).filter(models.Comprobante.activo == (estado != "anulados"))
     # Peluquería y depilación son dos historiales distintos, como son dos
     # facturaciones distintas. El default es peluquería: el historial de siempre
     # tiene que seguir mostrando lo de siempre y nada más.
@@ -3411,7 +3412,7 @@ def listar_comprobantes(tipo: str | None = None,
         base = base.filter(func.cast(models.Comprobante.numero, String).like(f"%{numero.strip()}%"))
 
     # ¿Alcanza con SQL, o hay que calcular el estado de cada uno?
-    por_saldo = estado != "todos" or orden not in ORDEN_SQL
+    por_saldo = estado not in ("todos", "anulados") or orden not in ORDEN_SQL
 
     if not por_saldo:
         total = base.count()
@@ -3458,6 +3459,13 @@ def listar_comprobantes(tipo: str | None = None,
     recorte = filas[offset:offset + limite]
     return _pagina_comprobantes(db, [f[0] for f in recorte], total, total_sin_filtros, deuda,
                                 precalculado={f[0].id: (f[1], f[2]) for f in recorte})
+
+def _anulacion(comp) -> dict:
+    """Quién, cuándo y por qué, para un comprobante anulado. Pisa el estado: el
+    saldo de un anulado no es deuda de nadie."""
+    if comp.activo: return {}
+    return {"estado": "anulado", "anulado_por": comp.anulado_por, "anulado_motivo": comp.anulado_motivo,
+            "anulado_en": comp.anulado_en.isoformat() if comp.anulado_en else None}
 
 def _monto_tarjeta(comp, est) -> int:
     """Lo que muestra la tarjeta del historial. Gemelo de montoDeTarjeta() en escpos.js:
@@ -3507,7 +3515,7 @@ def _pagina_comprobantes(db, comps, total, total_sin_filtros, deuda, precalculad
                     "forma_origen": comp.forma_pago or "cuenta", "anotado_despues": anotado_despues(comp),
                     "depilacion": bool(comp.depilacion),
                     "sesion_id": comp.sesion_id, "sesion_cerrada": comp.sesion_id in cerradas,
-                    **est})
+                    **est, **_anulacion(comp)})
     return {"comprobantes": out, "total": total, "total_sin_filtros": total_sin_filtros,
             "deuda_total": deuda}
 
@@ -3523,9 +3531,11 @@ def proximo_numero(tipo: str = "ticket", _ = Depends(usuario_actual), db: Sessio
     return {"numero": siguiente_numero(db, tipo)}
 
 @app.get("/api/comprobantes/{comp_id}")
-def ver_comprobante(comp_id: int, _ = Depends(usuario_actual), db: Session = Depends(get_db)):
+def ver_comprobante(comp_id: int, anulado: bool = False, _ = Depends(usuario_actual),
+                    db: Session = Depends(get_db)):
+    # Un anulado se pide a propósito (`anulado=true`): el papel y Facturar no tienen que verlo
     comp = db.get(models.Comprobante, comp_id)
-    if not comp or not comp.activo: raise HTTPException(404, "Comprobante no existe")
+    if not comp or not (comp.activo or anulado): raise HTTPException(404, "Comprobante no existe")
     pagos = (db.query(models.Pago).filter(models.Pago.comprobante_id == comp.id,
                                           _pago_cuenta())
                .order_by(models.Pago.fecha).all())
@@ -3557,7 +3567,13 @@ def ver_comprobante(comp_id: int, _ = Depends(usuario_actual), db: Session = Dep
                                   else p.saldado if comp.forma_pago != "efectivo"
                                   else valor_en_transferencia(p.monto, formas_sena.get(p.sena_id)))}
                   for p in pagos],
-        **estado_comprobante(db, comp)}
+        # Lo que se había cobrado antes de anularlo, para el detalle del historial
+        "pagos_anulados": [] if comp.activo else [
+            {"fecha": p.fecha.isoformat(), "monto": p.monto, "forma_pago": p.forma_pago, "alias": p.alias,
+             "es_sena": p.sena_id is not None}
+            for p in db.query(models.Pago).filter(models.Pago.comprobante_id == comp.id,
+                                                  models.Pago.anulado == True).order_by(models.Pago.fecha)],
+        **estado_comprobante(db, comp), **_anulacion(comp)}
 
 @app.post("/api/comprobantes")
 def crear_comprobante(c: ComprobanteIn, user = Depends(usuario_actual), db: Session = Depends(get_db)):

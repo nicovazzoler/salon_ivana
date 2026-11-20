@@ -184,7 +184,11 @@ que imprime el papel y cuánta seña quedó libre. Eso es `_pago_cuenta()`, y va
 al día y le dejaba el ticket saldado igual —la clienta sin deuda y sin haber
 pagado—. La única que lo quiere todo es `armar_backup()`. Y se ve: la caja del
 día lista las anulaciones aparte y tachadas, con motivo y quién, sin sumar a
-ningún total; los reportes las cuentan en su propio renglón. Van por la fecha
+ningún total; los reportes las cuentan en su propio renglón; y el comprobante
+anulado tiene su filtro "Anulados" en Historial, tachado y con quién, cuándo y
+por qué —uno que estaba a cuenta no tenía cobros y no quedaba a la vista en
+ningún lado—. Su detalle se pide con `?anulado=true`: sin la bandera sigue siendo
+404, que es lo que necesitan el papel y Facturar. Van por la fecha
 **original** y no por la de la anulación: si contaran el día en que se anularon,
 la caja de hoy mostraría el descuento de una venta de la semana pasada y ninguno
 de los dos días cerraría solo.

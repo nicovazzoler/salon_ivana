@@ -166,6 +166,7 @@ input.buscador{
 .badge.pagado      { background:var(--est-pago-bg);  color:var(--est-pago-fg);  }
 .badge.presupuesto { background:var(--est-presu-bg); color:var(--est-presu-fg); }
 .badge.alerta      { background:var(--danger-bg); color:var(--danger);          }
+.badge.anulado     { background:var(--bg-sutil);  color:var(--text-tenue);      }
 
 /* ----- Toast: aviso temporal abajo al centro ----- */
 .toast{
