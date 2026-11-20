@@ -110,7 +110,13 @@ async function entrar(){
   try{
     const r=await fetch("/api/login",{method:"POST",headers:{"Content-Type":"application/json"},
       body:JSON.stringify({usuario:u,password:p})});
-    if(!r.ok){ err.textContent="Usuario o contraseña incorrectos"; return; }
+    // 429 es el freno por intentos fallidos: decirle "incorrectos" hacía seguir probando
+    if(!r.ok){
+      const e = await r.json().catch(()=>({}));
+      err.textContent = r.status === 429 ? (e.detail || "Demasiados intentos. Esperá unos minutos.")
+                                         : "Usuario o contraseña incorrectos";
+      return;
+    }
     const d=await r.json();
     localStorage.setItem("pelu_token",d.token);
     localStorage.setItem("pelu_rol",d.rol);
