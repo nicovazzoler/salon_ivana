@@ -3,5 +3,60 @@
     "pr": "",
     "commit": "",
     "sessionUrl": false
+  },
+  "permissions": {
+    "deny": [
+      "Read(/.env)",
+      "Read(/**/.env)",
+      "Read(/**/.env.local)",
+      "Read(/**/.env.production)",
+      "Read(~/.ssh/**)",
+      "Read(~/.config/gh/**)",
+      "Read(~/.netrc)",
+      "Bash(ngrok:*)",
+      "Bash(cloudflared:*)",
+      "Bash(localtunnel:*)",
+      "Bash(ssh -R:*)",
+      "Bash(netsh:*)",
+      "Bash(netsh.exe:*)",
+      "Bash(gh repo edit:*)",
+      "Bash(gh repo delete:*)",
+      "Bash(gh repo deploy-key:*)",
+      "Bash(gh secret set:*)",
+      "Read(~/.salon_ivana/**)",
+      "Read(/**/*.dump)",
+      "Read(/**/backup_pelu_*.json)"
+    ],
+    "ask": [
+      "Bash(gh pr merge:*)",
+      "Bash(gh api:*)",
+      "Bash(gh auth:*)",
+      "Bash(git push --force:*)",
+      "Bash(git push -f:*)",
+      "Bash(git reset --hard:*)",
+      "Bash(git clean:*)",
+      "Edit(/.claude/settings.json)",
+      "Edit(/.github/workflows/**)",
+      "Edit(~/.claude/**)",
+      "Edit(//etc/**)"
+    ],
+    "allow": [
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git show:*)",
+      "Bash(git fetch:*)",
+      "Bash(git ls-files:*)",
+      "Bash(git rev-parse:*)",
+      "Bash(git remote -v)",
+      "Bash(gh pr view:*)",
+      "Bash(gh pr list:*)",
+      "Bash(gh pr diff:*)",
+      "Bash(gh pr checks:*)",
+      "Bash(gh run list:*)",
+      "Bash(gh run view:*)",
+      "Bash(gh issue list:*)",
+      "Bash(gh issue view:*)"
+    ]
   }
 }
