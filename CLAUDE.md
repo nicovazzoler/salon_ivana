@@ -298,9 +298,13 @@ Lo que hay que respetar:
   efectivo. Contándolo por la lista, a quien lleva la sesión le tocaban $350
   menos; al revés —seña en efectivo, ticket por transferencia— $350 de más. Son
   solo las señas, que se aplican al crear el ticket: un abono posterior no mueve
-  la cuenta de una sesión ya cerrada. Las sesiones que ya tenían un cierre llevan
-  `reparto_por_lista` y se siguen contando como se pagaron. En la pantalla, el
-  total de cada ticket es lo que entró más lo que falta (`valorDelTicket()`).
+  la cuenta de una sesión ya cerrada. Vale también para las sesiones que ya se
+  habían pagado: en el local se liquidaban a mano con la cuenta bien hecha, así
+  que `corregir_cierres_por_senas()` corrió UNA vez el último cierre de cada una
+  —liquidación y egreso— a lo que salió del cajón, y lo dejó en sus correcciones.
+  Es la única vez que se tocó el egreso de un cierre viejo, y por eso: el que
+  estaba mal era el número, no la plata. En la pantalla, el total de cada ticket
+  es lo que entró más lo que falta (`valorDelTicket()`).
 - **Una cuenta ya cobrada no se vuelve a calcular con otra fórmula.** Las
   sesiones que ya estaban pagadas cuando el reparto pasó a contar todo lo
   facturado llevan `reparto_efectivo` y se siguen contando en efectivo. Sin esa

@@ -252,9 +252,6 @@ def migrar():
         if "reparto_efectivo" not in scols:
             with engine.begin() as con:
                 con.execute(text("ALTER TABLE sesiones_depilacion ADD COLUMN reparto_efectivo BOOLEAN"))
-        if "reparto_por_lista" not in scols:
-            with engine.begin() as con:
-                con.execute(text("ALTER TABLE sesiones_depilacion ADD COLUMN reparto_por_lista BOOLEAN"))
 
 migrar()
 
@@ -1744,7 +1741,7 @@ def cuenta_depilacion(db, ses) -> dict:
     comps = list({c.id: c for _, c in filas}.values())
     por_comp = pagos_por_comprobante(db, comps)
     estados = [estado_comprobante(db, c, por_comp) for c in comps]
-    if not (ses.reparto_efectivo or ses.reparto_por_lista):
+    if not ses.reparto_efectivo:
         base += diferencia_de_senas(por_comp)
 
     # Lo que falta cobrar de los tickets que tienen depilación. No baja el
@@ -1876,30 +1873,54 @@ def migrar_reparto_de_lo_pagado():
         db.commit()
         if pagadas: print(f"Depilación: {len(pagadas)} sesiones ya pagadas se siguen repartiendo en efectivo.")
 
-MARCA_REPARTO_PLATA = "reparto_por_lo_que_entro"
+MARCA_CIERRES_SENAS = "cierres_con_senas_como_entraron"
 
-def migrar_reparto_por_lista():
-    """Las sesiones que ya tenían un cierre siguen contando cada ticket en su lista.
+def corregir_cierres_por_senas(db) -> int:
+    """Pone el último cierre de cada sesión pagada en lo que se pagó de verdad.
 
-    Desde acá la seña entra al reparto con lo que trajo; recalcular una sesión ya
-    pagada la haría aparecer debiendo plata sola. Se marca UNA vez.
+    Las señas se contaban con lo que taparon y no con lo que trajeron, y en el
+    local la cuenta se hacía a mano: lo que salió del cajón es la cuenta bien
+    hecha. Se corre solo lo que mueven las señas, en la liquidación y en su egreso,
+    y queda anotado en las correcciones de la sesión. No hace commit.
     """
+    corregidas = 0
+    for ses in db.query(models.SesionDepilacion).all():
+        cierres = cierres_de_sesion(db, ses.id)
+        if ses.reparto_efectivo or not cierres: continue
+        comps = list({c.id: c for _, c in lineas_de_sesion(db, ses.id)}.values())
+        dif = diferencia_de_senas(pagos_por_comprobante(db, comps))
+        if not dif: continue
+        q = cuenta_depilacion(db, ses)
+        resto_viejo = q["base"] - dif - q["gastos"]
+        parte_vieja = resto_viejo // 2 if resto_viejo > 0 else 0
+        delta = q["parte_empleada"] - parte_vieja
+        if not delta: continue
+        ultimo = cierres[-1]
+        antes = ultimo.total or 0
+        ultimo.total = antes + delta
+        ultimo.recaudado = (ultimo.recaudado or 0) + dif
+        if ultimo.egreso: ultimo.egreso.monto = (ultimo.egreso.monto or 0) + delta
+        cuando = hora_argentina(ultimo.cerrada).strftime("%d/%m") if ultimo.cerrada else "último"
+        db.add(models.CorreccionSesion(
+            sesion_id=ses.id, usuario="sistema", parte_antes=parte_vieja,
+            parte_despues=q["parte_empleada"],
+            detalle=(f"Las señas se cuentan con lo que trajeron: el cierre del {cuando} "
+                     f"pasa de {_pesos(antes)} a {_pesos(ultimo.total)}")))
+        corregidas += 1
+    return corregidas
+
+def migrar_cierres_por_senas():
     from sqlalchemy.orm import Session as _S
     with _S(engine) as db:
-        if db.query(models.Config).filter_by(clave=MARCA_REPARTO_PLATA).first(): return
-        pagadas = {l.sesion_id for l in db.query(models.Liquidacion).filter(
-            models.Liquidacion.sesion_id.isnot(None)).all()}
-        if pagadas:
-            for ses in db.query(models.SesionDepilacion).filter(
-                    models.SesionDepilacion.id.in_(pagadas)).all():
-                ses.reparto_por_lista = True
-        db.add(models.Config(clave=MARCA_REPARTO_PLATA, valor=str(len(pagadas))))
+        if db.query(models.Config).filter_by(clave=MARCA_CIERRES_SENAS).first(): return
+        n = corregir_cierres_por_senas(db)
+        db.add(models.Config(clave=MARCA_CIERRES_SENAS, valor=str(n)))
         db.commit()
+        if n: print(f"Depilación: {n} cierres corregidos por señas contadas con lo que trajeron.")
 
 try:
     migrar_dias_a_sesiones()
     migrar_reparto_de_lo_pagado()
-    migrar_reparto_por_lista()
 except Exception as _e:
     print('Aviso: no se pudieron armar las sesiones de depilación:', _e)
 
@@ -2323,8 +2344,8 @@ def _sesion_payload(db, ses) -> dict:
     por_comp = pagos_por_comprobante(db, comps)
     # Dos renglones y no tres: la seña no es una forma de pago, cuenta en la
     # columna con la que se cobró. Las dos columnas suman lo que entra al reparto:
-    # la seña con lo que trajo, y en una sesión con la regla vieja, con lo que tapó.
-    con_senas = not (ses.reparto_efectivo or ses.reparto_por_lista)
+    # la seña con lo que trajo, y en una sesión contada en efectivo, con lo que tapó.
+    con_senas = not ses.reparto_efectivo
     senas = {s.id: s for s in db.query(models.Sena).filter(models.Sena.comprobante_id.in_(
         [c.id for c in comps]))} if comps else {}
     cobrado = {}
@@ -5404,8 +5425,7 @@ def armar_backup(db) -> dict:
         "sesiones_depilacion": [
             {"id": s.id, "numero": s.numero, "empleado_id": s.empleado_id,
              "abierta": _iso_utc(s.abierta), "cerrada": _iso_utc(s.cerrada),
-             "reparto_efectivo": bool(s.reparto_efectivo),
-             "reparto_por_lista": bool(s.reparto_por_lista), "notas": s.notas}
+             "reparto_efectivo": bool(s.reparto_efectivo), "notas": s.notas}
             for s in db.query(models.SesionDepilacion).order_by(models.SesionDepilacion.id).all()
         ],
         "correcciones_sesion": [
@@ -5568,3 +5588,9 @@ if os.path.isdir("static"):
     def service_worker():
         return Response(SERVICE_WORKER, media_type="text/javascript",
                         headers={"Cache-Control": "no-cache"})
+
+# Al final del archivo: usa funciones de la cuenta de depilación que se definen más arriba.
+try:
+    migrar_cierres_por_senas()
+except Exception as _e:
+    print('Aviso: no se pudieron corregir los cierres de depilación:', _e)

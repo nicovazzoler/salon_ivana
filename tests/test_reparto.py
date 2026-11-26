@@ -74,8 +74,32 @@ def test_la_sena_entra_al_reparto_con_lo_que_trajo(db, api, forma_sena, forma_cu
     assert hecho["ingresado"] + hecho["saldo"] == entro
 
 
-def test_una_sesion_ya_pagada_sigue_con_su_cuenta(db, api):
-    ses, item, cli = preparar(db, reparto_por_lista=True)
+def test_una_sesion_contada_en_efectivo_sigue_igual(db, api):
+    ses, item, cli = preparar(db, reparto_efectivo=True)
     cobrar(api, item, cli, "Transferencia", "efectivo")
     db.expire_all()
     assert main.cuenta_depilacion(db, db.get(models.SesionDepilacion, ses.id))["base"] == 15300
+
+
+@pytest.mark.parametrize("forma_sena, forma_cuenta, pagado, corregido", [
+    ("Transferencia", "efectivo", 7650, 8000),   # 15.300 / 2 → 16.000 / 2
+    ("Efectivo", "transfer", 8500, 8150),        # 17.000 / 2 → 16.300 / 2
+])
+def test_el_cierre_viejo_queda_en_lo_que_se_pago(db, api, forma_sena, forma_cuenta, pagado, corregido):
+    ses, item, cli = preparar(db)
+    cobrar(api, item, cli, forma_sena, forma_cuenta)
+    eg = models.Egreso(numero=1, tipo="Sueldo", concepto="Depilación", monto=pagado, forma_pago="Efectivo")
+    db.add(eg); db.flush()
+    liq = models.Liquidacion(empleado_id=ses.empleado_id, total=pagado, depilacion=True,
+                             sesion_id=ses.id, recaudado=pagado * 2, gastos=0, egreso_id=eg.id)
+    db.add(liq); db.commit()
+
+    assert main.corregir_cierres_por_senas(db) == 1
+    db.commit(); db.expire_all()
+    assert db.get(models.Liquidacion, liq.id).total == corregido
+    assert db.get(models.Egreso, eg.id).monto == corregido
+    nota = db.query(models.CorreccionSesion).filter_by(sesion_id=ses.id).one()
+    assert (nota.parte_antes, nota.parte_despues) == (pagado, corregido)
+    # Ya corregido, la cuenta cierra: no queda nada por pagar ni pagado de más.
+    ses = db.get(models.SesionDepilacion, ses.id)
+    assert main.cuenta_depilacion(db, ses)["parte_empleada"] == corregido

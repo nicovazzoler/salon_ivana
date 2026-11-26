@@ -49,7 +49,7 @@ ORDEN = [
                                     "valor_hora"], []),
     # Antes que egresos, comprobantes y liquidaciones, que la apuntan.
     ("sesiones_depilacion", models.SesionDepilacion,
-     ["id", "numero", "empleado_id", "reparto_efectivo", "reparto_por_lista", "notas"], ["abierta", "cerrada"]),
+     ["id", "numero", "empleado_id", "reparto_efectivo", "notas"], ["abierta", "cerrada"]),
     ("correcciones_sesion", models.CorreccionSesion,
      ["id", "sesion_id", "usuario", "detalle", "parte_antes", "parte_despues"], ["fecha"]),
     ("tipos_egreso", models.TipoEgreso, ["id", "nombre", "activo", "privado"], []),
