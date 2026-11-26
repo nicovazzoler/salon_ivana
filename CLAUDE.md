@@ -296,8 +296,10 @@ Lo que hay que respetar:
   pero el reparto de la sesión es otra cuenta y ahí lo que se parte es lo que
   cobró el local.
 - **Y cada ticket cuenta lo que dice el PAPEL** (`diferencia_de_senas()`,
-  `vale_el_ticket()`): la seña a la par de la lista de transferencia, más lo del
-  mostrador, más lo que falta. La lista del ticket sola no alcanza: una seña de
+  `vale_el_ticket()`): la seña tal cual entró —que, sin descuento, es lo que dice
+  el papel—, más lo del mostrador, más lo que falta. Las señas viejas en
+  efectivo, cobradas con el 10% menos, cuentan lo que entró y no se les suma
+  nada. La lista del ticket sola no alcanza: una seña de
   $7.000 en un ticket de $17.000 cobrado en efectivo tapa $6.300, y el papel dice
   seña $7.000 y total $9.000 —el ticket vale $16.000, no los $15.300 de la lista
   de efectivo—. Contándolo por la lista, a quien lleva la sesión le tocaban $350

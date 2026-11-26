@@ -68,10 +68,11 @@ def cobrar(api, item, cli, forma_cuenta):
 CASOS = [
     pytest.param("Transferencia", False, "efectivo", 16000, id="transfer-ticket-efvo"),
     pytest.param("Efectivo", False, "efectivo", 16000, id="efvo-ticket-efvo"),
-    pytest.param("Efectivo", True, "efectivo", 16000, id="efvo-vieja-ticket-efvo"),
+    # Las viejas en efectivo, cobradas con el 10% menos: cuentan lo que entró.
+    pytest.param("Efectivo", True, "efectivo", 15300, id="efvo-vieja-ticket-efvo"),
     pytest.param("Transferencia", False, "transfer", 17000, id="transfer-ticket-transfer"),
     pytest.param("Efectivo", False, "transfer", 17000, id="efvo-ticket-transfer"),
-    pytest.param("Efectivo", True, "transfer", 17000, id="efvo-vieja-ticket-transfer"),
+    pytest.param("Efectivo", True, "transfer", 16300, id="efvo-vieja-ticket-transfer"),
 ]
 
 
@@ -99,9 +100,12 @@ def test_una_sesion_contada_en_efectivo_sigue_igual(db, api):
     assert main.cuenta_depilacion(db, db.get(models.SesionDepilacion, ses.id))["base"] == 15300
 
 
-@pytest.mark.parametrize("forma_sena, vieja", [("Transferencia", False), ("Efectivo", True)])
-def test_el_cierre_viejo_queda_en_lo_que_se_pago(db, api, forma_sena, vieja):
-    # Ticket en efectivo: se había repartido sobre $15.300 y el papel dice $16.000.
+@pytest.mark.parametrize("forma_sena, vieja, corregido", [
+    ("Transferencia", False, 8000),   # 15.300 / 2 → 16.000 / 2
+    ("Efectivo", True, 7650),         # la vieja en efectivo no suma nada
+])
+def test_el_cierre_viejo_queda_en_lo_que_se_pago(db, api, forma_sena, vieja, corregido):
+    # Ticket en efectivo, repartido sobre $15.300.
     ses, item, cli = preparar(db)
     senar(db, api, cli, forma_sena, vieja)
     cobrar(api, item, cli, "efectivo")
@@ -111,11 +115,11 @@ def test_el_cierre_viejo_queda_en_lo_que_se_pago(db, api, forma_sena, vieja):
                              sesion_id=ses.id, recaudado=15300, gastos=0, egreso_id=eg.id)
     db.add(liq); db.commit()
 
-    assert main.corregir_cierres_por_senas(db) == 1
+    cambio = corregido != 7650
+    assert main.corregir_cierres_por_senas(db) == int(cambio)
     db.commit(); db.expire_all()
-    assert db.get(models.Liquidacion, liq.id).total == 8000
-    assert db.get(models.Egreso, eg.id).monto == 8000
-    nota = db.query(models.CorreccionSesion).filter_by(sesion_id=ses.id).one()
-    assert (nota.parte_antes, nota.parte_despues) == (7650, 8000)
+    assert db.get(models.Liquidacion, liq.id).total == corregido
+    assert db.get(models.Egreso, eg.id).monto == corregido
+    assert db.query(models.CorreccionSesion).filter_by(sesion_id=ses.id).count() == int(cambio)
     ses = db.get(models.SesionDepilacion, ses.id)
-    assert main.cuenta_depilacion(db, ses)["parte_empleada"] == 8000
+    assert main.cuenta_depilacion(db, ses)["parte_empleada"] == corregido
