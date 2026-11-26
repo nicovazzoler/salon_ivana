@@ -222,7 +222,7 @@ function estadoDe(p){
 }
 
 function render(){
-  const q=$("#buscar").value.trim().toLowerCase();
+  const q=sinAcentos($("#buscar").value.trim());
 
   // El resumen se calcula sobre TODO, no sobre lo filtrado: si no, buscar
   // algo cambiaría los números de arriba y no querrían decir nada.
@@ -236,7 +236,7 @@ function render(){
 
   let lista = PRODS;
   if(filtro!=="todos") lista = lista.filter(p=>estadoDe(p)===filtro);
-  if(q) lista = lista.filter(p=>p.nombre.toLowerCase().includes(q));
+  if(q) lista = lista.filter(p=>sinAcentos(p.nombre).includes(q));
 
   const cont=$("#lista"); cont.innerHTML="";
   if(lista.length===0){

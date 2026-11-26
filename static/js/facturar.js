@@ -284,7 +284,6 @@ function abrirGrupo(base,arr){
     b.onclick=()=>agregar(it); g.appendChild(b);
   });
 }
-const sinAcentos = t => String(t||"").normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
 function buscar(q){
   vista="buscar";
   marcarRail(null);                        // buscando no hay categoría activa

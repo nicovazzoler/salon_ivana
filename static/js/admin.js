@@ -82,7 +82,7 @@ $("#soloComision").onclick=()=>{
 };
 
 function filtrarItems(){
-  const q=$("#buscarItem").value.trim().toLowerCase();
+  const q=sinAcentos($("#buscarItem").value.trim());
   const soloCom=$("#soloComision").classList.contains("on");
   const cuenta=$("#cuentaComision");
   if(!q && !soloCom){ cuenta.textContent=""; catFiltro=null; cargarItems(); return; }
@@ -96,7 +96,7 @@ function filtrarItems(){
      en ninguna parte y la lista aparecía vacía sin decir por qué. */
   if(catFiltro && !f.some(i=>i.categoria===catFiltro)) catFiltro=null;
   if(soloCom && catFiltro) f=f.filter(i=>i.categoria===catFiltro);
-  if(q) f=f.filter(i=>i.nombre.toLowerCase().includes(q));
+  if(q) f=f.filter(i=>sinAcentos(i.nombre).includes(q));
   cuenta.textContent = soloCom
     ? `${f.length} ${f.length===1?"ítem":"ítems"} en ${new Set(f.map(i=>i.categoria)).size} ${new Set(f.map(i=>i.categoria)).size===1?"categoría":"categorías"}`
     : "";
