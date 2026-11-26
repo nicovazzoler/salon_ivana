@@ -954,3 +954,16 @@ body:has(.barra-cobro:not([hidden])) .toast{ bottom:100px; }
   .dlg{ max-width:none; border-radius:18px 18px 0 0; padding-bottom:calc(18px + env(safe-area-inset-bottom, 0px)); }
   .dlg-acciones button{ flex:1; }
 }
+
+
+/* ----- Sugerencias debajo de un campo (sugerirEn() en auth.js) ----- */
+.sugerencias{
+  position:absolute; z-index:30; left:0; right:0; top:100%; margin-top:4px;
+  max-height:280px; overflow:auto; padding:4px 0;
+  background:var(--bg-elevado); border-radius:12px; box-shadow:var(--sombra-elevada);
+}
+.sugerencias button{
+  display:block; width:100%; padding:10px 14px; border:0; border-radius:0;
+  background:transparent; color:var(--text); font-weight:var(--fw-normal); text-align:left;
+}
+.sugerencias button:hover, .sugerencias button.on{ background:var(--bg-hover); color:var(--text-titulo); }

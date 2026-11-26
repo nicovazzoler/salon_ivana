@@ -230,6 +230,61 @@ window.pintarBotonTema = pintarBotonTema;
 /* Partículas que van en minúscula dentro de un nombre ("María de los Ángeles").
    Tiene que coincidir con _PARTICULAS de main.py: el backend normaliza al
    guardar y esto muestra igual los nombres viejos, que quedaron sin normalizar. */
+/* Para buscar: minúscula y sin acentos, así "nunez" encuentra a "Núñez". Es la
+   misma cuenta que _plano() del backend, que es el que busca clientes y tickets. */
+function sinAcentos(t){
+  return String(t ?? "").normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
+}
+
+/* Sugerencias debajo de un campo, sin importar los acentos. Reemplaza al
+   <datalist>, que el navegador filtra a su manera y "nunez" no le trae "Núñez".
+   `opciones` es una función: la lista puede cargarse después de enganchar. */
+function sugerirEn(input, opciones, max = 8){
+  const caja = input.parentElement;
+  if(getComputedStyle(caja).position === "static") caja.style.position = "relative";
+  const lista = document.createElement("div");
+  lista.className = "sugerencias"; lista.hidden = true;
+  caja.appendChild(lista);
+  let marcada = -1;
+  const elegir = valor => {
+    input.value = valor; lista.hidden = true;
+    input.dispatchEvent(new Event("change", { bubbles: true }));
+  };
+  const pintar = () => {
+    const q = sinAcentos(input.value.trim());
+    if(!q){ lista.hidden = true; return; }
+    const todas = opciones().filter(o => sinAcentos(o).includes(q));
+    // Primero las que empiezan con lo tipeado: es lo que se está buscando casi siempre.
+    todas.sort((a, b) => sinAcentos(b).startsWith(q) - sinAcentos(a).startsWith(q));
+    const vistas = todas.slice(0, max);
+    if(!vistas.length || (vistas.length === 1 && vistas[0] === input.value.trim())){ lista.hidden = true; return; }
+    marcada = -1;
+    lista.innerHTML = vistas.map(o => `<button type="button" tabindex="-1">${String(o).replace(/[&<>"]/g,
+      c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]))}</button>`).join("");
+    lista.querySelectorAll("button").forEach((b, i) => {
+      b.onmousedown = e => e.preventDefault();          // que el campo no pierda el foco antes del click
+      b.onclick = () => elegir(vistas[i]);
+    });
+    lista.hidden = false;
+  };
+  input.setAttribute("autocomplete", "off");
+  input.addEventListener("input", pintar);
+  input.addEventListener("blur", () => { lista.hidden = true; });
+  input.addEventListener("keydown", e => {
+    const bs = [...lista.querySelectorAll("button")];
+    if(lista.hidden || !bs.length) return;
+    if(e.key === "ArrowDown" || e.key === "ArrowUp"){
+      e.preventDefault();
+      marcada = (marcada + (e.key === "ArrowDown" ? 1 : -1) + bs.length) % bs.length;
+      bs.forEach((b, i) => b.classList.toggle("on", i === marcada));
+    } else if(e.key === "Enter" && marcada >= 0){
+      e.preventDefault(); elegir(bs[marcada].textContent);
+    } else if(e.key === "Escape"){
+      lista.hidden = true;
+    }
+  });
+}
+
 const PARTICULAS = new Set(["de","del","la","las","los","y","e","da","das","do",
                             "dos","van","von","di","der","el"]);
 
