@@ -395,8 +395,8 @@
         <div class="campo chico"><label>Hora</label><input type="time" id="fHora" value="10:00"></div>
         <div class="campo chico"><label>Dura (min)</label>
           <input type="number" id="fDura" value="30" min="5" step="5" inputmode="numeric"></div>
-        <div class="campo"><label>Cliente</label><input id="fCliente" list="clientesList" placeholder="Nombre"><datalist id="clientesList"></datalist></div>
-        <div class="campo"><label>Servicio</label><input id="fServicio" list="serviciosList" placeholder="Corte, color..."><datalist id="serviciosList"></datalist></div>
+        <div class="campo"><label>Cliente</label><input id="fCliente" placeholder="Nombre"></div>
+        <div class="campo"><label>Servicio</label><input id="fServicio" placeholder="Corte, color..."></div>
         <div class="campo"><label>Atiende (opc) <span class="muted"></span></label><select id="fPeluquero"></select></div>
         <div class="campo"><label>Notas (opc)<span class="muted"></span></label><input id="fNotas"></div>
         <span class="acciones"><button id="btnAgregar">Agendar</button></span>
@@ -443,13 +443,14 @@ function cap(s){ return s.charAt(0).toUpperCase() + s.slice(1); }
 function fechaCorta(s){ const d = parseISO(s);
   return String(d.getDate()).padStart(2,"0") + "/" + String(d.getMonth()+1).padStart(2,"0"); }
 
+sugerirEn($("#fCliente"), () => CLIENTES.map(c => c.nombre));
+sugerirEn($("#fServicio"), () => SERVICIOS);
+
 async function init(){
   try{
     const cat=await (await authFetch("/api/catalogo")).json();
     SERVICIOS=cat.map(i=>i.nombre);
-    $("#serviciosList").innerHTML=SERVICIOS.map(s=>`<option value="${s}">`).join("");
     CLIENTES=await (await authFetch("/api/clientes")).json();
-    $("#clientesList").innerHTML=CLIENTES.map(c=>`<option value="${c.nombre}">`).join("");
     /* Quién atiende sale de la lista de empleados. Acá es opcional —un turno se
        agenda sin saber quién lo va a tomar— pero elegido y no tipeado: con
        "Karla" acá y "Carla" en el ticket no se pueden juntar. */

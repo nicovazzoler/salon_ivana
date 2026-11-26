@@ -1717,6 +1717,16 @@ def base_facturada(linea, comp) -> int:
     """
     return base_comision(linea, comp) if comp.forma_pago == "efectivo" else base_lista(linea, comp)
 
+def diferencia_de_senas(pagos_por_comp) -> int:
+    """Lo que las señas trajeron de más o de menos respecto de lo que taparon.
+
+    El ticket se cuenta en su lista, pero una seña por transferencia en un ticket
+    en efectivo entró sin el 10% menos. Solo las señas: se aplican al crear el
+    ticket, así que no mueven la cuenta de una sesión ya cerrada.
+    """
+    return sum(p.monto - (p.saldado if p.saldado is not None else p.monto)
+               for pagos in pagos_por_comp.values() for p in pagos if p.sena_id)
+
 def cuenta_depilacion(db, ses) -> dict:
     """El reparto de la sesión: todo lo facturado − los gastos, mitad y mitad.
 
@@ -1732,12 +1742,16 @@ def cuenta_depilacion(db, ses) -> dict:
     cuanto = base_comision if ses.reparto_efectivo else base_facturada
     base = sum(cuanto(l, c) for l, c in filas)
 
+    comps = list({c.id: c for _, c in filas}.values())
+    por_comp = pagos_por_comprobante(db, comps)
+    estados = [estado_comprobante(db, c, por_comp) for c in comps]
+    if not ses.reparto_efectivo:
+        base += diferencia_de_senas(por_comp)
+
     # Lo que falta cobrar de los tickets que tienen depilación. No baja el
     # reparto —el reparto es del trabajo hecho— pero hay que decirlo: es plata
     # que la empleada ya cobró y el local todavía no.
-    comps = list({c.id: c for _, c in filas}.values())
-    por_comp = pagos_por_comprobante(db, comps)
-    falta_cobrar = sum(max(estado_comprobante(db, c, por_comp)["saldo"], 0) for c in comps)
+    falta_cobrar = sum(max(e["saldo"], 0) for e in estados)
 
     # Los gastos de ESTA sesión, los que se cargan desde su pantalla. No los
     # egresos del día: un gasto de peluquería le bajaría la mitad a quien lleva
@@ -1862,6 +1876,51 @@ def migrar_reparto_de_lo_pagado():
         db.add(models.Config(clave=MARCA_REPARTO, valor=str(len(pagadas))))
         db.commit()
         if pagadas: print(f"Depilación: {len(pagadas)} sesiones ya pagadas se siguen repartiendo en efectivo.")
+
+MARCA_CIERRES_SENAS = "cierres_con_senas_como_entraron"
+
+def corregir_cierres_por_senas(db) -> int:
+    """Pone el último cierre de cada sesión pagada en lo que se pagó de verdad.
+
+    Las señas se contaban con lo que taparon y no con lo que trajeron, y en el
+    local la cuenta se hacía a mano: lo que salió del cajón es la cuenta bien
+    hecha. Se corre solo lo que mueven las señas, en la liquidación y en su egreso,
+    y queda anotado en las correcciones de la sesión. No hace commit.
+    """
+    corregidas = 0
+    for ses in db.query(models.SesionDepilacion).all():
+        cierres = cierres_de_sesion(db, ses.id)
+        if ses.reparto_efectivo or not cierres: continue
+        comps = list({c.id: c for _, c in lineas_de_sesion(db, ses.id)}.values())
+        dif = diferencia_de_senas(pagos_por_comprobante(db, comps))
+        if not dif: continue
+        q = cuenta_depilacion(db, ses)
+        resto_viejo = q["base"] - dif - q["gastos"]
+        parte_vieja = resto_viejo // 2 if resto_viejo > 0 else 0
+        delta = q["parte_empleada"] - parte_vieja
+        if not delta: continue
+        ultimo = cierres[-1]
+        antes = ultimo.total or 0
+        ultimo.total = antes + delta
+        ultimo.recaudado = (ultimo.recaudado or 0) + dif
+        if ultimo.egreso: ultimo.egreso.monto = (ultimo.egreso.monto or 0) + delta
+        cuando = hora_argentina(ultimo.cerrada).strftime("%d/%m") if ultimo.cerrada else "último"
+        db.add(models.CorreccionSesion(
+            sesion_id=ses.id, usuario="sistema", parte_antes=parte_vieja,
+            parte_despues=q["parte_empleada"],
+            detalle=(f"Las señas se cuentan con lo que trajeron: el cierre del {cuando} "
+                     f"pasa de {_pesos(antes)} a {_pesos(ultimo.total)}")))
+        corregidas += 1
+    return corregidas
+
+def migrar_cierres_por_senas():
+    from sqlalchemy.orm import Session as _S
+    with _S(engine) as db:
+        if db.query(models.Config).filter_by(clave=MARCA_CIERRES_SENAS).first(): return
+        n = corregir_cierres_por_senas(db)
+        db.add(models.Config(clave=MARCA_CIERRES_SENAS, valor=str(n)))
+        db.commit()
+        if n: print(f"Depilación: {n} cierres corregidos por señas contadas con lo que trajeron.")
 
 MARCA_SENAS_DESCUENTO = "senas_efectivo_con_descuento"
 
@@ -2309,28 +2368,32 @@ def _sesion_payload(db, ses) -> dict:
                .order_by(models.Comprobante.fecha, models.Comprobante.numero).all())
     por_comp = pagos_por_comprobante(db, comps)
     # Dos renglones y no tres: la seña no es una forma de pago, cuenta en la
-    # columna con la que se cobró. Va lo que cada pago TAPA y no lo que trajo,
-    # para que las dos columnas sumen lo facturado.
+    # columna con la que se cobró. Las dos columnas suman lo que entra al reparto:
+    # la seña con lo que trajo, y en una sesión contada en efectivo, con lo que tapó.
+    con_senas = not ses.reparto_efectivo
     senas = {s.id: s for s in db.query(models.Sena).filter(models.Sena.comprobante_id.in_(
         [c.id for c in comps]))} if comps else {}
     cobrado = {}
     for c in comps:
         for pg in por_comp.get(c.id, []):
             forma = pg.forma_pago or "—"
+            tapa = pg.saldado if pg.saldado is not None else pg.monto
             if pg.sena_id:
                 sena = senas.get(pg.sena_id)
                 forma = (sena.forma_pago if sena and sena.forma_pago else "Efectivo")
-            cobrado[forma] = cobrado.get(forma, 0) + (pg.saldado if pg.saldado is not None else pg.monto)
+                if con_senas: tapa = pg.monto
+            cobrado[forma] = cobrado.get(forma, 0) + tapa
     detalle = []
     for c in comps:
         est = estado_comprobante(db, c, por_comp)
+        dif = diferencia_de_senas({c.id: por_comp.get(c.id, [])}) if con_senas else 0
         detalle.append({"id": c.id, "numero": c.numero,
                         "cliente": c.cliente_nombre, "cliente_id": c.cliente_id,
                         "dia": hora_argentina(c.fecha).date().isoformat(),
                         "hora": hora_argentina(c.fecha).strftime("%H:%M"),
                         "peluquero": c.peluquero,
                         "lineas": [{"nombre": l.nombre, "cantidad": l.cantidad} for l in c.lineas],
-                        "total": est["total_final"], "saldo": est["saldo"],
+                        "total": est["total_final"] + dif, "saldo": est["saldo"],
                         "forma": forma_comprobante(db, c, por_comp)})
     q = cuenta_depilacion(db, ses)
     cierres = cierres_de_sesion(db, ses.id)
@@ -3854,7 +3917,7 @@ def _comprobante_creado(db, comp) -> dict:
     return {"id": comp.id, "numero": comp.numero, "tipo": comp.tipo,
             "fecha": comp.fecha.isoformat(), "anotado_despues": anotado_despues(comp),
             "total_final": est["total_final"], "saldo": est["saldo"],
-            "senas_usadas": senas_usadas}
+            "ingresado": est["ingresado"], "senas_usadas": senas_usadas}
 
 @app.post("/api/comprobantes/{comp_id}/pagos")
 def registrar_pago(comp_id: int, pago: PagoIn, user = Depends(usuario_actual), db: Session = Depends(get_db)):
@@ -5555,3 +5618,9 @@ if os.path.isdir("static"):
     def service_worker():
         return Response(SERVICE_WORKER, media_type="text/javascript",
                         headers={"Cache-Control": "no-cache"})
+
+# Al final del archivo: usa funciones de la cuenta de depilación que se definen más arriba.
+try:
+    migrar_cierres_por_senas()
+except Exception as _e:
+    print('Aviso: no se pudieron corregir los cierres de depilación:', _e)
