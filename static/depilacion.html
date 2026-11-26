@@ -1065,10 +1065,9 @@ function editarGasto(boton){
 
 /* El reparto, leído de arriba a abajo. Lo dibujan la solapa de la sesión y el
    cartel del historial: con dos, un día el cartel diría otra cosa. */
-/* Lo que el ticket deja en el local: lo que entró, con la seña como entró, más
-   lo que falta. El total de la lista no sirve: una seña por transferencia en un
-   ticket en efectivo entró sin el 10% menos. */
-const valorDelTicket = c => (c.ingresado || 0) + (c.saldo || 0);
+/* Lo que vale el ticket como dice el papel: la seña, lo del mostrador y lo que
+   falta. Lo calcula el backend, que es el que sabe lo que vale cada seña. */
+const valorDelTicket = c => c.vale ?? c.total_final ?? 0;
 
 function repartoHTML(d){
   const q = d.cuenta;
