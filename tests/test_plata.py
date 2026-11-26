@@ -271,8 +271,9 @@ def test_estado_comprobante_la_sena_no_es_plata_de_mostrador():
 # El 10% es de la plata que entra en EFECTIVO, no del trabajo.
 # ---------------------------------------------------------------------------
 
-def _sena(monto, forma_pago):
-    return SimpleNamespace(monto=monto, forma_pago=forma_pago)
+def _sena(monto, forma_pago, con_descuento=True):
+    # Por defecto, la seña en efectivo de antes: cobrada con el 10% menos.
+    return SimpleNamespace(monto=monto, forma_pago=forma_pago, con_descuento=con_descuento)
 
 
 @pytest.mark.parametrize(
@@ -293,6 +294,18 @@ def test_sena_saldado_segun_la_lista_de_cada_cosa(forma_sena, forma_cuenta, sald
     usa, saldado = sena_saldado(_sena(5000, forma_sena), comp, saldo=100_000)
     assert saldado == saldado_esperado
     assert usa == 5000  # entra entera: el saldo es mucho mayor
+
+
+@pytest.mark.parametrize("forma_cuenta, saldado_esperado", [
+    ("transferencia", 5000),   # a la par, como una por transferencia
+    ("efectivo", 4500),        # el 10% es del resto que paga en el mostrador
+])
+def test_la_sena_en_efectivo_no_tiene_descuento(forma_cuenta, saldado_esperado):
+    comp = _comprobante(forma_pago=forma_cuenta)
+    nueva = _sena(5000, "Efectivo", con_descuento=False)
+    transfer = _sena(5000, "Transferencia", con_descuento=False)
+    assert sena_saldado(nueva, comp, saldo=100_000) == sena_saldado(transfer, comp, saldo=100_000)
+    assert sena_saldado(nueva, comp, saldo=100_000)[1] == saldado_esperado
 
 
 def test_sena_saldado_mas_grande_que_la_cuenta_se_usa_hasta_ahi():

@@ -252,6 +252,10 @@ def migrar():
         if "reparto_efectivo" not in scols:
             with engine.begin() as con:
                 con.execute(text("ALTER TABLE sesiones_depilacion ADD COLUMN reparto_efectivo BOOLEAN"))
+    if insp.has_table("senas"):
+        if "con_descuento" not in [c["name"] for c in insp.get_columns("senas")]:
+            with engine.begin() as con:
+                con.execute(text("ALTER TABLE senas ADD COLUMN con_descuento BOOLEAN"))
 
 migrar()
 
@@ -504,8 +508,8 @@ class FondoIn(BaseModel):
 class NombreIn(BaseModel):
     nombre: str
 class SenaIn(BaseModel):
-    # `valor` es de cuánto es la seña, en la lista de transferencia: la plata que
-    # entra la calcula el backend. `monto` (lo que entró) queda para la API vieja.
+    # `valor` es de cuánto es la seña y es lo que entra: en efectivo no tiene
+    # descuento. `monto` queda para la API vieja.
     cliente_id: int; monto: int | None = None; valor: int | None = None
     forma_pago: str = "Efectivo"; alias: str | None = None; notas: str | None = None
 class TurnoIn(BaseModel):
@@ -1858,6 +1862,27 @@ def migrar_reparto_de_lo_pagado():
         db.add(models.Config(clave=MARCA_REPARTO, valor=str(len(pagadas))))
         db.commit()
         if pagadas: print(f"Depilación: {len(pagadas)} sesiones ya pagadas se siguen repartiendo en efectivo.")
+
+MARCA_SENAS_DESCUENTO = "senas_efectivo_con_descuento"
+
+def marcar_senas_con_descuento():
+    """Las señas en efectivo que ya estaban se cobraron con el 10% menos.
+
+    Siguen valiendo lo que se le dijo a la clienta. UNA vez: las que se tomen
+    después se cobran enteras y no llevan la marca.
+    """
+    from sqlalchemy.orm import Session as _S
+    with _S(engine) as db:
+        if db.query(models.Config).filter_by(clave=MARCA_SENAS_DESCUENTO).first(): return
+        n = (db.query(models.Sena).filter(models.Sena.forma_pago == "Efectivo")
+               .update({"con_descuento": True}, synchronize_session=False))
+        db.add(models.Config(clave=MARCA_SENAS_DESCUENTO, valor=str(n)))
+        db.commit()
+
+try:
+    marcar_senas_con_descuento()
+except Exception as _e:
+    print('Aviso: no se pudieron marcar las señas en efectivo:', _e)
 
 try:
     migrar_dias_a_sesiones()
@@ -3542,8 +3567,9 @@ def ver_comprobante(comp_id: int, anulado: bool = False, _ = Depends(usuario_act
     # Con qué forma se tomó cada seña: de eso depende cuánto tapa de la cuenta, y
     # la pantalla la muestra por su valor de la lista de transferencia.
     ids_sena = [p.sena_id for p in pagos if p.sena_id]
-    formas_sena = ({s.id: s.forma_pago for s in
-                    db.query(models.Sena).filter(models.Sena.id.in_(ids_sena))} if ids_sena else {})
+    senas_de = ({s.id: s for s in db.query(models.Sena).filter(models.Sena.id.in_(ids_sena))}
+                if ids_sena else {})
+    formas_sena = {i: s.forma_pago for i, s in senas_de.items()}
     return {"id": comp.id, "tipo": comp.tipo, "numero": comp.numero, "fecha": comp.fecha.isoformat(),
         "anotado_despues": anotado_despues(comp),
         "cliente_id": comp.cliente_id, "cliente_nombre": comp.cliente_nombre, "peluquero": comp.peluquero,
@@ -3565,7 +3591,7 @@ def ver_comprobante(comp_id: int, anulado: bool = False, _ = Depends(usuario_act
                    # Lo que esa seña tapó, en la lista de transferencia, para el papel.
                    "sena_valor": (None if p.sena_id is None
                                   else p.saldado if comp.forma_pago != "efectivo"
-                                  else valor_en_transferencia(p.monto, formas_sena.get(p.sena_id)))}
+                                  else valor_en_transferencia(p.monto, lista_de_sena(senas_de[p.sena_id])))}
                   for p in pagos],
         # Lo que se había cobrado antes de anularlo, para el detalle del historial
         "pagos_anulados": [] if comp.activo else [
@@ -4206,6 +4232,11 @@ def _pago_detalle(p):
 
 # ---------- señas ----------
 
+def lista_de_sena(sena) -> str:
+    """Con qué lista se mide una seña. La de efectivo cobrada con el 10% menos
+    vale como efectivo; cualquier otra, a la par de la de transferencia."""
+    return "Efectivo" if sena.forma_pago == "Efectivo" and sena.con_descuento else "Transferencia"
+
 def valor_en_transferencia(plata: int, forma: str | None) -> int:
     """Lo que vale plata de una seña en la lista de transferencia: en efectivo
     entró el 10% menos. Al peso, que redondeando a $100 tapaba más de lo dicho."""
@@ -4255,10 +4286,10 @@ def _sena_json(s, nombre=None, usado: int = 0, estuvo_en: list | None = None):
             "usuario": s.usuario,
             # Lo que se le dijo al tomarla, lo que ya se usó y lo que le queda:
             # las pantallas y el papel muestran estos, sin hacer la cuenta.
-            "valor_total": valor_en_transferencia(s.monto, s.forma_pago),
+            "valor_total": valor_en_transferencia(s.monto, lista_de_sena(s)),
             "usado": usado, "libre": libre,
-            "valor": valor_en_transferencia(libre, s.forma_pago),
-            "valor_efectivo": valor_en_efectivo(libre, s.forma_pago),
+            "valor": valor_en_transferencia(libre, lista_de_sena(s)),
+            "valor_efectivo": valor_en_efectivo(libre, lista_de_sena(s)),
             "parcial": bool(usado) and libre > 0,
             "estuvo_en": estuvo_en or []}
 
@@ -4277,8 +4308,7 @@ def crear_sena(datos: SenaIn, user = Depends(usuario_actual), db: Session = Depe
     cli = db.get(models.Cliente, datos.cliente_id)
     if not cli: raise HTTPException(404, "Ese cliente no existe")
     forma = forma_de_pago(db, datos.forma_pago or "Efectivo")
-    monto = (datos.monto if datos.valor is None
-             else (datos.valor * 9 + 5) // 10 if forma == "Efectivo" else datos.valor)
+    monto = datos.monto if datos.valor is None else datos.valor
     if not monto or monto <= 0: raise HTTPException(400, "El monto tiene que ser positivo")
     s = models.Sena(numero=siguiente_numero_sena(db), cliente_id=cli.id, monto=monto,
                     forma_pago=forma,
@@ -4354,7 +4384,7 @@ def sena_saldado(sena, comp, saldo: int, libre: int | None = None) -> tuple[int,
     transferencia tapa monto ÷ 0,9; transferencia contra efectivo, monto × 0,9.
     """
     libre = sena.monto if libre is None else libre
-    forma = sena.forma_pago or ""
+    forma = lista_de_sena(sena)
     en_efectivo = forma == "Efectivo"
     cuenta_en_efectivo = comp.forma_pago == "efectivo"
     if en_efectivo == cuenta_en_efectivo:
@@ -5394,8 +5424,8 @@ def armar_backup(db) -> dict:
         ],
         "senas": [
             {"id": x.id, "numero": x.numero, "cliente_id": x.cliente_id, "fecha": _iso_utc(x.fecha),
-             "monto": x.monto, "forma_pago": x.forma_pago, "alias": x.alias,
-             "notas": x.notas, "comprobante_id": x.comprobante_id,
+             "monto": x.monto, "forma_pago": x.forma_pago, "con_descuento": bool(x.con_descuento),
+             "alias": x.alias, "notas": x.notas, "comprobante_id": x.comprobante_id,
              "anulada": x.anulada, "usuario": x.usuario,
              "anulado_por": x.anulado_por, "anulado_motivo": x.anulado_motivo,
              "anulado_en": _iso_utc(x.anulado_en)}

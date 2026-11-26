@@ -430,13 +430,12 @@ cuenta el trabajo ENTERO —aunque parte ya estuviera pagada— y ahí se repart
 contrario le pagaría a quien lleva la sesión por un trabajo que todavía no hizo,
 y después se lo descontaría del que sí.
 
-En la pantalla se pone **de cuánto es** la seña, en los precios de la lista —los
-de transferencia, que son a los que se ancla el comprobante— y pagando en
-efectivo la clienta entrega el 10% menos. Lo que se GUARDA es lo que entró, que
-es de lo que depende el arqueo; el valor contra una factura lo recalcula
-`sena_saldado()`. Es la peluquería al revés: allá el catálogo se carga en
-efectivo y el de transferencia sale solo. Una seña de $5.000 en efectivo son
-$4.500 en el cajón y tapan $5.000 de un trabajo de $20.000. Al facturarle, se aplican todas las que tenga libres y cada una deja un
+**La seña no tiene descuento**, ni en efectivo: una seña de $5.000 son $5.000
+en el cajón y en el ticket se resta tal cual, a la par de la lista de
+transferencia; el 10% es solo del resto que se paga en efectivo en el
+mostrador. Las señas en efectivo de antes se cobraban con el 10% menos: llevan
+`con_descuento`, puesto UNA vez por migración, y siguen valiendo lo que se le
+dijo a la clienta (`lista_de_sena()`). Al facturarle, se aplican todas las que tenga libres y cada una deja un
 abono con `sena_id`. **Ese abono no es plata del día**: ya entró. Por eso
 `plata_que_entro()` saltea los abonos con `sena_id` y suma las señas cobradas, y
 todo lo que cuenta plata por fecha —caja, reportes, el Excel, los gráficos— pasa
@@ -450,9 +449,10 @@ y la seña entró antes:
 
 | La seña fue en | La cuenta está en | Tapa |
 |---|---|---|
-| Efectivo | Transferencia | monto ÷ 0,9 — esos pesos valen más contra una cuenta sin el descuento adentro |
-| Transferencia | Efectivo | monto × 0,9 — la cuenta ya viene con el 10% sacado y esa plata entró sin descuento |
-| La misma | | el monto, tal cual |
+| Cualquiera (sin descuento) | Transferencia | el monto, tal cual |
+| Cualquiera (sin descuento) | Efectivo | monto × 0,9 — la cuenta ya viene con el 10% sacado y esa plata entró sin descuento |
+| Efectivo con descuento (las viejas) | Transferencia | monto ÷ 0,9 |
+| Efectivo con descuento (las viejas) | Efectivo | el monto, tal cual |
 
 Las dos puntas se rompieron alguna vez. Sin la primera, señar $10.000 en
 efectivo y pagar el resto por transferencia salía $1.111 más caro que pagar todo
