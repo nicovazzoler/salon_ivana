@@ -62,19 +62,12 @@ function panelSena(clienteId, nombre, alGuardar){
     cuenta();
   });
 
-  /* Lo que la clienta entrega y lo que le queda a favor. El monto que se pone es
-     de cuánto es la seña, en los precios de transferencia; pagando en efectivo
-     entrega el 10% menos, y eso es lo que entra a la caja y lo que se guarda. */
-  const enEfectivo = () => pan.querySelector(".sForma").value === "Efectivo";
+  // La seña no tiene descuento: en efectivo o por transferencia, entra entera.
   const valor = () => parseInt(pan.querySelector(".sMonto").value, 10) || 0;
-  // Solo para el cartel: lo que entra lo calcula el backend con la misma cuenta.
-  const entra = () => enEfectivo() ? Math.floor((valor() * 9 + 5) / 10) : valor();
   function cuenta(){
-    const v = valor();
+    const v = valor(), forma = pan.querySelector(".sForma").value || "Efectivo";
     pan.querySelector(".sCuenta").textContent = !v ? ""
-      : enEfectivo()
-        ? `Le cobrás ${_plataSena(entra())} en efectivo y le quedan ${_plataSena(v)} a favor.`
-        : `Le cobrás ${_plataSena(v)} por transferencia y le quedan ${_plataSena(v)} a favor.`;
+      : `Le cobrás ${_plataSena(v)} ${forma === "Efectivo" ? "en efectivo" : "por " + forma.toLowerCase()}.`;
   }
   pan.querySelector(".sMonto").addEventListener("input", cuenta);
   pan.querySelector(".sForma").addEventListener("change", cuenta);

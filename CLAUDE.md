@@ -295,20 +295,22 @@ Lo que hay que respetar:
   porque la diferencia entre listas no es un descuento que se le hizo a nadie,
   pero el reparto de la sesión es otra cuenta y ahí lo que se parte es lo que
   cobró el local.
-- **Y la seña entra con lo que TRAJO, no con lo que tapó** (`diferencia_de_senas()`).
-  La lista del ticket no dice cómo entró la plata: una seña de $7.000 por
-  transferencia en un ticket de $17.000 cobrado en efectivo entró sin el 10%
-  menos, así que el local recibió $16.000 y no los $15.300 de la lista de
-  efectivo. Contándolo por la lista, a quien lleva la sesión le tocaban $350
-  menos; al revés —seña en efectivo, ticket por transferencia— $350 de más. Son
-  solo las señas, que se aplican al crear el ticket: un abono posterior no mueve
-  la cuenta de una sesión ya cerrada. Vale también para las sesiones que ya se
-  habían pagado: en el local se liquidaban a mano con la cuenta bien hecha, así
-  que `corregir_cierres_por_senas()` corrió UNA vez el último cierre de cada una
-  —liquidación y egreso— a lo que salió del cajón, y lo dejó en sus correcciones.
-  Es la única vez que se tocó el egreso de un cierre viejo, y por eso: el que
-  estaba mal era el número, no la plata. En la pantalla, el total de cada ticket
-  es lo que entró más lo que falta (`valorDelTicket()`).
+- **Y cada ticket cuenta lo que dice el PAPEL** (`diferencia_de_senas()`,
+  `vale_el_ticket()`): la seña tal cual entró —que, sin descuento, es lo que dice
+  el papel—, más lo del mostrador, más lo que falta. Las señas viejas en
+  efectivo, cobradas con el 10% menos, cuentan lo que entró y no se les suma
+  nada. La lista del ticket sola no alcanza: una seña de
+  $7.000 en un ticket de $17.000 cobrado en efectivo tapa $6.300, y el papel dice
+  seña $7.000 y total $9.000 —el ticket vale $16.000, no los $15.300 de la lista
+  de efectivo—. Contándolo por la lista, a quien lleva la sesión le tocaban $350
+  menos. Son solo las señas, que se aplican al crear el ticket: un abono
+  posterior no mueve la cuenta de una sesión ya cerrada. Vale también para las
+  sesiones que ya se habían pagado: en el local se liquidaban a mano con la
+  cuenta bien hecha, así que `corregir_cierres_por_senas()` corrió UNA vez el
+  último cierre de cada una —liquidación y egreso— a lo que salió del cajón, y
+  lo dejó en sus correcciones. Es la única vez que se tocó el egreso de un
+  cierre viejo, y por eso: el que estaba mal era el número, no la plata. El
+  total de cada ticket en la pantalla de depilación es ese mismo `vale`.
 - **Una cuenta ya cobrada no se vuelve a calcular con otra fórmula.** Las
   sesiones que ya estaban pagadas cuando el reparto pasó a contar todo lo
   facturado llevan `reparto_efectivo` y se siguen contando en efectivo. Sin esa
@@ -448,13 +450,12 @@ cuenta el trabajo ENTERO —aunque parte ya estuviera pagada— y ahí se repart
 contrario le pagaría a quien lleva la sesión por un trabajo que todavía no hizo,
 y después se lo descontaría del que sí.
 
-En la pantalla se pone **de cuánto es** la seña, en los precios de la lista —los
-de transferencia, que son a los que se ancla el comprobante— y pagando en
-efectivo la clienta entrega el 10% menos. Lo que se GUARDA es lo que entró, que
-es de lo que depende el arqueo; el valor contra una factura lo recalcula
-`sena_saldado()`. Es la peluquería al revés: allá el catálogo se carga en
-efectivo y el de transferencia sale solo. Una seña de $5.000 en efectivo son
-$4.500 en el cajón y tapan $5.000 de un trabajo de $20.000. Al facturarle, se aplican todas las que tenga libres y cada una deja un
+**La seña no tiene descuento**, ni en efectivo: una seña de $5.000 son $5.000
+en el cajón y en el ticket se resta tal cual, a la par de la lista de
+transferencia; el 10% es solo del resto que se paga en efectivo en el
+mostrador. Las señas en efectivo de antes se cobraban con el 10% menos: llevan
+`con_descuento`, puesto UNA vez por migración, y siguen valiendo lo que se le
+dijo a la clienta (`lista_de_sena()`). Al facturarle, se aplican todas las que tenga libres y cada una deja un
 abono con `sena_id`. **Ese abono no es plata del día**: ya entró. Por eso
 `plata_que_entro()` saltea los abonos con `sena_id` y suma las señas cobradas, y
 todo lo que cuenta plata por fecha —caja, reportes, el Excel, los gráficos— pasa
@@ -468,9 +469,10 @@ y la seña entró antes:
 
 | La seña fue en | La cuenta está en | Tapa |
 |---|---|---|
-| Efectivo | Transferencia | monto ÷ 0,9 — esos pesos valen más contra una cuenta sin el descuento adentro |
-| Transferencia | Efectivo | monto × 0,9 — la cuenta ya viene con el 10% sacado y esa plata entró sin descuento |
-| La misma | | el monto, tal cual |
+| Cualquiera (sin descuento) | Transferencia | el monto, tal cual |
+| Cualquiera (sin descuento) | Efectivo | monto × 0,9 — la cuenta ya viene con el 10% sacado y esa plata entró sin descuento |
+| Efectivo con descuento (las viejas) | Transferencia | monto ÷ 0,9 |
+| Efectivo con descuento (las viejas) | Efectivo | el monto, tal cual |
 
 Las dos puntas se rompieron alguna vez. Sin la primera, señar $10.000 en
 efectivo y pagar el resto por transferencia salía $1.111 más caro que pagar todo
