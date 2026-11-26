@@ -34,7 +34,11 @@ static/
                  íconos de línea: la app no usa emojis; preguntar(), el cartel
                  de la app: no se usa confirm(), prompt() ni alert(); y
                  engancharBarraCobro(), la barra de abajo de Facturar y
-                 Depilación, que sale mientras el botón de cobrar no se ve
+                 Depilación, que sale mientras el botón de cobrar no se ve.
+                 Y sinAcentos(), con la que filtra TODO buscador que busca en la
+                 pantalla —"nunez" encuentra "Núñez", como en el backend—, y
+                 sugerirEn(), las sugerencias de un campo: el <datalist> no
+                 sirve porque el navegador lo filtra con acentos
   js/listas.js   Las cinco listas configurables (formas de pago, tipos de egreso,
                  descuentos, ajustes por ítem, alias): un solo dibujante que usan
                  Admin y el panel del lapicito de facturar
