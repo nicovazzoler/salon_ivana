@@ -291,6 +291,16 @@ Lo que hay que respetar:
   porque la diferencia entre listas no es un descuento que se le hizo a nadie,
   pero el reparto de la sesión es otra cuenta y ahí lo que se parte es lo que
   cobró el local.
+- **Y la seña entra con lo que TRAJO, no con lo que tapó** (`diferencia_de_senas()`).
+  La lista del ticket no dice cómo entró la plata: una seña de $7.000 por
+  transferencia en un ticket de $17.000 cobrado en efectivo entró sin el 10%
+  menos, así que el local recibió $16.000 y no los $15.300 de la lista de
+  efectivo. Contándolo por la lista, a quien lleva la sesión le tocaban $350
+  menos; al revés —seña en efectivo, ticket por transferencia— $350 de más. Son
+  solo las señas, que se aplican al crear el ticket: un abono posterior no mueve
+  la cuenta de una sesión ya cerrada. Las sesiones que ya tenían un cierre llevan
+  `reparto_por_lista` y se siguen contando como se pagaron. En la pantalla, el
+  total de cada ticket es lo que entró más lo que falta (`valorDelTicket()`).
 - **Una cuenta ya cobrada no se vuelve a calcular con otra fórmula.** Las
   sesiones que ya estaban pagadas cuando el reparto pasó a contar todo lo
   facturado llevan `reparto_efectivo` y se siguen contando en efectivo. Sin esa
@@ -702,6 +712,7 @@ pytest tests/test_plata.py           # la aritmética de plata del backend
 pytest tests/test_backup.py          # que el backup JSON vuelva entero al restaurarlo
 pytest tests/test_anulaciones.py     # quién puede anular plata y qué queda escrito
 pytest tests/test_cobro_repetido.py  # que un cobro reintentado no cobre dos veces
+pytest tests/test_reparto.py         # que el reparto de depilación cuente la seña como entró
 pytest tests/test_pwa.py             # que la app instalable guarde lo justo y cambie de versión
 node --test "tests/escpos/**/*.test.js"   # el papel, byte a byte contra los golden
 ```

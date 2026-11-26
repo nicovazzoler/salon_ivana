@@ -120,6 +120,9 @@ class SesionDepilacion(Base):
     # regla con la que se liquidó: una cuenta ya cobrada no se vuelve a calcular
     # con otra fórmula.
     reparto_efectivo = Column(Boolean, default=False)
+    # Ídem con la regla siguiente: se cuenta cada ticket en su lista, sin mirar
+    # en qué forma entró la seña.
+    reparto_por_lista = Column(Boolean, default=False)
     notas = Column(String)
     empleado = relationship("Empleado")
 

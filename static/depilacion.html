@@ -745,7 +745,7 @@ $("#btnCobrar").onclick = async () => {
   const num = "N-" + String(d.numero).padStart(5, "0");
   $("#hecho").hidden = false;
   $("#hecho").innerHTML = `<b>${num} cobrado</b>
-    <span class="det">${fmt(d.total_final)} de cuenta${
+    <span class="det">${fmt(valorDelTicket(d))} de cuenta${
       d.senas_usadas ? ` · con ${d.senas_usadas === 1 ? "la seña que tenía" : `${d.senas_usadas} señas`}` : ""}${
       d.saldo > 0 ? ` · queda debiendo ${fmt(d.saldo)}` : ""}</span>
     <a class="b-out" href="/ticket?id=${d.id}">${icono("impresora")} Imprimir</a>`;
@@ -1065,6 +1065,11 @@ function editarGasto(boton){
 
 /* El reparto, leído de arriba a abajo. Lo dibujan la solapa de la sesión y el
    cartel del historial: con dos, un día el cartel diría otra cosa. */
+/* Lo que el ticket deja en el local: lo que entró, con la seña como entró, más
+   lo que falta. El total de la lista no sirve: una seña por transferencia en un
+   ticket en efectivo entró sin el 10% menos. */
+const valorDelTicket = c => (c.ingresado || 0) + (c.saldo || 0);
+
 function repartoHTML(d){
   const q = d.cuenta;
   const pagado = d.cerrado ? d.cerrado.total : 0;
@@ -1279,7 +1284,7 @@ async function cargarTickets(id){
       <td>${esc((c.fecha || "").slice(0,10).split("-").reverse().join("/"))}</td>
       <td>${esc(c.cliente_nombre || "—")}</td>
       <td>${esc(c.peluquero || "—")}</td>
-      <td class="num">${fmt(c.total_final)}</td>
+      <td class="num">${fmt(valorDelTicket(c))}</td>
       <td class="num ${c.saldo > 0 ? "deuda" : ""}">${c.saldo > 0 ? fmt(c.saldo) : "—"}</td>
       <td>${anulable(c)
             ? `<button class="b-del btn-mini anular" data-id="${c.id}"
