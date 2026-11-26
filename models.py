@@ -403,6 +403,9 @@ class Sena(Base):
     fecha = Column(DateTime, default=fecha_hora_now_utc)
     monto = Column(Integer, nullable=False)
     forma_pago = Column(String)
+    # En efectivo y cobrada con el 10% menos: vale lo que se le dijo, no lo que
+    # entró. Solo las de antes: la seña en efectivo se cobra entera.
+    con_descuento = Column(Boolean, default=False)
     alias = Column(String)
     notas = Column(String)
     comprobante_id = Column(Integer, ForeignKey("comprobantes.id"))   # NULL = sin usar

@@ -1,8 +1,9 @@
-"""El reparto de una sesión de depilación cuenta la plata que entró.
+"""El reparto de una sesión de depilación cuenta cada ticket como dice el papel.
 
-El ticket se cuenta en su lista, pero la seña entra con lo que trajo: una seña
-por transferencia en un ticket en efectivo no tuvo el 10% menos. Se mide con un
-trabajo de $17.000 de lista ($15.300 en efectivo) y $7.000 de seña.
+La seña se resta del ticket a la par de la lista de transferencia, y el 10% es
+solo de lo que se paga en efectivo en el mostrador. Se mide con un trabajo de
+$17.000 de lista ($15.300 en efectivo) y una seña de $7.000: cobrado en efectivo
+el ticket vale $16.000 (seña $7.000 + $9.000), por transferencia $17.000.
 """
 import pytest
 from fastapi.testclient import TestClient
@@ -47,9 +48,16 @@ def preparar(db, **sesion):
     return ses, item, cli
 
 
-def cobrar(api, item, cli, forma_sena, forma_cuenta):
-    r = api.post("/api/senas", json={"cliente_id": cli.id, "valor": 7000, "forma_pago": forma_sena})
+def senar(db, api, cli, forma, vieja=False):
+    if vieja:   # en efectivo, de cuando se cobraba con el 10% menos
+        db.add(models.Sena(numero=1, cliente_id=cli.id, monto=6300, forma_pago="Efectivo",
+                           con_descuento=True))
+        db.commit(); return
+    r = api.post("/api/senas", json={"cliente_id": cli.id, "valor": 7000, "forma_pago": forma})
     assert r.status_code == 200, r.text
+
+
+def cobrar(api, item, cli, forma_cuenta):
     r = api.post("/api/comprobantes", json={
         "tipo": "ticket", "cliente_id": cli.id, "forma_pago": forma_cuenta,
         "lineas": [{"item_id": item.id, "cantidad": 1}], "aplicar_senas": True, "cobrar": True})
@@ -57,49 +65,57 @@ def cobrar(api, item, cli, forma_sena, forma_cuenta):
     return r.json()
 
 
-@pytest.mark.parametrize("forma_sena, forma_cuenta, entro", [
-    ("Transferencia", "efectivo", 16000),   # 7.000 sin descuento + 9.000 en efectivo
-    ("Efectivo", "transfer", 16300),        # 6.300 en efectivo + 10.000 por transferencia
-    ("Transferencia", "transfer", 17000),
-    ("Efectivo", "efectivo", 15300),
-])
-def test_la_sena_entra_al_reparto_con_lo_que_trajo(db, api, forma_sena, forma_cuenta, entro):
+CASOS = [
+    pytest.param("Transferencia", False, "efectivo", 16000, id="transfer-ticket-efvo"),
+    pytest.param("Efectivo", False, "efectivo", 16000, id="efvo-ticket-efvo"),
+    pytest.param("Efectivo", True, "efectivo", 16000, id="efvo-vieja-ticket-efvo"),
+    pytest.param("Transferencia", False, "transfer", 17000, id="transfer-ticket-transfer"),
+    pytest.param("Efectivo", False, "transfer", 17000, id="efvo-ticket-transfer"),
+    pytest.param("Efectivo", True, "transfer", 17000, id="efvo-vieja-ticket-transfer"),
+]
+
+
+@pytest.mark.parametrize("forma_sena, vieja, forma_cuenta, vale", CASOS)
+def test_el_ticket_vale_lo_que_dice_el_papel(db, api, forma_sena, vieja, forma_cuenta, vale):
     ses, item, cli = preparar(db)
-    hecho = cobrar(api, item, cli, forma_sena, forma_cuenta)
+    senar(db, api, cli, forma_sena, vieja)
+    hecho = cobrar(api, item, cli, forma_cuenta)
     db.expire_all()
     ses = db.get(models.SesionDepilacion, ses.id)
-    assert main.cuenta_depilacion(db, ses)["base"] == entro
+    assert main.cuenta_depilacion(db, ses)["base"] == vale
     pantalla = main._sesion_payload(db, ses)
-    assert sum(pantalla["cobrado"].values()) == entro
-    assert hecho["ingresado"] + hecho["saldo"] == entro
+    assert sum(pantalla["cobrado"].values()) == vale
+    assert [c["total"] for c in pantalla["comprobantes"]] == [vale]
+    assert hecho["vale"] == vale
+    lista = api.get(f"/api/comprobantes?de=depi&sesion_id={ses.id}").json()["comprobantes"]
+    assert [c["vale"] for c in lista] == [vale]
 
 
 def test_una_sesion_contada_en_efectivo_sigue_igual(db, api):
     ses, item, cli = preparar(db, reparto_efectivo=True)
-    cobrar(api, item, cli, "Transferencia", "efectivo")
+    senar(db, api, cli, "Transferencia")
+    cobrar(api, item, cli, "efectivo")
     db.expire_all()
     assert main.cuenta_depilacion(db, db.get(models.SesionDepilacion, ses.id))["base"] == 15300
 
 
-@pytest.mark.parametrize("forma_sena, forma_cuenta, pagado, corregido", [
-    ("Transferencia", "efectivo", 7650, 8000),   # 15.300 / 2 → 16.000 / 2
-    ("Efectivo", "transfer", 8500, 8150),        # 17.000 / 2 → 16.300 / 2
-])
-def test_el_cierre_viejo_queda_en_lo_que_se_pago(db, api, forma_sena, forma_cuenta, pagado, corregido):
+@pytest.mark.parametrize("forma_sena, vieja", [("Transferencia", False), ("Efectivo", True)])
+def test_el_cierre_viejo_queda_en_lo_que_se_pago(db, api, forma_sena, vieja):
+    # Ticket en efectivo: se había repartido sobre $15.300 y el papel dice $16.000.
     ses, item, cli = preparar(db)
-    cobrar(api, item, cli, forma_sena, forma_cuenta)
-    eg = models.Egreso(numero=1, tipo="Sueldo", concepto="Depilación", monto=pagado, forma_pago="Efectivo")
+    senar(db, api, cli, forma_sena, vieja)
+    cobrar(api, item, cli, "efectivo")
+    eg = models.Egreso(numero=1, tipo="Sueldo", concepto="Depilación", monto=7650, forma_pago="Efectivo")
     db.add(eg); db.flush()
-    liq = models.Liquidacion(empleado_id=ses.empleado_id, total=pagado, depilacion=True,
-                             sesion_id=ses.id, recaudado=pagado * 2, gastos=0, egreso_id=eg.id)
+    liq = models.Liquidacion(empleado_id=ses.empleado_id, total=7650, depilacion=True,
+                             sesion_id=ses.id, recaudado=15300, gastos=0, egreso_id=eg.id)
     db.add(liq); db.commit()
 
     assert main.corregir_cierres_por_senas(db) == 1
     db.commit(); db.expire_all()
-    assert db.get(models.Liquidacion, liq.id).total == corregido
-    assert db.get(models.Egreso, eg.id).monto == corregido
+    assert db.get(models.Liquidacion, liq.id).total == 8000
+    assert db.get(models.Egreso, eg.id).monto == 8000
     nota = db.query(models.CorreccionSesion).filter_by(sesion_id=ses.id).one()
-    assert (nota.parte_antes, nota.parte_despues) == (pagado, corregido)
-    # Ya corregido, la cuenta cierra: no queda nada por pagar ni pagado de más.
+    assert (nota.parte_antes, nota.parte_despues) == (7650, 8000)
     ses = db.get(models.SesionDepilacion, ses.id)
-    assert main.cuenta_depilacion(db, ses)["parte_empleada"] == corregido
+    assert main.cuenta_depilacion(db, ses)["parte_empleada"] == 8000
