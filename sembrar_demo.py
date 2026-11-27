@@ -261,11 +261,8 @@ def preparar_catalogo(api, rnd):
     for it in items:
         if it["es_producto"] or it["es_depilacion"] or it["categoria"] in SIN_COMISION:
             continue
-        cambios = {"es_comision": True}
-        propio = COMISION_PROPIA.get(it["categoria"])
-        if propio:
-            cambios["comision_pct"] = propio
-        api.put(f"/api/items/{it['id']}", cambios)
+        pct = COMISION_PROPIA.get(it["categoria"], COMISION_PCT)
+        api.put(f"/api/items/{it['id']}", {"es_comision": True, "comision_pct": pct})
 
     for it in items:
         if not it["es_producto"]:
@@ -286,16 +283,14 @@ def listas_configurables(api):
     for nombre, pct in (("Pelo largo", 15), ("Fidelidad", -10)):
         api.post("/api/ajustes-item", {"nombre": nombre, "porcentaje": pct})
     api.post("/api/tipos-egreso", {"nombre": "Alquiler", "privado": True})
-    api.put("/api/config/sueldos", {"valor_hora": VALOR_HORA, "comision_pct": COMISION_PCT,
-                                    "pago_ayudante": PAGO_AYUDANTE})
+    api.put("/api/config/sueldos", {"pago_ayudante": PAGO_AYUDANTE})
 
 
 def crear_empleadas(api):
     creadas = []
     for e in EMPLEADAS:
         emp = api.post("/api/empleados", {"nombre": e["nombre"]})
-        if e["valor_hora"]:
-            api.put(f"/api/empleados/{emp['id']}", {"valor_hora": e["valor_hora"]})
+        api.put(f"/api/empleados/{emp['id']}", {"valor_hora": e["valor_hora"] or VALOR_HORA})
         api.put(f"/api/empleados/{emp['id']}/pin", {"pin": e["pin"]})
         api.put(f"/api/horarios/{emp['id']}",
                 {"tramos": [{"dia_semana": d, "desde": h, "hasta": f} for d, h, f in e["tramos"]]})

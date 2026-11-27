@@ -42,9 +42,9 @@ static/
   js/listas.js   Las cinco listas configurables (formas de pago, tipos de egreso,
                  descuentos, ajustes por ítem, alias): un solo dibujante que usan
                  Admin y el panel del lapicito de facturar
-  js/generales.js El valor hora, la comisión general y el corte de los sueldos:
-                 un solo dibujante que usan Admin (arriba de la lista de
-                 empleados) y Sueldos. El CSS, en components.css
+  js/generales.js Los dos números de la depilación (el pago a la ayudante y
+                 quién lleva las sesiones) y el corte de los sueldos, que se
+                 tocan desde Admin. El CSS, en components.css
   js/senas.js    Tomar una seña y listarlas. El formulario se usa en depilación,
                  que es donde se toman; la ficha del cliente solo las lista. El
                  CSS vive en components.css: estando en una sola pantalla, en la
@@ -388,10 +388,31 @@ los días. Un día cerrado en el que pasó algo —el lunes de depilación con
 peluquería adentro, un trabajo cargado a mano— **aparece igual**: lo que no se
 agrega es el día en blanco, y esconder un día con plata adentro sería perderla.
 
+**No hay valores generales: el valor hora es de cada empleada y la comisión de
+cada servicio.** Se manejan en Sueldos, en la solapa "Valores y comisiones", que
+es solo de la dueña. Un servicio sin número no paga comisión (`pct_de()`), y una
+empleada sin valor hora no cobra horas: no se le inventa uno, y cerrar con horas
+para pagar y sin valor hora se frena. La comisión la cambia la dueña y nadie más
+—`exigir_dueno_comision()`—, aunque el empleado maneje el catálogo en Admin: ahí
+la comisión se ve pero no se edita. La migración que los sacó
+(`pasar_generales()`) copió el general a cada una y a cada servicio que no tenía
+el suyo, UNA vez, así que ningún número cambió.
+
+**Quién cobra sueldo es una casilla** (`cobra_sueldo`), no tener código. La que
+no la tiene no aparece para pagar, no entra a Sueldos y no tiene valor hora. La
+que se agrega en Admin nace con la casilla puesta.
+
+**El código lo elige la empleada y la dueña lo ve.** La primera vez que entra, la
+que no tiene código lo elige con el teclado, dos veces
+(`/api/sueldos/elegir-codigo`); después ya no se puede pisar por ahí. Se guarda a
+la vista (`codigo`) para que la dueña lo tenga a mano si alguien se lo olvida, y
+solo a ella se lo devuelve `/api/empleados`: esa lista la pide también el
+desplegable de facturar. Los códigos de antes estaban con hash: se completan solos
+la próxima vez que cada una entra.
+
 **El corte de los sueldos es UNO para todo el local**, no uno por empleada: el
 borón y cuenta nueva de lo que se pagó a mano antes de la app. Se dibuja con
-`panelCorteSueldos()` en `generales.js` —el mismo dibujante para Admin y para
-Sueldos— y lo que deja afuera lo contesta el backend
+`panelCorteSueldos()` en `generales.js`, en Admin, y lo que deja afuera lo contesta el backend
 (`GET /api/sueldos/arranque?fecha=`), que es el que sabe lo que cada una tiene
 pendiente: contándolo en la pantalla, el cartel decía los ciclos de la empleada
 que estaba abierta y parecía que el corte valía solo para ella.
@@ -723,6 +744,7 @@ pytest tests/test_backup.py          # que el backup JSON vuelva entero al resta
 pytest tests/test_anulaciones.py     # quién puede anular plata y qué queda escrito
 pytest tests/test_cobro_repetido.py  # que un cobro reintentado no cobre dos veces
 pytest tests/test_reparto.py         # que el reparto de depilación cuente la seña como entró
+pytest tests/test_sueldos_valores.py # valor hora de cada una, comisión de cada servicio y los códigos
 pytest tests/test_pwa.py             # que la app instalable guarde lo justo y cambie de versión
 node --test "tests/escpos/**/*.test.js"   # el papel, byte a byte contra los golden
 ```

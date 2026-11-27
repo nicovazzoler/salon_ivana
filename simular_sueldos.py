@@ -213,9 +213,8 @@ def resumen(api, empleadas, desde):
     Por ciclo y no por empleada: el total de una puede arrastrar semanas viejas
     sin pagar y no cerraría contra las comisiones de acá.
     """
-    cfg = api.pedir("/api/config")
-    print(f"\nCon valor hora ${cfg.get('valor_hora', 0):,} y comisión {cfg.get('comision_pct', 0)}%, "
-          f"el ciclo del {desde} propone:\n")
+    print(f"\nEl ciclo del {desde} propone, con el valor hora de cada una y la comisión "
+          f"de cada servicio:\n")
     print(f"  {'':<12} {'comisiones':>12} {'horas':>12} {'total':>12}   falta")
     for emp in empleadas:
         r = api.pedir(f"/api/sueldos/pendiente?empleado_id={emp['id']}")

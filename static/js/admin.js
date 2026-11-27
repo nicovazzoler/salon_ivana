@@ -18,13 +18,6 @@ let catActual;
    una y el rail marca la otra. null = todas. */
 let catFiltro=null;
 let ITEMS_ALL=[];
-/* El porcentaje general de comisión, el que rige cuando el ítem no tiene el
-   suyo. Se muestra como sugerencia en la ficha para que se vea contra qué se
-   está eligiendo; el que manda es el del servidor. */
-let COMISION_GENERAL = 40;
-/* El valor hora general, el mismo que se edita en Sueldos. Acá se lee para
-   mostrar contra qué se está eligiendo cuando alguien cobra distinto. */
-let VALOR_HORA_GENERAL = 0;
 /* El mismo mínimo que pide el servidor. Se chequea acá para avisar antes de
    mandar, no en lugar de allá: el que frena de verdad es el backend. */
 const LARGO_MINIMO_PASS = 8;
@@ -36,13 +29,6 @@ let modoEdicion=false;
 
 function toast(m){const t=$("#toast");t.textContent=m;t.classList.add("show");setTimeout(()=>t.classList.remove("show"),2200);}
 
-// El general vive en config y lo edita la dueña desde Sueldos; acá se lee para
-// mostrarlo como referencia en la ficha del ítem.
-authFetch("/api/config").then(r=>r.json()).then(c=>{
-  if(c && c.comision_pct != null) COMISION_GENERAL = c.comision_pct;
-  if(c && c.valor_hora  != null) VALOR_HORA_GENERAL = c.valor_hora;
-  if($("#listaEmpleados")) cargarEmpleados();   // redibuja con el general ya sabido
-}).catch(()=>{});
 
 async function cargarCats(){
   const cats=await (await authFetch("/api/categorias")).json();
@@ -130,7 +116,7 @@ function renderItems(items, mostrarCat){
     const marcas=[];
     if(mostrarCat) marcas.push(`<span class="cat-mini">${esc(it.categoria)}</span>`);
     if(it.es_producto) marcas.push(`<span class="tag">prod</span>`);
-    if(it.es_comision) marcas.push(`<span class="tag">comisión</span>`);
+    if(it.es_comision) marcas.push(`<span class="tag">comisión ${it.comision_pct ?? 0}%</span>`);
     if(it.es_depilacion) marcas.push(`<span class="tag">depilación</span>`);
     b.innerHTML = `<span class="n">${esc(it.nombre)}</span>
       <span class="precios">
@@ -213,8 +199,7 @@ function renderItemsEditables(items, mostrarCat){
     // Si este ítem ya venía tocado desde otra categoría, se muestra como quedó y
     // no como está en la base: el cambio sigue pendiente hasta que se guarde.
     const pend = CAMBIOS.get(it.id);
-    const v = pend || {nombre:it.nombre, precio:it.precio, es_comision:!!it.es_comision,
-                       comision_pct:it.comision_pct, categoria:it.categoria};
+    const v = pend || {nombre:it.nombre, precio:it.precio, categoria:it.categoria};
     /* El chip de categoría aparece siempre que la fila esté MOVIDA, aunque se
        esté mirando una sola categoría: sin eso, mover un ítem afuera lo dejaba
        en la lista sin ninguna señal de que ya no pertenece ahí. */
@@ -222,10 +207,6 @@ function renderItemsEditables(items, mostrarCat){
     const cat = (mostrarCat || movida)
       ? `<span class="tag ${movida?"movido":"neutro"}">${movida?"→ ":""}${esc(v.categoria || it.categoria)}</span>`
       : "";
-    /* El porcentaje se edita acá adentro, al lado de la marca de comisión. Es la
-       razón principal para entrar a este modo: prendés el filtro de comisión,
-       entrás a editar y quedan todos los porcentajes del catálogo uno abajo del
-       otro. De a un ítem por vez, cambiar diez es abrir y cerrar diez fichas. */
     row.innerHTML=`
       ${eligiendo ? `<input type="checkbox" class="sel" aria-label="Elegir ${esc(it.nombre)}">` : ""}
       <input class="n" value="${esc(v.nombre)}" aria-label="Nombre">
@@ -233,31 +214,16 @@ function renderItemsEditables(items, mostrarCat){
       <span class="meta">
         <span class="transf" style="white-space:nowrap;">→ transf ${fmt(it.precio_transfer||0)}</span>
         ${cat}${it.es_producto?'<span class="tag">prod</span>':''}
-        <label class="chk-com" title="La empleada que lo haga cobra comisión por este trabajo">
-          <input type="checkbox" class="com" ${v.es_comision?"checked":""}> comisión
-        </label>
-        <span class="pct-fila"${v.es_comision?"":" hidden"}>
-          <input type="number" class="pct" min="0" max="100" inputmode="numeric"
-                 value="${v.comision_pct ?? ""}" placeholder="general (${COMISION_GENERAL}%)"
-                 aria-label="Porcentaje de comisión"><span class="u">%</span>
-        </span>
+        ${it.es_comision?`<span class="tag">comisión ${it.comision_pct ?? 0}%</span>`:''}
       </span>
       <span class="acc"></span>`;
-    const leerPct=()=>{
-      const t=row.querySelector(".pct").value.trim();
-      // "" = sin porcentaje propio. Se guarda como null y el ítem usa el general.
-      return t === "" ? null : Math.max(0, Math.min(100, parseInt(t,10) || 0));
-    };
     // La categoría no tiene casillero en la fila: se cambia desde la barra de
     // arriba, para varios de una. La fila la lleva puesta para saber si se movió.
     let catFila = v.categoria || it.categoria;
     const leer=()=>({nombre:row.querySelector(".n").value.trim(),
                      precio:parseInt(row.querySelector(".p").value,10),
-                     es_comision:row.querySelector(".com").checked,
-                     comision_pct:leerPct(), categoria:catFila});
+                     categoria:catFila});
     const original=JSON.stringify({nombre:it.nombre, precio:it.precio,
-                                   es_comision:!!it.es_comision,
-                                   comision_pct:it.comision_pct ?? null,
                                    categoria:it.categoria});
     const marcar=()=>{
       const ahora=leer();
@@ -277,9 +243,6 @@ function renderItemsEditables(items, mostrarCat){
       row.querySelector(".transf").textContent = sucia
         ? "→ transf: se calcula al guardar"
         : `→ transf ${fmt(it.precio_transfer||0)}`;
-      // El casillero del porcentaje sigue a la marca: sin comisión no significa
-      // nada, y vacío quiere decir "usa el general".
-      row.querySelector(".pct-fila").hidden = !row.querySelector(".com").checked;
       pintarBarra();
     };
     row.querySelectorAll("input:not(.sel)").forEach(el=>{
@@ -318,11 +281,8 @@ function renderItemsEditables(items, mostrarCat){
   pintarSeleccion();
 }
 
-/* Ponerle el mismo porcentaje a varios de una: tipear quince veces el mismo
-   número es una en la que se tipea otro sin darse cuenta.
-
-   No guarda: escribe en los mismos casilleros y de ahí sigue el camino de
-   siempre, así se ve qué va a pasar antes de que pase. */
+/* Mover varios de categoría de una. No guarda: queda como cambio pendiente y de
+   ahí sigue el camino de siempre, así se ve qué va a pasar antes de que pase. */
 function barraSeleccion(){
   const barra=document.createElement("div");
   barra.className="barra-sel";
@@ -331,12 +291,6 @@ function barraSeleccion(){
     <button type="button" class="b-out todos">Elegir todos</button>
     <button type="button" class="b-out ninguno" disabled>Ninguno</button>
     <span class="separa"></span>
-    <label class="rot">Ponerles</label>
-    <input type="number" class="pct-todos" min="0" max="100" inputmode="numeric"
-           placeholder="%" aria-label="Porcentaje para los elegidos">
-    <button type="button" class="b-tinta poner" disabled>Aplicar</button>
-    <button type="button" class="b-out general" disabled>Que usen el general</button>
-    <span class="corte"></span>
     <label class="rot">Mover a</label>
     <input class="cat-todos" list="cats" placeholder="categoría" aria-label="Categoría destino">
     <button type="button" class="b-tinta mover" disabled>Mover</button>`;
@@ -346,40 +300,8 @@ function barraSeleccion(){
   barra.querySelector(".todos").onclick   = () => marcar(true);
   barra.querySelector(".ninguno").onclick = () => marcar(false);
 
-  const aplicar = (valor) => {
-    const elegidas = filas().filter(r => r.querySelector(".sel").checked);
-    let n=0, sinComision=0;
-    elegidas.forEach(r=>{
-      // Un porcentaje en un ítem que no va a comisión no quiere decir nada, así
-      // que se lo saltea en vez de escribirle un número que no se va a usar.
-      if(!r.querySelector(".com").checked){ sinComision++; return; }
-      const casillero = r.querySelector(".pct");
-      casillero.value = valor;
-      // Por el mismo camino que tipearlo: así queda en CAMBIOS, la fila se marca
-      // y la barra de guardar cuenta bien, sin repetir nada de eso acá.
-      casillero.dispatchEvent(new Event("input"));
-      n++;
-    });
-    const hubo = `${n} ${n===1?"ítem":"ítems"}`;
-    toast(n === 0
-      ? "No quedó ninguno para cambiar"
-      : (valor === "" ? `${hubo} vuelven al general` : `${hubo} al ${valor}%`)
-        + (sinComision ? ` · ${sinComision} sin comisión, sin tocar` : ""));
-  };
-
-  barra.querySelector(".poner").onclick = () => {
-    const t = barra.querySelector(".pct-todos").value.trim();
-    const n = parseInt(t,10);
-    if(t === "" || isNaN(n) || n < 0 || n > 100){
-      toast("Escribí un porcentaje de 0 a 100"); barra.querySelector(".pct-todos").focus(); return;
-    }
-    aplicar(String(n));
-  };
-  barra.querySelector(".general").onclick = () => aplicar("");
-
-  /* Mover de categoría, la otra cosa que se hace de a varios. Tampoco guarda
-     solo: queda como cambio pendiente, con el chip diciendo a dónde van, que
-     mover veinte sin mirarlos antes se arregla de a uno. */
+  /* Con el chip diciendo a dónde van: mover veinte sin mirarlos antes se
+     arregla de a uno. */
   barra.querySelector(".mover").onclick = () => {
     const destino = barra.querySelector(".cat-todos").value.trim();
     if(!destino){ toast("Escribí o elegí la categoría destino"); barra.querySelector(".cat-todos").focus(); return; }
@@ -389,9 +311,6 @@ function barraSeleccion(){
   };
   barra.querySelector(".cat-todos").addEventListener("keydown", e=>{
     if(e.key === "Enter") barra.querySelector(".mover").click();
-  });
-  barra.querySelector(".pct-todos").addEventListener("keydown", e=>{
-    if(e.key === "Enter") barra.querySelector(".poner").click();
   });
   return barra;
 }
@@ -407,7 +326,7 @@ function pintarSeleccion(){
   barra.querySelector(".cuantos").textContent =
     n === 0 ? "Ninguno elegido" : `${n} de ${filas.length} elegido${n===1?"":"s"}`;
   barra.classList.toggle("hay", n > 0);
-  ["poner","general","ninguno","mover"].forEach(c => barra.querySelector("."+c).disabled = n === 0);
+  ["ninguno","mover"].forEach(c => barra.querySelector("."+c).disabled = n === 0);
   barra.querySelector(".todos").disabled = n === filas.length;
 }
 
@@ -437,10 +356,7 @@ async function guardarTodos(){
     if(!v.nombre || !(v.precio > 0)){ malos.push(`${v.nombreViejo} (nombre o precio vacío)`); continue; }
     const r = await authFetch(`/api/items/${id}`, {method:"PUT",
       headers:{"Content-Type":"application/json"},
-      // -1 es "sacale el propio y que use el general"; null sería "no lo toques".
-      body: JSON.stringify({nombre:v.nombre, precio:v.precio, es_comision:v.es_comision,
-                            categoria: v.categoria,
-                            comision_pct: v.comision_pct == null ? -1 : v.comision_pct})});
+      body: JSON.stringify({nombre:v.nombre, precio:v.precio, categoria: v.categoria})});
     if(r.ok) CAMBIOS.delete(id); else malos.push(v.nombreViejo);
   }
   if(malos.length) toast("No se pudieron guardar: " + malos.join(", "));
@@ -508,17 +424,10 @@ function fichaItem(it){
         <span class="tilde">✓</span> Es producto
         <span class="sub">descuenta stock al venderlo</span>
       </button>
-      <button type="button" class="marca f-com">
-        <span class="tilde">✓</span> Va a comisión
-        <span class="sub">se le paga a quien lo haga</span>
-      </button>
       <button type="button" class="marca f-depi">
         <span class="tilde">✓</span> Es depilación
         <span class="sub">entra en el reparto de la sesión, no en comisiones</span>
       </button>
-      <div class="campo pct" hidden><label>Su porcentaje</label>
-        <div class="con-signo"><input class="f-pct" type="number" min="0" max="100" inputmode="numeric"
-             placeholder="general (${COMISION_GENERAL}%)"><span>%</span></div></div>
     </div>
     <p class="ficha-pie">La categoría se escribe: nace con el primer ítem que la use y
       desaparece sola cuando se queda sin ninguno. El precio de transferencia se
@@ -536,21 +445,11 @@ function fichaItem(it){
   $$(".f-cat").value    = it ? (it.categoria || catActual) : (catActual || "");
   const marcar = (b, on) => b.classList.toggle("on", !!on);
   marcar($$(".f-prod"), it && it.es_producto);
-  marcar($$(".f-com"),  it && it.es_comision);
   marcar($$(".f-depi"), it && it.es_depilacion);
-  if(it && it.comision_pct != null) $$(".f-pct").value = it.comision_pct;
 
-  const verPct = () => { $$(".pct").hidden = !$$(".f-com").classList.contains("on"); };
-  verPct();
   $$(".f-prod").onclick = () => $$(".f-prod").classList.toggle("on");
-  $$(".f-com").onclick  = () => { $$(".f-com").classList.toggle("on"); verPct(); };
-  // Las dos marcas se excluyen: la depilación se reparte por día y no se paga
-  // por comisión, así que un ítem con las dos puestas se pagaría dos veces.
-  $$(".f-depi").onclick = () => {
-    const on = !$$(".f-depi").classList.contains("on");
-    marcar($$(".f-depi"), on);
-    if(on){ marcar($$(".f-com"), false); verPct(); }
-  };
+  // Marcarlo depilación le saca la comisión, si tenía: se reparte, no se comisiona.
+  $$(".f-depi").onclick = () => $$(".f-depi").classList.toggle("on");
 
   const cerrar = () => { pan.remove(); document.querySelectorAll(".btn-item.abierto").forEach(b=>b.classList.remove("abierto")); };
   $$(".cerrar").onclick = cerrar;
@@ -563,19 +462,12 @@ function fichaItem(it){
     if(!nombre){ toast("El nombre no puede quedar vacío"); return; }
     if(!(precio > 0)){ toast("El precio tiene que ser mayor a 0"); return; }
     if(!categoria){ toast("Falta la categoría"); return; }
-    const pctTexto = $$(".f-pct").value.trim();
-    const pct = parseInt(pctTexto, 10);
-    if(pctTexto && (isNaN(pct) || pct < 0 || pct > 100)){ toast("La comisión va de 0 a 100"); return; }
     const cuerpo = {nombre, precio, categoria,
                     es_producto: $$(".f-prod").classList.contains("on"),
-                    es_comision: $$(".f-com").classList.contains("on"),
-                    es_depilacion: $$(".f-depi").classList.contains("on"),
-                    // -1 es "sacale el propio y que use el general": mandar null
-                    // sería "no toques este campo", que no es lo mismo.
-                    comision_pct: pctTexto ? pct : -1};
+                    es_depilacion: $$(".f-depi").classList.contains("on")};
     const r = nuevo
       ? await authFetch("/api/items", {method:"POST", headers:{"Content-Type":"application/json"},
-          body: JSON.stringify({...cuerpo, comision_pct: pctTexto ? pct : null})})
+          body: JSON.stringify(cuerpo)})
       : await authFetch(`/api/items/${it.id}`, {method:"PUT", headers:{"Content-Type":"application/json"},
           body: JSON.stringify(cuerpo)});
     if(!r.ok){ toast((await r.json().catch(()=>({}))).detail || "No se pudo guardar"); return; }
@@ -884,18 +776,9 @@ async function cargarEmpleados(){
   const emps = VER_BAJAS ? todos : todos.filter(e => e.activo);
   cont.innerHTML = "";
 
-  const gral = document.createElement("div");
-  // Sin el bloque de "una en particular": acá cada empleada ya tiene su renglón,
-  // y su valor hora se cambia desde ahí.
-  panelGenerales(gral, c => {
-    VALOR_HORA_GENERAL = c.valor_hora;
-    cargarEmpleados();
-  }, {porPersona: false});
-  cont.appendChild(gral);
-
-  // El corte de los sueldos, abajo de los dos números con los que se liquida:
-  // es uno solo para todo el local y se toca desde donde se configura, no desde
-  // la pantalla de una empleada, que hacía pensar que valía solo para ella.
+  // El corte de los sueldos: es uno solo para todo el local y se toca desde donde
+  // se configura, no desde la pantalla de una empleada, que hacía pensar que
+  // valía solo para ella.
   const corte = document.createElement("div");
   panelCorteSueldos(corte, () => cargarEmpleados());
   cont.appendChild(corte);
@@ -904,7 +787,7 @@ async function cargarEmpleados(){
   // configuración del local, se tocan una vez cada varios meses y en "El día"
   // eran una tarjeta más abajo de la cuenta que se mira todos los días.
   const depi = document.createElement("div");
-  panelGenerales(depi, () => {}, {soloDepi: true});
+  panelNumerosDepi(depi);
   cont.appendChild(depi);
 
   emps.forEach(e => {
@@ -925,8 +808,7 @@ async function cargarEmpleados(){
     // Solo lo que se sale de lo normal. Una columna que dice lo mismo en todas
     // las filas ocupa lugar sin decir nada.
     if(!e.activo) marcas.appendChild(chip("de baja", "gris"));
-    if(!e.tiene_pin) marcas.appendChild(chip("sin código"));
-    if(e.valor_hora != null) marcas.appendChild(chip(`$${e.valor_hora.toLocaleString("es-AR")} la hora`, "gris"));
+    if(e.activo && !e.cobra_sueldo) marcas.appendChild(chip("no cobra sueldo", "gris"));
 
     const abrir = Object.assign(document.createElement("button"),
                                 {className:"b-out abrir", textContent:"Abrir"});
@@ -998,21 +880,10 @@ function panelPersona(e){
   const pan = document.createElement("div");
   pan.className = "panel-persona";
   pan.dataset.emp = e.id;
-  const vh = e.valor_hora != null
-    ? `$${e.valor_hora.toLocaleString("es-AR")}`
-    : `$${VALOR_HORA_GENERAL.toLocaleString("es-AR")} (el general)`;
   pan.innerHTML = `
     <div class="linea" data-tipo="nombre">
       <span class="et">Nombre<small>Arrastra a sus comprobantes y turnos</small></span>
       <span class="dato">${escHtml(e.nombre)}</span>
-      <button class="b-out">Cambiar</button></div>
-    <div class="linea" data-tipo="pin">
-      <span class="et">Código<small>Con esto abre su sueldo</small></span>
-      <span class="dato">${e.tiene_pin ? "puesto" : `<span class="chip-emp">no tiene</span>`}</span>
-      <button class="b-out">${e.tiene_pin ? "Cambiar" : "Poner código"}</button></div>
-    <div class="linea" data-tipo="vh">
-      <span class="et">Valor hora</span>
-      <span class="dato">${vh}</span>
       <button class="b-out">Cambiar</button></div>
     <div class="linea" data-tipo="horario">
       <span class="et">Horario<small>El de siempre. Un día suelto se cambia en la agenda</small></span>
@@ -1030,7 +901,7 @@ function panelPersona(e){
       const tipo = linea.dataset.tipo;
       if(tipo === "baja") return void bajaOReactivar(e);
       pan.querySelectorAll(".panel-edicion, .panel-horario").forEach(x => x.remove());
-      linea.after(tipo === "horario" ? panelHorario(e) : panelEmpleado(e, tipo));
+      linea.after(tipo === "horario" ? panelHorario(e) : panelEmpleado(e));
     };
   });
   return pan;
@@ -1056,61 +927,24 @@ async function bajaOReactivar(e){
 const escHtml = s => String(s ?? "").replace(/[&<>"']/g,
   c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 
-/* Un panel por vez, como en usuarios: el nombre y el código no se cambian juntos
-   casi nunca, y tenerlos siempre a la vista convierte una lista que se mira en
-   un formulario a medio llenar. */
-function panelEmpleado(e, tipo){
-  const esPin = tipo === "pin", esVh = tipo === "vh";
-  const rotulo = esPin ? "Código nuevo (4 a 8 números)"
-               : esVh ? "Valor hora" : "Nombre";
+/* El nombre, editado en el lugar. El código, el valor hora y si cobra sueldo
+   están en Sueldos, en Valores y comisiones. */
+function panelEmpleado(e){
   const pan = document.createElement("div");
   pan.className = "panel-edicion";
   pan.innerHTML = `
-    <div class="campo"><label>${rotulo}</label>
-      <input class="valor" type="${esVh ? "number" : "text"}" ${
-        esPin ? 'inputmode="numeric" maxlength="8" autocomplete="off" placeholder="Ej: 2468"' : ""}${
-        esVh ? ` min="0" inputmode="numeric" placeholder="${VALOR_HORA_GENERAL} (el general)"` : ""}></div>
+    <div class="campo"><label>Nombre</label><input class="valor" type="text"></div>
     <span class="acc">
       <button class="b-ok aceptar">Guardar</button>
       <button class="b-out cancelar">Cancelar</button>
-      ${esPin && e.tiene_pin ? `<button class="b-del sacar">Sacar el código</button>` : ""}
-      ${esVh && e.valor_hora != null ? `<button class="b-out general">Que use el general</button>` : ""}
-    </span>
-    ${esPin ? `<p class="muted" style="flex:1 1 100%;margin:0;">El código no se puede volver a ver:
-       se guarda encriptado, como las contraseñas. Si se olvida, se pone uno nuevo.</p>` : ""}
-    ${esVh ? `<p class="muted" style="flex:1 1 100%;margin:0;">Vacío quiere decir que cobra el general
-       ($${VALOR_HORA_GENERAL.toLocaleString("es-AR")}), que se cambia arriba. Los sueldos ya cerrados
-       no se tocan: cada liquidación guarda el valor con el que se pagó.</p>` : ""}`;
+    </span>`;
   const campo = pan.querySelector(".valor");
-  if(!esPin && !esVh) campo.value = e.nombre;
-  if(esVh && e.valor_hora != null) campo.value = e.valor_hora;
-
+  campo.value = e.nombre;
   pan.querySelector(".cancelar").onclick = () => pan.remove();
-  const sacar = pan.querySelector(".sacar");
-  if(sacar) sacar.onclick = async () => {
-    if(!await confirmar(`Sin código, ${e.nombre} no va a poder entrar a su sueldo. ¿Se lo sacamos?`, { si: "Sacar el código" })) return;
-    await guardarEmpleado(`/api/empleados/${e.id}/pin`, {pin: null}, "Código sacado");
-  };
-  const general = pan.querySelector(".general");
-  // -1 es el centinela de "sacale el propio": mandar null sería "no lo toques".
-  if(general) general.onclick = () =>
-    guardarEmpleado(`/api/empleados/${e.id}`, {valor_hora: -1}, "Vuelve al valor general");
   pan.querySelector(".aceptar").onclick = async () => {
     const v = campo.value.trim();
-    if(!v){
-      // En el valor hora, vacío es una respuesta válida: quiere decir el general.
-      if(esVh){ await guardarEmpleado(`/api/empleados/${e.id}`, {valor_hora: -1}, "Vuelve al valor general"); return; }
-      toast(esPin ? "Escribí el código nuevo" : "El nombre no puede quedar vacío"); return;
-    }
-    if(esPin && (!/^\d{4,8}$/.test(v))){ toast("El código son de 4 a 8 números"); return; }
-    if(esVh){
-      const n = parseInt(v, 10);
-      if(isNaN(n) || n < 0){ toast("El valor hora tiene que ser un número"); return; }
-      await guardarEmpleado(`/api/empleados/${e.id}`, {valor_hora: n}, "Valor hora guardado");
-      return;
-    }
-    if(esPin) await guardarEmpleado(`/api/empleados/${e.id}/pin`, {pin: v}, "Código guardado");
-    else      await guardarEmpleado(`/api/empleados/${e.id}`, {nombre: v}, "Nombre cambiado");
+    if(!v){ toast("El nombre no puede quedar vacío"); return; }
+    await guardarEmpleado(`/api/empleados/${e.id}`, {nombre: v}, "Nombre cambiado");
   };
   campo.addEventListener("keydown", ev => {
     if(ev.key === "Enter") pan.querySelector(".aceptar").click();
