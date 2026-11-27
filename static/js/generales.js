@@ -133,24 +133,24 @@ function panelCorteSueldos(cont, alGuardar){
     cont.querySelector(".arrOk").onclick = async () => {
       const f = cont.querySelector(".arrFecha").value;
       if(!f){ toast("Elegí desde qué día"); return; }
-      let afuera = {ciclos: 0, total: 0, detalle: []};
+      let afuera = {dias: 0, total: 0, detalle: []};
       try{
         afuera = await (await authFetch("/api/sueldos/arranque?fecha=" + f)).json();
       }catch(e){ /* sin el detalle igual se puede poner: el cartel dice menos */ }
       const lista = (afuera.detalle || []).map(d =>
-        `· ${d.nombre}: ${d.ciclos} ${d.ciclos === 1 ? "ciclo" : "ciclos"}, ${_pesos(d.total)}`).join("\n");
+        `· ${d.nombre}: ${d.dias} ${d.dias === 1 ? "día" : "días"}, ${_pesos(d.total)}`).join("\n");
       if(!await confirmar(`Los sueldos de TODAS van a contar desde el ${corto(f)}.\n\n`
-        + (afuera.ciclos
-            ? `Dejan de aparecer ${afuera.ciclos} ${afuera.ciclos === 1 ? "ciclo" : "ciclos"} `
+        + (afuera.dias
+            ? `Dejan de aparecer ${afuera.dias} ${afuera.dias === 1 ? "día" : "días"} sin pagar `
               + `de ${afuera.empleadas} ${afuera.empleadas === 1 ? "empleada" : "empleadas"}, `
               + `por ${_pesos(afuera.total)}:\n${lista}\n\n`
-            : "No deja afuera ningún ciclo pendiente.\n\n")
+            : "No deja afuera nada pendiente.\n\n")
         + "No se borra nada: si te equivocás, corrés el corte para atrás y vuelve todo.", { si: "Mover el corte" })) return;
       await guardar(f, "Corte puesto ✓");
     };
     const quitar = cont.querySelector(".arrNo");
     if(quitar) quitar.onclick = async () => {
-      if(!await confirmar("Van a volver a aparecer todos los ciclos anteriores al corte, "
+      if(!await confirmar("Va a volver a aparecer todo lo pendiente anterior al corte, "
                 + "de todas las empleadas. ¿Seguimos?", { si: "Quitar el corte" })) return;
       await guardar(null, "Corte quitado ✓");
     };
