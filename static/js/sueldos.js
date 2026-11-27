@@ -39,11 +39,10 @@ let TODAS = [];
 // para decidir a quién sigue mostrando.
 let PENDIENTE = {};
 
-/* A quién se le paga sueldo. El código es la señal: el que cobra acá tiene uno
-   para entrar a ver lo suyo, y la dueña atiende pero no se paga a sí misma. Si
-   igual le quedó algo pendiente aparece: esconder plata que se debe es peor que
-   un nombre de más. */
-const seLePaga = e => e.tiene_pin !== false || (PENDIENTE[e.id] || 0) > 0;
+/* A quién se le paga sueldo: la casilla de Valores y comisiones. Si a una que no
+   cobra le quedó algo pendiente aparece igual: esconder plata que se debe es
+   peor que un nombre de más. */
+const seLePaga = e => e.cobra_sueldo || (PENDIENTE[e.id] || 0) > 0;
 const DUENO = esDueno();
 /* La misma tarjeta la miran dos personas distintas: la empleada mira lo suyo y
    la dueña mira lo de otra. Los rótulos cambian con eso, porque "se te debe" en
@@ -200,30 +199,23 @@ async function cargarPanelDueno(){
   // mientras haya algo pendiente hay que pagárselo, pero una que se fue hace
   // meses y ya cobró todo no tiene por qué seguir en la lista de todos los días.
   PENDIENTE = Object.fromEntries(todos.map(r => [r.empleado.id, r.total]));
-  const conCodigo = Object.fromEntries(EMPLEADOS.map(e => [e.id, e.tiene_pin !== false]));
+  const cobra = Object.fromEntries(EMPLEADOS.map(e => [e.id, !!e.cobra_sueldo]));
   // "Tiene algo" no es "tiene ciclos": el ciclo en curso existe siempre, aunque
   // esté en blanco, porque es donde la empleada carga sus horas.
   const conAlgo = r => r.ciclos.filter(c => !c.vacio).length;
   const resumenes = todos.filter(r => (r.activo || r.total > 0 || conAlgo(r))
-                                   && (conCodigo[r.empleado.id] || r.total > 0 || conAlgo(r)));
-  /* El general sale de config y NO del resumen de la primera de la lista.
-     Cuando cada una podía tener el suyo, `resumenes[0].valor_hora` pasó a ser el
-     de esa persona: el casillero de abajo edita el general, y con eso adentro,
-     guardarlo le ponía a todas el sueldo de la primera del abecedario. */
-  const gral = await pedir("/api/config").then(r=>r.json()).catch(()=>({}));
-  const distintas = resumenes.filter(r => r.valor_hora !== (gral.valor_hora ?? 0)).length;
+                                   && (cobra[r.empleado.id] || r.total > 0 || conAlgo(r)));
   const total = resumenes.reduce((a,r)=>a+r.total, 0);
   const ciclosViejos = resumenes.reduce((a,r)=>a + Math.max(conAlgo(r) - 1, 0), 0);
   $("#kpisDueno").innerHTML = `
     <div class="kpi"><span class="lbl">Total a pagar</span><span class="val">${fmt(total)}</span></div>
-    <div class="kpi"><span class="lbl">Valor hora</span><span class="val">${fmt(gral.valor_hora ?? 0)}</span>${
-      distintas ? `<span class="nota">${distintas} ${distintas===1?"cobra":"cobran"} distinto</span>` : ""}</div>
     ${ciclosViejos ? `<div class="kpi"><span class="lbl">Semanas atrasadas</span><span class="val">${ciclosViejos}</span></div>` : ""}`;
   $("#listaEmpleadas").innerHTML = resumenes.map(r=>`
     <div class="fila-emp${r.empleado.id===EMP?" abierta":""}">
       <div>
         <b>${esc(r.empleado.nombre)}${r.activo ? "" : " · de baja"}</b>
-        <span class="det">${r.valor_hora !== (gral.valor_hora ?? 0) ? `${fmt(r.valor_hora)} la hora · ` : ""}${
+        <span class="det">${r.valor_hora ? `${fmt(r.valor_hora)} la hora · `
+          : `<span style="color:var(--danger);">sin valor hora</span> · `}${
           conAlgo(r) ? `${conAlgo(r)} ${conAlgo(r)===1?"ciclo":"ciclos"} · ${hhmm(r.minutos_total)}` : "sin nada pendiente"}${
           r.sin_tiempo ? ` · <span style="color:var(--danger);">${r.sin_tiempo===1 ? "falta 1 duración" : `faltan ${r.sin_tiempo} duraciones`}</span>` : ""}${
           r.sin_horas ? ` · <span style="color:var(--danger);">${r.sin_horas===1 ? "falta 1 día sin horas" : `faltan ${r.sin_horas} días sin horas`}</span>` : ""}</span>
@@ -231,7 +223,7 @@ async function cargarPanelDueno(){
       <div class="plata">${fmt(r.total)}</div>
       <button class="b-out ver" data-emp="${r.empleado.id}">Ver</button>
     </div>`).join("") || `<div class="vacio"><b>No hay empleados cargados</b>
-      Agregalos más abajo y ahí empiezan a aparecer acá.</div>`;
+      Se agregan en Admin y se les pone el valor hora en Valores y comisiones.</div>`;
   // "Ver" cambia la empleada del detalle, que está más abajo en la página: sin
   // el scroll, tocarlo parecía no hacer nada.
   $("#listaEmpleadas").querySelectorAll(".ver").forEach(b=>{
@@ -251,11 +243,6 @@ async function cargarPanelDueno(){
       $("#tituloDetalle").closest(".card").scrollIntoView({behavior:"smooth", block:"start"});
     };
   });
-
-  // El mismo editor que usa Admin arriba de la lista de empleados: los dos
-  // números son uno solo y no pueden dibujarse en dos lados distintos.
-  panelGenerales($("#cfgGenerales"), () => cargarPanelDueno());
-  panelCorteSueldos($("#cfgArranque"), () => cargarPanelDueno());
 
   pintarLiquidaciones();
 }
@@ -365,15 +352,12 @@ function pintar(){
     <div class="kpi">
       <span class="lbl">Comisiones</span>
       <span class="val">${fmt(D.total_comisiones)}</span>
-      <span class="nota">al ${D.comision_pct}% salvo los que tienen el suyo</span>
     </div>
     <div class="kpi">
       <span class="lbl">Horas</span>
       <span class="val">${fmt(D.total_horas)}</span>
-      <span class="nota">${hhmm(D.minutos_total)} declaradas · ${fmt(D.valor_hora)} la hora${
-        // De quién es ese número: el suyo o el de todas. Sin decirlo, el día que
-        // alguien cobra distinto no hay forma de saber si el total salió bien.
-        D.valor_hora_propio ? " (el suyo)" : " (el general)"}</span>
+      <span class="nota">${hhmm(D.minutos_total)} declaradas · ${
+        D.valor_hora ? `${fmt(D.valor_hora)} la hora` : "sin valor hora"}</span>
     </div>`;
   if(espera) $("#totales").insertAdjacentHTML("beforeend",
     `<div class="kpi" style="flex:1 1 100%;"><span class="lbl">Sin contar todavía</span>
@@ -481,10 +465,7 @@ function dibujarTrabajo(t){
   return `<div class="trabajo${falta ? " sin-tiempo" : ""}">
     <div class="que">
       <b>${esc(t.nombre)}${t.cantidad>1?` ×${t.cantidad}`:""} ${marca}</b>
-      <span class="det">${esc(quien)}${fmt(t.base)}${
-        // El porcentaje solo cuando NO es el general: si estuviera en todos los
-        // renglones, el que es distinto dejaría de saltar a la vista.
-        t.pct != null && t.pct !== D.comision_pct ? ` · al ${t.pct}%` : ""}${
+      <span class="det">${esc(quien)}${fmt(t.base)} · ${t.pct ?? 0}%${
         t.suelto ? ` · <a href="#" class="borrar-suelto" data-trabajo="${t.id}">borrar</a>` : ""}</span>
     </div>
     <span class="dia-horas">
@@ -717,79 +698,265 @@ function vigilarPantalla(){
 
 /* ---------- la puerta ---------- */
 
-/* Con el usuario empleado no se muestra nada hasta que alguien dice quién es y
-   pone su código, y se pide en CADA entrada. Sin ningún código cargado no se
-   entra: dejando pasar "mientras no haya códigos", la pantalla queda abierta
-   hasta el día que la dueña cargue el primero. */
+/* Con el usuario empleado no se muestra nada hasta que alguien toca su nombre y
+   pone su código, y se pide en CADA entrada. La que todavía no tiene código lo
+   elige ahí, dos veces: la dueña no maneja códigos, solo los ve. */
+let PUERTA = { paso: "nombres" };
+
 async function abrirPuerta(motivo){
-  const puerta = $("#puerta"), cuerpo = $("#puertaCuerpo");
   $("#todo").hidden = true;
-  puerta.hidden = false;
-  $("#puertaAyuda").textContent = motivo || "Elegí quién sos y poné tu código.";
-
+  $("#puerta").hidden = false;
+  PUERTA = { paso: "nombres", motivo };
   let emps = [];
-  try{ emps = (await (await authFetch("/api/empleados")).json()).filter(e => e.tiene_pin); }
+  try{ emps = (await (await authFetch("/api/empleados")).json()).filter(e => e.cobra_sueldo); }
   catch(e){ emps = []; }
+  PUERTA.emps = emps;
+  pintarPuerta();
+}
 
-  if(!emps.length){
-    $("#puertaAyuda").textContent = "El ingreso está cerrado.";
-    cuerpo.innerHTML = `<div class="vacio"><b>Todavía no hay códigos cargados</b>
-      La dueña los pone en Admin, en la lista de empleados. Hasta entonces esta
-      pantalla no se abre para nadie.</div>`;
+function pintarPuerta(){
+  const cuerpo = $("#puertaCuerpo"), ayuda = $("#puertaAyuda");
+  if(PUERTA.paso === "nombres"){
+    $("#puerta h2").hidden = false;
+    ayuda.textContent = PUERTA.motivo || "";
+    ayuda.hidden = !PUERTA.motivo;
+    cuerpo.innerHTML = PUERTA.emps.length
+      ? `<div class="puerta-caja"><div class="nombres">${PUERTA.emps.map(e => `
+          <button class="nombre-tile" data-id="${e.id}"><span class="inicial">${esc(e.nombre[0] || "?")}</span>
+            ${esc(e.nombre)}${e.tiene_pin ? "" : "<small>elegí tu código</small>"}</button>`).join("")}</div></div>`
+      : `<div class="vacio"><b>No hay nadie que cobre sueldo</b>
+          La dueña lo marca en Sueldos, en Valores y comisiones.</div>`;
+    cuerpo.querySelectorAll(".nombre-tile").forEach(b => b.onclick = () => {
+      const e = PUERTA.emps.find(x => String(x.id) === b.dataset.id);
+      PUERTA = { ...PUERTA, paso: e.tiene_pin ? "pin" : "nuevo", emp: e, val: "", primero: null, error: "" };
+      pintarPuerta();
+    });
     return;
   }
-
-  const guardado = localStorage.getItem(RECUERDO);
-  cuerpo.innerHTML = `
-    <div class="puerta-form">
-      <div>
-        <label for="pQuien">Quién sos</label>
-        <select id="pQuien">${emps.map(e=>`<option value="${e.id}"${String(e.id)===guardado?" selected":""}>${esc(e.nombre)}</option>`).join("")}</select>
-      </div>
-      <div style="flex:0 1 160px;">
-        <label for="pPin">Tu código</label>
-        <input id="pPin" class="pin" type="password" inputmode="numeric" autocomplete="off"
-               maxlength="8" placeholder="••••">
-      </div>
-      <button class="b-ok" id="pEntrar">Entrar</button>
-    </div>
-    <p class="puerta-error" id="pError" hidden></p>`;
-
-  const entrar = async () => {
-    const error = $("#pError");
-    error.hidden = true;
-    const pin = $("#pPin").value.trim();
-    if(!pin){ $("#pPin").focus(); return; }
-    const r = await authFetch("/api/sueldos/entrar", {
-      method:"POST", headers:{"Content-Type":"application/json"},
-      body: JSON.stringify({empleado_id: Number($("#pQuien").value), pin})});
-    if(!r.ok){
-      error.textContent = (await r.json().catch(()=>({}))).detail || "No se pudo entrar";
-      error.hidden = false;
-      $("#pPin").value = ""; $("#pPin").focus();
-      return;
-    }
-    const d = await r.json();
-    PERMISO = d.token; YO = d.empleado.id;
-    localStorage.setItem(RECUERDO, String(YO));   // solo para preseleccionar el nombre
-    puerta.hidden = true; $("#todo").hidden = false;
-    // El select sigue existiendo escondido porque es de donde el resto de la
-    // pantalla lee de quién es lo que muestra. Va con display:none y no con
-    // [hidden]: la clase .quien pone display:flex y le gana.
-    const caja = $("#quien").closest(".quien");
-    caja.style.display = "none";
-    caja.innerHTML = `<select id="quien" hidden></select>`;
-    const nom = $("#quienEmpleada");
-    nom.hidden = false;
-    nom.innerHTML = `${esc(d.empleado.nombre)}
-      <button class="b-out" id="salirSueldos" title="Cerrar y que entre otra">Salir</button>`;
-    $("#salirSueldos").onclick = () => cerrarPuerta("Listo. El código lo pide de nuevo para entrar.");
-    reiniciarRelojQuieta();
-    arranque();
-  };
-  $("#pEntrar").onclick = entrar;
-  $("#pPin").addEventListener("keydown", ev => { if(ev.key === "Enter") entrar(); });
-  setTimeout(()=>$("#pPin").focus(), 0);
+  ayuda.hidden = true;
+  $("#puerta h2").hidden = true;
+  const e = PUERTA.emp, nuevo = PUERTA.paso === "nuevo";
+  const titulo = !nuevo ? `Hola, ${esc(e.nombre)}` : PUERTA.primero == null ? `${esc(e.nombre)}, elegí tu código` : "Repetilo";
+  const texto = !nuevo ? "Poné tu código" : PUERTA.primero == null ? "De 4 a 8 números" : "Para estar seguras de que quedó bien";
+  const largo = Math.max(4, PUERTA.val.length);
+  cuerpo.innerHTML = `<div class="puerta-caja"><div class="pin-caja">
+    <button class="volver">‹ No soy ${esc(e.nombre)}</button>
+    <h3>${titulo}</h3><p>${texto}</p>
+    <div class="puntos${PUERTA.error ? " mal" : ""}">${Array.from({length: largo}, (_, i) =>
+      `<i class="${i < PUERTA.val.length ? "lleno" : ""}"></i>`).join("")}</div>
+    <p class="pin-error">${esc(PUERTA.error || "")}</p>
+    <div class="teclado">${[1,2,3,4,5,6,7,8,9].map(n => `<button data-k="${n}">${n}</button>`).join("")}
+      <button class="chico" data-k="b" aria-label="Borrar">${icono("cruz")}</button><button data-k="0">0</button>
+      <button class="ok" data-k="ok">Entrar</button></div></div></div>`;
+  cuerpo.querySelector(".volver").onclick = () => { PUERTA = { ...PUERTA, paso: "nombres", motivo: "" }; pintarPuerta(); };
+  cuerpo.querySelectorAll(".teclado button").forEach(b => b.onclick = () => tecla(b.dataset.k));
 }
+
+// El teclado físico también sirve: en la tablet con teclado se tipea.
+document.addEventListener("keydown", ev => {
+  if($("#puerta").hidden || PUERTA.paso === "nombres") return;
+  if(/^[0-9]$/.test(ev.key)) tecla(ev.key);
+  else if(ev.key === "Backspace") tecla("b");
+  else if(ev.key === "Enter") tecla("ok");
+});
+
+async function tecla(k){
+  PUERTA.error = "";
+  if(k === "b"){ PUERTA.val = PUERTA.val.slice(0, -1); return pintarPuerta(); }
+  if(k !== "ok"){ if(PUERTA.val.length < 8) PUERTA.val += k; return pintarPuerta(); }
+  if(PUERTA.val.length < 4){ PUERTA.error = "Son al menos 4 números"; return pintarPuerta(); }
+  if(PUERTA.paso === "nuevo" && PUERTA.primero == null){
+    PUERTA.primero = PUERTA.val; PUERTA.val = ""; return pintarPuerta();
+  }
+  if(PUERTA.paso === "nuevo" && PUERTA.primero !== PUERTA.val){
+    PUERTA.error = "No coinciden. Empezá de nuevo"; PUERTA.primero = null; PUERTA.val = ""; return pintarPuerta();
+  }
+  const url = PUERTA.paso === "nuevo" ? "/api/sueldos/elegir-codigo" : "/api/sueldos/entrar";
+  const r = await authFetch(url, {method:"POST", headers:{"Content-Type":"application/json"},
+    body: JSON.stringify({empleado_id: PUERTA.emp.id, pin: PUERTA.val})});
+  if(!r.ok){
+    PUERTA.error = (await r.json().catch(()=>({}))).detail || "No se pudo entrar";
+    PUERTA.val = ""; PUERTA.primero = null;
+    return pintarPuerta();
+  }
+  entrarCon(await r.json());
+}
+
+function entrarCon(d){
+  PERMISO = d.token; YO = d.empleado.id;
+  $("#puerta").hidden = true; $("#todo").hidden = false;
+  // El select sigue existiendo escondido porque es de donde el resto de la
+  // pantalla lee de quién es lo que muestra. Va con display:none y no con
+  // [hidden]: la clase .quien pone display:flex y le gana.
+  const caja = $("#quien").closest(".quien");
+  caja.style.display = "none";
+  caja.innerHTML = `<select id="quien" hidden></select>`;
+  const nom = $("#quienEmpleada");
+  nom.hidden = false;
+  nom.innerHTML = `${esc(d.empleado.nombre)}
+    <button class="b-out" id="salirSueldos" title="Cerrar y que entre otra">Salir</button>`;
+  $("#salirSueldos").onclick = () => cerrarPuerta("Listo. El código lo pide de nuevo para entrar.");
+  reiniciarRelojQuieta();
+  arranque();
+}
+
+/* ---------- Valores y comisiones (solo la dueña) ---------- */
+
+/* Cada empleada con su valor hora y cada servicio con su comisión: no hay
+   generales. Los valores se ven escritos y se cambian con el lápiz, con Guardar:
+   un casillero siempre abierto es un número tipeado sin querer. */
+let FILTRO_C = { q: "", cat: "", pct: "" }, ELEGIDOS = new Set(), V_EMPS = [], V_ITEMS = [];
+
+async function pintarValores(){
+  try{
+    [V_EMPS, V_ITEMS] = await Promise.all([
+      authFetch("/api/empleados").then(r => r.json()),
+      authFetch("/api/items/all").then(r => r.json()),
+    ]);
+  }catch(e){ toast("No se pudo cargar"); return; }
+  V_ITEMS = V_ITEMS.filter(i => !i.es_depilacion);
+  pintarTablaEmpleadas();
+  pintarTablaComisiones();
+}
+
+function pintarTablaEmpleadas(){
+  const cont = $("#tablaEmpleadas");
+  cont.innerHTML = V_EMPS.length ? `<div class="tabla-scroll"><table class="tabla-v">
+    <thead><tr><th>Empleada</th><th>Código</th><th class="n">Valor hora</th><th class="c">Cobra sueldo</th></tr></thead>
+    <tbody>${V_EMPS.map(e => `<tr>
+      <td><b>${esc(e.nombre)}</b></td>
+      <td>${e.codigo ? `<span class="codigo">${esc(e.codigo)}</span>`
+          : `<span class="det">${!e.cobra_sueldo ? "—" : e.tiene_pin ? "lo ves cuando vuelva a entrar" : "lo elige al entrar"}</span>`}</td>
+      <td class="n">${e.cobra_sueldo ? `<span class="valor-ed">${e.valor_hora != null ? `<b class="v">${fmt(e.valor_hora)}</b>`
+          : `<span class="falta">Falta</span>`}<button class="lapiz" data-vh="${e.id}" aria-label="Cambiar el valor hora de ${esc(e.nombre)}">${icono("lapiz")}</button></span>`
+          : `<span class="det">—</span>`}</td>
+      <td class="c"><input type="checkbox" class="cobra" data-id="${e.id}"${e.cobra_sueldo ? " checked" : ""}
+          aria-label="${esc(e.nombre)} cobra sueldo"></td></tr>`).join("")}</tbody></table></div>`
+    : `<div class="vacio"><b>No hay empleadas</b>Se agregan en Admin.</div>`;
+  cont.querySelectorAll(".cobra").forEach(c => c.onchange = async () => {
+    const e = V_EMPS.find(x => String(x.id) === c.dataset.id);
+    if(!c.checked && !await confirmar(`${e.nombre} deja de cobrar sueldo.\n\nNo aparece para pagar ni puede entrar a Sueldos, y se le borra el valor hora. Lo ya pagado no cambia.`,
+        { si: "Sacarle el sueldo", peligro: true })){ c.checked = true; return; }
+    if(await guardarValor(`/api/empleados/${e.id}`, {cobra_sueldo: c.checked}))
+      toast(c.checked ? `${e.nombre} cobra sueldo: falta su valor hora` : `${e.nombre} ya no cobra sueldo`);
+  });
+  cont.querySelectorAll("[data-vh]").forEach(b => b.onclick = () => {
+    const e = V_EMPS.find(x => String(x.id) === b.dataset.vh);
+    editarEnLugar(b, e.valor_hora, "$", async v => {
+      if(!v) return "Poné cuánto cobra la hora";
+      if(await guardarValor(`/api/empleados/${e.id}`, {valor_hora: v})) toast(`${e.nombre}: ${fmt(v)} la hora`);
+    });
+  });
+}
+
+const enPct = i => i.es_comision && i.comision_pct ? String(i.comision_pct) : "sin";
+
+function pintarTablaComisiones(){
+  const cont = $("#tablaComisiones");
+  const q = sinAcentos(FILTRO_C.q);
+  const cats = [...new Set(V_ITEMS.map(i => i.categoria))].sort((a, b) => a.localeCompare(b, "es"));
+  const pcts = [...new Set(V_ITEMS.map(enPct))].sort((a, b) => a === "sin" ? 1 : b === "sin" ? -1 : b - a);
+  const vistos = V_ITEMS.filter(i => (!q || sinAcentos(i.nombre).includes(q))
+      && (!FILTRO_C.cat || i.categoria === FILTRO_C.cat) && (!FILTRO_C.pct || enPct(i) === FILTRO_C.pct))
+    .sort((a, b) => a.nombre.localeCompare(b.nombre, "es"));
+  const elegidos = vistos.filter(i => ELEGIDOS.has(i.id));
+  const chip = (g, v, t) => `<button class="chip${FILTRO_C[g] === v ? " on" : ""}" data-g="${g}" data-v="${esc(v)}">${esc(t)}</button>`;
+  cont.innerHTML = `
+    <input id="buscaServ" class="buscador" placeholder="Buscar servicio…" value="${esc(FILTRO_C.q)}">
+    <div class="filtros-c">
+      ${chip("cat", "", "Todas")}${cats.map(c => chip("cat", c, c)).join("")}
+      <span class="sep"></span>
+      ${chip("pct", "", "Cualquier %")}${pcts.map(v => chip("pct", v, v === "sin" ? "Sin comisión" : v + "%")).join("")}
+    </div>
+    ${elegidos.length ? `<div class="barra-c"><b>${elegidos.length} ${elegidos.length === 1 ? "elegido" : "elegidos"}</b>
+      <span>Poner</span><input id="pctVarios" inputmode="numeric" placeholder="%" aria-label="Comisión para los elegidos">
+      <button class="b-out" id="aplicarVarios">Aplicar</button>
+      <button class="b-out" id="sacarVarios">Sin comisión</button>
+      <button class="lapiz" id="soltarVarios" aria-label="Soltar los elegidos">${icono("cruz")}</button></div>` : ""}
+    <div class="tabla-scroll"><table class="tabla-v">
+      <thead><tr><th class="c"><input type="checkbox" id="todosServ" aria-label="Elegir los que se ven"${
+        vistos.length && elegidos.length === vistos.length ? " checked" : ""}></th>
+        <th>Servicio</th><th class="n">Precio</th><th class="n">Comisión</th></tr></thead>
+      <tbody>${vistos.map(i => `<tr${ELEGIDOS.has(i.id) ? ' class="elegido"' : ""}>
+        <td class="c"><input type="checkbox" class="elige" data-id="${i.id}"${ELEGIDOS.has(i.id) ? " checked" : ""} aria-label="Elegir ${esc(i.nombre)}"></td>
+        <td><b>${esc(i.nombre)}</b><span class="det">${esc(i.categoria)}</span></td>
+        <td class="n">${fmt(i.precio)}</td>
+        <td class="n"><span class="valor-ed">${enPct(i) === "sin" ? `<span class="det">Sin comisión</span>` : `<b class="v">${i.comision_pct}%</b>`}<button
+          class="lapiz" data-pct="${i.id}" aria-label="Cambiar la comisión de ${esc(i.nombre)}">${icono("lapiz")}</button></span></td></tr>`).join("")
+        || `<tr><td colspan="4" class="det">Ningún servicio con ese filtro.</td></tr>`}</tbody></table></div>`;
+
+  const busca = $("#buscaServ");
+  busca.oninput = () => { FILTRO_C.q = busca.value; pintarTablaComisiones();
+    const b = $("#buscaServ"); b.focus(); b.setSelectionRange(b.value.length, b.value.length); };
+  cont.querySelectorAll(".filtros-c .chip").forEach(c => c.onclick = () => { FILTRO_C[c.dataset.g] = c.dataset.v; pintarTablaComisiones(); });
+  cont.querySelectorAll(".elige").forEach(c => c.onchange = () => {
+    c.checked ? ELEGIDOS.add(Number(c.dataset.id)) : ELEGIDOS.delete(Number(c.dataset.id)); pintarTablaComisiones(); });
+  $("#todosServ").onchange = ev => { vistos.forEach(i => ev.target.checked ? ELEGIDOS.add(i.id) : ELEGIDOS.delete(i.id)); pintarTablaComisiones(); };
+  cont.querySelectorAll("[data-pct]").forEach(b => b.onclick = () => {
+    const it = V_ITEMS.find(x => String(x.id) === b.dataset.pct);
+    editarEnLugar(b, it.es_comision ? it.comision_pct : null, "%", async v => {
+      if(v > 100) return "La comisión es de 1 a 100%";
+      if(await cambiarComision([it.id], v || null)) toast(`${it.nombre}: ${v ? v + "%" : "sin comisión"}`);
+    });
+  });
+  const aplicar = $("#aplicarVarios");
+  if(aplicar){
+    aplicar.onclick = async () => {
+      const v = parseInt($("#pctVarios").value, 10);
+      if(!(v > 0 && v <= 100)){ toast("Poné un porcentaje de 1 a 100"); $("#pctVarios").focus(); return; }
+      const ids = elegidos.map(i => i.id);
+      if(await cambiarComision(ids, v)){ ELEGIDOS = new Set(); toast(`${ids.length} servicios al ${v}%`); pintarValores(); }
+    };
+    $("#pctVarios").onkeydown = ev => { if(ev.key === "Enter") aplicar.click(); };
+    $("#sacarVarios").onclick = async () => {
+      const ids = elegidos.map(i => i.id);
+      if(!await confirmar(`${ids.length} servicios dejan de pagar comisión.\n\nLo que falta pagar se recalcula; lo ya pagado no cambia.`,
+          { si: "Sacarles la comisión", peligro: true })) return;
+      if(await cambiarComision(ids, null)){ ELEGIDOS = new Set(); toast(`${ids.length} servicios sin comisión`); pintarValores(); }
+    };
+    $("#soltarVarios").onclick = () => { ELEGIDOS = new Set(); pintarTablaComisiones(); };
+  }
+}
+
+/* El casillero se abre en el lugar del valor, con Guardar y la cruz. `guardar`
+   devuelve un texto si el valor no sirve, y el casillero queda abierto. */
+function editarEnLugar(boton, actual, unidad, guardar){
+  const caja = boton.closest(".valor-ed");
+  caja.innerHTML = `<input inputmode="numeric" value="${actual ?? ""}" placeholder="${unidad}">
+    <button class="b-ok btn-mini ok">Guardar</button>
+    <button class="lapiz no" aria-label="Cancelar">${icono("cruz")}</button>`;
+  const inp = caja.querySelector("input");
+  const ok = async () => {
+    const t = inp.value.replace(/\D/g, "");
+    const error = await guardar(t ? parseInt(t, 10) : 0);
+    if(error){ toast(error); inp.focus(); return; }
+    pintarValores();
+  };
+  caja.querySelector(".ok").onclick = ok;
+  caja.querySelector(".no").onclick = () => pintarValores();
+  inp.onkeydown = ev => { if(ev.key === "Enter") ok(); if(ev.key === "Escape") pintarValores(); };
+  inp.focus(); inp.select();
+}
+
+async function guardarValor(url, cuerpo){
+  const r = await authFetch(url, {method:"PUT", headers:{"Content-Type":"application/json"}, body: JSON.stringify(cuerpo)});
+  if(!r.ok){ toast((await r.json().catch(()=>({}))).detail || "No se pudo guardar"); await pintarValores(); return false; }
+  await pintarValores();
+  return true;
+}
+
+async function cambiarComision(ids, pct){
+  const r = await authFetch("/api/comisiones", {method:"PUT", headers:{"Content-Type":"application/json"},
+    body: JSON.stringify({ids, pct})});
+  if(!r.ok){ toast((await r.json().catch(()=>({}))).detail || "No se pudo guardar"); return false; }
+  return true;
+}
+
+document.querySelectorAll(".solapas button").forEach(b => b.onclick = () => {
+  document.querySelectorAll(".solapas button").forEach(x => x.classList.toggle("on", x === b));
+  document.querySelectorAll(".hoja").forEach(h => h.hidden = h.id !== b.dataset.hoja);
+  if(b.dataset.hoja === "hojaValores") pintarValores();
+  else refrescar();
+});
 
 if(DUENO){ arranque(); } else { vigilarPantalla(); abrirPuerta(); }

@@ -122,6 +122,12 @@ def migrar():
         if "valor_hora" not in emcols:
             with engine.begin() as con:
                 con.execute(text("ALTER TABLE empleados ADD COLUMN valor_hora INTEGER"))
+        if "codigo" not in emcols:
+            with engine.begin() as con:
+                con.execute(text("ALTER TABLE empleados ADD COLUMN codigo VARCHAR"))
+        if "cobra_sueldo" not in emcols:
+            with engine.begin() as con:
+                con.execute(text("ALTER TABLE empleados ADD COLUMN cobra_sueldo BOOLEAN"))
     if insp.has_table("horarios_empleado"):
         hcols = [c["name"] for c in insp.get_columns("horarios_empleado")]
         # Una fila con semana del mes valdría para TODOS los lunes, que es lo
@@ -366,9 +372,10 @@ class ItemEdit(BaseModel):
     categoria: str | None = None; nombre: str | None = None; precio: int | None = None; activo: bool | None = None
     es_comision: bool | None = None; es_producto: bool | None = None
     es_depilacion: bool | None = None
-    # None = no lo toques; -1 = sacale el propio y que use el general. Hace falta
-    # el centinela porque None ya significa "este campo no vino".
     comision_pct: int | None = None
+class ComisionesIn(BaseModel):
+    ids: list[int]
+    pct: int | None = None                # None o 0 = ese servicio no paga comisión
 class RenombrarCat(BaseModel):
     viejo: str; nuevo: str
 class LineaCompIn(BaseModel):
@@ -436,9 +443,7 @@ class EmpleadoIn(BaseModel):
     nombre: str
 class EmpleadoEdit(BaseModel):
     nombre: str | None = None; activo: bool | None = None
-    # -1 = sacale el propio y que use el general. El centinela hace falta porque
-    # None ya significa "este campo no vino", igual que en el % de los ítems.
-    valor_hora: int | None = None
+    valor_hora: int | None = None; cobra_sueldo: bool | None = None
 class FusionIn(BaseModel):
     origen_id: int; destino_id: int      # el origen desaparece dentro del destino
 class PinIn(BaseModel):
@@ -446,9 +451,6 @@ class PinIn(BaseModel):
 class EntrarSueldoIn(BaseModel):
     empleado_id: int; pin: str
 class SueldosConfigIn(BaseModel):
-    # Los números con los que se arma el sueldo. Van juntos porque se miran
-    # juntos: cambiar uno sin ver el otro es como no verlos.
-    valor_hora: int | None = None; comision_pct: int | None = None
     pago_ayudante: int | None = None
     depi_a_cargo: str | None = None       # "" saca el defecto y vuelve a deducirse
 class GastoDepiIn(BaseModel):
@@ -1278,29 +1280,14 @@ def config(user = Depends(usuario_actual), db: Session = Depends(get_db)):
     # los devuelve, y primero, que son los que carga ella.
     tipos = [t.nombre for t in tipos_visibles(db, user)]
     alias = [a.nombre for a in db.query(models.Alias).filter(models.Alias.activo == True)]
-    vh = db.query(models.Config).filter_by(clave="valor_hora").first()
     return {"formas_pago": formas, "tipos_egreso": tipos, "alias": alias,
             "negocio": NEGOCIO,
-            "valor_hora": int(vh.valor) if vh and str(vh.valor).isdigit() else 0,
-            # El porcentaje general de comisión: Admin lo muestra como referencia
-            # cuando un ítem no tiene el suyo.
-            "comision_pct": comision_pct(db),
             "pago_ayudante": pago_ayudante(db),
             "depi_a_cargo": depi_por_defecto(db),
             # Desde qué día cuentan los sueldos. Viaja con la config y no con el
             # resumen de una empleada: es uno solo para todas, y así la pantalla
             # lo puede mostrar aunque justo nadie tenga nada pendiente.
             "sueldos_arranque": arranque_sueldos(db),
-            # Quiénes NO cambian cuando se toca el general. Viajan con la config
-            # y no en un pedido aparte para que el editor pueda decirlo antes de
-            # guardar: sin esto, cambiar el valor hora es apretar un botón sin
-            # saber a cuántas les llega.
-            "hora_propia": [e.nombre for e in db.query(models.Empleado).filter(
-                models.Empleado.activo == True,
-                models.Empleado.valor_hora.isnot(None)).order_by(models.Empleado.nombre)],
-            "pct_propio": db.query(models.Item).filter(
-                models.Item.activo == True,
-                models.Item.comision_pct.isnot(None)).count(),
             "tipos_privados": [t.nombre for t in db.query(models.TipoEgreso).filter(
                 models.TipoEgreso.activo == True, models.TipoEgreso.privado == True)] if es_dueno(user) else []}
 
@@ -1479,6 +1466,7 @@ def _cfg_int(db, clave, defecto=0) -> int:
     except (TypeError, ValueError):
         return defecto
 
+# Los dos generales de antes. Solo los lee la migración que los pasa a cada una.
 def valor_hora(db) -> int:
     return _cfg_int(db, "valor_hora", 0)
 
@@ -1518,23 +1506,14 @@ def pago_ayudante(db) -> int:
     """
     return _cfg_int(db, "pago_ayudante", 0)
 
-def vh_de(empleado, general: int) -> int:
-    """Lo que cobra la hora esta persona.
+def vh_de(empleado) -> int:
+    """Lo que cobra la hora esta persona. Sin valor puesto, cero: no se le inventa uno."""
+    return (getattr(empleado, "valor_hora", None) or 0) if empleado else 0
 
-    Mismo criterio que el porcentaje por ítem: el propio si lo tiene, el general
-    si no. En un solo lugar, que lo usan tres cuentas distintas.
-    """
-    propio = getattr(empleado, "valor_hora", None) if empleado else None
-    return propio if propio is not None else general
-
-def pct_de(item, pct_general: int) -> int:
-    """El porcentaje que le toca a un ítem: el suyo si tiene, si no el general.
-
-    En un solo lugar porque lo usan tres caminos: la línea de un comprobante, el
-    trabajo suelto y la pantalla.
-    """
-    propio = getattr(item, "comision_pct", None) if item else None
-    return propio if propio is not None else pct_general
+def pct_de(item) -> int:
+    """El porcentaje de comisión de un servicio. Sin la marca de comisión, nada."""
+    if not item or not getattr(item, "es_comision", False): return 0
+    return getattr(item, "comision_pct", None) or 0
 
 def base_suelto(t, item) -> int:
     """La base de un trabajo sin comprobante: el precio efectivo del ítem por la
@@ -1947,6 +1926,41 @@ def marcar_senas_con_descuento():
         db.add(models.Config(clave=MARCA_SENAS_DESCUENTO, valor=str(n)))
         db.commit()
 
+MARCA_SIN_GENERALES = "sueldos_sin_generales"
+
+def pasar_generales(db) -> str:
+    """El valor hora general pasa a cada empleada y la comisión general a cada servicio.
+
+    Ningún número cambia: cada una cobra lo que cobraba. Cobra sueldo la que tenía
+    código o ya había cobrado alguno. No hace commit.
+    """
+    vh, pct = valor_hora(db), comision_pct(db)
+    cobraron = {i for (i,) in db.query(models.Liquidacion.empleado_id).filter(
+        _no_depi(models.Liquidacion.depilacion)).distinct()}
+    for e in db.query(models.Empleado).all():
+        if e.cobra_sueldo is None:
+            e.cobra_sueldo = bool(e.pin_hash) or e.id in cobraron
+        if e.cobra_sueldo and e.valor_hora is None and vh:
+            e.valor_hora = vh
+    n = (db.query(models.Item).filter(models.Item.es_comision == True,
+                                      models.Item.comision_pct.is_(None))
+           .update({"comision_pct": pct}, synchronize_session=False))
+    return f"vh={vh} pct={pct} items={n}"
+
+def migrar_sin_generales():
+    """UNA vez: sin la marca, cada arranque le volvería a poner el general a la que
+    la dueña dejó sin valor a propósito."""
+    from sqlalchemy.orm import Session as _S
+    with _S(engine) as db:
+        if db.query(models.Config).filter_by(clave=MARCA_SIN_GENERALES).first(): return
+        db.add(models.Config(clave=MARCA_SIN_GENERALES, valor=pasar_generales(db)))
+        db.commit()
+
+try:
+    migrar_sin_generales()
+except Exception as _e:
+    print('Aviso: no se pudieron pasar los valores generales:', _e)
+
 try:
     marcar_senas_con_descuento()
 except Exception as _e:
@@ -1965,11 +1979,9 @@ def resumen_pendiente(db, empleado) -> dict:
     cerrar se saca la foto. Un trabajo SIN duración no suma, aparece marcado y
     frena el cierre.
     """
-    pct = comision_pct(db)
-    # El de la persona si lo tiene; si no, el general. La foto que se guarda al
-    # cerrar sigue saliendo de acá, así que una liquidación vieja conserva el
-    # valor con el que se pagó aunque después se le cambie el sueldo.
-    vh = vh_de(empleado, valor_hora(db))
+    # La foto que se guarda al cerrar sale de acá, así que una liquidación vieja
+    # conserva el valor con el que se pagó aunque después se le cambie el sueldo.
+    vh = vh_de(empleado)
 
     minutos_por_linea = dict(
         db.query(models.TrabajoComision.linea_id, models.TrabajoComision.minutos)
@@ -1986,7 +1998,7 @@ def resumen_pendiente(db, empleado) -> dict:
 
     trabajos = []
     for linea, comp, item in lineas_a_comision_pendientes(db, empleado):
-        pct_linea = pct_de(item, pct)
+        pct_linea = pct_de(item)
         trabajos.append({
             "id": id_por_linea.get(linea.id), "linea_id": linea.id,
             "comprobante_id": comp.id, "numero": comp.numero,
@@ -2011,7 +2023,7 @@ def resumen_pendiente(db, empleado) -> dict:
     for t in sueltos:
         item = db.get(models.Item, t.item_id) if t.item_id else None
         b = base_suelto(t, item) if item else 0
-        p = pct_de(item, pct)
+        p = pct_de(item)
         trabajos.append({
             "id": t.id, "linea_id": None, "comprobante_id": None, "numero": None,
             "cliente_id": None, "fecha": t.fecha, "pct": p,
@@ -2119,11 +2131,6 @@ def resumen_pendiente(db, empleado) -> dict:
     return {
         "empleado": {"id": empleado.id, "nombre": empleado.nombre},
         "valor_hora": vh,
-        # Si ese valor hora es el suyo o el general. La pantalla lo dice al lado
-        # del número: sin eso, el día que alguien cobra distinto no hay forma de
-        # saber con cuál se armó el total que se está mirando.
-        "valor_hora_propio": getattr(empleado, "valor_hora", None) is not None,
-        "comision_pct": pct,
         "ciclos": salida,
         "total": sum(c["total"] for c in salida),
         "total_comisiones": sum(c["total_comisiones"] for c in salida),
@@ -2178,11 +2185,11 @@ def entrar_a_sueldos(datos: EntrarSueldoIn, request: Request, db: Session = Depe
         raise HTTPException(429, f"Demasiados intentos. Probá de nuevo en {faltan//60+1} min.")
 
     emp = db.get(models.Empleado, datos.empleado_id)
+    pin = datos.pin.strip()
     # Mismo mensaje para "no existe", "no tiene código" y "el código está mal":
     # los tres son "no entrás", y distinguirlos le dice al que prueba por dónde
     # seguir probando.
-    if not emp or not emp.pin_hash or not emp.pin_salt or not hmac.compare_digest(
-            emp.pin_hash, auth.hash_password(datos.pin.strip(), emp.pin_salt)):
+    if not emp or not emp.activo or not emp.cobra_sueldo or not codigo_correcto(emp, pin):
         ahora = time.monotonic()
         for c in claves: _fallos.setdefault(c, []).append(ahora)
         # 403 y no 401 a propósito: la sesión de la app está perfecta, lo que no
@@ -2191,26 +2198,57 @@ def entrar_a_sueldos(datos: EntrarSueldoIn, request: Request, db: Session = Depe
         # afuera de la app entera.
         raise HTTPException(403, "Código incorrecto")
     for c in claves: _fallos.pop(c, None)
+    # Los códigos de antes estaban solo con hash: entrando, queda a la vista de la dueña.
+    if not emp.codigo:
+        emp.codigo = pin
+        db.commit()
+    return {"token": auth.crear_token_sueldo(emp.id), "empleado": {"id": emp.id, "nombre": emp.nombre}}
+
+def codigo_correcto(emp, pin: str) -> bool:
+    if emp.codigo:
+        return hmac.compare_digest(emp.codigo, pin)
+    return bool(emp.pin_hash and emp.pin_salt) and hmac.compare_digest(
+        emp.pin_hash, auth.hash_password(pin, emp.pin_salt))
+
+def validar_codigo(pin: str) -> str:
+    pin = (pin or "").strip()
+    if not pin.isdigit() or not 4 <= len(pin) <= 8:
+        raise HTTPException(400, "El código son de 4 a 8 números")
+    return pin
+
+@app.post("/api/sueldos/elegir-codigo")
+def elegir_codigo(datos: EntrarSueldoIn, request: Request, db: Session = Depends(get_db),
+                  _ = Depends(usuario_actual)):
+    """La empleada que todavía no tiene código elige el suyo, y con eso entra.
+
+    Solo mientras no tenga ninguno: la dueña no maneja códigos, y si una se lo
+    olvida la dueña lo ve en Valores y comisiones.
+    """
+    ip = request.client.host if request.client else "?"
+    faltan = _frenado([f"ip:{ip}"])
+    if faltan:
+        raise HTTPException(429, f"Demasiados intentos. Probá de nuevo en {faltan//60+1} min.")
+    emp = db.get(models.Empleado, datos.empleado_id)
+    if not emp or not emp.activo or not emp.cobra_sueldo:
+        raise HTTPException(404, "Esa empleada no cobra sueldo")
+    if emp.codigo or emp.pin_hash:
+        raise HTTPException(409, "Ya tiene código: entrá con ese")
+    emp.codigo = validar_codigo(datos.pin)
+    db.commit()
     return {"token": auth.crear_token_sueldo(emp.id), "empleado": {"id": emp.id, "nombre": emp.nombre}}
 
 @app.put("/api/empleados/{emp_id}/pin")
 def poner_pin(emp_id: int, datos: PinIn, _ = Depends(solo_dueno), db: Session = Depends(get_db)):
     """Pone o saca el código de una empleada. Solo la dueña.
 
-    Se guarda hasheado y nunca se devuelve: si se pudiera leer, cualquiera que
-    abra Admin —o que mire un backup— tiene el de todas. Cuando se olvida no se
-    recupera, se pone uno nuevo.
+    Queda a la vista de la dueña, que es la que lo busca cuando alguien se lo
+    olvida. Sin código, lo elige la empleada la próxima vez que entra.
     """
     e = _empleado_o_404(db, emp_id)
     pin = (datos.pin or "").strip()
-    if not pin:
-        e.pin_salt = e.pin_hash = None
-        db.commit(); return {"ok": True, "tiene_pin": False}
-    if not pin.isdigit() or not 4 <= len(pin) <= 8:
-        raise HTTPException(400, "El código son de 4 a 8 números")
-    e.pin_salt = auth.nuevo_salt()
-    e.pin_hash = auth.hash_password(pin, e.pin_salt)
-    db.commit(); return {"ok": True, "tiene_pin": True}
+    e.pin_salt = e.pin_hash = None
+    e.codigo = validar_codigo(pin) if pin else None
+    db.commit(); return {"ok": True, "tiene_pin": bool(e.codigo)}
 
 @app.get("/api/sueldos/pendiente")
 def sueldo_pendiente(empleado_id: int, user = Depends(usuario_actual),
@@ -2542,7 +2580,7 @@ def cerrar_depilacion(datos: CerrarDepiIn, user = Depends(usuario_actual),
         # Informativos, como en el sueldo: de cuándo a cuándo fue la sesión. Lo
         # que entra lo decide `sesion_id`, no estas fechas.
         desde=dias[0] if dias else None, hasta=dias[-1] if dias else None,
-        valor_hora=vh_de(emp, valor_hora(db)), comision_pct=comision_pct(db),
+        valor_hora=vh_de(emp), comision_pct=None,
         minutos_total=0, minutos_comision=0, minutos_pagados=0,
         total_comisiones=0, total_horas=0,
         total=pendiente, notas=datos.notas, parcial=False,
@@ -2678,6 +2716,9 @@ def cerrar_liquidacion(datos: CerrarIn, _ = Depends(solo_dueno), db: Session = D
         raise HTTPException(400,
             f"Hay {ciclo['sin_horas']} día(s) sin horas declaradas. "
             "Un día en cero se paga solo por comisión, y las horas de ese día se pierden.")
+    # Sin valor hora, las horas saldrían gratis: mejor frenar que pagar de menos.
+    if ciclo["minutos_pagados"] and not r["valor_hora"]:
+        raise HTTPException(400, f"{emp.nombre} no tiene valor hora. Ponéselo en Valores y comisiones.")
     if not ciclo["total"]:
         raise HTTPException(400, "Ese ciclo no tiene nada para pagar")
 
@@ -2688,7 +2729,7 @@ def cerrar_liquidacion(datos: CerrarIn, _ = Depends(solo_dueno), db: Session = D
     parcial = hoy_argentina() < date.fromisoformat(ciclo["hasta"]) and not datos.anticipado
     liq = models.Liquidacion(
         empleado_id=emp.id, desde=ciclo["desde"], hasta=ciclo["hasta"],
-        valor_hora=r["valor_hora"], comision_pct=r["comision_pct"],
+        valor_hora=r["valor_hora"], comision_pct=None,
         minutos_total=ciclo["minutos_total"], minutos_comision=ciclo["minutos_comision"],
         minutos_pagados=ciclo["minutos_pagados"],
         total_comisiones=ciclo["total_comisiones"], total_horas=ciclo["total_horas"],
@@ -2919,14 +2960,18 @@ def detalle_liquidacion(liq_id: int, user = Depends(usuario_actual),
                      for t in trabajos]}
 
 @app.get("/api/empleados")
-def listar_empleados(todos: bool = False, _ = Depends(usuario_actual), db: Session = Depends(get_db)):
+def listar_empleados(todos: bool = False, user = Depends(usuario_actual), db: Session = Depends(get_db)):
     q = db.query(models.Empleado)
     if not todos:
         q = q.filter(models.Empleado.activo == True)
-    # tiene_pin y no el código: lo que hace falta saber es si puede entrar, y el
-    # código no sale de la base ni para la dueña.
+    # El código y el valor hora solo para la dueña: la lista la pide también el
+    # desplegable de facturar, que está abierto todo el día.
+    dueno = es_dueno(user)
     return [{"id": e.id, "nombre": e.nombre, "activo": bool(e.activo),
-             "tiene_pin": bool(e.pin_hash), "valor_hora": e.valor_hora}
+             "cobra_sueldo": bool(e.cobra_sueldo),
+             "tiene_pin": bool(e.codigo or e.pin_hash),
+             "codigo": e.codigo if dueno else None,
+             "valor_hora": e.valor_hora if dueno else None}
             for e in q.order_by(models.Empleado.nombre)]
 
 @app.post("/api/empleados")
@@ -2940,7 +2985,8 @@ def crear_empleado(e: EmpleadoIn, _ = Depends(solo_dueno), db: Session = Depends
         # que no está en la lista.
         if ya.activo: raise HTTPException(400, "Ese empleado ya está en la lista")
         ya.activo = True; db.commit(); return {"id": ya.id, "reactivado": True}
-    nuevo = models.Empleado(nombre=nombre)
+    # La que se agrega viene a trabajar: cobra sueldo, y el valor hora se le pone en Sueldos.
+    nuevo = models.Empleado(nombre=nombre, cobra_sueldo=True)
     db.add(nuevo); db.commit(); db.refresh(nuevo)
     return {"id": nuevo.id, "reactivado": False}
 
@@ -2960,13 +3006,16 @@ def editar_empleado(emp_id: int, cambios: EmpleadoEdit, _ = Depends(solo_dueno),
         _renombrar_en(db, models.Comprobante.peluquero, e.nombre, nombre)
         _renombrar_en(db, models.Turno.peluquero, e.nombre, nombre)
         e.nombre = nombre
+    if cambios.cobra_sueldo is not None:
+        e.cobra_sueldo = cambios.cobra_sueldo
+        # La que no cobra sueldo no tiene valor hora: no queda uno viejo dando vueltas.
+        if not e.cobra_sueldo: e.valor_hora = None
     if cambios.valor_hora is not None:
-        if cambios.valor_hora < 0:
-            e.valor_hora = None                       # vuelve al general
-        elif cambios.valor_hora > 10_000_000:
+        if not e.cobra_sueldo:
+            raise HTTPException(400, f"{e.nombre} no cobra sueldo: tildalo primero")
+        if not 0 <= cambios.valor_hora <= 10_000_000:
             raise HTTPException(400, "Ese valor hora no parece un número real")
-        else:
-            e.valor_hora = cambios.valor_hora
+        e.valor_hora = cambios.valor_hora
     if cambios.activo is not None:
         e.activo = cambios.activo
     db.commit(); return {"ok": True}
@@ -3043,23 +3092,11 @@ def borrar_empleado(emp_id: int, _ = Depends(solo_dueno), db: Session = Depends(
 
 @app.put("/api/config/sueldos")
 def set_config_sueldos(datos: SueldosConfigIn, _ = Depends(solo_dueno), db: Session = Depends(get_db)):
-    """El valor hora y el porcentaje de comisión.
-
-    Cambiarlos NO toca lo ya cerrado, que guarda los dos números con los que se
-    pagó. Sí cambia lo pendiente, a propósito: un aumento de mitad de ciclo se
-    paga en ese ciclo.
-    """
+    """Los dos números de la depilación: el pago a la ayudante y quién la lleva."""
     def guardar(clave, valor):
         fila = db.query(models.Config).filter_by(clave=clave).first()
         if fila: fila.valor = str(valor)
         else: db.add(models.Config(clave=clave, valor=str(valor)))
-    if datos.valor_hora is not None:
-        if datos.valor_hora < 0: raise HTTPException(400, "El valor hora no puede ser negativo")
-        guardar("valor_hora", datos.valor_hora)
-    if datos.comision_pct is not None:
-        if not 0 <= datos.comision_pct <= 100:
-            raise HTTPException(400, "La comisión va de 0 a 100")
-        guardar("comision_pct", datos.comision_pct)
     if datos.pago_ayudante is not None:
         if datos.pago_ayudante < 0: raise HTTPException(400, "El pago no puede ser negativo")
         guardar("pago_ayudante", datos.pago_ayudante)
@@ -3072,8 +3109,7 @@ def set_config_sueldos(datos: SueldosConfigIn, _ = Depends(solo_dueno), db: Sess
             raise HTTPException(400, "Esa empleada no está en la lista")
         guardar("depi_a_cargo", nombre)
     db.commit()
-    return {"ok": True, "valor_hora": valor_hora(db), "comision_pct": comision_pct(db),
-            "pago_ayudante": pago_ayudante(db), "depi_a_cargo": depi_por_defecto(db)}
+    return {"ok": True, "pago_ayudante": pago_ayudante(db), "depi_a_cargo": depi_por_defecto(db)}
 
 @app.get("/api/alias")
 def listar_alias(_ = Depends(usuario_actual), db: Session = Depends(get_db)):
@@ -3292,7 +3328,7 @@ def _no_es_sena(nombre: str):
                                  "tomá la seña con \"+ Agregar seña\", que la descuenta.")
 
 @app.post("/api/items")
-def crear_item(item: ItemIn, _ = Depends(usuario_actual), db: Session = Depends(get_db)):
+def crear_item(item: ItemIn, user = Depends(usuario_actual), db: Session = Depends(get_db)):
     _no_es_sena(item.nombre)
     precio = item.precio
     if item.precio_transfer:
@@ -3306,15 +3342,17 @@ def crear_item(item: ItemIn, _ = Depends(usuario_actual), db: Session = Depends(
             raise HTTPException(400, f"Con {item.precio_transfer} no cierra la cuenta "
                                      "de las dos listas. Probá con un precio redondo.")
     if precio <= 0: raise HTTPException(400, "Falta el precio")
+    con_comision = bool(item.es_comision and item.comision_pct) and not item.es_depilacion
+    if con_comision: exigir_dueno_comision(user)
     nuevo = models.Item(categoria=item.categoria.strip(), nombre=item.nombre.strip(),
                         precio=precio, precio_transfer=calcular_transfer(precio),
-                        es_producto=item.es_producto, es_comision=item.es_comision,
+                        es_producto=item.es_producto, es_comision=con_comision,
                         es_depilacion=item.es_depilacion,
-                        comision_pct=item.comision_pct)
+                        comision_pct=validar_pct(item.comision_pct) if con_comision else None)
     db.add(nuevo); db.commit(); db.refresh(nuevo); return {"id": nuevo.id}
 
 @app.put("/api/items/{item_id}")
-def editar_item(item_id: int, cambios: ItemEdit, _ = Depends(usuario_actual), db: Session = Depends(get_db)):
+def editar_item(item_id: int, cambios: ItemEdit, user = Depends(usuario_actual), db: Session = Depends(get_db)):
     item = db.get(models.Item, item_id)
     if not item: raise HTTPException(404, "Item no existe")
     if cambios.categoria is not None: item.categoria = cambios.categoria.strip()
@@ -3325,28 +3363,54 @@ def editar_item(item_id: int, cambios: ItemEdit, _ = Depends(usuario_actual), db
         item.precio = cambios.precio
         item.precio_transfer = calcular_transfer(cambios.precio)
     if cambios.activo is not None: item.activo = cambios.activo
-    # Marcar o desmarcar un ítem a comisión NO toca los trabajos ya cargados: los
-    # que están pendientes salen de esta marca, así que desmarcar algo hace
-    # desaparecer una comisión que la empleada ya se ganó. Se cambia sabiendo eso,
-    # y por eso el aviso está en la pantalla.
-    if cambios.es_comision is not None: item.es_comision = cambios.es_comision
+    if cambios.es_comision is not None or cambios.comision_pct is not None:
+        if cambios.es_comision is False or (cambios.comision_pct is not None and cambios.comision_pct <= 0):
+            nuevo = None
+        else:
+            nuevo = cambios.comision_pct if cambios.comision_pct is not None else item.comision_pct
+            if not nuevo: raise HTTPException(400, "Poné el porcentaje de la comisión")
+        # Solo frena si cambia: una pantalla vieja manda los dos campos aunque no los toque.
+        if nuevo != (pct_de(item) or None):
+            exigir_dueno_comision(user)
+            poner_comision(item, nuevo)
     # Marcar un ítem como depilación lo saca de las comisiones y lo mete en el
     # reparto del día. Desmarcarlo es lo contrario, y en los dos casos cambia lo
     # que está pendiente: lo ya cerrado no, que guarda su propia foto.
-    if cambios.es_depilacion is not None: item.es_depilacion = cambios.es_depilacion
+    if cambios.es_depilacion is not None:
+        item.es_depilacion = cambios.es_depilacion
+        if item.es_depilacion: poner_comision(item, None)
     # Se puede corregir después de creado. Es una casilla que se tilda al pasar y
     # hasta ahora no había forma de destildarla: un servicio marcado producto
     # descuenta stock en cada venta, y quedaba descontando para siempre. No toca
     # nada hacia atrás; cambia de la próxima venta en adelante.
     if cambios.es_producto is not None: item.es_producto = cambios.es_producto
-    if cambios.comision_pct is not None:
-        if cambios.comision_pct < 0:
-            item.comision_pct = None                 # vuelve al general
-        elif cambios.comision_pct > 100:
-            raise HTTPException(400, "La comisión va de 0 a 100")
-        else:
-            item.comision_pct = cambios.comision_pct
     db.commit(); return {"ok": True}
+
+def exigir_dueno_comision(user):
+    """La comisión es plata de las empleadas: la cambia la dueña, en Sueldos."""
+    if not es_dueno(user):
+        raise HTTPException(403, "La comisión la cambia la dueña, en Sueldos")
+
+def validar_pct(pct: int) -> int:
+    if not 0 < pct <= 100: raise HTTPException(400, "La comisión va de 1 a 100%")
+    return pct
+
+def poner_comision(item, pct: int | None):
+    """Sin número, el servicio no paga comisión. Lo pendiente se recalcula; lo
+    cerrado no, que guarda su propia foto."""
+    item.es_comision = bool(pct)
+    item.comision_pct = validar_pct(pct) if pct else None
+
+@app.put("/api/comisiones")
+def cambiar_comisiones(datos: ComisionesIn, _ = Depends(solo_dueno), db: Session = Depends(get_db)):
+    """La misma comisión para varios servicios juntos. La depilación no va: se reparte."""
+    if datos.pct: validar_pct(datos.pct)
+    items = db.query(models.Item).filter(models.Item.id.in_(datos.ids)).all() if datos.ids else []
+    if len(items) != len(set(datos.ids)): raise HTTPException(404, "Algún servicio no existe")
+    if any(i.es_depilacion for i in items):
+        raise HTTPException(400, "La depilación no paga comisión: se reparte la sesión")
+    for i in items: poner_comision(i, datos.pct)
+    db.commit(); return {"ok": True, "cambiados": len(items)}
 
 @app.delete("/api/items/{item_id}")
 def borrar_item(item_id: int, _ = Depends(usuario_actual), db: Session = Depends(get_db)):
@@ -5434,12 +5498,11 @@ def armar_backup(db) -> dict:
             for e in db.query(models.Egreso).order_by(models.Egreso.fecha).all()
         ],
         "empleados": [
-            # El código va hasheado, como las contraseñas de los usuarios. Tiene
-            # que estar: sin él, una base restaurada deja a todas afuera de su
+            # Con el código: sin él, una base restaurada deja a todas afuera de su
             # propia pantalla de sueldos hasta que la dueña los vuelva a cargar.
             {"id": e.id, "nombre": e.nombre, "activo": e.activo,
-             "pin_salt": e.pin_salt, "pin_hash": e.pin_hash,
-             "valor_hora": e.valor_hora}
+             "pin_salt": e.pin_salt, "pin_hash": e.pin_hash, "codigo": e.codigo,
+             "valor_hora": e.valor_hora, "cobra_sueldo": bool(e.cobra_sueldo)}
             for e in db.query(models.Empleado).all()
         ],
         "liquidaciones": [

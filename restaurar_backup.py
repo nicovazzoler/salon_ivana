@@ -46,7 +46,7 @@ ORDEN = [
                                   "direccion", "dni", "activo"], ["creado"]),
     ("formas_pago", models.FormaPago, ["id", "nombre", "activo"], []),
     ("empleados", models.Empleado, ["id", "nombre", "activo", "pin_salt", "pin_hash",
-                                    "valor_hora"], []),
+                                    "codigo", "valor_hora", "cobra_sueldo"], []),
     # Antes que egresos, comprobantes y liquidaciones, que la apuntan.
     ("sesiones_depilacion", models.SesionDepilacion,
      ["id", "numero", "empleado_id", "reparto_efectivo", "notas"], ["abierta", "cerrada"]),

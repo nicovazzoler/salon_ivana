@@ -24,9 +24,8 @@ class Item(Base):
     # ajuste de línea. Va en el ítem y no en el comprobante porque es una
     # propiedad del trabajo ("un corte se paga a comisión"), no de la venta.
     es_comision = Column(Boolean, default=False)
-    # Porcentaje propio de este ítem; NULL = el general de config. No todos los
-    # trabajos pagan lo mismo: un color lleva tres horas y un flequillo diez
-    # minutos.
+    # El porcentaje que paga, que es de cada servicio: un color lleva tres horas
+    # y un flequillo diez minutos. Sin `es_comision` no paga nada.
     comision_pct = Column(Integer)
     # Trabajo de depilación: esas líneas no pagan comisión, se reparten. Va en el
     # ítem y no en el nombre de la categoría, que se renombra desde Admin: la
@@ -164,13 +163,18 @@ class Empleado(Base):
     id = Column(Integer, primary_key=True)
     nombre = Column(String, unique=True, nullable=False)
     activo = Column(Boolean, default=True)
-    # Lo que cobra la hora. NULL = el general de Sueldos, y es nullable y no 0
+    # Lo que cobra la hora. NULL = todavía no se puso, y es nullable y no 0
     # porque 0 es válido: alguien que cobra solo comisión.
     valor_hora = Column(Integer)
     # El código con el que abre su sueldo, con hash y sal como las contraseñas:
     # la base entera se descarga en cada backup.
     pin_salt = Column(String)
     pin_hash = Column(String)
+    # El código a la vista, para que la dueña lo tenga a mano si se olvida. Los
+    # viejos solo tienen el hash: se completa la próxima vez que la empleada entra.
+    codigo = Column(String)
+    # A quién se le paga sueldo: la que no cobra no aparece para pagar ni para entrar.
+    cobra_sueldo = Column(Boolean, default=False)
 
 class TipoEgreso(Base):
     __tablename__ = "tipos_egreso"

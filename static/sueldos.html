@@ -178,14 +178,6 @@
           color:var(--text-tenue); }
   .vacio{ padding:var(--sp-4); text-align:center; color:var(--text-tenue); }
 
-  /* La puerta. Pocos controles y grandes: se usa parada, en una tablet, con la
-     mano mojada de tintura. */
-  .puerta-form{ display:flex; flex-wrap:wrap; gap:var(--sp-3); align-items:flex-end; }
-  .puerta-form > div{ display:flex; flex-direction:column; gap:2px; flex:1 1 180px; min-width:0; }
-  .puerta-form select, .puerta-form input{ width:100%; }
-  .puerta-form input.pin{ font-size:var(--fs-xl); letter-spacing:.3em; text-align:center; }
-  .puerta-form button{ flex:0 0 auto; }
-  .puerta-error{ margin:var(--sp-3) 0 0; color:var(--danger); font-size:var(--fs-sm); }
   /* Quién abrió, arriba a la derecha, donde la dueña tiene el desplegable. */
   .quien-nombre{ font-weight:var(--fw-bold); }
 
@@ -227,6 +219,91 @@
   .agregar select, .agregar input{ width:100%; max-width:100%; }
   .agregar .ancho{ flex:2 1 220px; }
 
+  /* Las dos solapas de la dueña, como las de Depilación */
+  .solapas{ display:flex; gap:28px; margin-bottom:var(--sp-5); flex-wrap:wrap;
+            border-bottom:1px solid var(--border-sutil); }
+  .solapas button{ padding:10px 2px; margin-bottom:-1px; background:transparent; border:0;
+                   border-bottom:2px solid transparent; border-radius:0;
+                   color:var(--text-tenue); font-size:var(--fs-lg); }
+  .solapas button:hover{ background:transparent; color:var(--text-titulo); }
+  .solapas button.on{ border-bottom-color:var(--bronce-400); color:var(--text-titulo); }
+  .hoja > .card + .card{ margin-top:var(--sp-8); padding-top:var(--sp-6);
+                         border-top:1px solid var(--border-sutil); }
+
+  /* La puerta: el nombre en una ficha grande y el código en un teclado. Se usa
+     parada y con las manos ocupadas: nada chico. */
+  .puerta{ margin-top:var(--sp-5); }
+  .puerta-aviso{ text-align:center; color:var(--text-suave); margin:0 0 var(--sp-4); }
+  .puerta-caja{ max-width:560px; margin:0 auto; text-align:center; }
+  .nombres{ display:grid; grid-template-columns:repeat(auto-fit, minmax(130px,1fr)); gap:var(--sp-3); }
+  .nombre-tile{ display:flex; flex-direction:column; align-items:center; gap:10px; padding:20px 10px 16px;
+                background:var(--bg-tile); color:var(--text-titulo); border-radius:16px; font-size:var(--fs-lg); }
+  .nombre-tile:hover{ background:var(--bg-tile-hover); color:var(--text-titulo); }
+  .nombre-tile small{ font-size:var(--fs-xs); font-weight:var(--fw-normal); color:var(--text-tenue); margin-top:-6px; }
+  .inicial{ width:54px; height:54px; border-radius:50%; display:grid; place-items:center;
+            font-family:var(--font-display); font-size:24px; background:var(--bg-elegido); color:var(--text-marca);
+            box-shadow:inset 0 0 0 1.5px var(--border-marca); }
+  .pin-caja{ max-width:320px; margin:0 auto; }
+  .pin-caja .volver{ background:transparent; color:var(--text-tenue); padding:6px 10px; font-weight:var(--fw-medium); }
+  .pin-caja .volver:hover{ background:var(--bg-sutil); color:var(--text-titulo); }
+  .pin-caja h3{ margin:10px 0 0; font-size:var(--fs-2xl); }
+  .pin-caja p{ margin:4px 0 0; color:var(--text-suave); }
+  .puntos{ display:flex; justify-content:center; gap:14px; margin:22px 0 8px; min-height:18px; }
+  .puntos i{ width:14px; height:14px; border-radius:50%; box-shadow:inset 0 0 0 2px var(--border); }
+  .puntos i.lleno{ background:var(--text-titulo); box-shadow:none; }
+  .puntos.mal{ animation:sacudir .35s; }
+  @keyframes sacudir{ 25%{transform:translateX(-8px)} 50%{transform:translateX(8px)} 75%{transform:translateX(-4px)} }
+  @media (prefers-reduced-motion:reduce){ .puntos.mal{ animation:none; } }
+  .pin-caja .pin-error{ color:var(--danger); font-size:var(--fs-sm); min-height:20px; margin:0 0 8px; }
+  .teclado{ display:grid; grid-template-columns:repeat(3,1fr); gap:10px; }
+  .teclado button{ height:64px; font-size:26px; font-family:var(--font-display); font-weight:var(--fw-normal);
+                   background:var(--bg-tile); color:var(--text-titulo); border-radius:16px; }
+  .teclado button:hover{ background:var(--bg-tile-hover); color:var(--text-titulo); }
+  .teclado button.chico{ background:transparent; color:var(--text-suave); }
+  .teclado button.ok{ background:var(--acento-fuerte); color:var(--text-sobre-oro);
+                      font-size:var(--fs-md); font-family:var(--font-texto); font-weight:var(--fw-bold); }
+  .teclado .ico{ width:24px; height:24px; }
+
+  /* Valores y comisiones: tablas con su título por columna */
+  .tabla-v{ width:100%; border-collapse:collapse; font-size:var(--fs-md); }
+  .tabla-v th{ text-align:left; padding:8px 6px; font-size:var(--fs-xs); font-weight:var(--fw-bold);
+               text-transform:uppercase; letter-spacing:.05em; color:var(--text-tenue);
+               border-bottom:1px solid var(--border-sutil); white-space:nowrap; }
+  .tabla-v th.c{ white-space:normal; line-height:1.2; }
+  .tabla-v td{ padding:9px 6px; border-bottom:1px solid var(--border-sutil); vertical-align:middle; }
+  .tabla-v .n{ text-align:right; font-variant-numeric:tabular-nums; }
+  .tabla-v .c{ text-align:center; width:48px; }
+  .tabla-v b{ color:var(--text-titulo); font-weight:var(--fw-bold); display:block; }
+  .tabla-v .det{ font-size:var(--fs-sm); color:var(--text-tenue); }
+  .tabla-v .codigo{ font-variant-numeric:tabular-nums; letter-spacing:.15em; font-weight:var(--fw-bold); color:var(--text-titulo); }
+  .tabla-v input[type=checkbox]{ width:20px; height:20px; accent-color:var(--bronce-500); }
+  .tabla-v tr.elegido td{ background:var(--bg-elegido); }
+  .valor-ed{ display:inline-flex; align-items:center; justify-content:flex-end; gap:4px; }
+  .valor-ed .v{ display:inline; }
+  .valor-ed .falta{ color:var(--danger); font-weight:var(--fw-bold); font-size:var(--fs-sm); }
+  .valor-ed input{ width:110px; text-align:right; padding:6px 10px; }
+  .lapiz{ background:transparent; color:var(--text-tenue); padding:6px; }
+  .lapiz:hover{ background:var(--bg-sutil); color:var(--text-titulo); }
+  .lapiz .ico{ width:16px; height:16px; }
+  .filtros-c{ display:flex; flex-wrap:wrap; align-items:center; gap:6px; margin:var(--sp-2) 0 var(--sp-3); }
+  .filtros-c .sep{ width:1px; height:22px; background:var(--border-sutil); margin:0 6px; }
+  .filtros-c .chip{ padding:6px 12px; border-radius:999px; background:var(--bg-tile); color:var(--text);
+                    font-size:var(--fs-sm); font-weight:var(--fw-bold); }
+  .filtros-c .chip:hover{ background:var(--bg-tile-hover); color:var(--text-titulo); }
+  .filtros-c .chip.on{ background:var(--bg-elegido); color:var(--text-marca); box-shadow:inset 0 0 0 1.5px var(--border-marca); }
+  #buscaServ{ width:100%; }
+  .barra-c{ display:flex; flex-wrap:wrap; align-items:center; gap:8px; padding:10px 12px; margin-bottom:10px;
+            border-radius:12px; background:var(--bg-elevado); box-shadow:var(--sombra-elevada);
+            position:sticky; top:calc(var(--alto-header, 0px) + 8px); z-index:5; }
+  .barra-c b{ color:var(--text-titulo); margin-right:6px; }
+  .barra-c input{ width:70px; text-align:right; padding:6px 8px; }
+  .barra-c .lapiz{ margin-left:auto; }
+
+  @media (max-width:520px){
+    .valor-ed input{ width:90px; }
+    .tabla-v th, .tabla-v td{ padding-left:4px; padding-right:4px; }
+  }
+
   @media (max-width:600px){
     .fila-dato{ grid-template-columns:1fr auto; row-gap:6px; }
     .fila-dato .mins{ grid-column:1; }
@@ -246,18 +323,20 @@
      permiso no se guarda en el navegador: vive mientras la pantalla está
      abierta. El candado de verdad está en el servidor. -->
 <div class="wrap" id="puerta" hidden>
-  <div class="card">
-    <div class="card-head">
-      <div class="titulo">
-        <h2>Sueldos</h2>
-        <p id="puertaAyuda">Elegí quién sos y poné tu código.</p>
-      </div>
-    </div>
+  <div class="card puerta">
+    <h2 style="text-align:center;">¿Quién sos?</h2>
+    <p class="puerta-aviso" id="puertaAyuda" hidden></p>
     <div id="puertaCuerpo"></div>
   </div>
 </div>
 
 <div class="wrap" id="todo">
+  <div class="solapas" data-dueno>
+    <button class="on" data-hoja="hojaSueldos">Sueldos</button>
+    <button data-hoja="hojaValores">Valores y comisiones</button>
+  </div>
+
+  <div class="hoja" id="hojaSueldos">
   <!-- La dueña entra a otra cosa: a ver a quién le debe cuánto y a cerrar. El
        detalle de una es el mismo que ve la empleada, así que la tarjeta de abajo
        la usan las dos y lo que cambia es lo que la rodea. -->
@@ -271,15 +350,6 @@
     <div id="listaEmpleadas"></div>
   </div>
 
-  <div class="card" data-dueno>
-    <div class="card-head"><div class="titulo"><h2>Cómo se calcula</h2>
-      <p>Cambiarlos no toca lo ya pagado.</p></div></div>
-    <div id="cfgGenerales"></div>
-    <div id="cfgArranque"></div>
-
-    <p class="muted" style="margin:var(--sp-3) 0 0;">Los empleados se cargan en
-       <a href="/admin#empleados">Admin</a>, con el resto de las listas.</p>
-  </div>
   <div class="card">
     <div class="card-head con-datos">
       <div class="titulo">
@@ -304,11 +374,23 @@
       <button class="b-out" id="verPagado">Ver</button></div>
     <div id="listaLiq" style="display:none;"></div>
   </div>
+  </div>
 
+  <!-- Lo que se le paga a cada una: el valor hora y la comisión de cada servicio.
+       Sin valores generales: cada empleada tiene el suyo y cada servicio el suyo. -->
+  <div class="hoja" id="hojaValores" data-dueno hidden>
+    <div class="card">
+      <div class="card-head"><h2>Empleadas</h2></div>
+      <div id="tablaEmpleadas"></div>
+    </div>
+    <div class="card">
+      <div class="card-head"><h2>Comisiones</h2></div>
+      <div id="tablaComisiones"></div>
+    </div>
+  </div>
 </div>
 
 <div id="toast" class="toast"></div>
 <script src="/static/auth.js"></script>
-<script src="/static/js/generales.js"></script>
 <script src="/static/js/sueldos.js"></script>
 </body></html>
