@@ -1102,8 +1102,9 @@ def _es_de_una_sesion(db, e) -> str | None:
                          models.MovimientoSueldo.egreso2_id == e.id)).first())
     if mov:
         return "Es un adelanto de sueldo: se anula desde Sueldos, para que deje de descontarse"
-    if db.query(models.Liquidacion).filter(models.Liquidacion.egreso2_id == e.id).first():
-        return "Es la mitad de un sueldo pagado mixto: lo pagado no se toca"
+    if db.query(models.Liquidacion).filter(or_(models.Liquidacion.egreso_id == e.id,
+                                               models.Liquidacion.egreso2_id == e.id)).first():
+        return "Es un sueldo pagado: lo pagado no se toca"
     return None
 
 def _puede_modificar(user, fecha) -> bool:
@@ -2777,6 +2778,10 @@ def pagar_sueldos(datos: PagarIn, _ = Depends(solo_dueno), db: Session = Depends
     if len({p.empleado_id for p in datos.pagos}) != len(datos.pagos):
         raise HTTPException(400, "Hay una empleada repetida")
     cuando = fecha_del_servicio(datos.fecha, fecha_hora_now_utc().replace(tzinfo=None), "un sueldo")
+    # Trabadas hasta el commit: dos pagos al mismo tiempo leerían el mismo
+    # pendiente y lo pagarían dos veces.
+    (db.query(models.Empleado).filter(models.Empleado.id.in_([p.empleado_id for p in datos.pagos]))
+       .with_for_update().all())
     hechos = []
     for p in datos.pagos:
         emp = _empleado_o_404(db, p.empleado_id)
@@ -2915,6 +2920,8 @@ def llevar_producto(p: ProductoSueldoIn, user = Depends(usuario_actual), quien =
     if (ya := _mov_repetido(db, p.clave, lambda m: (m.empleado_id, m.tipo, m.item_id, m.cantidad, m.monto)
                             == (emp.id, "producto", item.id, p.cantidad, p.precio * p.cantidad))): return ya
     if item.stock_actual is not None:
+        if p.cantidad > item.stock_actual:
+            raise HTTPException(400, f"De {item.nombre} quedan {max(item.stock_actual, 0)}")
         log_stock(db, item, "venta", -p.cantidad, f"{emp.nombre}, se descuenta del sueldo",
                   user.get("usuario", "?"))
         item.stock_actual -= p.cantidad

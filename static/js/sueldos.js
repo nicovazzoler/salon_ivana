@@ -690,7 +690,8 @@ async function cartelProducto(emp){
         const precio = zona.querySelector("#pPrecio");
         const act = () => {
           const t = pesos(precio.value) * cant;
-          si.disabled = false;
+          // Sin cargo es solo descontado: pagado ahora sería un ticket de $0.
+          si.disabled = !t && como !== "descuento";
           si.textContent = como === "descuento" ? (t ? `Descontar ${fmt(t)}` : "Llevarlo sin cargo")
                                                 : `Cobrar ${fmt(t)} en ${como === "efectivo" ? "efectivo" : "transferencia"}`;
         };

@@ -100,6 +100,7 @@ def test_se_paga_hasta_el_dia_y_lo_de_despues_queda(db, api):
     assert r.status_code == 200, r.text
     liq = db.query(models.Liquidacion).one()
     assert (liq.hasta, liq.total, liq.egreso.monto, liq.egreso.privado) == (ayer, 50000, 50000, True)
+    assert api.delete(f"/api/egresos/{liq.egreso_id}").status_code == 409     # desde Caja no
     quedan = pendiente(api, e)
     assert [d["fecha"] for d in quedan["dias"] if d["minutos"]] == [hoy]
     assert quedan["total"] == 50000
