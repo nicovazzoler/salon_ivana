@@ -149,6 +149,7 @@ input.buscador{
 }
 
 .tag.neutro{ background:var(--bg-sutil); color:var(--text-tenue); }
+.tag.falta{ background:var(--danger-bg); color:var(--danger); }
 
 /* ----- Badge: estado de un comprobante ----- */
 .badge{

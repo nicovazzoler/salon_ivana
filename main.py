@@ -37,6 +37,9 @@ def migrar():
         # La que frena el cobro repetido cuando se pierde la respuesta.
         ("comprobantes", [("clave", "VARCHAR")]),
         ("pagos", [("clave", "VARCHAR")]),
+        ("items", [("duracion_min", "INTEGER")]),
+        ("horas_trabajadas", [("desde", "VARCHAR"), ("hasta", "VARCHAR"),
+                              ("desde2", "VARCHAR"), ("hasta2", "VARCHAR")]),
     ):
         existentes = [c["name"] for c in insp.get_columns(tabla)]
         for col, tipo in columnas:
@@ -365,6 +368,7 @@ class ItemIn(BaseModel):
     categoria: str; nombre: str; precio: int = 0; es_producto: bool = False
     es_comision: bool = False; comision_pct: int | None = None
     es_depilacion: bool = False
+    duracion_min: int | None = None
     # Depilación se carga al revés que la peluquería: la lista impresa son los
     # precios de TRANSFERENCIA y el de efectivo sale de ahí. Si viene este, manda.
     precio_transfer: int | None = None
@@ -373,6 +377,7 @@ class ItemEdit(BaseModel):
     es_comision: bool | None = None; es_producto: bool | None = None
     es_depilacion: bool | None = None
     comision_pct: int | None = None
+    duracion_min: int | None = None       # 0 la saca
 class ComisionesIn(BaseModel):
     ids: list[int]
     pct: int | None = None                # None o 0 = ese servicio no paga comisión
@@ -461,8 +466,14 @@ class GastoDepiIn(BaseModel):
     ayudante: bool = False
     ayudante_id: int | None = None        # si la ayudante es del salón
     maquina: bool = False                 # el alquiler de la máquina de la sesión
+class TandaIn(BaseModel):
+    desde: str; hasta: str
 class HorasIn(BaseModel):
-    empleado_id: int; fecha: str; minutos: int
+    empleado_id: int; fecha: str
+    # Lo normal es el horario; los minutos sueltos quedan para una pantalla vieja
+    # que todavía esté abierta en la tablet. Sin tandas y sin minutos: no vino.
+    tandas: list[TandaIn] | None = None
+    minutos: int | None = None
 class MinutosTrabajoIn(BaseModel):
     # Uno de los dos: linea_id si el trabajo salió de un comprobante, trabajo_id
     # si es suelto. Los sueltos nacen con la duración puesta, pero se tiene que
@@ -1243,7 +1254,7 @@ def items(categoria: str, _ = Depends(usuario_actual), db: Session = Depends(get
              "precio_transfer": i.precio_transfer,
              "es_producto": i.es_producto, "es_comision": bool(i.es_comision),
              "es_depilacion": bool(i.es_depilacion),
-             "comision_pct": i.comision_pct} for i in q]
+             "comision_pct": i.comision_pct, "duracion_min": i.duracion_min} for i in q]
 
 @app.get("/api/items/all")
 def items_all(_ = Depends(usuario_actual), db: Session = Depends(get_db)):
@@ -1251,7 +1262,7 @@ def items_all(_ = Depends(usuario_actual), db: Session = Depends(get_db)):
     return [{"id": i.id, "nombre": i.nombre, "precio": i.precio, "categoria": i.categoria, "precio_transfer": i.precio_transfer,
              "es_producto": i.es_producto, "es_comision": bool(i.es_comision),
              "es_depilacion": bool(i.es_depilacion),
-             "comision_pct": i.comision_pct} for i in q]
+             "comision_pct": i.comision_pct, "duracion_min": i.duracion_min} for i in q]
 
 @app.get("/api/catalogo")
 def catalogo(de: str = "pelu", _ = Depends(usuario_actual), db: Session = Depends(get_db)):
@@ -1999,6 +2010,8 @@ def resumen_pendiente(db, empleado) -> dict:
     trabajos = []
     for linea, comp, item in lineas_a_comision_pendientes(db, empleado):
         pct_linea = pct_de(item)
+        propios = minutos_por_linea.get(linea.id) or 0
+        catalogo = (item.duracion_min or 0) * (linea.cantidad or 1)
         trabajos.append({
             "id": id_por_linea.get(linea.id), "linea_id": linea.id,
             "comprobante_id": comp.id, "numero": comp.numero,
@@ -2009,7 +2022,8 @@ def resumen_pendiente(db, empleado) -> dict:
             "fecha": hora_argentina(comp.fecha).date().isoformat(),
             "nombre": linea.nombre, "cantidad": linea.cantidad,
             "base": base_comision(linea, comp), "comision": comision_de(linea, pct_linea, comp),
-            "minutos": minutos_por_linea.get(linea.id, 0) or 0,
+            "minutos": propios or catalogo, "minutos_propios": bool(propios),
+            "duracion_catalogo": catalogo,
             "cliente": comp.cliente_nombre, "suelto": False})
 
     # Y los sueltos, que no tienen comprobante detrás.
@@ -2024,12 +2038,15 @@ def resumen_pendiente(db, empleado) -> dict:
         item = db.get(models.Item, t.item_id) if t.item_id else None
         b = base_suelto(t, item) if item else 0
         p = pct_de(item)
+        catalogo = ((item.duracion_min or 0) if item else 0) * (t.cantidad or 1)
         trabajos.append({
             "id": t.id, "linea_id": None, "comprobante_id": None, "numero": None,
             "cliente_id": None, "fecha": t.fecha, "pct": p,
             "nombre": t.nombre or (item.nombre if item else "—"),
             "cantidad": t.cantidad or 1,
-            "base": b, "comision": round(b * p / 100), "minutos": t.minutos or 0,
+            "base": b, "comision": round(b * p / 100),
+            "minutos": t.minutos or catalogo, "minutos_propios": bool(t.minutos),
+            "duracion_catalogo": catalogo,
             "cliente": None, "suelto": True})
 
     q_horas = (db.query(models.HoraTrabajada)
@@ -2040,12 +2057,12 @@ def resumen_pendiente(db, empleado) -> dict:
 
     # --- se arma un día por fecha, con sus trabajos adentro ---
     dias = {h.fecha: {"id": h.id, "fecha": h.fecha, "minutos": h.minutos or 0,
-                      "trabajos": []} for h in horas}
+                      "tandas": tandas_de(h), "trabajos": []} for h in horas}
     for t in trabajos:
         f = t["fecha"]
         if not f: continue
         if f not in dias:
-            dias[f] = {"id": None, "fecha": f, "minutos": 0, "trabajos": []}
+            dias[f] = {"id": None, "fecha": f, "minutos": 0, "tandas": [], "trabajos": []}
         dias[f]["trabajos"].append(t)
 
     # El ciclo se completa con TODOS sus días hasta hoy: es donde ella carga sus
@@ -2063,7 +2080,7 @@ def resumen_pendiente(db, empleado) -> dict:
             iso = f.isoformat()
             if (iso not in dias and f.weekday() not in DIAS_CERRADO
                     and not (arranque and iso < arranque)):
-                dias[iso] = {"id": None, "fecha": iso, "minutos": 0, "trabajos": []}
+                dias[iso] = {"id": None, "fecha": iso, "minutos": 0, "tandas": [], "trabajos": []}
             f += timedelta(days=1)
     # Días cuyas horas YA se pagaron en un cierre anterior. El día puede volver
     # a aparecer con el casillero vacío, y ahí no falta nada: sin esta marca el
@@ -2079,6 +2096,9 @@ def resumen_pendiente(db, empleado) -> dict:
         # marcado para que la dueña lo vea antes de pagarlo.
         d["sin_respaldo"] = bool(d["minutos"]) and not d["trabajos"]
         d["trabajos"].sort(key=lambda t: (t["numero"] or 0, t["id"] or 0))
+        # Lo que dice la agenda para ese día, para no tipear el horario de siempre.
+        d["sugerido"] = ([[x["desde"], x["hasta"]] for x in disponibilidad(db, empleado.id, f)["tramos"]][:2]
+                         if not d["minutos"] and not d["horas_pagadas"] else [])
 
     # --- y los días se agrupan en ciclos ---
     ciclos = {}
@@ -2624,8 +2644,10 @@ def cargar_horas(h: HorasIn, user = Depends(usuario_actual),
     corrige lo que puso, no acumula intentos."""
     permitir_sueldo(db, user, quien, h.empleado_id)
     _empleado_o_404(db, h.empleado_id)
-    if h.minutos < 0: raise HTTPException(400, "Las horas no pueden ser negativas")
-    if h.minutos > 24 * 60: raise HTTPException(400, "No entran más de 24 horas en un día")
+    tandas = validar_tandas(h.tandas or [])
+    minutos = sum(_a_min(b) - _a_min(a) for a, b in tandas) if tandas else (h.minutos or 0)
+    if minutos < 0: raise HTTPException(400, "Las horas no pueden ser negativas")
+    if minutos > 24 * 60: raise HTTPException(400, "No entran más de 24 horas en un día")
     fila = (db.query(models.HoraTrabajada)
               .filter(models.HoraTrabajada.empleado_id == h.empleado_id,
                       models.HoraTrabajada.fecha == h.fecha,
@@ -2654,13 +2676,33 @@ def cargar_horas(h: HorasIn, user = Depends(usuario_actual),
         raise HTTPException(400, "Fecha inválida")
     if cuando > hoy_argentina():
         raise HTTPException(400, "Ese día todavía no pasó")
-    if h.minutos == 0:
+    if minutos == 0:
         if fila: db.delete(fila)
-    elif fila:
-        fila.minutos = h.minutos
-    else:
-        db.add(models.HoraTrabajada(empleado_id=h.empleado_id, fecha=h.fecha, minutos=h.minutos))
-    db.commit(); return {"ok": True}
+        db.commit(); return {"ok": True, "minutos": 0}
+    if not fila:
+        fila = models.HoraTrabajada(empleado_id=h.empleado_id, fecha=h.fecha)
+        db.add(fila)
+    fila.minutos = minutos
+    (fila.desde, fila.hasta), (fila.desde2, fila.hasta2) = (tandas + [(None, None)] * 2)[:2]
+    db.commit(); return {"ok": True, "minutos": minutos}
+
+def _a_min(hhmm: str) -> int:
+    h, m = hhmm.split(":")
+    return int(h) * 60 + int(m)
+
+def validar_tandas(tandas) -> list[tuple[str, str]]:
+    """Una o dos tandas del mismo día, en orden y sin pisarse."""
+    if len(tandas) > 2: raise HTTPException(400, "Van como mucho dos tandas por día")
+    salida = []
+    for t in tandas:
+        _valida_tramo(t.desde, t.hasta)
+        salida.append((t.desde, t.hasta))
+    if len(salida) == 2 and salida[1][0] < salida[0][1]:
+        raise HTTPException(400, "La segunda tanda empieza antes de que termine la primera")
+    return salida
+
+def tandas_de(h) -> list[list[str]]:
+    return [[a, b] for a, b in ((h.desde, h.hasta), (h.desde2, h.hasta2)) if a and b]
 
 @app.put("/api/sueldos/trabajo-minutos")
 def cargar_minutos_trabajo(m: MinutosTrabajoIn, user = Depends(usuario_actual),
@@ -2751,6 +2793,7 @@ def cerrar_liquidacion(datos: CerrarIn, _ = Depends(solo_dueno), db: Session = D
         # ya existía guarda el id de la línea y nada más, y la liquidación
         # cerrada se leería con el trabajo en blanco.
         fila.liquidacion_id = liq.id
+        fila.minutos = t["minutos"]
         fila.fecha = t["fecha"]; fila.nombre = t["nombre"]; fila.cantidad = t["cantidad"]
         fila.base = t["base"]; fila.comision = t["comision"]
     # Solo las horas de ESTE ciclo. Las de una semana anterior sin pagar tienen
@@ -2845,9 +2888,10 @@ def crear_trabajo_suelto(t: TrabajoSueltoIn, user = Depends(usuario_actual),
     if not item: raise HTTPException(404, "Ese ítem no existe")
     if not item.es_comision: raise HTTPException(400, "Ese ítem no se paga por comisión")
     if t.cantidad < 1: raise HTTPException(400, "La cantidad tiene que ser al menos 1")
-    # Con duración sí o sí. Un trabajo sin tiempo no se puede pagar bien: no se
-    # sabe cuánto descontarle a las horas del día, y termina cobrado dos veces.
-    if t.minutos <= 0: raise HTTPException(400, "Poné cuánto duró el trabajo")
+    # Con duración sí o sí, la suya o la del catálogo. Un trabajo sin tiempo no
+    # se puede pagar bien: no se sabe cuánto descontarle a las horas del día.
+    if t.minutos < 0 or (not t.minutos and not item.duracion_min):
+        raise HTTPException(400, "Poné cuánto duró el trabajo")
     if t.minutos > 24 * 60: raise HTTPException(400, "Duración fuera de rango")
     try:
         date.fromisoformat(t.fecha)
@@ -2892,7 +2936,7 @@ def poner_peluquero(comp_id: int, datos: PeluqueroIn, _ = Depends(usuario_actual
 def items_a_comision(_ = Depends(usuario_actual), db: Session = Depends(get_db)):
     """El catálogo que sirve para cargar un trabajo suelto."""
     return [{"id": i.id, "nombre": i.nombre, "categoria": i.categoria, "precio": i.precio,
-             "comision_pct": i.comision_pct}
+             "comision_pct": i.comision_pct, "duracion_min": i.duracion_min}
             for i in db.query(models.Item)
                        .filter(models.Item.activo == True, models.Item.es_comision == True)
                        .order_by(models.Item.categoria, models.Item.nombre)]
@@ -2953,7 +2997,7 @@ def detalle_liquidacion(liq_id: int, user = Depends(usuario_actual),
         "total": liq.total, "notas": liq.notas, "parcial": bool(liq.parcial),
         "egreso_numero": liq.egreso.numero if liq.egreso else None,
         "forma_pago": liq.egreso.forma_pago if liq.egreso else None,
-        "dias": [{"fecha": h.fecha, "minutos": h.minutos or 0} for h in horas],
+        "dias": [{"fecha": h.fecha, "minutos": h.minutos or 0, "tandas": tandas_de(h)} for h in horas],
         "trabajos": [{"fecha": t.fecha, "nombre": t.nombre, "cantidad": t.cantidad or 1,
                       "minutos": t.minutos or 0, "base": t.base or 0, "comision": t.comision or 0,
                       "suelto": t.linea_id is None}
@@ -3348,6 +3392,7 @@ def crear_item(item: ItemIn, user = Depends(usuario_actual), db: Session = Depen
                         precio=precio, precio_transfer=calcular_transfer(precio),
                         es_producto=item.es_producto, es_comision=con_comision,
                         es_depilacion=item.es_depilacion,
+                        duracion_min=validar_duracion(item.duracion_min),
                         comision_pct=validar_pct(item.comision_pct) if con_comision else None)
     db.add(nuevo); db.commit(); db.refresh(nuevo); return {"id": nuevo.id}
 
@@ -3384,7 +3429,13 @@ def editar_item(item_id: int, cambios: ItemEdit, user = Depends(usuario_actual),
     # descuenta stock en cada venta, y quedaba descontando para siempre. No toca
     # nada hacia atrás; cambia de la próxima venta en adelante.
     if cambios.es_producto is not None: item.es_producto = cambios.es_producto
+    if cambios.duracion_min is not None: item.duracion_min = validar_duracion(cambios.duracion_min)
     db.commit(); return {"ok": True}
+
+def validar_duracion(minutos: int | None) -> int | None:
+    if not minutos: return None
+    if not 0 < minutos <= 12 * 60: raise HTTPException(400, "La duración va de 1 minuto a 12 horas")
+    return minutos
 
 def exigir_dueno_comision(user):
     """La comisión es plata de las empleadas: la cambia la dueña, en Sueldos."""
@@ -5465,7 +5516,7 @@ def armar_backup(db) -> dict:
              "precio_transfer": i.precio_transfer,
              "es_producto": i.es_producto, "es_comision": bool(i.es_comision),
              "es_depilacion": bool(i.es_depilacion),
-             "comision_pct": i.comision_pct,
+             "comision_pct": i.comision_pct, "duracion_min": i.duracion_min,
              "stock_actual": i.stock_actual,
              "stock_minimo": i.stock_minimo, "activo": i.activo}
             for i in db.query(models.Item).all()
@@ -5518,7 +5569,8 @@ def armar_backup(db) -> dict:
         ],
         "horas_trabajadas": [
             {"id": h.id, "empleado_id": h.empleado_id, "fecha": h.fecha,
-             "minutos": h.minutos, "liquidacion_id": h.liquidacion_id,
+             "minutos": h.minutos, "desde": h.desde, "hasta": h.hasta,
+             "desde2": h.desde2, "hasta2": h.hasta2, "liquidacion_id": h.liquidacion_id,
              "cargado": _iso_utc(h.cargado)}
             for h in db.query(models.HoraTrabajada).order_by(models.HoraTrabajada.id).all()
         ],

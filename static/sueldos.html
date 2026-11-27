@@ -66,14 +66,6 @@
   .ciclo-cab{ display:flex; flex-wrap:wrap; align-items:baseline; gap:var(--sp-2);
               padding:var(--sp-3) var(--sp-4);
               border-bottom:1px solid var(--border-sutil); }
-  /* Se repiten en cada día: como botones, una semana suma quince */
-  .dia .agregar-trabajo, .dia .editar-horas, .dia .editar-min{
-    min-height:30px; background:transparent; color:var(--text-tenue);
-  }
-  .dia .agregar-trabajo:hover, .dia .editar-horas:hover, .dia .editar-min:hover{
-    background:var(--bg-sutil); color:var(--text-titulo);
-  }
-  .dia .editar-horas .ico, .dia .editar-min .ico{ width:15px; height:15px; }
   .ciclo-cab h3{ margin:0; font-size:var(--fs-lg); }
   .ciclo-cab .plata{ margin-left:auto; font-family:var(--font-display);
                      font-size:var(--fs-xl); font-weight:var(--fw-black);
@@ -128,40 +120,6 @@
                      padding:3px 0 3px var(--sp-3); font-size:var(--fs-sm); }
   .lista-depi .det{ margin-left:auto; color:var(--text-tenue); }
 
-  /* Un día adentro del ciclo: rótulo, horas y sus trabajos debajo. */
-  .dia{ padding:var(--sp-3) 0; border-bottom:1px solid var(--border-sutil); }
-  .dia:last-child{ border-bottom:none; }
-  /* Un día en el que no pasó nada: está porque la semana tiene siete, no porque
-     haya algo que mirar. Un renglón y apagado. */
-  .dia.vacio-dia{ padding:var(--sp-2) 0; }
-  .dia.vacio-dia .dia-cab b{ font-weight:var(--fw-normal); color:var(--text-tenue); }
-  .dia.vacio-dia .acciones-dia{ margin-left:auto; }
-  /* Hoy es el día que se viene a cargar: se encuentra sin leer la columna. */
-  .dia.hoy > .dia-cab b{ color:var(--acento); }
-  .dia-resumen{ margin-top:2px; font-size:var(--fs-sm); color:var(--text-tenue); }
-  .dia-cab{ display:flex; flex-wrap:wrap; align-items:center; gap:var(--sp-2); }
-  .dia-cab b{ min-width:110px; }
-  .dia-cab .plata{ margin-left:auto; font-variant-numeric:tabular-nums; white-space:nowrap; }
-  .dia-horas{ display:flex; align-items:center; gap:6px; color:var(--text-tenue);
-              font-size:var(--fs-sm); }
-  .dia-horas .valor{ color:var(--text-titulo); font-weight:var(--fw-bold); }
-  .dia-horas .rot-horas{ color:var(--text-tenue); }
-  .dia-horas.falta .valor{ color:var(--danger); }
-  .dia .trabajos{ margin-top:var(--sp-2); padding-left:var(--sp-3);
-                  border-left:2px solid var(--border-sutil); }
-  .trabajo{ display:grid; grid-template-columns:minmax(0,1fr) auto auto;
-            align-items:center; gap:var(--sp-2); padding:var(--sp-2) 0; }
-  .trabajo + .trabajo{ border-top:1px dashed var(--border-sutil); }
-  .trabajo .que{ min-width:0; }
-  .trabajo .que b{ display:block; }
-  .trabajo .det{ font-size:var(--fs-sm); color:var(--text-tenue); }
-  .trabajo.sin-tiempo{ background:var(--rojo-bg); border-radius:var(--r-md);
-                       padding-left:var(--sp-2); padding-right:var(--sp-2); }
-  .falta-tiempo{ font-size:var(--fs-xs); color:var(--danger); text-transform:uppercase;
-                 letter-spacing:.04em; }
-  /* La comisión de un trabajo sin duración se muestra igual, apagada: el número
-     ya se sabe y esconderlo hacía parecer que ese trabajo no valía nada. */
-  .plata.no-cuenta{ color:var(--text-tenue); }
   .btn-mini{ font-size:var(--fs-sm); padding:3px 10px; }
   /* Marca de "esto no es una semana entera": un saldo que quedó de un pago
      parcial, o el pago parcial mismo en el historial. */
@@ -218,6 +176,125 @@
   .agregar label{ margin-bottom:2px; }
   .agregar select, .agregar input{ width:100%; max-width:100%; }
   .agregar .ancho{ flex:2 1 220px; }
+
+  /* ===== La cuenta de la empleada: el total grande y de dónde sale ===== */
+  .quien-empleada{ flex:1 1 100%; }
+  .quien-empleada .inicial{ width:44px; height:44px; font-size:20px; }
+  .quien-empleada button{ margin-left:auto; }
+  .cuenta{ display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:var(--sp-6); align-items:start; width:100%; }
+  .grande .lbl{ display:block; font-size:var(--fs-sm); font-weight:var(--fw-bold); color:var(--text-tenue); }
+  .grande .val{ display:block; font-family:var(--font-display); font-size:40px; font-weight:var(--fw-bold);
+                color:var(--text-marca); line-height:1.1; margin:2px 0; font-variant-numeric:tabular-nums; }
+  .grande .desde{ font-size:var(--fs-base); color:var(--text-suave); }
+  .renglones .r{ display:flex; gap:10px; align-items:baseline; padding:7px 0; border-bottom:1px solid var(--border-sutil); }
+  .renglones .r span:last-child{ margin-left:auto; font-variant-numeric:tabular-nums; white-space:nowrap; }
+  .renglones .r small{ color:var(--text-tenue); font-size:var(--fs-sm); }
+  .renglones .r.falta-r{ color:var(--danger); }
+  .renglones .r.total{ border-bottom:2px solid var(--border); font-weight:var(--fw-bold); color:var(--text-titulo); }
+  .renglones .r.total span:last-child{ font-family:var(--font-display); font-size:var(--fs-xl); }
+  @media (max-width:700px){ .cuenta{ grid-template-columns:1fr; gap:var(--sp-4); } }
+
+  /* Hoy se despega: es lo que se viene a cargar */
+  .hoy{ margin-top:var(--sp-5); padding:var(--sp-4); border-radius:16px;
+        background:var(--bg-elevado); box-shadow:var(--sombra-elevada); }
+  .hoy-cab{ display:flex; flex-wrap:wrap; align-items:baseline; gap:6px 12px; margin-bottom:var(--sp-3); }
+  .hoy-cab h3{ margin:0; font-size:var(--fs-xl); }
+  .nota-hoy{ font-size:var(--fs-sm); color:var(--text-tenue); }
+  .hoy-acc{ display:flex; justify-content:flex-end; gap:var(--sp-2); margin-top:var(--sp-3); }
+  .cargado{ display:flex; flex-wrap:wrap; align-items:center; gap:8px 14px; font-size:var(--fs-md); }
+  .cargado b{ font-family:var(--font-display); font-size:22px; color:var(--text-titulo); }
+
+  /* Las tandas: entré, salí, volví, me fui */
+  .tandas{ display:flex; flex-direction:column; gap:10px; }
+  .tanda{ display:flex; flex-wrap:wrap; align-items:flex-end; gap:10px; }
+  .tanda > div{ display:flex; flex-direction:column; gap:3px; }
+  .tanda label{ margin:0; }
+  .tanda input[type=time]{ width:150px; font-size:var(--fs-lg); }
+  .dlg .tanda input[type=time]{ width:130px; }
+  .tanda .quitar{ background:transparent; color:var(--text-tenue); padding:8px; }
+  .tanda .quitar:hover{ background:var(--danger-bg); color:var(--danger); }
+  .mas-tanda{ align-self:flex-start; background:transparent; color:var(--text-marca); padding:6px 2px; font-weight:var(--fw-bold); }
+  .mas-tanda:hover{ background:transparent; color:var(--text-titulo); text-decoration:underline; }
+  .tandas-pie{ display:flex; flex-wrap:wrap; align-items:center; gap:10px 16px; min-height:30px; }
+  .tandas-pie .suma{ font-family:var(--font-display); font-size:22px; color:var(--text-titulo); }
+  .tandas-pie .desc{ color:var(--text-suave); font-size:var(--fs-base); }
+  .dos-campos{ display:grid; grid-template-columns:1fr 1fr; gap:var(--sp-3); }
+  .dos-campos input{ width:100%; }
+  .dlg-acciones .dlg-extra{ margin-right:auto; }
+
+  /* ===== Los días: un renglón que se abre ===== */
+  .seccion-h{ display:flex; align-items:baseline; gap:10px; margin:var(--sp-6) 0 6px; }
+  .seccion-h h3{ margin:0; font-size:var(--fs-xl); }
+  .seccion-h span{ color:var(--text-tenue); font-size:var(--fs-base); }
+  .dia{ border-bottom:1px solid var(--border-sutil); }
+  .ciclo-cuerpo .dia:last-of-type{ border-bottom:none; }
+  .dia-fila{ display:grid; grid-template-columns:104px minmax(0,1fr) auto 20px; align-items:center; gap:10px;
+             width:100%; min-height:44px; padding:10px 0; background:transparent; color:var(--text);
+             text-align:left; font-weight:var(--fw-normal); border-radius:0; }
+  .dia-fila:hover{ background:var(--bg-hover); color:var(--text); }
+  .dia-fila.quieta:hover{ background:transparent; }
+  .dia-fila.quieta .btn-chico{ grid-column:3 / span 2; justify-self:end; }
+  .dia-fila b{ color:var(--text-titulo); }
+  .dia-fila .det{ font-size:var(--fs-base); color:var(--text-suave); min-width:0; }
+  .dia-fila .plata{ font-variant-numeric:tabular-nums; white-space:nowrap; }
+  .flecha{ display:inline-flex; color:var(--text-tenue); transition:transform .15s; }
+  .flecha .ico{ width:16px; height:16px; }
+  .dia.abierto .flecha, .hist.abierto .flecha{ transform:rotate(90deg); }
+  .dia.hoy-d .dia-fila b{ color:var(--text-marca); }
+  .falta{ color:var(--danger); font-weight:var(--fw-bold); }
+  .tenue{ color:var(--text-tenue); }
+  .dia-cuerpo{ padding:2px 0 var(--sp-3) var(--sp-3); margin-left:4px; border-left:2px solid var(--border-sutil); }
+  .dia-horario{ display:flex; flex-wrap:wrap; align-items:center; gap:6px 10px; padding:8px 0 4px;
+                font-size:var(--fs-base); color:var(--text-suave); }
+  .dia-horario b{ color:var(--text-titulo); }
+  .cuentita{ font-size:var(--fs-base); color:var(--text-suave); padding:4px 0 8px; }
+  .cuentita b{ color:var(--text-titulo); }
+  .trab{ display:grid; grid-template-columns:minmax(0,1fr) auto auto; gap:12px; align-items:center; padding:8px 0; }
+  .trab + .trab{ border-top:1px dashed var(--border-sutil); }
+  .trab b{ display:block; color:var(--text-titulo); font-weight:var(--fw-bold); }
+  .trab .det{ font-size:var(--fs-sm); color:var(--text-tenue); }
+  .trab .dur{ font-size:var(--fs-base); white-space:nowrap; display:flex; align-items:center; gap:4px; }
+  .trab .dur button{ background:transparent; color:var(--text-tenue); padding:6px; }
+  .trab .dur button:hover{ background:var(--bg-sutil); color:var(--text-titulo); }
+  .trab .dur .ico{ width:15px; height:15px; }
+  .trab .plata{ font-variant-numeric:tabular-nums; white-space:nowrap; text-align:right; min-width:64px; }
+  .trab.sin-tiempo{ background:var(--rojo-bg); border-radius:var(--r-md); padding-left:var(--sp-2); padding-right:var(--sp-2); }
+  .plata.no-cuenta{ color:var(--text-tenue); }
+  .btn-chico{ padding:5px 12px; font-size:var(--fs-sm); }
+  .vacio-chico{ color:var(--text-tenue); font-size:var(--fs-base); padding:10px 0; }
+  @media (max-width:520px){
+    .dia-fila{ grid-template-columns:78px minmax(0,1fr) auto 16px; gap:8px; }
+    .trab{ gap:8px; }
+    .trab .plata{ min-width:0; }
+  }
+
+  /* ===== Lo que ya cobró: plegado, y cada cobro se abre día por día ===== */
+  details.cobrado{ margin-top:var(--sp-6); border-top:1px solid var(--border-sutil); }
+  details.cobrado > summary{ list-style:none; cursor:pointer; display:flex; align-items:baseline; gap:10px; padding:14px 0; }
+  details.cobrado > summary::-webkit-details-marker{ display:none; }
+  details.cobrado > summary h3{ margin:0; font-size:var(--fs-xl); }
+  details.cobrado > summary span{ flex:1; min-width:0; color:var(--text-tenue); font-size:var(--fs-base); }
+  details.cobrado > summary h3{ white-space:nowrap; }
+  details.cobrado > summary .ico{ flex:none; align-self:center; color:var(--text-tenue); transition:transform .15s; }
+  details.cobrado[open] > summary .ico{ transform:rotate(90deg); }
+  .hist{ border-bottom:1px solid var(--border-sutil); }
+  .hist-fila{ display:grid; grid-template-columns:minmax(0,1fr) auto 20px; gap:10px; align-items:center; width:100%;
+              padding:12px 0; background:transparent; color:var(--text); text-align:left; font-weight:var(--fw-normal); border-radius:0; }
+  .hist-fila:hover{ background:var(--bg-hover); color:var(--text); }
+  .hist-fila b{ color:var(--text-titulo); display:block; }
+  .hist-fila .det{ font-size:var(--fs-sm); color:var(--text-tenue); }
+  .hist-fila .plata{ font-family:var(--font-display); font-weight:var(--fw-bold); font-size:var(--fs-lg);
+                     color:var(--text-titulo); font-variant-numeric:tabular-nums; }
+  .ver-mas{ margin:10px 0 0; }
+  .resumen-dias{ padding:4px 0 12px 14px; border-left:2px solid var(--border-sutil); margin-left:4px; }
+  .rd{ display:grid; grid-template-columns:78px minmax(0,1fr) auto; gap:10px; padding:6px 0;
+       font-size:var(--fs-base); border-bottom:1px dashed var(--border-sutil); }
+  .rd:last-child{ border-bottom:0; }
+  .rd b{ color:var(--text-titulo); }
+  .rd .det{ color:var(--text-suave); }
+  .rd .det em{ font-style:normal; color:var(--text-tenue); }
+  .rd .plata{ font-variant-numeric:tabular-nums; white-space:nowrap; }
+  .rd.tot{ font-weight:var(--fw-bold); color:var(--text-titulo); border-bottom:0; }
 
   /* Las dos solapas de la dueña, como las de Depilación */
   .solapas{ display:flex; gap:28px; margin-bottom:var(--sp-5); flex-wrap:wrap;

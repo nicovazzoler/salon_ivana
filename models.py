@@ -31,6 +31,9 @@ class Item(Base):
     # ítem y no en el nombre de la categoría, que se renombra desde Admin: la
     # cuenta de la plata no puede depender de un texto.
     es_depilacion = Column(Boolean, default=False)
+    # Cuánto dura un trabajo, en minutos. Es lo que se le descuenta a las horas
+    # del día cuando la empleada no puso otra cosa: ese rato ya lo paga la comisión.
+    duracion_min = Column(Integer)
     stock_actual = Column(Integer, default=0)   # solo aplica a productos
     stock_minimo = Column(Integer, default=0)
     activo = Column(Boolean, default=True)
@@ -485,6 +488,13 @@ class HoraTrabajada(Base):
     empleado_id = Column(Integer, ForeignKey("empleados.id"), nullable=False, index=True)
     fecha = Column(String, nullable=False, index=True)   # 'YYYY-MM-DD' argentino
     minutos = Column(Integer, default=0)
+    # El horario de donde salen los minutos: una tanda, o dos con el descanso en
+    # el medio. Los minutos se guardan igual porque son lo que se paga, y las
+    # filas de antes de las tandas solo tienen eso.
+    desde = Column(String)                               # 'HH:MM'
+    hasta = Column(String)
+    desde2 = Column(String)
+    hasta2 = Column(String)
     # NULL = pendiente. Es lo único que decide si entra en el próximo cierre.
     liquidacion_id = Column(Integer, ForeignKey("liquidaciones.id"), index=True)
     cargado = Column(DateTime, default=fecha_hora_now_utc)
