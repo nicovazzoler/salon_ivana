@@ -438,3 +438,36 @@
   .tabla-horario tbody tr:last-child td{ border-bottom:none; }
 
   #barraHorario .de-una{ border-bottom:none; padding-bottom:0; margin-bottom:0; }
+
+  /* ===== Horas y trabajos: dos gráficos de barras apiladas y la tabla ===== */
+  .reg-filtros{ display:flex; flex-wrap:wrap; gap:8px; margin:0 0 var(--sp-4); }
+  .reg-filtros .chip{ padding:7px 14px; border-radius:999px; background:var(--bg-tile); color:var(--text);
+                      font-size:var(--fs-base); font-weight:var(--fw-bold); }
+  .reg-filtros .chip:hover{ background:var(--bg-tile-hover); color:var(--text-titulo); }
+  .reg-filtros .chip.on{ background:var(--bg-elegido); color:var(--text-marca); box-shadow:inset 0 0 0 1.5px var(--border-marca); }
+  .leyenda{ display:flex; flex-wrap:wrap; gap:6px 16px; font-size:var(--fs-sm); color:var(--text-suave); margin:0 0 var(--sp-4); }
+  .leyenda i, .tabla-reg td i, .tip i{ display:inline-block; width:10px; height:10px; border-radius:3px; margin-right:6px; vertical-align:-1px; }
+  .graficos{ display:grid; grid-template-columns:1fr 1fr; gap:28px; }
+  @media (max-width:760px){ .graficos{ grid-template-columns:1fr; } }
+  .graf h3{ margin:0 0 2px; font-size:var(--fs-lg); }
+  .graf .sub{ font-size:var(--fs-sm); color:var(--text-tenue); margin-bottom:8px; }
+  .graf svg{ width:100%; height:auto; display:block; overflow:visible; }
+  .graf .eje{ fill:var(--text-tenue); font-size:12px; font-family:var(--font-texto); }
+  .graf .grilla{ stroke:var(--border-sutil); stroke-width:1; }
+  .graf .base{ stroke:var(--border); stroke-width:1; }
+  .graf .col-hit{ fill:transparent; }
+  .graf .col-hit:hover{ fill:var(--acento-bg); }
+  .tip{ position:fixed; z-index:var(--z-cartel); pointer-events:none; background:var(--bg-elevado); color:var(--text);
+        border-radius:10px; padding:8px 12px; box-shadow:var(--sombra-elevada), 0 0 0 1px var(--border-sutil);
+        font-size:var(--fs-sm); min-width:160px; }
+  .tip b{ display:block; color:var(--text-titulo); margin-bottom:4px; }
+  .tip .t{ display:flex; gap:10px; align-items:center; }
+  .tip .t span:last-child{ margin-left:auto; font-variant-numeric:tabular-nums; color:var(--text-titulo); }
+  .tabla-reg{ width:100%; margin-top:22px; border-collapse:collapse; font-size:var(--fs-base); }
+  .tabla-reg th{ text-align:right; font-size:var(--fs-xs); text-transform:uppercase; letter-spacing:.05em; color:var(--text-tenue);
+                 padding:8px 6px; border-bottom:1px solid var(--border-sutil); font-weight:var(--fw-bold); }
+  .tabla-reg th:first-child, .tabla-reg td:first-child{ text-align:left; }
+  .tabla-reg td{ text-align:right; padding:10px 6px; border-bottom:1px solid var(--border-sutil);
+                 font-variant-numeric:tabular-nums; white-space:nowrap; }
+  .tabla-reg td:first-child b{ color:var(--text-titulo); }
+  .tabla-reg tr.tot td{ font-weight:var(--fw-bold); color:var(--text-titulo); border-bottom:0; }

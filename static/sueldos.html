@@ -18,31 +18,7 @@
   .card-head h2{ margin:0; }
   .card-head p{ margin:var(--sp-1) 0 0; font-size:var(--fs-base); color:var(--text-tenue); max-width:64ch; }
 
-  .quien{ display:flex; align-items:center; gap:var(--sp-2); flex-wrap:wrap; }
-  .quien label{ margin:0; }
-  .quien select{ width:auto; min-width:170px; }
 
-  /* El total va arriba y grande: es lo que la empleada entra a mirar. Todo lo
-     de abajo es el detalle de cómo se llegó a ese número. */
-  .totales{ display:flex; flex-wrap:wrap; gap:var(--sp-3); }
-  .totales .kpi{ flex:1 1 150px; }
-  .kpi.destacado{ background:var(--bg-header); border-color:var(--acento); }
-  .kpi.destacado .val{ color:var(--acento); }
-  .kpi .nota{ display:block; margin-top:2px; font-size:var(--fs-xs); color:var(--text-tenue); }
-
-  .fila-dato{
-    display:grid; grid-template-columns:minmax(0,1fr) auto auto;
-    align-items:center; gap:var(--sp-2);
-    padding:var(--sp-2) 0; border-bottom:1px solid var(--border-sutil);
-  }
-  .fila-dato .que{ min-width:0; }
-  .fila-dato .que b{ display:block; }
-  .fila-dato .det{ font-size:var(--fs-sm); color:var(--text-tenue); }
-  .fila-dato .plata{ font-variant-numeric:tabular-nums; white-space:nowrap; text-align:right; min-width:72px; }
-
-  .mins{ display:flex; align-items:center; gap:4px; white-space:nowrap; }
-  .mins input{ width:56px; text-align:right; }
-  .mins .u{ font-size:var(--fs-sm); color:var(--text-tenue); }
 
   .sin-comp{
     display:inline-block; margin-left:6px; padding:1px 6px; border-radius:var(--r-full);
@@ -59,110 +35,8 @@
                    display:flex; align-items:center; gap:var(--sp-3); }
   .quien-empleada button{ font-size:var(--fs-sm); padding:4px 10px; }
 
-  /* Un ciclo: la semana de trabajo (sábado a viernes) con sus días adentro. */
-  /* Cada semana sí es un objeto aparte: es lo que se cierra y se paga */
-  .ciclo{ border-radius:14px; background:var(--bg-elevado); box-shadow:var(--sombra-elevada);
-          margin-top:var(--sp-4); overflow:hidden; }
-  .ciclo-cab{ display:flex; flex-wrap:wrap; align-items:baseline; gap:var(--sp-2);
-              padding:var(--sp-3) var(--sp-4);
-              border-bottom:1px solid var(--border-sutil); }
-  .ciclo-cab h3{ margin:0; font-size:var(--fs-lg); }
-  .ciclo-cab .plata{ margin-left:auto; font-family:var(--font-display);
-                     font-size:var(--fs-xl); font-weight:var(--fw-black);
-                     font-variant-numeric:tabular-nums; }
-  .ciclo-cab .det{ font-size:var(--fs-sm); color:var(--text-tenue); }
-  .ciclo-cuerpo{ padding:0 var(--sp-4) var(--sp-3); }
-  /* El ciclo de esta semana, el que todavía se está llenando. */
-
-  .ciclo.en-curso .ciclo-cab h3::after{ content:" · en curso"; font-weight:var(--fw-normal);
-                                        font-size:var(--fs-sm); color:var(--text-tenue); }
-
-  /* El día de depilación: en vez de días con horas, la cuenta del reparto. */
-
-  .cuenta-depi{ margin:var(--sp-3) 0; }
-  .cuenta-depi .ren{ display:flex; align-items:baseline; gap:var(--sp-2);
-                     padding:var(--sp-2) 0; border-bottom:1px solid var(--border-sutil); }
-  .cuenta-depi .ren > :last-child{ margin-left:auto; font-variant-numeric:tabular-nums;
-                                   white-space:nowrap; }
-  .cuenta-depi .ren.chico{ padding:2px 0 2px var(--sp-3); border-bottom:none;
-                           font-size:var(--fs-sm); color:var(--text-tenue); }
-  .cuenta-depi .resta{ color:var(--danger); }
-  .cuenta-depi .ren.total{ border-bottom:2px solid var(--border); }
-  .cuenta-depi .ren.total b{ font-family:var(--font-display); font-size:var(--fs-lg);
-                             font-weight:var(--fw-black); }
-  .cuenta-depi .ren.mitad{ border-bottom:none; }
-  .cuenta-depi .ren.mitad b{ font-weight:var(--fw-bold); }
-  /* La máquina y el pago a la ayudante no son gastos más: son fijos del día y
-     los dos que más se olvidan, y faltando reparten plata que no quedó. Por eso
-     el renglón está siempre, aunque todavía no se haya cargado. */
-  .cuenta-depi .ren.chico.ayudante{ color:var(--text); }
-  .cuenta-depi .ren.chico.falta-fijo{ color:var(--danger); }
-  /* El mismo número en transferencia, para cruzarlo con el comprobante: es un
-     dato al costado de la cuenta, no un renglón que sume o reste. */
-  .cuenta-depi .ren.chico.transfer{ font-style:italic; }
-  .cuenta-depi .ren.chico em{ font-style:normal; }
-  .cuenta-depi .ren .btn-mini{ margin-left:6px; padding:1px 7px; }
-
-  /* Para la ayudante no hay ciclo: solo el aviso de lo que cobró ese día. */
-  .avisos-depi{ margin-bottom:var(--sp-3); }
-  .aviso-depi{ display:flex; align-items:center; gap:var(--sp-3);
-               padding:var(--sp-3); border:1px solid var(--border-sutil);
-               border-radius:var(--r-md); background:var(--bg-sutil); }
-  .aviso-depi + .aviso-depi{ margin-top:var(--sp-2); }
-  .aviso-depi .det{ display:block; font-size:var(--fs-sm); color:var(--text-tenue); }
-  .aviso-depi .plata{ margin-left:auto; font-family:var(--font-display);
-                      font-weight:var(--fw-black); font-variant-numeric:tabular-nums; }
-  .nota-depi{ font-size:var(--fs-sm); color:var(--text-tenue);
-              padding:var(--sp-2) 0; border-top:1px solid var(--border-sutil); }
-  /* Lo que se hizo ese día, a secas: sin horas ni "falta el tiempo", que no
-     significan nada en un día que no se paga ni por horas ni por comisión. */
-  .lista-depi > div{ display:flex; flex-wrap:wrap; align-items:baseline; gap:var(--sp-2);
-                     padding:3px 0 3px var(--sp-3); font-size:var(--fs-sm); }
-  .lista-depi .det{ margin-left:auto; color:var(--text-tenue); }
-
-  .btn-mini{ font-size:var(--fs-sm); padding:3px 10px; }
-  /* Marca de "esto no es una semana entera": un saldo que quedó de un pago
-     parcial, o el pago parcial mismo en el historial. */
-  .saldo-de{
-    display:inline-block; padding:1px 7px; border-radius:var(--r-full);
-    font-size:var(--fs-xs); font-weight:var(--fw-normal); text-transform:uppercase;
-    letter-spacing:.04em; vertical-align:middle;
-    background:var(--bg-sutil); color:var(--text-tenue); border:1px solid var(--border-sutil);
-  }
-  .dia-acciones{ margin-top:var(--sp-2); }
-
-  .sub-h{ margin:var(--sp-4) 0 var(--sp-2); font-size:var(--fs-base);
-          font-weight:var(--fw-bold); text-transform:uppercase; letter-spacing:.04em;
-          color:var(--text-tenue); }
   .vacio{ padding:var(--sp-4); text-align:center; color:var(--text-tenue); }
 
-  /* Quién abrió, arriba a la derecha, donde la dueña tiene el desplegable. */
-  .quien-nombre{ font-weight:var(--fw-bold); }
-
-  /* Fila de una empleada en la vista de la dueña: nombre, de qué se compone lo
-     que se le debe, el total y el botón para entrar. Misma grilla que .fila-dato
-     para que las dos listas de la pantalla se lean parejas. */
-  .fila-emp{
-    display:grid; grid-template-columns:minmax(0,1fr) auto auto;
-    align-items:center; gap:var(--sp-2);
-    padding:var(--sp-2) 0; border-bottom:1px solid var(--border-sutil);
-  }
-  .fila-emp b{ display:block; }
-  .fila-emp .det{ font-size:var(--fs-sm); color:var(--text-tenue); }
-  .fila-emp .plata{ font-variant-numeric:tabular-nums; white-space:nowrap;
-                    text-align:right; font-weight:var(--fw-bold); }
-  .fila-emp.abierta{ background:var(--bg-sutil); }
-  .cierre{ margin-top:var(--sp-4); padding-top:var(--sp-3);
-           border-top:1px solid var(--border-sutil);
-           display:flex; flex-wrap:wrap; gap:var(--sp-2); align-items:center; }
-  .cierre .nota{ flex:1 1 220px; }
-  .cierre .aviso{ flex:1 1 100%; font-size:var(--fs-sm); color:var(--text-tenue); }
-  /* El detalle de un cierre va metido adentro de la lista y hundido, para que se
-     vea que pertenece a la fila de arriba y no que es otra sección. */
-  .detalle-liq{ padding:0 0 var(--sp-3) var(--sp-3);
-                border-left:2px solid var(--border-sutil); margin:var(--sp-2) 0 var(--sp-3); }
-  .detalle-liq .sub-h{ margin-top:var(--sp-2); }
-  .detalle-liq .mins{ color:var(--text-tenue); font-size:var(--fs-sm); }
   .vacio b{ display:block; color:var(--text-titulo); margin-bottom:var(--sp-1); }
 
   .agregar{ display:flex; flex-wrap:wrap; gap:var(--sp-2); align-items:flex-end;
@@ -296,6 +170,137 @@
   .rd .plata{ font-variant-numeric:tabular-nums; white-space:nowrap; }
   .rd.tot{ font-weight:var(--fw-bold); color:var(--text-titulo); border-bottom:0; }
 
+  .dia-acciones{ margin-top:var(--sp-2); }
+  .resta{ color:var(--danger); }
+
+  /* ===== Pagar: hasta qué día, a quién y cuánto ===== */
+  .hasta{ display:flex; flex-wrap:wrap; align-items:center; gap:10px; margin:4px 0 var(--sp-4); }
+  .hasta > span{ font-weight:var(--fw-bold); color:var(--text-suave); font-size:var(--fs-base); }
+  .segmento{ display:inline-flex; border:1.5px solid var(--border); border-radius:12px; overflow:hidden; background:var(--bg-input); }
+  .segmento button{ border-radius:0; background:transparent; color:var(--text); padding:8px 16px;
+                    font-size:var(--fs-md); font-weight:var(--fw-bold); border:0; }
+  .segmento button + button, .segmento label{ border-left:1.5px solid var(--border); }
+  .segmento button:hover{ background:var(--bg-hover); color:var(--text-titulo); }
+  .segmento button.on, .segmento label.on{ background:var(--acento-bg); color:var(--text-marca);
+                                           box-shadow:inset 0 -3px 0 var(--acento-fuerte); }
+  .segmento small{ display:block; font-weight:var(--fw-normal); font-size:var(--fs-xs); color:var(--text-tenue); }
+  .segmento label{ display:flex; align-items:center; gap:6px; padding:0 10px; margin:0;
+                   font-weight:var(--fw-bold); font-size:var(--fs-md); color:var(--text);
+                   text-transform:none; letter-spacing:normal; }
+  .segmento input[type=date]{ border:0; background:transparent; padding:6px 0; width:auto; font-size:var(--fs-base); }
+
+  .pagos{ border-top:1px solid var(--border-sutil); }
+  .pcab, .prow{ display:grid; grid-template-columns:34px minmax(0,1.5fr) repeat(3, minmax(0,1.05fr)) minmax(0,1fr);
+                gap:8px; align-items:center; }
+  .pcab{ padding:8px 0; font-size:var(--fs-xs); font-weight:var(--fw-bold); text-transform:uppercase;
+         letter-spacing:.05em; color:var(--text-tenue); border-bottom:1px solid var(--border-sutil); }
+  .pcab span:nth-child(n+3), .prow > .n{ text-align:right; }
+  .pfila{ border-bottom:1px solid var(--border-sutil); }
+  .prow{ padding:12px 0; }
+  .pcab input[type=checkbox], .prow input[type=checkbox]{ width:20px; height:20px; accent-color:var(--bronce-500); }
+  .prow .quien{ display:inline-flex; align-items:center; gap:4px; background:transparent; padding:0;
+                color:var(--text-marca); text-align:left; font-weight:var(--fw-bold); font-size:var(--fs-md); border-radius:0; }
+  .prow .quien:hover{ background:transparent; color:var(--text-titulo); }
+  .prow .quien .ico{ width:16px; height:16px; transition:transform .15s; }
+  .pfila.abierta .prow .quien .ico{ transform:rotate(90deg); }
+  .prow .quien-fija{ color:var(--text-tenue); font-weight:var(--fw-bold); }
+  .prow .desde{ display:block; font-size:var(--fs-sm); color:var(--text-tenue); }
+  .prow .n{ font-variant-numeric:tabular-nums; white-space:nowrap; }
+  .prow .n small{ display:block; font-size:var(--fs-xs); color:var(--text-tenue); }
+  .prow .n.resta{ color:var(--danger); }
+  .prow .n.total{ font-family:var(--font-display); font-weight:var(--fw-bold); font-size:var(--fs-lg); color:var(--text-titulo); }
+  .prow .n.recien{ grid-column:3 / 6; }
+  .prow.apagada .n{ color:var(--text-tenue); }
+  .avisos{ display:flex; flex-wrap:wrap; gap:6px; padding:0 0 12px 42px; margin-top:-4px; }
+  .aviso{ font-size:var(--fs-sm); padding:3px 10px; border-radius:999px; background:var(--ocre-bg); color:var(--ocre-700); }
+  .aviso.frena{ background:var(--rojo-bg); color:var(--rojo-700); }
+  .aviso.ok{ background:var(--verde-bg); color:var(--verde-700); }
+  .pdetalle{ padding:0 0 16px 42px; }
+  .sub-movs{ margin-top:var(--sp-2); }
+  .acc-emp{ display:flex; gap:var(--sp-2); margin-top:var(--sp-3); }
+  .rot-movil{ display:none; }
+  .pie-pago{ display:flex; justify-content:flex-end; padding:16px 0 4px; }
+  .pie-pago .b-ok{ padding:13px 22px; font-size:var(--fs-md); }
+  @media (max-width:640px){
+    .pcab{ grid-template-columns:30px 1fr; }
+    .pcab span:nth-child(n+3){ display:none; }
+    .prow{ grid-template-columns:30px minmax(0,1fr) auto; row-gap:4px; }
+    .prow .n{ grid-column:2 / 4; display:flex; justify-content:space-between; font-size:var(--fs-base); }
+    .prow .n small.esc{ display:none; }
+    .prow .n.total{ grid-column:3; grid-row:1; font-size:var(--fs-lg); }
+    .prow .n.recien{ grid-column:2; }
+    .rot-movil{ display:inline; color:var(--text-tenue); }
+    .prow .n .rot-movil small{ display:inline; margin-left:4px; }
+    .avisos, .pdetalle{ padding-left:30px; }
+  }
+
+  /* El cartel de pagar: cada una con su forma */
+  .dlg.pagar{ max-width:520px; max-height:calc(100vh - 32px); overflow:auto; }
+  .dlg.ancho{ max-width:480px; }
+  .pago-emp{ padding:10px 0; border-bottom:1px solid var(--border-sutil); }
+  .pago-emp .cab{ display:flex; align-items:baseline; gap:8px; }
+  .pago-emp .cab b{ color:var(--text-titulo); }
+  .pago-emp .cab small{ color:var(--text-tenue); }
+  .pago-emp .cab .plata{ margin-left:auto; font-family:var(--font-display); font-size:var(--fs-lg);
+                         font-weight:var(--fw-bold); color:var(--text-titulo); }
+  .pago-emp .fichas{ margin-top:8px; }
+  .pago-emp .ficha{ flex:1 1 80px; padding:7px 8px; }
+  .fichas{ display:flex; flex-wrap:wrap; gap:8px; }
+  .ficha{ flex:1 1 120px; padding:10px 12px; border-radius:12px; background:var(--bg-tile); color:var(--text);
+          font-weight:var(--fw-bold); font-size:var(--fs-base); text-align:center; }
+  .ficha:hover{ background:var(--bg-tile-hover); color:var(--text-titulo); }
+  .ficha.on{ background:var(--bg-elegido); color:var(--text-marca); box-shadow:inset 0 0 0 1.5px var(--border-marca); }
+  .mixto{ display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin-top:8px; font-size:var(--fs-base); color:var(--text-suave); }
+  .mixto label{ margin:0; }
+  .mixto input{ width:130px; }
+  .dia-caja{ display:flex; align-items:center; gap:var(--sp-2); margin-top:var(--sp-3); }
+  .dia-caja label{ margin:0; white-space:nowrap; }
+  .dlg .dia-caja input{ width:auto; }
+  .sale{ margin:var(--sp-2) 0 0; font-size:var(--fs-base); color:var(--text-suave); }
+  .sale b{ color:var(--text-titulo); }
+
+  /* Adelanto y producto */
+  .acciones{ display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:var(--sp-3); }
+  .accion{ display:flex; align-items:center; gap:12px; text-align:left; padding:14px 16px; border-radius:14px;
+           background:var(--bg-sutil); color:var(--text-titulo); font-size:var(--fs-md); }
+  .accion:hover{ background:var(--bg-sutil-hover); color:var(--text-titulo); }
+  .accion small{ display:block; font-weight:var(--fw-normal); color:var(--text-tenue); font-size:var(--fs-sm); }
+  .accion .ico{ width:24px; height:24px; color:var(--acento); flex:none; }
+  @media (max-width:480px){ .acciones{ grid-template-columns:1fr; } }
+  .campo{ display:flex; flex-direction:column; gap:4px; margin-top:12px; }
+  .campo label{ margin:0; }
+  .campo input{ width:100%; }
+  .monto-grande{ font-family:var(--font-display); font-size:30px !important; text-align:center; }
+  .prod-lista{ max-height:240px; overflow:auto; margin-top:8px; border-top:1px solid var(--border-sutil); }
+  .prod{ display:grid; grid-template-columns:minmax(0,1fr) auto; gap:10px; width:100%; padding:10px 6px;
+         background:transparent; color:var(--text); text-align:left; font-weight:var(--fw-normal);
+         border-radius:0; border-bottom:1px solid var(--border-sutil); }
+  .prod:hover{ background:var(--bg-hover); color:var(--text); }
+  .prod:disabled{ opacity:.5; }
+  .prod b{ color:var(--text-titulo); }
+  .prod .det{ font-size:var(--fs-sm); color:var(--text-tenue); }
+  #pBusca{ width:100%; }
+  .prod-elegido{ display:flex; align-items:center; gap:10px; padding:10px 12px; border-radius:12px; background:var(--bg-tile); }
+  .prod-elegido b{ color:var(--text-titulo); }
+  .prod-elegido button{ margin-left:auto; background:transparent; color:var(--text-tenue); padding:4px 8px; }
+  .dos{ display:grid; grid-template-columns:120px minmax(0,1fr); gap:10px; }
+  .paso{ display:flex; align-items:center; border:1px solid var(--border); border-radius:9px; overflow:hidden; background:var(--bg-input); }
+  .paso button{ background:transparent; color:var(--text-titulo); padding:8px 12px; border-radius:0; }
+  .paso span{ flex:1; text-align:center; font-weight:var(--fw-bold); }
+  .lista-precio{ font-size:var(--fs-sm); color:var(--text-tenue); }
+  .mov{ display:grid; grid-template-columns:minmax(0,1fr) auto auto; gap:10px; align-items:center;
+        padding:10px 0; border-bottom:1px solid var(--border-sutil); }
+  .mov b{ display:block; color:var(--text-titulo); }
+  .mov .det{ font-size:var(--fs-sm); color:var(--text-tenue); }
+  .mov .plata{ color:var(--danger); font-variant-numeric:tabular-nums; white-space:nowrap; }
+  .mov .b-del{ padding:6px 10px; font-size:var(--fs-sm); }
+  .hist-cuerpo{ padding:0 0 12px 14px; border-left:2px solid var(--border-sutil); margin-left:4px; }
+  .hist-emp{ border-bottom:1px solid var(--border-sutil); }
+  .hist-emp:last-child{ border-bottom:0; }
+  .hist-emp .hist-fila{ padding:9px 0 9px 10px; }
+  .hist-emp .hist-fila .plata{ font-size:var(--fs-md); }
+  #cardEmpleada .quien-empleada{ margin-bottom:var(--sp-4); }
+
   /* Las dos solapas de la dueña, como las de Depilación */
   .solapas{ display:flex; gap:28px; margin-bottom:var(--sp-5); flex-wrap:wrap;
             border-bottom:1px solid var(--border-sutil); }
@@ -381,11 +386,6 @@
     .tabla-v th, .tabla-v td{ padding-left:4px; padding-right:4px; }
   }
 
-  @media (max-width:600px){
-    .fila-dato{ grid-template-columns:1fr auto; row-gap:6px; }
-    .fila-dato .mins{ grid-column:1; }
-    .fila-dato .plata{ grid-column:2; grid-row:2; }
-  }
 </style>
 </head><body>
 <header>
@@ -414,43 +414,14 @@
   </div>
 
   <div class="hoja" id="hojaSueldos">
-  <!-- La dueña entra a otra cosa: a ver a quién le debe cuánto y a cerrar. El
-       detalle de una es el mismo que ve la empleada, así que la tarjeta de abajo
-       la usan las dos y lo que cambia es lo que la rodea. -->
-  <div class="card" id="cardDueno" data-dueno style="display:none;">
-    <div class="card-head con-datos">
-      <div class="titulo">
-        <h2>A pagar</h2>
-      </div>
-      <div class="kpis" id="kpisDueno"></div>
+    <div class="card" id="cardPagar" data-dueno></div>
+    <div class="card" id="cardPagado" data-dueno></div>
+    <!-- Lo de la empleada que entró con su código: la dueña no pasa por acá. -->
+    <div class="card" id="cardEmpleada" data-empleado>
+      <div class="quien-empleada" id="quienEmpleada"></div>
+      <div id="totales"></div>
+      <div id="cuerpo"></div>
     </div>
-    <div id="listaEmpleadas"></div>
-  </div>
-
-  <div class="card">
-    <div class="card-head con-datos">
-      <div class="titulo">
-        <h2 id="tituloDetalle">Sueldos</h2>
-      </div>
-      <div class="quien">
-        <label for="quien" id="rotuloQuien">Quién sos</label>
-        <select id="quien"></select>
-      </div>
-      <div class="quien-empleada" id="quienEmpleada" hidden></div>
-    </div>
-    <div class="totales" id="totales"></div>
-    <div id="cuerpo"></div>
-    <div id="cierre" data-dueno></div>
-  </div>
-
-  <!-- Lo ya pagado lo miran las dos: la dueña todos los cierres, la empleada los
-       suyos (el servidor no le contesta otra cosa). -->
-  <div class="card" id="cardLiquidaciones" style="display:none;">
-    <div class="card-head con-datos">
-      <div class="titulo"><h2 id="tituloPagado">Ya pagado</h2></div>
-      <button class="b-out" id="verPagado">Ver</button></div>
-    <div id="listaLiq" style="display:none;"></div>
-  </div>
   </div>
 
   <!-- Lo que se le paga a cada una: el valor hora y la comisión de cada servicio.

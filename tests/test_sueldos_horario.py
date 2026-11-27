@@ -51,7 +51,7 @@ def dia_abierto():
 
 def el_dia(api, emp, fecha):
     r = api.get(f"/api/sueldos/pendiente?empleado_id={emp.id}").json()
-    return next(d for c in r["ciclos"] for d in c["dias"] if d["fecha"] == fecha)
+    return next(d for d in r["dias"] if d["fecha"] == fecha)
 
 
 def test_las_tandas_dan_los_minutos(db, api):
@@ -108,7 +108,8 @@ def test_el_trabajo_toma_la_duracion_del_catalogo(db, api):
     assert el_dia(api, e, f)["trabajos"][0]["minutos"] == 120
     api.put("/api/sueldos/horas", json={"empleado_id": e.id, "fecha": f,
                                          "tandas": [{"desde": "10:00", "hasta": "18:00"}]})
-    assert api.post("/api/sueldos/cerrar", json={"empleado_id": e.id}).status_code == 200
+    r = api.post("/api/sueldos/pagar", json={"hasta": f, "pagos": [{"empleado_id": e.id}]})
+    assert r.status_code == 200, r.text
     api.put(f"/api/items/{it.id}", json={"duracion_min": 30})
     db.expire_all()
     assert db.query(models.TrabajoComision).one().minutos == 120

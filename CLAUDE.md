@@ -45,6 +45,9 @@ static/
   js/generales.js Los dos números de la depilación (el pago a la ayudante y
                  quién lleva las sesiones) y el corte de los sueldos, que se
                  tocan desde Admin. El CSS, en components.css
+  js/registro.js Horas y trabajos de cada una por semana, el gráfico de Admin.
+                 Los colores son `--serie-1..4` de tokens.css, validados para
+                 daltonismo en los dos temas: una por persona y nunca más de cuatro
   js/senas.js    Tomar una seña y listarlas. El formulario se usa en depilación,
                  que es donde se toman; la ficha del cliente solo las lista. El
                  CSS vive en components.css: estando en una sola pantalla, en la
@@ -364,22 +367,47 @@ es donde se busca. Un día con horas y sin ningún trabajo detrás queda marcado
 `sin_respaldo`, que es el control que importa.
 
 **Sueldos es la pantalla de la empleada, no un informe que se le muestra.**
-Están TODOS los días del ciclo hasta hoy, y el ciclo en curso aparece siempre,
-aunque no haya pasado nada: es donde ella carga sus horas. Los días que todavía
-no pasaron no se muestran y el backend los rebota, que un casillero de horas en
-un día que no existe es plata.
+Están TODOS los días desde el último pago hasta hoy (en blanco, no más de dos
+semanas para atrás), aunque no haya pasado nada: es donde ella carga sus horas.
+Los días que todavía no pasaron no se muestran y el backend los rebota, que un
+casillero de horas en un día que no existe es plata.
 
 Las horas de cualquier día las carga ella. Antes el backend pedía que el día
 tuviera un trabajo suyo detrás y, si no, "pediselo a la dueña": el día que vino
 y no facturó nada no tenía dónde declararse, y de los días que faltan no se
 acuerda nadie. Un día con horas y sin ningún trabajo detrás queda marcado
-(`sin_respaldo`) en la pantalla de la dueña y avisado en el cierre: es lo único
+(`sin_respaldo`) en la pantalla de la dueña y avisado al pagar: es lo único
 que no se puede cruzar contra un comprobante, y el control va donde importa, que
-es antes de pagar. No frena el cierre: se puede venir a ordenar el local.
+es antes de pagar. No frena el pago: se puede venir a ordenar el local.
 
-Y lo que frena el cierre es **un día CON trabajos y sin horas**, no cualquier día
+Y lo que frena el pago es **un día CON trabajos y sin horas**, no cualquier día
 sin horas: con los días de la semana a la vista, esa regla no cerraría nunca. Un
 día vacío es un día que no vino. Un trabajo sin duración sigue frenando igual.
+
+**Se paga lo trabajado HASTA UN DÍA, no una semana.** `POST /api/sueldos/pagar`
+recibe `hasta` y a varias empleadas juntas, en un solo pedido: o se pagan todas
+o ninguna. Cada una queda con su liquidación y lo de después de `hasta` sigue
+pendiente. Las semanas fijas obligaban a "pagos parciales" y "cerrar la semana
+igual" cada vez que se pagaba un jueves; hoy eso es elegir el día. El viernes es
+el día de pago, pero la pantalla no lo sabe: propone hoy.
+
+**Las horas de los trabajos se restan del MISMO día.** Si un día duraron más que
+las horas declaradas, ese día paga cero horas y no le quita a los otros.
+
+**Un pago mixto son dos egresos**, uno por forma, y no uno que diga "Mixto": el
+arqueo suma por forma de pago (`sacar_de_caja()`). Vale para el sueldo y para el
+adelanto.
+
+**Los adelantos y los productos se descuentan del próximo pago**
+(`MovimientoSueldo`). El adelanto sale de la caja el día que se da, con su
+egreso, que es privado solo si lo dio la dueña —el mismo criterio del cierre de
+depilación—, y Caja no lo puede tocar: se anula desde Sueldos, que es lo que
+deja de descontarlo. El producto sale del stock al llevárselo y no mueve plata;
+el precio lo pone ella y al lado queda el de lista, que es lo que mira la dueña
+antes de pagar. Si lo paga en el momento es un ticket a su nombre como cualquier
+otro, con un ajuste por unidad que lleva la lista al precio que se dijo. Anular
+marca y pide motivo, como un cobro: la empleada lo de hoy, la dueña cualquiera
+que no se haya descontado todavía. Llevan `clave`, como los cobros.
 
 **Los días que el local no abre no se dibujan**: `DIAS_CERRADO` en
 `config_extra.py` (domingo y lunes, que el lunes es de depilación). Dos
@@ -759,6 +787,7 @@ pytest tests/test_cobro_repetido.py  # que un cobro reintentado no cobre dos vec
 pytest tests/test_reparto.py         # que el reparto de depilación cuente la seña como entró
 pytest tests/test_sueldos_valores.py # valor hora de cada una, comisión de cada servicio y los códigos
 pytest tests/test_sueldos_horario.py # el horario en tandas y la duración del catálogo
+pytest tests/test_sueldos_pagos.py   # pagar hasta un día, mixto, adelantos y productos
 pytest tests/test_pwa.py             # que la app instalable guarde lo justo y cambie de versión
 node --test "tests/escpos/**/*.test.js"   # el papel, byte a byte contra los golden
 ```

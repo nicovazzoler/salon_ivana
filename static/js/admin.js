@@ -1340,4 +1340,5 @@ addEventListener("resize", ()=>document.querySelectorAll(".lista-scroll").forEac
 // recargar()). Acá quedan las dos que tienen carga propia.
 cargarCats();
 if(DUENO) cargarUsuarios();
+if(DUENO && $("#listaRegistro")) panelRegistro($("#listaRegistro"));
 

@@ -436,11 +436,10 @@ class Descuento(Base):
     activo = Column(Boolean, default=True)
 
 class Liquidacion(Base):
-    """Un ciclo de sueldo ya cerrado y pagado.
+    """Un pago de sueldo: lo trabajado hasta un día, o el reparto de una sesión.
 
-    El período NO es una semana fija: es todo lo que estaba pendiente al cerrar,
-    así que nada queda afuera de una ventana de fechas. Los totales se guardan
-    calculados: anular un ticket viejo no cambia un sueldo ya pagado.
+    Es la foto: los totales se guardan calculados, así que anular un ticket viejo
+    no cambia un sueldo ya pagado.
     """
     __tablename__ = "liquidaciones"
     id = Column(Integer, primary_key=True)
@@ -459,10 +458,14 @@ class Liquidacion(Base):
     total_horas = Column(Integer, default=0)
     total = Column(Integer, default=0)
     notas = Column(String)
-    # Un pago hecho antes de que la semana termine: lo que se trabaje después
-    # sigue cayendo en el mismo ciclo. Dos pagos del mismo rango son un adelanto
-    # y su saldo, no dos semanas iguales.
+    # Los pagos de antes eran por semana, y uno hecho antes de que terminara la
+    # dejaba abierta. Queda para leer los viejos: hoy se paga hasta un día.
     parcial = Column(Boolean, default=False)
+    # Adelantos y productos que se restaron. `total` es lo que se le pagó:
+    # comisiones + horas − descuentos.
+    descuentos = Column(Integer)
+    # El segundo egreso de un pago mixto: uno por forma, que el arqueo suma por forma.
+    egreso2_id = Column(Integer, ForeignKey("egresos.id"))
     # El egreso que sale de este cierre, anotado solo: a mano, el día que se
     # olvide la caja dice que hay más plata de la que hay. Se guarda el id para
     # no anotarlo dos veces.
@@ -475,7 +478,39 @@ class Liquidacion(Base):
     recaudado = Column(Integer)
     gastos = Column(Integer)
     empleado = relationship("Empleado")
-    egreso = relationship("Egreso")
+    egreso = relationship("Egreso", foreign_keys=[egreso_id])
+
+class MovimientoSueldo(Base):
+    """Lo que se descuenta del próximo pago: un adelanto o un producto que se llevó.
+
+    Pendiente hasta que un pago lo incluye (`liquidacion_id`). Se anula marcándolo,
+    como un cobro: la plata vuelve a la caja y el producto al stock.
+    """
+    __tablename__ = "movimientos_sueldo"
+    id = Column(Integer, primary_key=True)
+    empleado_id = Column(Integer, ForeignKey("empleados.id"), nullable=False, index=True)
+    tipo = Column(String, nullable=False)                # "adelanto" o "producto"
+    fecha = Column(String, nullable=False, index=True)   # 'YYYY-MM-DD' argentino
+    monto = Column(Integer, nullable=False)              # lo que se descuenta
+    # El adelanto: cómo salió del cajón y sus egresos, dos si fue mixto. La forma
+    # se guarda acá porque al anularlo los egresos se borran.
+    forma_pago = Column(String)
+    efectivo = Column(Integer)
+    egreso_id = Column(Integer, ForeignKey("egresos.id"))
+    egreso2_id = Column(Integer, ForeignKey("egresos.id"))
+    # El producto, con el precio de lista de ese día al lado del que pagó.
+    item_id = Column(Integer, ForeignKey("items.id"))
+    nombre = Column(String)
+    cantidad = Column(Integer)
+    precio_lista = Column(Integer)
+    liquidacion_id = Column(Integer, ForeignKey("liquidaciones.id"), index=True)
+    usuario = Column(String)
+    creado = Column(DateTime, default=fecha_hora_now_utc)
+    clave = Column(String, unique=True, index=True)
+    anulado = Column(Boolean, default=False)
+    anulado_por = Column(String)
+    anulado_motivo = Column(String)
+    anulado_en = Column(DateTime)
 
 class HoraTrabajada(Base):
     """Las horas de un día, cargadas por la empleada.

@@ -476,18 +476,17 @@ def sueldos(api, rnd, empleadas, catalogo, hoy):
     for emp in empleadas:
         resumen = api.get(f"/api/sueldos/pendiente?empleado_id={emp['id']}")
         con_trabajo = {}
-        for ciclo in resumen["ciclos"]:
-            for dia in ciclo["dias"]:
-                for t in dia["trabajos"]:
-                    item = catalogo.get(t["nombre"]) or {}
-                    if item.get("duracion_min") and rnd.random() < 0.8:
-                        continue
-                    minimo, maximo = DURACION.get(item.get("categoria"), (30, 60))
-                    api.put("/api/sueldos/trabajo-minutos",
-                            {"empleado_id": emp["id"], "minutos": rnd.randrange(minimo, maximo + 1, 5),
-                             **({"trabajo_id": t["id"]} if t["id"] else {"linea_id": t["linea_id"]})})
-                if dia["trabajos"]:
-                    con_trabajo[dia["fecha"]] = dia
+        for dia in resumen["dias"]:
+            for t in dia["trabajos"]:
+                item = catalogo.get(t["nombre"]) or {}
+                if item.get("duracion_min") and rnd.random() < 0.8:
+                    continue
+                minimo, maximo = DURACION.get(item.get("categoria"), (30, 60))
+                api.put("/api/sueldos/trabajo-minutos",
+                        {"empleado_id": emp["id"], "minutos": rnd.randrange(minimo, maximo + 1, 5),
+                         **({"trabajo_id": t["id"]} if t["id"] else {"linea_id": t["linea_id"]})})
+            if dia["trabajos"]:
+                con_trabajo[dia["fecha"]] = dia
         # El horario de la agenda, y a veces se quedó un rato más.
         for fecha, dia in con_trabajo.items():
             tandas = [list(t) for t in (dia["sugerido"] or [["10:00", "18:00"]])]
@@ -496,19 +495,23 @@ def sueldos(api, rnd, empleadas, catalogo, hoy):
                     {"empleado_id": emp["id"], "fecha": fecha,
                      "tandas": [{"desde": a, "hasta": b} for a, b in tandas]})
 
-        # Se cierra hacia atrás y se deja el ciclo en curso abierto, que es lo que
-        # la pantalla de sueldos tiene para mostrar: lo que se le debe hoy.
-        for _ in range(SEMANAS + 1):
-            pendiente = api.get(f"/api/sueldos/pendiente?empleado_id={emp['id']}")
-            viejos = [c for c in pendiente["ciclos"]
-                      if date.fromisoformat(c["hasta"]) < hoy and c["total"] and not c["vacio"]]
-            if not viejos:
-                break
-            c = viejos[0]
-            api.post("/api/sueldos/cerrar",
-                     {"empleado_id": emp["id"], "desde": c["desde"],
-                      "fecha": c["hasta"], "forma_pago": "Efectivo"})
-            cerradas += 1
+
+    # Se paga cada viernes que ya pasó, a todas juntas, y queda pendiente lo de
+    # esta semana, que es lo que la pantalla de sueldos tiene para mostrar.
+    f = hoy - timedelta(days=7 * (SEMANAS + 1))
+    while f < hoy:
+        if f.weekday() == 4:
+            pagos = [{"empleado_id": e["id"], "forma_pago": "Efectivo"} for e in empleadas
+                     if api.get(f"/api/sueldos/pendiente?empleado_id={e['id']}&hasta={f}")["total"] > 0]
+            if pagos:
+                api.post("/api/sueldos/pagar", {"hasta": f.isoformat(), "fecha": f.isoformat(), "pagos": pagos})
+                cerradas += len(pagos)
+        f += timedelta(days=1)
+    # Un adelanto y un producto de esta semana, para que se vea qué se descuenta.
+    api.post("/api/sueldos/adelanto", {"empleado_id": empleadas[0]["id"], "monto": 20000})
+    prod = next(p for p in api.get("/api/sueldos/productos") if (p["stock"] or 0) > 0)
+    api.post("/api/sueldos/producto", {"empleado_id": empleadas[1]["id"], "item_id": prod["id"],
+                                       "cantidad": 1, "precio": round(prod["precio"] * 0.8, -2)})
     return cerradas
 
 

@@ -163,8 +163,8 @@ def cargar(api, cuantas, cual_ciclo, semilla):
     # pagar, sus trabajos también vienen sin duración, y la simulación no puede
     # completar lo que está esperando que cargue una persona.
     def del_ciclo(r):
-        return [t for c in r["ciclos"] if c["desde"] == desde.isoformat()
-                for d in c["dias"] for t in d["trabajos"] if not t["minutos"]]
+        return [t for d in r["dias"] if desde.isoformat() <= d["fecha"] <= hasta.isoformat()
+                for t in d["trabajos"] if not t["minutos"]]
     bases = [t["base"] for r in pendientes.values() for t in del_ciclo(r)]
     if not bases:
         sys.exit("No quedó ningún trabajo a comisión pendiente: ¿el corte de sueldos es posterior?")
@@ -204,10 +204,10 @@ def cargar(api, cuantas, cual_ciclo, semilla):
             print(f"  · {a}")
         print("  Las comisiones se cargaron igual. Probá con --ciclo actual, o con una base "
               "sin sueldos ya cerrados.")
-    resumen(api, empleadas, desde)
+    resumen(api, empleadas, desde, hasta)
 
 
-def resumen(api, empleadas, desde):
+def resumen(api, empleadas, desde, hasta):
     """Lo que la pantalla propone para ESTE ciclo.
 
     Por ciclo y no por empleada: el total de una puede arrastrar semanas viejas
@@ -218,15 +218,16 @@ def resumen(api, empleadas, desde):
     print(f"  {'':<12} {'comisiones':>12} {'horas':>12} {'total':>12}   falta")
     for emp in empleadas:
         r = api.pedir(f"/api/sueldos/pendiente?empleado_id={emp['id']}")
-        c = next((x for x in r["ciclos"] if x["desde"] == desde.isoformat()), None)
-        if not c:
+        dias = [d for d in r["dias"] if desde.isoformat() <= d["fecha"] <= hasta.isoformat()]
+        if not any(d["minutos"] or d["trabajos"] for d in dias):
             print(f"  {emp['nombre']:<12} {'sin nada en este ciclo':>40}")
             continue
-        falta = f"{c['sin_tiempo']} sin duración" if c["sin_tiempo"] else ""
-        print(f"  {emp['nombre']:<12} ${c['total_comisiones']:>11,} ${c['total_horas']:>11,} "
-              f"${c['total']:>11,}   {falta}")
-    print("\nCambiá el valor hora o la comisión en Admin (arriba de Empleados) o en Sueldos,\n"
-          "y volvé a mirar: lo pendiente se calcula en vivo hasta que se cierra el ciclo.")
+        com, hs = sum(d["comisiones"] for d in dias), sum(d["horas"] for d in dias)
+        sin = sum(1 for d in dias for t in d["trabajos"] if not t["minutos"])
+        falta = f"{sin} sin duración" if sin else ""
+        print(f"  {emp['nombre']:<12} ${com:>11,} ${hs:>11,} ${com + hs:>11,}   {falta}")
+    print("\nCambiá el valor hora o la comisión en Sueldos, en Valores y comisiones, y volvé\n"
+          "a mirar: lo pendiente se calcula en vivo hasta que se paga.")
 
 
 def borrar(api):
