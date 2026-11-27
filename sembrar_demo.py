@@ -258,11 +258,17 @@ def contrasenas_propias(api):
 def preparar_catalogo(api, rnd):
     """Marca a comisión lo que se paga a quien lo hace y le pone stock a los productos."""
     items = api.get("/api/items/all")
+    sin_duracion = False
     for it in items:
         if it["es_producto"] or it["es_depilacion"] or it["categoria"] in SIN_COMISION:
             continue
         pct = COMISION_PROPIA.get(it["categoria"], COMISION_PCT)
-        api.put(f"/api/items/{it['id']}", {"es_comision": True, "comision_pct": pct})
+        minimo, maximo = DURACION.get(it["categoria"], (30, 60))
+        # Uno queda sin duración: es el aviso que la dueña tiene que ver en el catálogo.
+        sin = it["categoria"] == "EXTENSIONES" and not sin_duracion
+        sin_duracion = sin_duracion or sin
+        api.put(f"/api/items/{it['id']}", {"es_comision": True, "comision_pct": pct,
+                                            "duracion_min": 0 if sin else (minimo + maximo) // 10 * 5})
 
     for it in items:
         if not it["es_producto"]:
@@ -459,32 +465,36 @@ def egresos(api, rnd, hoy):
 
 
 def sueldos(api, rnd, empleadas, catalogo, hoy):
-    """Les carga la duración a los trabajos y las horas del día, y cierra lo que ya pasó.
+    """Les corrige la duración a algunos trabajos, carga el horario de cada día y
+    cierra lo que ya pasó.
 
     En ese orden y por la API, como pasa en el local: el trabajo aparece en su
-    pantalla cuando se factura, la duración la pone ella y el cierre es de la
-    dueña.
+    pantalla cuando se factura, la duración sale del catálogo y ella corrige la
+    que no fue así, y el cierre es de la dueña.
     """
     cerradas = 0
     for emp in empleadas:
         resumen = api.get(f"/api/sueldos/pendiente?empleado_id={emp['id']}")
-        por_dia = {}
+        con_trabajo = {}
         for ciclo in resumen["ciclos"]:
             for dia in ciclo["dias"]:
                 for t in dia["trabajos"]:
                     item = catalogo.get(t["nombre"]) or {}
+                    if item.get("duracion_min") and rnd.random() < 0.8:
+                        continue
                     minimo, maximo = DURACION.get(item.get("categoria"), (30, 60))
-                    mins = rnd.randrange(minimo, maximo + 1, 5)
                     api.put("/api/sueldos/trabajo-minutos",
-                            {"empleado_id": emp["id"], "minutos": mins,
+                            {"empleado_id": emp["id"], "minutos": rnd.randrange(minimo, maximo + 1, 5),
                              **({"trabajo_id": t["id"]} if t["id"] else {"linea_id": t["linea_id"]})})
-                    por_dia[dia["fecha"]] = por_dia.get(dia["fecha"], 0) + mins
-        # Las horas del día son las de sus trabajos más el mostrador: esa
-        # diferencia es lo que se paga aparte de la comisión.
-        for fecha, mins in por_dia.items():
+                if dia["trabajos"]:
+                    con_trabajo[dia["fecha"]] = dia
+        # El horario de la agenda, y a veces se quedó un rato más.
+        for fecha, dia in con_trabajo.items():
+            tandas = [list(t) for t in (dia["sugerido"] or [["10:00", "18:00"]])]
+            tandas[-1][1] = hhmm(min(minutos_de(tandas[-1][1]) + rnd.choice([0, 0, 15, 30]), 23 * 60))
             api.put("/api/sueldos/horas",
                     {"empleado_id": emp["id"], "fecha": fecha,
-                     "minutos": min(mins + rnd.choice([30, 45, 60, 90]), 11 * 60)})
+                     "tandas": [{"desde": a, "hasta": b} for a, b in tandas]})
 
         # Se cierra hacia atrás y se deja el ciclo en curso abierto, que es lo que
         # la pantalla de sueldos tiene para mostrar: lo que se le debe hoy.

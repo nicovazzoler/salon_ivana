@@ -102,6 +102,8 @@ async function cargarItems(){
    tarjetas— porque es la misma lista y se busca igual; lo único que cambia es
    qué pasa al tocar uno. Para LEER: la tarjeta no tiene ni un casillero
    abierto. */
+const duracionTexto = m => m < 60 ? `${m} min` : `${Math.floor(m/60)} h${m % 60 ? " " + String(m % 60).padStart(2, "0") : ""}`;
+
 function renderItems(items, mostrarCat){
   const cont=$("#listaItems");
   cerrarPaneles();
@@ -116,7 +118,9 @@ function renderItems(items, mostrarCat){
     const marcas=[];
     if(mostrarCat) marcas.push(`<span class="cat-mini">${esc(it.categoria)}</span>`);
     if(it.es_producto) marcas.push(`<span class="tag">prod</span>`);
-    if(it.es_comision) marcas.push(`<span class="tag">comisión ${it.comision_pct ?? 0}%</span>`);
+    if(it.es_comision) marcas.push(`<span class="tag">comisión ${it.comision_pct ?? 0}%</span>`,
+      it.duracion_min ? `<span class="tag">${duracionTexto(it.duracion_min)}</span>`
+                      : `<span class="tag falta">sin duración</span>`);
     if(it.es_depilacion) marcas.push(`<span class="tag">depilación</span>`);
     b.innerHTML = `<span class="n">${esc(it.nombre)}</span>
       <span class="precios">
@@ -199,7 +203,8 @@ function renderItemsEditables(items, mostrarCat){
     // Si este ítem ya venía tocado desde otra categoría, se muestra como quedó y
     // no como está en la base: el cambio sigue pendiente hasta que se guarde.
     const pend = CAMBIOS.get(it.id);
-    const v = pend || {nombre:it.nombre, precio:it.precio, categoria:it.categoria};
+    const v = pend || {nombre:it.nombre, precio:it.precio, categoria:it.categoria,
+                       duracion:it.duracion_min || 0};
     /* El chip de categoría aparece siempre que la fila esté MOVIDA, aunque se
        esté mirando una sola categoría: sin eso, mover un ítem afuera lo dejaba
        en la lista sin ninguna señal de que ya no pertenece ahí. */
@@ -214,7 +219,9 @@ function renderItemsEditables(items, mostrarCat){
       <span class="meta">
         <span class="transf" style="white-space:nowrap;">→ transf ${fmt(it.precio_transfer||0)}</span>
         ${cat}${it.es_producto?'<span class="tag">prod</span>':''}
-        ${it.es_comision?`<span class="tag">comisión ${it.comision_pct ?? 0}%</span>`:''}
+        ${it.es_comision?`<span class="tag">comisión ${it.comision_pct ?? 0}%</span>
+          <span class="pct-fila"><input class="d" type="number" min="0" max="720" step="5" inputmode="numeric"
+            value="${v.duracion||""}" placeholder="—" aria-label="Duración en minutos" style="width:64px;"> min</span>`:''}
       </span>
       <span class="acc"></span>`;
     // La categoría no tiene casillero en la fila: se cambia desde la barra de
@@ -222,9 +229,10 @@ function renderItemsEditables(items, mostrarCat){
     let catFila = v.categoria || it.categoria;
     const leer=()=>({nombre:row.querySelector(".n").value.trim(),
                      precio:parseInt(row.querySelector(".p").value,10),
-                     categoria:catFila});
+                     categoria:catFila,
+                     duracion:parseInt(row.querySelector(".d")?.value,10) || 0});
     const original=JSON.stringify({nombre:it.nombre, precio:it.precio,
-                                   categoria:it.categoria});
+                                   categoria:it.categoria, duracion:it.duracion_min || 0});
     const marcar=()=>{
       const ahora=leer();
       const sucia = JSON.stringify(ahora)!==original;
@@ -240,7 +248,7 @@ function renderItemsEditables(items, mostrarCat){
       // precio está tocado, el que se ve al lado es el viejo: mostrarlo pegado a
       // un efectivo nuevo se lee como si fueran los dos de ahora. Y calcularlo
       // acá sería tener la cuenta de la plata escrita en dos lugares.
-      row.querySelector(".transf").textContent = sucia
+      row.querySelector(".transf").textContent = ahora.precio !== it.precio
         ? "→ transf: se calcula al guardar"
         : `→ transf ${fmt(it.precio_transfer||0)}`;
       pintarBarra();
@@ -356,7 +364,8 @@ async function guardarTodos(){
     if(!v.nombre || !(v.precio > 0)){ malos.push(`${v.nombreViejo} (nombre o precio vacío)`); continue; }
     const r = await authFetch(`/api/items/${id}`, {method:"PUT",
       headers:{"Content-Type":"application/json"},
-      body: JSON.stringify({nombre:v.nombre, precio:v.precio, categoria: v.categoria})});
+      body: JSON.stringify({nombre:v.nombre, precio:v.precio, categoria: v.categoria,
+                            duracion_min: v.duracion})});
     if(r.ok) CAMBIOS.delete(id); else malos.push(v.nombreViejo);
   }
   if(malos.length) toast("No se pudieron guardar: " + malos.join(", "));
@@ -418,6 +427,8 @@ function fichaItem(it){
         <input class="f-precio" type="number" min="0" inputmode="numeric" placeholder="0"></div>
       <div class="campo"><label>Categoría</label>
         <input class="f-cat" list="cats" placeholder="existente o nueva"></div>
+      <div class="campo"><label>Duración (min)</label>
+        <input class="f-dur" type="number" min="0" max="720" step="5" inputmode="numeric" placeholder="Ej: 45"></div>
     </div>
     <div class="ficha-marcas">
       <button type="button" class="marca f-prod">
@@ -443,6 +454,7 @@ function fichaItem(it){
   $$(".f-nombre").value = it ? it.nombre : "";
   $$(".f-precio").value = it ? it.precio : "";
   $$(".f-cat").value    = it ? (it.categoria || catActual) : (catActual || "");
+  $$(".f-dur").value    = it && it.duracion_min ? it.duracion_min : "";
   const marcar = (b, on) => b.classList.toggle("on", !!on);
   marcar($$(".f-prod"), it && it.es_producto);
   marcar($$(".f-depi"), it && it.es_depilacion);
@@ -463,6 +475,7 @@ function fichaItem(it){
     if(!(precio > 0)){ toast("El precio tiene que ser mayor a 0"); return; }
     if(!categoria){ toast("Falta la categoría"); return; }
     const cuerpo = {nombre, precio, categoria,
+                    duracion_min: parseInt($$(".f-dur").value, 10) || 0,
                     es_producto: $$(".f-prod").classList.contains("on"),
                     es_depilacion: $$(".f-depi").classList.contains("on")};
     const r = nuevo

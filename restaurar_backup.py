@@ -40,7 +40,7 @@ def _a_utc_naive(iso, version):
 ORDEN = [
     ("items", models.Item, ["id", "categoria", "nombre", "precio", "precio_transfer",
                             "es_producto", "es_comision", "es_depilacion", "comision_pct",
-                            "stock_actual",
+                            "duracion_min", "stock_actual",
                             "stock_minimo", "activo"], []),
     ("clientes", models.Cliente, ["id", "nombre", "telefono", "alias", "notas",
                                   "direccion", "dni", "activo"], ["creado"]),
@@ -93,7 +93,8 @@ ORDEN = [
       "total_comisiones", "total_horas", "total", "notas", "egreso_id", "parcial",
       "depilacion", "recaudado", "gastos", "sesion_id"], ["cerrada"]),
     ("horas_trabajadas", models.HoraTrabajada,
-     ["id", "empleado_id", "fecha", "minutos", "liquidacion_id"], ["cargado"]),
+     ["id", "empleado_id", "fecha", "minutos", "desde", "hasta", "desde2", "hasta2",
+      "liquidacion_id"], ["cargado"]),
 ]
 
 # Tablas que viven anidadas adentro de otra en el JSON.

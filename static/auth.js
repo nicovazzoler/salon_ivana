@@ -207,6 +207,7 @@ const ICONOS = {
   guardar: '<path d="M20 6 9 17l-5-5"/>',
   nota: '<path d="M15.5 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V8.5z"/><path d="M15 3v6h6"/>',
   menu: '<path d="M4 6h16M4 12h16M4 18h16"/>',
+  flecha: '<path d="m9 18 6-6-6-6"/>',
 };
 function icono(nombre){
   return `<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"`

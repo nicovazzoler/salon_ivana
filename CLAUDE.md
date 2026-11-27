@@ -398,6 +398,19 @@ la comisión se ve pero no se edita. La migración que los sacó
 (`pasar_generales()`) copió el general a cada una y a cada servicio que no tenía
 el suyo, UNA vez, así que ningún número cambió.
 
+**Las horas del día se cargan como horario**, en una o dos tandas —entré, salí,
+volví, me fui—, y no como un número de horas suelto. `horas_trabajadas` guarda
+las tandas (`desde`, `hasta`, `desde2`, `hasta2`) y los minutos, que son lo que
+se paga y lo único que tienen las filas de antes. Un día sin horas trae el
+horario de la agenda (`disponibilidad()`) para guardarlo con un toque; no se
+guarda solo, porque un día que faltó sería plata.
+
+**Cuánto dura cada trabajo sale del catálogo** (`items.duracion_min`, por la
+cantidad), y la empleada corrige solo el que no fue así; cero lo vuelve a la del
+catálogo. Lo pendiente sigue al catálogo y el cierre guarda el número en el
+trabajo, así que lo pagado no se mueve. Un trabajo sin duración ni en el
+catálogo ni cargada sigue frenando el cierre.
+
 **Quién cobra sueldo es una casilla** (`cobra_sueldo`), no tener código. La que
 no la tiene no aparece para pagar, no entra a Sueldos y no tiene valor hora. La
 que se agrega en Admin nace con la casilla puesta.
@@ -745,6 +758,7 @@ pytest tests/test_anulaciones.py     # quién puede anular plata y qué queda es
 pytest tests/test_cobro_repetido.py  # que un cobro reintentado no cobre dos veces
 pytest tests/test_reparto.py         # que el reparto de depilación cuente la seña como entró
 pytest tests/test_sueldos_valores.py # valor hora de cada una, comisión de cada servicio y los códigos
+pytest tests/test_sueldos_horario.py # el horario en tandas y la duración del catálogo
 pytest tests/test_pwa.py             # que la app instalable guarde lo justo y cambie de versión
 node --test "tests/escpos/**/*.test.js"   # el papel, byte a byte contra los golden
 ```
